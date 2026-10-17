@@ -332,6 +332,7 @@ app: `ffl_core` · module: FFL Core · single · roles: System Manager
 | `pending_order_age_alert_days` | Int | Pending Order overdue after (days) |  |  |
 | `receipt_footer_note` | Small Text | Receipt Footer Note |  |  |
 | `shipping_price_includes_tax` | Check | Shipping Price Includes Sales Tax |  |  |
+| `counter_lock_minutes` | Int | Lock Idle Screen After (minutes) |  |  |
 | `paper_4473_mode` | Check | Paper 4473 Mode |  |  |
 | `transfer_fee_item` | Link | Transfer Fee Item |  | Item |
 | `transfer_fee_amount` | Currency | Default Transfer Fee |  |  |
