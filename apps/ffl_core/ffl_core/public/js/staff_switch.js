@@ -1,8 +1,8 @@
 // Switch staff at a shared counter screen, and lock it when nobody is there
 // (server side: ffl_core/staff_switch.py).
 //
-// • A switch-user button sits next to the user at the sidebar's bottom-left corner.
-//   It opens the staff list (everyone with a counter role); pick someone, type their
+// • The user menu (the name at the sidebar's bottom-left corner, and the dock's avatar)
+//   gets a "Switch user" entry. It opens the staff list (everyone with a counter role); pick someone, type their
 //   password, and they are signed in through frappe's own /api/method/login (a new
 //   session; the page reloads as them). Picking yourself just closes the list.
 // • After FFL Settings → Lock Idle Screen After (minutes) with no touch or key
@@ -12,7 +12,7 @@
 //   (frappe.boot.ffl_screen_locked), and every other desk tab of the browser locks,
 //   unlocks and follows a switch of user with it (BroadcastChannel).
 //
-// The pure half (idleMs, initials, pickAction) is Node-tested.
+// The pure half (idleMs, initials, pickAction, withMenuItem) is Node-tested.
 (function (root, factory) {
 	var api = factory();
 	if (typeof module === 'object' && module.exports) module.exports = api;
@@ -40,7 +40,16 @@
 		return 'login';
 	}
 
-	return { idleMs: idleMs, initials: initials, pickAction: pickAction };
+	// The user menu's option groups with `item` added at the top of the first group
+	// (once). Groups are frappe.ui.Dropdown's [{group, options: [...]}].
+	function withMenuItem(groups, item) {
+		if (!Array.isArray(groups) || !groups.length || !Array.isArray(groups[0].options)) return groups;
+		if (groups[0].options.some(function (o) { return o && o.name === item.name; })) return groups;
+		var first = Object.assign({}, groups[0], { options: [item].concat(groups[0].options) });
+		return [first].concat(groups.slice(1));
+	}
+
+	return { idleMs: idleMs, initials: initials, pickAction: pickAction, withMenuItem: withMenuItem };
 });
 
 (function fflStaffSwitchWire() {
@@ -175,23 +184,31 @@
 		resetIdle();
 	}
 
-	// ---- the button --------------------------------------------------------
+	// ---- the user menu entry --------------------------------------------------
 
-	function mountButton() {
-		var $slot = $('.body-sidebar-bottom .dropdown-navbar-user').first();
-		if (!$slot.length || $slot.find('.ffl-switch-user').length) return;
-		$slot.css({ display: 'flex', alignItems: 'center' });
-		$('<button type="button" class="btn btn-reset ffl-switch-user" aria-label="' + esc(__('Switch user')) + '" title="' + esc(__('Switch user')) + '"></button>')
-			.css({ marginLeft: 'auto', padding: '6px', flex: '0 0 auto' })
-			.html(frappe.utils.icon('users', 'md'))
-			.appendTo($slot)
-			.on('click', function (e) { e.preventDefault(); e.stopPropagation(); show({ locked: false }); });
+	// frappe builds the user menu inside Sidebar.create_user_menu with a literal option
+	// list, so the entry goes in by handing that one Dropdown a longer list. Patched at
+	// load: app_include_js runs before the desk builds its sidebar.
+	function patchUserMenu() {
+		var Sidebar = frappe.ui && frappe.ui.Sidebar;
+		if (!Sidebar || !Sidebar.prototype.create_user_menu || Sidebar.prototype.create_user_menu.fflSwitch) return;
+		var orig = Sidebar.prototype.create_user_menu;
+		var item = { name: 'ffl-switch-user', label: __('Switch user'), icon: 'users',
+			onclick: function () { show({ locked: false }); } };
+		Sidebar.prototype.create_user_menu = function () {
+			var Dropdown = frappe.ui.Dropdown;
+			frappe.ui.Dropdown = function (opts) {
+				if (frappe.session.user !== 'Guest') opts = Object.assign({}, opts, { options: api.withMenuItem(opts.options, item) });
+				return new Dropdown(opts);
+			};
+			try { return orig.apply(this, arguments); } finally { frappe.ui.Dropdown = Dropdown; }
+		};
+		Sidebar.prototype.create_user_menu.fflSwitch = true;
 	}
+	patchUserMenu();
 
 	function wire() {
 		if (!window.frappe || !frappe.boot || frappe.session.user === 'Guest') return;
-		mountButton();
-		if (frappe.router && frappe.router.on) frappe.router.on('change', function () { setTimeout(mountButton, 0); });
 		['mousemove', 'mousedown', 'keydown', 'touchstart', 'wheel', 'scroll'].forEach(function (ev) {
 			document.addEventListener(ev, poke, { passive: true, capture: true });
 		});
@@ -209,5 +226,5 @@
 	}
 	$(document).on('app_ready', function () { setTimeout(wire, 0); });
 
-	Object.assign(api, { show: show, lock: lock, mountButton: mountButton });
+	Object.assign(api, { show: show, lock: lock });
 })();
