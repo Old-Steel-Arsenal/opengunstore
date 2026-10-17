@@ -737,6 +737,8 @@ after_install = [
 	"ffl_core.setup.custody.ensure",
 	# A Single write only — store the switch's ON default (patches don't run on install).
 	"ffl_core.setup.shipping_charge.ensure_shipping_tax_switch",
+	# Same for the idle counter lock's 5-minute default (staff_switch).
+	"ffl_core.staff_switch.ensure_lock_default",
 	# Cash drawer: the two POS Closing Entry fields (accounts wait for a company, at after_migrate).
 	"ffl_core.setup.cash_drawer.ensure_fields_only",
 ]
