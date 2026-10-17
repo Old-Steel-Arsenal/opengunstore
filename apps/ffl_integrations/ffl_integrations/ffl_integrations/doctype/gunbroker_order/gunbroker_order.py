@@ -16,6 +16,27 @@ rides alongside in ``gb_status`` and never drives a decision on its own.
 reporting and it is not evidence of anything on our ledger. The Dispose gate
 reads ``payment_mode_used``, so a gun cannot leave the building on the strength
 of somebody else's checkbox.
+
+Field notes (kept here, not in the form, which is for staff):
+
+- ``gb_order_id`` is the poll's idempotency key, unique at the database level.
+- Every Datetime is site local time, converted from GunBroker's ``…UTC`` twin
+  (or its Eastern reading where there is none); the verbatim values stay in
+  ``raw_payload``. The poll watermark in GunBroker Settings stays UTC.
+- Correcting ``ffl_number`` in the C&R dialog also clears ``atf_ffl_record``,
+  so the two never describe different licences. ``is_cr_transfer`` is derived
+  from ``ffl_number`` and never stored independently.
+- ``sales_tax_total`` is GunBroker's combined figure (marketplace tax plus the
+  1% ``compliance_fee``); the invoice splits it by ``compliance_fee`` and stays
+  in Draft when that field is missing rather than guessing.
+- ``payment_received_on`` drives the cash-basis schedule and bank
+  reconciliation; a recorded ``payment_mode_used`` always carries it.
+- ``payment_entry`` and ``fee_accrual_je`` are idempotency keys: non-empty
+  means already booked. An empty ``gb_overpayment_pe`` on an overpaid order is
+  retried by the next booking run.
+- Ship write-back is three steps (OrderShipped flag, tracking, read-back);
+  ``gb_ship_writeback_pending`` marks a failed step 2 or 3 for the tracking
+  poll to retry.
 """
 from __future__ import annotations
 

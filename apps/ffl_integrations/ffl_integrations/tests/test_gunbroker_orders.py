@@ -249,6 +249,25 @@ class TestFieldMapping(_OrderCase):
 		self.assertEqual(order.payment_methods, "Certified Check")
 		self.assertEqual(order.order_status, "Pending Fulfillment")
 
+	def test_the_status_enum_is_read_from_its_key_pair_shape(self):
+		# GET /Orders returns the status as {"3": "Pending Payment"}, not a bare
+		# integer. Reading it as an int gave 0 on every real order, which blinds
+		# the layaway and cancellation checks that key off gb_status.
+		order = fx.FakeDoc()
+		orders.apply_order_fields(order, fx.order_detail(status={"3": "Pending Payment"}))
+		self.assertEqual(order.gb_status, 3)
+		self.assertEqual(order.gb_status_label, orders.GB_STATUS_LABELS[3])
+
+	def test_a_long_effl_url_saves(self):
+		# A MasterFFL transfer-proof link runs past 140 characters. As a Data
+		# field it failed every save, so the order froze at its first poll with
+		# no licence number on it.
+		url = "https://documents.masterffl.com/ffl-transfer-proofs/" + "a" * 200 + ".pdf"
+		doc = frappe.get_doc({"doctype": "GunBroker Order", "gb_order_id": "EFFL-LEN-1",
+			"effl_url": url, "seller_packet_url": url})
+		doc.insert(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("GunBroker Order", doc.name, "effl_url"), url)
+
 	def test_a_corrected_licence_number_is_not_overwritten_by_the_poll(self):
 		# Staff can correct a licence number in the dispose dialog. GunBroker is
 		# not going to change its mind about what the buyer typed, so a poll
@@ -334,6 +353,7 @@ class TestFieldMapping(_OrderCase):
 		self.assertEqual(line.unit_price, 1100.00)
 		self.assertEqual(line.serial_number, "SN-001")
 		self.assertEqual(line.is_ffl_required, 1)
+		self.assertEqual(order.item_subtotal, 1100.00)
 
 	def test_an_already_accrued_fee_survives_the_next_poll(self):
 		# The fee was computed from the price at the time of sale and GunBroker

@@ -723,6 +723,7 @@ class TestPendingRow(_FulfillmentCase):
 		"can_mark_shipped", "shipstation_enabled", "shipstation_order_id",
 		"ship_items", "has_ship_address", "ship_to_preview", "site",
 		"woo_order_id", "woo_status", "woo_online_order", "ships_direct",
+		"sync_error", "sync_fail_count",
 	)
 
 	def _row(self, order):

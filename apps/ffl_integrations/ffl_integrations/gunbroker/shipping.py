@@ -43,6 +43,7 @@ from ffl_integrations.gunbroker.client import (
 	GunBrokerClient,
 	GunBrokerError,
 	get_field,
+	kv_key,
 )
 from ffl_integrations.gunbroker.orders import GB_STATUS_LABELS
 from ffl_integrations.integration_gate import gunbroker_enabled
@@ -373,7 +374,7 @@ def _read_back(client: GunBrokerClient, order, tracking: str,
 		return False, f"read-back failed: {exc}", 0
 	stored = str(get_field(remote, "shipTrackingNumber", "ShipTrackingNumber",
 		default="") or "").strip()
-	status = cint(get_field(remote, "status", "orderStatus", default=0))
+	status = cint(kv_key(get_field(remote, "status", "orderStatus"), 0))
 	if stored != tracking:
 		return False, (f"GunBroker reports tracking {stored or '(none)'}, "
 			f"we sent {tracking}"), status
@@ -381,8 +382,7 @@ def _read_back(client: GunBrokerClient, order, tracking: str,
 		# Only when we actually sent one. An order we deliberately sent no
 		# Carrier for reads back 0/Unknown, and asserting on that would fail
 		# every DHL shipment for doing exactly what it was told to do.
-		stored_carrier = cint(get_field(remote, "shipCarrier", "ShipCarrier",
-			default=0))
+		stored_carrier = cint(kv_key(get_field(remote, "shipCarrier", "ShipCarrier"), 0))
 		if stored_carrier != carrier:
 			return False, (f"GunBroker reports carrier {stored_carrier}, "
 				f"we sent {carrier}"), status

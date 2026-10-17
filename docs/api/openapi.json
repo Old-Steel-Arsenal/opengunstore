@@ -3117,11 +3117,11 @@
           },
           "gb_status": {
             "type": "integer",
-            "description": "GunBroker Status"
+            "description": "GunBroker Status Code"
           },
           "gb_status_label": {
             "type": "string",
-            "description": "GunBroker Status Label"
+            "description": "GunBroker Status"
           },
           "order_date": {
             "type": "string",
@@ -17963,7 +17963,7 @@
           "ffl_integrations"
         ],
         "summary": "Name the gun that fills one unit of a model-level GunBroker order.",
-        "description": "Reserves the gun for the order (the claim becomes a hold), tells the other\nstorefronts it is gone, and records who assigned it and when. Naming a\ndifferent gun for a unit that already has one swaps them: the old gun is\nreleased only if this order holds it. An empty ``serial_no`` unassigns the\nunit, which makes it an open claim again. Calling it again with the gun the\nunit already has changes nothing.\n\nRefused: a gun of another model (a model pooled under this one must be filed\nunder it first), a customer's consignment or transfer gun, one in custody,\none the order already holds for another unit, one that is not free (held by a\ncounter order or another channel, out on consignment, possibly already sold on\nGunBroker), and, on a Type 03 collector order, a gun not old enough to be a\ncurio or relic. Nothing is changed on a refusal.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:924`",
+        "description": "Reserves the gun for the order (the claim becomes a hold), tells the other\nstorefronts it is gone, and records who assigned it and when. Naming a\ndifferent gun for a unit that already has one swaps them: the old gun is\nreleased only if this order holds it. An empty ``serial_no`` unassigns the\nunit, which makes it an open claim again. Calling it again with the gun the\nunit already has changes nothing.\n\nRefused: a gun of another model (a model pooled under this one must be filed\nunder it first), a customer's consignment or transfer gun, one in custody,\none the order already holds for another unit, one that is not free (held by a\ncounter order or another channel, out on consignment, possibly already sold on\nGunBroker), and, on a Type 03 collector order, a gun not old enough to be a\ncurio or relic. Nothing is changed on a refusal.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:930`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.assign_gb_unit_serial",
         "responses": {
           "200": {
@@ -18021,7 +18021,7 @@
           "ffl_integrations"
         ],
         "summary": "Repair the deposit date (and cheque number) recorded on a GunBroker order.",
-        "description": "For the row that cannot otherwise be fixed. The four payment fields are\nread-only on the form — they are a record of what was banked, not something\nto retype — and the document refuses to save when a mode is recorded with no\ndeposit date. A row in that state (a direct database write, an import, a\nhalf-finished edit) is reported by the daily audit and then cannot be\ncorrected through the Desk at all: the field will not accept typing and\nopening the form and saving throws.\n\nDeliberately narrow: the date and the reference number, nothing else. The\namount, the mode and whether the order is paid are what was banked — those\nare mark_payment_received's, and once a receipt is posted they are an\naccounting correction rather than an edit.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:631`",
+        "description": "For the row that cannot otherwise be fixed. The four payment fields are\nread-only on the form — they are a record of what was banked, not something\nto retype — and the document refuses to save when a mode is recorded with no\ndeposit date. A row in that state (a direct database write, an import, a\nhalf-finished edit) is reported by the daily audit and then cannot be\ncorrected through the Desk at all: the field will not accept typing and\nopening the form and saving throws.\n\nDeliberately narrow: the date and the reference number, nothing else. The\namount, the mode and whether the order is paid are what was banked — those\nare mark_payment_received's, and once a receipt is posted they are an\naccounting correction rather than an edit.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:637`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.correct_payment_details",
         "responses": {
           "200": {
@@ -18081,7 +18081,7 @@
           "ffl_integrations"
         ],
         "summary": "Book the bound-book exit for a paid GunBroker order (the Dispose action).",
-        "description": "One submitted \"FFL Transfer\" disposition per regulated gun, each of which\nissues its own stock-out and queues its own FastBound push. Idempotent on\n{serial, gunbroker_order}. An ANTIQUE on the order gets no disposition —\nit is GCA-exempt, so it is issued straight out of stock instead\n(``_retire_antique_units``). Whether a dealer is involved at all is\n``needs_dealer``: an order that is all antiques and names no licence ships\nto the buyer, and that decision is written to ``ships_direct`` for the\ninvoice and the card to read. A serialized unit that is neither a\nregulated firearm nor an antique is refused outright. The revenue invoice\nis raised at the end and a failure there does not roll back the\ndispositions — create_gb_invoice_now retries.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1106`",
+        "description": "One submitted \"FFL Transfer\" disposition per regulated gun, each of which\nissues its own stock-out and queues its own FastBound push. Idempotent on\n{serial, gunbroker_order}. An ANTIQUE on the order gets no disposition —\nit is GCA-exempt, so it is issued straight out of stock instead\n(``_retire_antique_units``). Whether a dealer is involved at all is\n``needs_dealer``: an order that is all antiques and names no licence ships\nto the buyer, and that decision is written to ``ships_direct`` for the\ninvoice and the card to read. A serialized unit that is neither a\nregulated firearm nor an antique is refused outright. The revenue invoice\nis raised at the end and a failure there does not roll back the\ndispositions — create_gb_invoice_now retries.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1112`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.dispose_gb_order",
         "responses": {
           "200": {
@@ -18135,7 +18135,7 @@
           "ffl_integrations"
         ],
         "summary": "The loose-stock lines of a GunBroker order and where in the store each can be",
-        "description": "taken from, for the \"where did these come from?\" step of Dispose.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1082`",
+        "description": "taken from, for the \"where did these come from?\" step of Dispose.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1088`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.get_dispose_stock_lines",
         "responses": {
           "200": {
@@ -18213,7 +18213,7 @@
           "ffl_integrations"
         ],
         "summary": "Mark one unit of a model-level order as refunded on GunBroker.",
-        "description": "For an oversold order: the buyer paid for N, only N-1 guns exist, and the\nbuyer is refunded for the missing one on GunBroker's side. A unit marked\nrefunded stops counting as a claim, gets no gun, no bound-book entry and no\ninvoice line; the seller fee is still accrued on the whole GunBroker line,\nbecause GunBroker does not reduce it for a refund. The invoice then no longer\nagrees with what GunBroker charged and stays in Draft for a person to check\nthe refund against the statement.\n\nMarking a unit that already has a gun releases the gun (if this order holds\nit). ``refunded=0`` undoes the mark.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1033`",
+        "description": "For an oversold order: the buyer paid for N, only N-1 guns exist, and the\nbuyer is refunded for the missing one on GunBroker's side. A unit marked\nrefunded stops counting as a claim, gets no gun, no bound-book entry and no\ninvoice line; the seller fee is still accrued on the whole GunBroker line,\nbecause GunBroker does not reduce it for a refund. The invoice then no longer\nagrees with what GunBroker charged and stays in Draft for a person to check\nthe refund against the statement.\n\nMarking a unit that already has a gun releases the gun (if this order holds\nit). ``refunded=0`` undoes the mark.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1039`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.mark_gb_unit_refunded",
         "responses": {
           "200": {
@@ -18271,7 +18271,7 @@
           "ffl_integrations"
         ],
         "summary": "Record that a GunBroker buyer's payment has been banked.",
-        "description": "This is the fact the Dispose gate opens on, and it is deliberately not\nGunBroker's own \"payment received\" flag: that flag is a click on their\nwebsite, and a gun must not leave the building on the strength of it.\n\nNo Payment Entry is created here. GunBroker orders are paid before they are\ninvoiced, and the invoice does not exist until the guns are disposed — so\nthere is nothing to book the receipt against yet. The values recorded here\nare replayed onto a Payment Entry the moment the invoice is raised.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:446`",
+        "description": "This is the fact the Dispose gate opens on, and it is deliberately not\nGunBroker's own \"payment received\" flag: that flag is a click on their\nwebsite, and a gun must not leave the building on the strength of it.\n\nNo Payment Entry is created here. GunBroker orders are paid before they are\ninvoiced, and the invoice does not exist until the guns are disposed — so\nthere is nothing to book the receipt against yet. The values recorded here\nare replayed onto a Payment Entry the moment the invoice is raised.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:452`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.mark_payment_received",
         "responses": {
           "200": {
@@ -18348,7 +18348,7 @@
           "ffl_integrations"
         ],
         "summary": "Write this order's tracking number back to GunBroker now.",
-        "description": "The scheduled poll does this on its own every ten minutes; this is for the\noperator who has just bought the label and wants the buyer to see it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1656`",
+        "description": "The scheduled poll does this on its own every ten minutes; this is for the\noperator who has just bought the label and wants the buyer to see it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1662`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.push_tracking_now",
         "responses": {
           "200": {
