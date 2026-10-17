@@ -149,6 +149,11 @@ def _hashed(rel_path: str) -> str:
 
 # Extension SDK (since core 0.1.0): frappe.boot.gunshop_extensions = {id: {enabled, version, title}}
 # is what gunstore.extensions renders from.
+# A password sign-in turns a counter PIN that wrong tries switched off back on (staff_switch.py).
+on_login = ["ffl_core.staff_switch.on_password_login"]
+# Wrong counter-PIN tries outlive `bench clear-cache` (staff_switch.PIN_FAIL_KEY).
+persistent_cache_keys = ["ffl-pin-fail:*"]
+
 extend_bootinfo = [
 	"ffl_core.extensions.extend_bootinfo",
 	# Idle lock minutes and whether this session's screen is locked (staff_switch.py).
@@ -168,6 +173,9 @@ app_include_js = [
 	_hashed("js/pos_tender_guard.js"),
 	_hashed("js/payroc_charges.js"),
 	_hashed("js/pos_recycle_bin.js"),
+	# Recent Orders › Work Orders: open gunsmith jobs and their Complete (ffl.gunsmithRegister in the
+	# bundle above); needs ffl.installClassHook from pos_tender_guard.js above.
+	_hashed("js/pos_work_orders.js"),
 	# Cart "Charge exactly" row (tax-inclusive total → line rates); needs pos_tender_guard.js above.
 	_hashed("js/pos_charge_exactly.js"),
 	# Recent Orders draft chips (paid / entered / 4473); needs pos_tender_guard.js above.

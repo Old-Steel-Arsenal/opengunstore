@@ -34,3 +34,28 @@ test('withMenuItem: the entry goes first in the first group, once, and nothing e
 	assert.deepStrictEqual(ss.withMenuItem([], item), []);
 	assert.strictEqual(ss.withMenuItem(undefined, item), undefined);
 });
+
+test('authMode: the PIN when there is one that is on, unless the password was chosen', () => {
+	assert.strictEqual(ss.authMode({ has_pin: true, pin_off: false }, false), 'pin');
+	assert.strictEqual(ss.authMode({ has_pin: true, pin_off: false }, true), 'password');
+	assert.strictEqual(ss.authMode({ has_pin: true, pin_off: true }, false), 'password', 'five wrong PINs: the password');
+	assert.strictEqual(ss.authMode({ has_pin: false }, false), 'password');
+	assert.strictEqual(ss.authMode(null, false), 'password');
+});
+
+test('pinProblem mirrors staff_switch.pin_problem', () => {
+	assert.strictEqual(ss.pinProblem('4827', '4827'), null);
+	assert.strictEqual(ss.pinProblem('120934'), null);
+	assert.strictEqual(ss.pinProblem('1212'), null, 'up and down is not a run');
+	['123', '1234567', '12a4', '', null, '١٢٣٤'].forEach((p) => assert.strictEqual(ss.pinProblem(p), 'format', String(p)));
+	['1111', '000000', '1234', '3456', '123456', '9876', '654321'].forEach((p) => assert.strictEqual(ss.pinProblem(p), 'trivial', p));
+	assert.strictEqual(ss.pinProblem('4827', '4828'), 'mismatch');
+});
+
+test('serverMessage: frappe\'s refusal text, else null', () => {
+	const body = { _server_messages: JSON.stringify([JSON.stringify({ message: 'That PIN is not right. <b>4</b> tries left.' })]) };
+	assert.strictEqual(ss.serverMessage(body), 'That PIN is not right. 4 tries left.');
+	assert.strictEqual(ss.serverMessage({}), null);
+	assert.strictEqual(ss.serverMessage({ _server_messages: 'junk' }), null);
+	assert.strictEqual(ss.serverMessage(null), null);
+});
