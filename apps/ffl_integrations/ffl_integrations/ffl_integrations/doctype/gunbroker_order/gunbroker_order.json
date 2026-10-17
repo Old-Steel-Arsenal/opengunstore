@@ -116,7 +116,6 @@
  ],
  "fields": [
   {
-   "description": "GunBroker's own order number. The idempotency key for order polling: unique at the database level, so a replayed or overlapping poll updates the existing order instead of creating a second one.",
    "fieldname": "gb_order_id",
    "fieldtype": "Data",
    "in_list_view": 1,
@@ -129,7 +128,7 @@
   },
   {
    "default": "Pending Fulfillment",
-   "description": "Our OWN fulfillment state, not GunBroker's. Transferred means the bound-book exit is booked.",
+   "description": "Our own status. Transferred = the gun is out of the bound book.",
    "fieldname": "order_status",
    "fieldtype": "Select",
    "in_list_view": 1,
@@ -143,35 +142,33 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "GunBroker's numeric order status as last polled (1-13).",
    "fieldname": "gb_status",
    "fieldtype": "Int",
    "label": "GunBroker Status",
-   "read_only": 1
+   "read_only": 1,
+   "hidden": 1
   },
   {
    "fieldname": "gb_status_label",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "GunBroker Status Label",
+   "label": "GunBroker Status",
    "read_only": 1
   },
   {
-   "description": "When the buyer bought it. Site local time, converted from GunBroker's orderDateUTC (or, where GunBroker sends no UTC twin, from its Eastern reading \u2014 D-13). The value they sent is kept verbatim in Raw Payload.",
    "fieldname": "order_date",
    "fieldtype": "Datetime",
    "label": "Order Date",
    "read_only": 1
   },
   {
-   "description": "lastModifiedDate as GunBroker reports it \u2014 what the incremental poll orders by and advances its watermark to. Site local time, converted from GunBroker's lastModifiedDate (or, where GunBroker sends no UTC twin, from its Eastern reading \u2014 D-13). The value they sent is kept verbatim in Raw Payload. The watermark itself, over in GunBroker Settings, stays in UTC: it is an API protocol value, not an accounting one, and is never compared with anything on this document.",
    "fieldname": "gb_last_modified",
    "fieldtype": "Datetime",
    "label": "GunBroker Last Modified",
    "read_only": 1
   },
   {
-   "description": "When PUT /Orders/{id}/Flags {AcknowledgeOrder:true} succeeded. Empty means the order is still awaiting seller review on GunBroker.",
+   "description": "Empty = GunBroker is still waiting for us to accept the order.",
    "fieldname": "acknowledged_at",
    "fieldtype": "Datetime",
    "label": "Acknowledged At",
@@ -183,7 +180,6 @@
    "label": "Buyer"
   },
   {
-   "description": "buyer.userID \u2014 the Customer dedup key. A GunBroker username can change; the numeric id cannot.",
    "fieldname": "buyer_user_id",
    "fieldtype": "Data",
    "label": "Buyer User ID",
@@ -223,7 +219,6 @@
    "label": "Bill To Phone"
   },
   {
-   "description": "GunBroker's own taxExempt flag for this order. Recorded, never used to change a Customer's exemption.",
    "fieldname": "tax_exempt",
    "fieldtype": "Check",
    "label": "Tax Exempt",
@@ -280,13 +275,13 @@
    "label": "Receiving FFL"
   },
   {
-   "description": "The receiving dealer's licence number as GunBroker reports it (fflNumber). Staff may correct it in the C&R dialog; doing so also clears atf_ffl_record, so the two can never describe different licences.",
+   "description": "The receiving dealer's license, as GunBroker sent it.",
    "fieldname": "ffl_number",
    "fieldtype": "Data",
    "label": "FFL Number"
   },
   {
-   "description": "The resolved destination, from eZ Check (or the C&R dialog). What the disposition actually ships to.",
+   "description": "The verified dealer the gun ships to.",
    "fieldname": "atf_ffl_record",
    "fieldtype": "Link",
    "label": "ATF FFL Record",
@@ -294,7 +289,7 @@
    "read_only": 1
   },
   {
-   "description": "Derived from ffl_number, never stored independently: a Type 03 collector is not in the ATF directory, so this order needs the human verification dialog instead of an eZ Check lookup.",
+   "description": "Collector (Type 03) license: verify it by hand instead of eZ Check.",
    "fieldname": "is_cr_transfer",
    "fieldtype": "Check",
    "label": "C&R (Type 03) Transfer",
@@ -302,7 +297,7 @@
   },
   {
    "default": "0",
-   "description": "Set by Dispose when no receiving dealer was involved: every gun on the order is an antique, so it was issued out of stock with no bound-book entry and ships to the buyer's own address.",
+   "description": "All antiques: ships to the buyer, no dealer needed.",
    "fieldname": "ships_direct",
    "fieldtype": "Check",
    "label": "Ships Direct to Buyer (antique)",
@@ -319,7 +314,6 @@
    "read_only": 1
   },
   {
-   "description": "When GunBroker's Master FFL service recorded the receiving dealer's licence. Site local time, converted from GunBroker's fflReceivedDateUTC (or, where GunBroker sends no UTC twin, from its Eastern reading \u2014 D-13). The value they sent is kept verbatim in Raw Payload.",
    "fieldname": "ffl_received_at",
    "fieldtype": "Datetime",
    "label": "FFL Received At",
@@ -333,13 +327,13 @@
   },
   {
    "fieldname": "effl_url",
-   "fieldtype": "Data",
+   "fieldtype": "Small Text",
    "label": "eFFL URL",
    "read_only": 1
   },
   {
    "fieldname": "seller_packet_url",
-   "fieldtype": "Data",
+   "fieldtype": "Small Text",
    "label": "Seller Packet URL",
    "read_only": 1
   },
@@ -363,7 +357,7 @@
   {
    "fieldname": "cr_premise_street",
    "fieldtype": "Data",
-   "label": "Licensed Premises \u2014 Address 1"
+   "label": "Licensed Premises — Address 1"
   },
   {
    "fieldname": "cr_premise_street2",
@@ -408,28 +402,25 @@
    "label": "Payment"
   },
   {
-   "description": "Mirrors GunBroker's paymentReceived. Reporting only: a click on the GunBroker site sets it, which is not evidence that WE recorded the money \u2014 the Dispose gate reads payment_mode_used instead.",
+   "description": "Ticked on the GunBroker site. Does not count as paid here: use Mark Payment Received.",
    "fieldname": "payment_received",
    "fieldtype": "Check",
    "label": "Payment Received (GunBroker flag)",
    "read_only": 1
   },
   {
-   "description": "When GunBroker says the buyer paid. Their flag, not evidence the money reached us \u2014 the Dispose gate reads Payment Received On, which a human fills in. Site local time, converted from GunBroker's paymentReceivedDateUTC (or, where GunBroker sends no UTC twin, from its Eastern reading \u2014 D-13). The value they sent is kept verbatim in Raw Payload.",
    "fieldname": "payment_received_at",
    "fieldtype": "Datetime",
    "label": "Payment Received At (GunBroker)",
    "read_only": 1
   },
   {
-   "description": "paymentMethods, decoded from GunBroker's bitmask into words.",
    "fieldname": "payment_methods",
    "fieldtype": "Data",
    "label": "Payment Methods Offered",
    "read_only": 1
   },
   {
-   "description": "How the money reached us. Anything Gateway (*) is an anomaly this phase: no payment gateway is connected, so no card money should exist.",
    "fieldname": "payment_source",
    "fieldtype": "Select",
    "label": "Payment Source",
@@ -441,7 +432,7 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Written ONLY by mark_payment_received. Non-empty is the single fact that means 'we have really recorded this money', and it is what opens the Dispose gate.",
+   "description": "Filled in by Mark Payment Received.",
    "fieldname": "payment_mode_used",
    "fieldtype": "Data",
    "label": "Mode of Payment Recorded",
@@ -460,14 +451,13 @@
    "read_only": 1
   },
   {
-   "description": "The day the cheque went INTO the bank, not the day it arrived in the post. Never the Payment Entry's posting date (that follows the invoice); this drives the cash-basis schedule and bank reconciliation. Invariant: a recorded mode of payment always has this date.",
+   "description": "The day the check was deposited.",
    "fieldname": "payment_received_on",
    "fieldtype": "Date",
    "label": "Deposited On",
    "read_only": 1
   },
   {
-   "description": "Idempotency key for collection: non-empty means the money is on the ledger.",
    "fieldname": "payment_entry",
    "fieldtype": "Link",
    "label": "Payment Entry",
@@ -475,7 +465,7 @@
    "read_only": 1
   },
   {
-   "description": "The second entry when a cheque was for more than the invoice. Empty on an exactly-paid order; empty on an overpaid one means the top-up has not been booked yet and the next booking run will try again.",
+   "description": "Booked when the check was for more than the invoice.",
    "fieldname": "gb_overpayment_pe",
    "fieldtype": "Link",
    "label": "Overpayment Entry",
@@ -505,7 +495,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "The timestamp on GunBroker's own payment log entry, where there is one. Site local time, converted from GunBroker's paymentLogDateTime (or, where GunBroker sends no UTC twin, from its Eastern reading \u2014 D-13). The value they sent is kept verbatim in Raw Payload.",
    "fieldname": "payment_log_date",
    "fieldtype": "Datetime",
    "label": "Payment Log Date",
@@ -530,7 +519,7 @@
    "read_only": 1
   },
   {
-   "description": "totalPrice \u2014 everything GunBroker says the buyer owes.",
+   "description": "What the buyer owes on GunBroker.",
    "fieldname": "order_total",
    "fieldtype": "Currency",
    "label": "Order Total",
@@ -565,14 +554,14 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "salesTaxTotal \u2014 GunBroker's combined figure: the marketplace-facilitator sales tax PLUS the 1% buyer service fee. The two go to different liability accounts, so it is split by compliance_fee and never guessed at.",
+   "description": "Includes GunBroker's 1% service fee.",
    "fieldname": "sales_tax_total",
    "fieldtype": "Currency",
    "label": "Sales Tax Total (incl. service fee)",
    "read_only": 1
   },
   {
-   "description": "complianceFee \u2014 the buyer's 1%, which GunBroker keeps. Missing this field means the tax split cannot be computed, so the invoice is left in Draft rather than posted wrong.",
+   "description": "GunBroker's 1% buyer fee (GunBroker keeps it).",
    "fieldname": "compliance_fee",
    "fieldtype": "Currency",
    "label": "Marketplace Service Fee",
@@ -625,7 +614,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Idempotency key for the seller-fee accrual.",
    "fieldname": "fee_accrual_je",
    "fieldtype": "Link",
    "label": "Fee Accrual Journal Entry",
@@ -655,21 +643,19 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Step 1 of the write-back succeeded. GunBroker will not set this flag for us when tracking is uploaded \u2014 it has to be sent.",
    "fieldname": "shipping_flag_pushed_at",
    "fieldtype": "Datetime",
    "label": "OrderShipped Flag Sent At",
    "read_only": 1
   },
   {
-   "description": "Step 2 succeeded.",
    "fieldname": "tracking_pushed_at",
    "fieldtype": "Datetime",
    "label": "Tracking Sent At",
    "read_only": 1
   },
   {
-   "description": "Set only when step 2 or step 3 failed: the tracking number did not land, or the read-back did not agree. The tracking poll keeps retrying exactly the step that is missing.",
+   "description": "Tracking has not reached GunBroker yet. It retries on its own.",
    "fieldname": "gb_ship_writeback_pending",
    "fieldtype": "Check",
    "label": "Ship Write-back Pending",
@@ -682,14 +668,12 @@
    "label": "Cancellation / Refund"
   },
   {
-   "description": "When GunBroker cancelled the order. Site local time, converted from GunBroker's cancelDate (or, where GunBroker sends no UTC twin, from its Eastern reading \u2014 D-13). The value they sent is kept verbatim in Raw Payload.",
    "fieldname": "cancel_date",
    "fieldtype": "Datetime",
    "label": "Cancelled At",
    "read_only": 1
   },
   {
-   "description": "When GunBroker refunded the order. Site local time, converted from GunBroker's refundDate (or, where GunBroker sends no UTC twin, from its Eastern reading \u2014 D-13). The value they sent is kept verbatim in Raw Payload.",
    "fieldname": "refund_date",
    "fieldtype": "Datetime",
    "label": "Refunded At",
@@ -700,7 +684,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "When GunBroker recorded the return. Site local time, converted from GunBroker's returnedDate (or, where GunBroker sends no UTC twin, from its Eastern reading \u2014 D-13). The value they sent is kept verbatim in Raw Payload.",
    "fieldname": "returned_date",
    "fieldtype": "Datetime",
    "label": "Returned At",
@@ -713,13 +696,13 @@
    "read_only": 1
   },
   {
-   "description": "Fill this in once the chargeback has been dealt with \u2014 written off, represented, or recovered. The daily audit reports every chargeback until it is set, which is deliberate and also why it has to be possible to stop.",
+   "description": "Fill in once the chargeback is resolved. The daily audit stops flagging it.",
    "fieldname": "chargeback_handled_at",
    "fieldtype": "Datetime",
    "label": "Chargeback Handled At"
   },
   {
-   "description": "Fill this in once the cancellation's refund is booked: an unreferenced Receive entry reversed by a Pay entry, both carrying \"GunBroker Order #\" and the GunBroker order number in Remarks (tick Custom Remarks first); the Pay entry must be submitted, to the customer (Party Type Customer), in the same company, one order per entry. Nothing in POS can see a refund happen, so the daily audit reports a cancelled order that was paid for until this is set; that is deliberate, and it is also why it has to be possible to stop.",
+   "description": "Fill in once the refund is booked (Receive + Pay entries, Remarks \"GunBroker Order #<number>\", tick Custom Remarks first). The daily audit stops flagging it.",
    "fieldname": "refund_handled_at",
    "fieldtype": "Datetime",
    "label": "Refund Handled At"
@@ -769,7 +752,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "The last GET /Orders/{id} body, for evidence. Buyer PII, no credentials.",
    "fieldname": "raw_payload",
    "fieldtype": "Long Text",
    "label": "Raw GunBroker Payload",
@@ -777,7 +759,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-09 22:00:00",
+ "modified": "2026-10-17 18:00:00",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "GunBroker Order",

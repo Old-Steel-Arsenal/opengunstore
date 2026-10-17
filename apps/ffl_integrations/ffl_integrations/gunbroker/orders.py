@@ -57,6 +57,7 @@ from ffl_integrations.gunbroker.client import (
 	GunBrokerError,
 	get_field,
 	gb_datetime,
+	kv_key,
 )
 from ffl_integrations.gunbroker.crosschannel import REASON_SOLD, fire_serial_channel_exit
 from ffl_integrations.integration_gate import gunbroker_enabled
@@ -644,7 +645,8 @@ def apply_order_fields(order, src: dict) -> None:
 	wrong spelling silently becomes a zero — which for ``complianceFee`` would
 	mean posting a tax split that is wrong by the buyer's whole service fee.
 	"""
-	status = _int(get_field(src, "status", "orderStatus", "Status"))
+	# An enum: GET /Orders reads it back as ``{"3": "Pending Payment"}``.
+	status = _int(kv_key(get_field(src, "status", "orderStatus", "Status")))
 	order.gb_status = status
 	order.gb_status_label = GB_STATUS_LABELS.get(status, "")
 	order.order_date = _site_stamp(src, "orderDate")
@@ -781,6 +783,7 @@ def apply_order_lines(order, src: dict) -> None:
 			line.fvf_amount = kept.fvf_amount
 			line.ffl_doc_fee_amount = kept.ffl_doc_fee_amount
 			line.reservation_error = kept.reservation_error
+	order.item_subtotal = sum(_money(line.subtotal) for line in order.lines)
 
 
 def decode_payment_methods(value: Any) -> list[str]:

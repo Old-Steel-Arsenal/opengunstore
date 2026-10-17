@@ -401,11 +401,17 @@ class PendingDispositionsApp {
 			// license to badge or expire.
 			const isDirect = (isCounter && !row.destination_ffl) || row.ships_direct === true;
 			const fflBadge = isDirect ? ''
+				: (row.source === 'gunbroker' && !row.destination_ffl)
+					? `<span class="badge warn">${__('No FFL yet')}</span>`
 				: (row.ffl_expired
 					? `<span class="badge warn">${__('FFL expired / unverified')}</span>`
 					: `<span class="badge ok">${__('FFL valid')}</span>`);
 			const paid = row.paid;
-			const partly = !paid && row.grand_total && row.outstanding_amount < row.grand_total - 0.005;
+			// A GunBroker order has no invoice until it is paid, so its outstanding
+			// reads 0; only money we actually recorded makes it partly paid.
+			const partly = !paid && row.grand_total && (row.source === 'gunbroker'
+				? row.paid_total > 0.005
+				: row.outstanding_amount < row.grand_total - 0.005);
 			const payBadge = paid
 				? `<span class="badge ok">${__('Paid')}</span>`
 				: (partly ? `<span class="badge amber">${__('Partly paid')}</span>`
@@ -622,6 +628,7 @@ class PendingDispositionsApp {
 						</div>
 						${amountsLine}
 						${row.note ? `<div class="meta" style="font-style:italic">📝 ${frappe.utils.escape_html(row.note)}</div>` : ''}
+						${row.sync_error ? `<div class="meta" style="color:var(--orange-600)" title="${frappe.utils.escape_html(row.sync_error)}">⚠ ${__('Could not refresh this order from GunBroker ({0} tries), so it may be out of date. Details are on the {1}.', [row.sync_fail_count || 1, `<a href="/app/gunbroker-order/${encodeURIComponent(row.gunbroker_order)}">${__('order')}</a>`])}</div>` : ''}
 						<div class="serials">${serials}</div>
 						${this._assignUnitsHtml(row)}
 						${legsStrip}

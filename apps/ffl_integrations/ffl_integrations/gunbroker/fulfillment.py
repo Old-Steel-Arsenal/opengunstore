@@ -272,7 +272,11 @@ def _pending_row(order, *, ss_enabled: bool, limit_days: int = 7, today=None,
 		"sales_invoice": order.sales_invoice or None,
 		"sales_orders": [],
 		"legs": None,
-		"note": order.sync_error or "",
+		"note": "",
+		# Shown as a plain warning, not as the raw exception: staff need to know
+		# the card may be stale, the traceback is on the order for whoever fixes it.
+		"sync_error": order.sync_error or "",
+		"sync_fail_count": cint(order.sync_fail_count),
 		"last_payment_mode": order.payment_mode_used or "",
 		"ship_pushed": shipstation_pushed(invoice.get("shipstation_order_id"),
 			invoice.get("shipstation_status")),
