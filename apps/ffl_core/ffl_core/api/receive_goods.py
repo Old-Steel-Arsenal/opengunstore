@@ -620,7 +620,10 @@ def _create_receive(payload, before_push=None) -> dict:
 			# A drawer kept busy refuses within _DRAWER_LOCK_WAIT seconds, before anything is written.
 			cash_drawer.lock_drawer(frappe.db.get_value("Warehouse", warehouse, "company"), wait=_DRAWER_LOCK_WAIT)
 		pr.insert()
+		notices = len(frappe.local.message_log or [])
 		pr.submit()
+		if is_custody:
+			_drop_no_accounting_notice(notices)
 
 		# Stamp each firearm's per-unit facts onto its Serial No (the Serial No
 		# records are materialised by pr.submit()). This is REQUIRED, not just
@@ -1212,6 +1215,20 @@ def _assert_transfer_lines_are_firearms(items_in: list) -> None:
 				"on an FFL Transfer. A transfer holds only the customer's firearm(s) — "
 				"purchased goods belong on a separate receive document."
 			).format(idx, item_code))
+
+
+def _drop_no_accounting_notice(mark: int) -> None:
+	"""A customer-custody receipt is $0 by design (never valued), so it posts no GL
+	entry, and ERPNext's Purchase Receipt says so for every zero-valued row
+	(make_item_gl_entries: "No accounting entries for the following warehouses: …")
+	— a popup on every gunsmith / transfer custody receive that reads like a missing
+	account. Only that notice, only from this submit, is dropped; the receipt and its
+	(absent) ledger are untouched."""
+	log = frappe.local.message_log
+	if not log:
+		return
+	text = _("No accounting entries for the following warehouses")
+	log[mark:] = [m for m in log[mark:] if text not in str(m.get("message") if isinstance(m, dict) else m)]
 
 
 def _custody_warehouse() -> str:
