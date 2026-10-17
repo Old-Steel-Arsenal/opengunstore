@@ -94,6 +94,15 @@ class Locking(SettingsSandbox, FrappeTestCase):
 		self.set_single("FFL Settings", "counter_lock_minutes", 12)
 		self.assertEqual(staff_switch.lock_minutes(), 12)
 
+	def test_patch_turns_a_stored_zero_into_five_and_keeps_a_choice(self):
+		from ffl_core.patches import v0_1_3_counter_lock_minutes_five as patch
+		self.set_single("FFL Settings", "counter_lock_minutes", 0)
+		patch.execute()
+		self.assertEqual(staff_switch.lock_minutes(), 5)
+		self.set_single("FFL Settings", "counter_lock_minutes", 12)
+		patch.execute()
+		self.assertEqual(staff_switch.lock_minutes(), 12)
+
 	def test_wired_into_boot(self):
 		self.assertIn("ffl_core.staff_switch.extend_bootinfo", _hooks_list("extend_bootinfo"))
 
