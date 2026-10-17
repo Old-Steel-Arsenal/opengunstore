@@ -199,7 +199,8 @@
 			channel.onmessage = function (e) {
 				var type = e.data && e.data.type;
 				if (type === 'lock') show({ locked: true });
-				else if (type === 'unlock' && overlay) { close(); resetIdle(); }
+				// Only a lock screen closes; a switch-user list someone has open stays.
+				else if (type === 'unlock' && overlay && !overlay.find('.ffl-staff-cancel').length) { close(); resetIdle(); }
 				else if (type === 'switch') location.reload();   // the session now belongs to someone else
 			};
 		}
