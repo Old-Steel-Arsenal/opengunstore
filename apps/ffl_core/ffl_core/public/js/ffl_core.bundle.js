@@ -4,10 +4,7 @@
 //    (/desk/gun-shop/store-overview) instead of ERPNext's default Apps tile selector.
 // 2. Navbar language toggle (EN ↔ zh) for one-click switching of the
 //    current user's language preference.
-// 3. Theme toggle (moon/sun, next to the bell — left sidebar in v16 espresso)
-//    for one-click Light <-> Dark switching via Frappe's native theme
-//    plumbing (data-theme-mode + User.switch_theme).
-// 4. POS-page Trade-in button injection (Spike 3 / Phase 0). Uses a
+// 3. POS-page Trade-in button injection (Spike 3 / Phase 0). Uses a
 //    MutationObserver so it survives ERPNext POS DOM changes; we avoid
 //    monkey-patching ERPNext's POS controller class so future upgrades
 //    don't break the integration.
@@ -698,86 +695,6 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		document.addEventListener('DOMContentLoaded', startLangToggleObserver);
 	} else {
 		startLangToggleObserver();
-	}
-
-	// --- 3. Theme (dark mode) toggle ---
-	// Inject a moon/sun button next to the bell — the v16 espresso skin puts
-	// the bell in the left sidebar, so the button lands above the language
-	// toggle there. One click flips Light <-> Dark via Frappe's native plumbing:
-	// desk.js watches data-theme-mode (MutationObserver) and re-resolves
-	// data-theme; User.switch_theme persists the choice per-user server-side.
-	// Native entries (My Settings, Ctrl+Shift+G) keep working unchanged.
-	const THEME_TOGGLE_ID = 'ffl-theme-toggle';
-
-	// Lucide moon/sun outlines, stroke = currentColor so they follow navbar text.
-	const THEME_ICONS = Object.freeze({
-		moon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>',
-		sun: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>',
-	});
-
-	function resolvedTheme() {
-		return document.documentElement.getAttribute('data-theme') || 'light';
-	}
-
-	function paintThemeToggle(btn) {
-		const dark = resolvedTheme() === 'dark';
-		btn.innerHTML = dark ? THEME_ICONS.sun : THEME_ICONS.moon;
-		btn.title = dark ? __('Switch to light theme') : __('Switch to dark theme');
-		btn.setAttribute('aria-label', btn.title);
-	}
-
-	function toggleTheme() {
-		const next = resolvedTheme() === 'dark' ? 'light' : 'dark';
-		// desk.js's observer on data-theme-mode re-resolves data-theme; our
-		// data-theme observer below repaints the icon when it lands.
-		document.documentElement.setAttribute('data-theme-mode', next);
-		frappe.xcall('frappe.core.doctype.user.user.switch_theme', {
-			theme: next === 'dark' ? 'Dark' : 'Light',
-		}).catch(() => {
-			frappe.show_alert({ message: __('Could not save theme preference'), indicator: 'orange' });
-		});
-	}
-
-	function injectThemeToggle() {
-		if (document.getElementById(THEME_TOGGLE_ID)) return true;
-		const anchor = document.getElementById(LANG_TOGGLE_ID)
-			|| document.querySelector('.desktop-notifications')
-			|| document.querySelector('.dropdown-notifications');
-		if (!anchor || !anchor.parentElement) return false;
-
-		const btn = document.createElement('button');
-		btn.id = THEME_TOGGLE_ID;
-		btn.type = 'button';
-		btn.className = 'btn-reset nav-link text-muted ffl-theme-toggle';
-		btn.style.cssText =
-			'padding:6px 10px;border-radius:6px;line-height:1;cursor:pointer;color:var(--text-muted);';
-		paintThemeToggle(btn);
-		btn.addEventListener('mouseover', () => (btn.style.background = 'var(--fg-hover-color)'));
-		btn.addEventListener('mouseout', () => (btn.style.background = ''));
-		btn.addEventListener('click', () => toggleTheme());
-
-		// Repaint if the theme changes elsewhere (native switcher / My Settings).
-		new MutationObserver(() => paintThemeToggle(btn))
-			.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-
-		// Visual order: [moon/sun] [EN/zh] [bell] — stacked in the v16 sidebar.
-		anchor.parentElement.insertBefore(btn, anchor);
-		return true;
-	}
-
-	function startThemeToggleObserver() {
-		if (injectThemeToggle()) return;
-		// Anchor not rendered yet — watch for it and disconnect once injected.
-		const observer = new MutationObserver(() => {
-			if (injectThemeToggle()) observer.disconnect();
-		});
-		observer.observe(document.body, { childList: true, subtree: true });
-	}
-
-	if (document.readyState === 'loading') {
-		document.addEventListener('DOMContentLoaded', startThemeToggleObserver);
-	} else {
-		startThemeToggleObserver();
 	}
 
 	// --- 4. Version + What's New ---
