@@ -34,9 +34,11 @@ function lineAmount(frm, cdt, cdn) {
 
 const M = 'ffl_core.gunsmith.';
 
+// The server acts on the saved job (charges, deposit), so unsaved edits are saved first.
 function act(frm, method, args, after) {
-	return frappe.call({ method: M + method, args: Object.assign({ name: frm.doc.name }, args || {}), freeze: true })
+	const run = () => frappe.call({ method: M + method, args: Object.assign({ name: frm.doc.name }, args || {}), freeze: true })
 		.then((r) => (after ? after(r.message || {}) : frm.reload_doc()));
+	return frm.is_dirty() ? frm.save().then(run) : run();
 }
 
 function openInvoice(name) {
@@ -80,10 +82,7 @@ function draw(frm, st) {
 			() => act(frm, 'start_work'), __('Status'));
 	}
 	if (d.status === 'Received' || d.status === 'In Progress') {
-		frm.add_custom_button(__('Mark ready'), () => {
-			if (frm.is_dirty()) return frm.save().then(() => act(frm, 'mark_ready'));
-			return act(frm, 'mark_ready');
-		}, __('Status'));
+		frm.add_custom_button(__('Mark ready'), () => act(frm, 'mark_ready'), __('Status'));
 	}
 	if (d.status === 'Ready') {
 		frm.add_custom_button(__('Notify customer'), () => notifyDialog(frm), __('Status'));

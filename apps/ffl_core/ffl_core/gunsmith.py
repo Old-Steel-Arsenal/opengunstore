@@ -256,6 +256,8 @@ def cancel_work_order(name: str, reason: str) -> dict:
 			"disposition). Clear the charges and use Pick up instead."), title=_("Logged gun"))
 	if _open_draft(doc.name, "deposit"):
 		frappe.throw(_("A deposit invoice is still open at the register. Complete or delete it first."))
+	if _open_draft(doc.name, "pickup"):
+		frappe.throw(_("A pick-up invoice for this work order is open at the register. Delete it first."))
 	doc.status = CANCELLED
 	doc.cancel_reason = reason.strip()
 	_save(doc)
@@ -341,8 +343,13 @@ def log_gun(doc) -> None:
 			"manufacturer": doc.manufacturer, "model_name": doc.model, "caliber": doc.caliber,
 			"firearm_type": doc.firearm_type}],
 	})
-	doc.db_set({"purchase_receipt": received["name"], "serial_no": serial, "item_code": item_code},
-		update_modified=False)
+	from ffl_core.feature_gate import customer_id_numbers_enabled
+
+	logged = {"purchase_receipt": received["name"], "serial_no": serial, "item_code": item_code}
+	if not customer_id_numbers_enabled():
+		# The acquisition record keeps the ID the bound book needs; the job keeps none.
+		logged["id_number"] = None
+	doc.db_set(logged, update_modified=False)
 
 
 # ------------------------------------------------------------------ authorization
@@ -601,9 +608,15 @@ def guard_deposit_lines(doc, method=None) -> None:
 
 
 def before_invoice_cancel(doc, method=None) -> None:
-	"""POS Invoice before_cancel: a pick-up whose gun has left the bound book stays."""
+	"""POS Invoice before_cancel: a deposit already applied or refunded stays, and so does a
+	pick-up whose gun has left the bound book."""
 	wo = doc.get(LINK_FIELD)
-	if not wo or cint(doc.is_return):
+	if not wo:
+		return
+	if deposit_held(wo, exclude=doc.name) < -_TOL:
+		frappe.throw(_("The deposit on {0} has already come off a pick-up or been refunded. Cancel that invoice "
+			"first.").format(wo), title=_("Deposit already used"))
+	if cint(doc.is_return):
 		return
 	job = frappe.db.get_value(DOCTYPE, wo, ["pickup_invoice", "disposition"], as_dict=True) or frappe._dict()
 	if job.pickup_invoice == doc.name and job.disposition \

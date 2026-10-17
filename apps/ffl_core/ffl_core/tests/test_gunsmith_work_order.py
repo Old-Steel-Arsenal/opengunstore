@@ -305,6 +305,31 @@ class Money(_Base):
 		with self.assertRaises(frappe.ValidationError):
 			gunsmith.refund_deposit(job.name)
 
+	def test_a_used_deposit_invoice_cannot_be_cancelled(self):
+		job = _job(self.cust, deposit_amount=100)
+		dep = _pay(gunsmith.take_deposit(job.name)["pos_invoice"])
+		job = _ready(job, [(LABOR_ITEM, 150)])
+		pick = _pay(gunsmith.open_pickup(job.name)["pos_invoice"])
+		dep.reload()
+		dep.flags.ignore_permissions = True
+		with self.assertRaises(frappe.ValidationError):
+			dep.cancel()
+		self.assertEqual(gunsmith.deposit_held(job.name), 0)
+		# Once the pick-up is cancelled the deposit is unused again, and its invoice may go.
+		pick.reload()
+		pick.flags.ignore_permissions = True
+		pick.cancel()
+		dep.reload()
+		dep.flags.ignore_permissions = True
+		dep.cancel()
+		self.assertEqual(gunsmith.deposit_held(job.name), 0)
+
+	def test_cancel_refused_while_a_pickup_is_open(self):
+		job = _ready(_job(self.cust), [(LABOR_ITEM, 80)])
+		gunsmith.open_pickup(job.name)
+		with self.assertRaises(frappe.ValidationError):
+			gunsmith.cancel_work_order(job.name, "Customer changed their mind")
+
 	def test_cancelled_job_refunds_the_whole_deposit(self):
 		job = _job(self.cust, deposit_amount=75)
 		_pay(gunsmith.take_deposit(job.name)["pos_invoice"])
@@ -436,6 +461,15 @@ class BoundBook(_Base):
 		disp = frappe.get_doc("FFL Disposition", job.disposition)
 		self.assertEqual((disp.docstatus, disp.disposition_type, disp.customer), (1, "Gunsmithing", self.cust.name))
 		self.assertNotEqual(frappe.db.get_value("Serial No", job.serial_number, "status"), "Active")
+
+	def test_the_job_keeps_no_id_number_when_ids_are_not_stored(self):
+		with patch("ffl_core.feature_gate.customer_id_numbers_enabled", return_value=False):
+			job = _job(self.cust, log_in_bound_book=1, id_type="Driver License", id_number="D2468101")
+		job.reload()
+		self.assertTrue(job.purchase_receipt)
+		self.assertFalse(job.id_number)
+		acq = frappe.get_doc("FFL Acquisition", {"purchase_receipt": job.purchase_receipt})
+		self.assertEqual(acq.source_id_number, "D2468101")
 
 	def test_logged_later(self):
 		job = _job(self.cust)

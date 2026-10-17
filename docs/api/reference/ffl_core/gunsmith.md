@@ -58,7 +58,7 @@ first attempt failed).
 
 **Returns:** {"purchase_receipt", "serial_no", "item_code"}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:269`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:271`</sub>
 
 ## `mark_ready`
 
@@ -113,7 +113,7 @@ the charges and the deposit held coming off them, and its submit picks the job u
 
 **Returns:** {"pos_invoice", "already": bool} or {"picked_up": True, "refund_due": deposit still held, refunded with :func:`refund_deposit`}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:417`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:424`</sub>
 
 ## `refund_deposit`
 
@@ -131,7 +131,7 @@ Open (or return) the draft register return that pays back the deposit still held
 
 **Returns:** {"pos_invoice", "already": bool, "amount"}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:471`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:478`</sub>
 
 ## `start_work`
 
@@ -163,4 +163,4 @@ Open (or return) the draft register invoice that collects the job's deposit.
 
 **Returns:** {"pos_invoice", "already": bool}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:389`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:396`</sub>

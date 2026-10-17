@@ -534,7 +534,7 @@ doc_events = {
 		# refused once a count relied on it (compliance/trade_in_settlement).
 		"before_cancel": [
 			"ffl_core.compliance.trade_in_settlement.void_payout_on_cancel",
-			# A gunsmith pick-up whose gun left the bound book stays (gunsmith.py).
+			# A gunsmith deposit already used, or a pick-up whose gun left the bound book, stays (gunsmith.py).
 			"ffl_core.gunsmith.before_invoice_cancel",
 		],
 		"on_cancel": [
