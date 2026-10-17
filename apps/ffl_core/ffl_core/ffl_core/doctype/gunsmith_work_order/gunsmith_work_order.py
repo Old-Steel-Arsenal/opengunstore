@@ -46,6 +46,7 @@ class GunsmithWorkOrder(Document):
 			if changed:
 				frappe.throw(_("The gun is in the bound book as received, so {0} cannot change here.").format(
 					", ".join(changed)))
+		# Only once paid: an unpaid deposit draft follows the new amount (its line is locked to the job's).
 		if flt(self.deposit_amount, 2) != flt(before.deposit_amount, 2) and (
 				deposit_held(self.name) > 0 or self.deposit_invoice):
 			frappe.throw(_("A deposit has been taken for this work order, so its amount no longer changes."))

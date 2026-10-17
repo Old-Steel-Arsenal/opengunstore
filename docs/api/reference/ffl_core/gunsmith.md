@@ -8,7 +8,7 @@ Source: `apps/ffl_core/ffl_core/gunsmith.py` · 9 endpoint(s)
 
 `POST /api/method/ffl_core.gunsmith.cancel_work_order`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager
 
 Close a job that will not be done. A gun in the bound book still goes back through
 
@@ -22,13 +22,13 @@ pick it up instead. A deposit held is refunded afterwards (:func:`refund_deposit
 
 **Returns:** {"status", "deposit_held"}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:230`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:236`</sub>
 
 ## `get_state`
 
 `POST /api/method/ffl_core.gunsmith.get_state`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager
 
 What the work order form shows and offers.
 
@@ -44,7 +44,7 @@ What the work order form shows and offers.
 
 `POST /api/method/ffl_core.gunsmith.log_in_bound_book`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager
 
 Log a job's gun in the bound book now (a job created unlogged, or one whose
 
@@ -58,13 +58,13 @@ first attempt failed).
 
 **Returns:** {"purchase_receipt", "serial_no", "item_code"}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:262`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:269`</sub>
 
 ## `mark_ready`
 
 `POST /api/method/ffl_core.gunsmith.mark_ready`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager
 
 Received / In Progress → Ready: the work is done and recorded.
 
@@ -74,13 +74,13 @@ Received / In Progress → Ready: the work is done and recorded.
 
 **Returns:** {"status", "completed_on"}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:169`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:173`</sub>
 
 ## `notify_customer`
 
 `POST /api/method/ffl_core.gunsmith.notify_customer`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager
 
 Tell the customer the gun is ready, and record who told them, how and when.
 
@@ -94,13 +94,13 @@ email address). Phone and Text are made by staff; this records them.
 
 **Returns:** {"notified_via", "notified_on", "email": address the email went to, or None}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:190`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:195`</sub>
 
 ## `open_pickup`
 
 `POST /api/method/ffl_core.gunsmith.open_pickup`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager
 
 Hand the gun back. With nothing to charge and no deposit held, the job is
 
@@ -111,15 +111,15 @@ the charges and the deposit held coming off them, and its submit picks the job u
 |---|---|---|---|---|
 | `name` | string | yes | — | Gunsmith Work Order name; must be Ready. |
 
-**Returns:** {"pos_invoice", "already": bool} or {"picked_up": True}.
+**Returns:** {"pos_invoice", "already": bool} or {"picked_up": True, "refund_due": deposit still held, refunded with :func:`refund_deposit`}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:408`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:417`</sub>
 
 ## `refund_deposit`
 
 `POST /api/method/ffl_core.gunsmith.refund_deposit`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager
 
 Open (or return) the draft register return that pays back the deposit still held
 
@@ -131,13 +131,13 @@ Open (or return) the draft register return that pays back the deposit still held
 
 **Returns:** {"pos_invoice", "already": bool, "amount"}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:463`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:471`</sub>
 
 ## `start_work`
 
 `POST /api/method/ffl_core.gunsmith.start_work`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager
 
 Received (or Ready, reopened) → In Progress.
 
@@ -147,13 +147,13 @@ Received (or Ready, reopened) → In Progress.
 
 **Returns:** {"status"}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:150`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:151`</sub>
 
 ## `take_deposit`
 
 `POST /api/method/ffl_core.gunsmith.take_deposit`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager
 
 Open (or return) the draft register invoice that collects the job's deposit.
 
@@ -163,4 +163,4 @@ Open (or return) the draft register invoice that collects the job's deposit.
 
 **Returns:** {"pos_invoice", "already": bool}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:381`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:389`</sub>

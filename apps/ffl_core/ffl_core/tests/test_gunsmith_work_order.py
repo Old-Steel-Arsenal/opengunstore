@@ -316,8 +316,37 @@ class Money(_Base):
 
 	def test_nothing_to_charge_and_nothing_held_picks_up_at_once(self):
 		job = _ready(_job(self.cust))
-		self.assertEqual(gunsmith.open_pickup(job.name), {"picked_up": True})
+		self.assertEqual(gunsmith.open_pickup(job.name), {"picked_up": True, "refund_due": 0})
 		self.assertEqual(frappe.db.get_value(gunsmith.DOCTYPE, job.name, "status"), "Picked Up")
+
+	def test_no_charges_with_a_deposit_hands_back_then_refunds(self):
+		job = _job(self.cust, deposit_amount=40)
+		_pay(gunsmith.take_deposit(job.name)["pos_invoice"])
+		job = _ready(job)
+		self.assertEqual(gunsmith.open_pickup(job.name), {"picked_up": True, "refund_due": 40})
+		_pay(gunsmith.refund_deposit(job.name)["pos_invoice"])
+		self.assertEqual(gunsmith.deposit_held(job.name), 0)
+
+	def test_a_reopened_job_does_not_release_its_deposit(self):
+		job = _job(self.cust, deposit_amount=100)
+		_pay(gunsmith.take_deposit(job.name)["pos_invoice"])
+		job = _ready(job, [(LABOR_ITEM, 150)])
+		pick = gunsmith.open_pickup(job.name)["pos_invoice"]
+		with self.assertRaises(frappe.ValidationError):
+			gunsmith.start_work(job.name)   # the pick-up draft is open
+		frappe.db.set_value(gunsmith.DOCTYPE, job.name, "status", "In Progress")
+		with self.assertRaises(frappe.ValidationError):
+			_pay(pick)
+		self.assertEqual(gunsmith.deposit_held(job.name), 100)
+
+	def test_an_unpaid_deposit_draft_is_not_linked_on_the_job(self):
+		job = _job(self.cust, deposit_amount=100)
+		inv = gunsmith.take_deposit(job.name)["pos_invoice"]
+		self.assertFalse(frappe.db.get_value(gunsmith.DOCTYPE, job.name, "deposit_invoice"))
+		frappe.delete_doc("POS Invoice", inv, ignore_permissions=True)
+		job.reload()
+		job.deposit_amount = 80
+		job.save(ignore_permissions=True)
 
 	def test_deposit_line_only_from_its_work_order(self):
 		job = _job(self.cust, deposit_amount=100)
@@ -402,7 +431,7 @@ class BoundBook(_Base):
 			gunsmith.cancel_work_order(job.name, "no")
 
 		_ready(job)
-		self.assertEqual(gunsmith.open_pickup(job.name), {"picked_up": True})
+		self.assertTrue(gunsmith.open_pickup(job.name)["picked_up"])
 		job.reload()
 		disp = frappe.get_doc("FFL Disposition", job.disposition)
 		self.assertEqual((disp.docstatus, disp.disposition_type, disp.customer), (1, "Gunsmithing", self.cust.name))
