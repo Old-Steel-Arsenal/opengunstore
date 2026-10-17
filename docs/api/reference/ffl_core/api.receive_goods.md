@@ -23,7 +23,7 @@ into the pending card.
 
 **Permissions:** Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/receive_goods.py:907`</sub>
+<sub>`apps/ffl_core/ffl_core/api/receive_goods.py:910`</sub>
 
 ## `create_receive`
 
@@ -121,7 +121,7 @@ Admin-edited in FFL Settings → Receive Sources (one per line).
 
 **Returns:** List of source strings, in configured order.
 
-<sub>`apps/ffl_core/ffl_core/api/receive_goods.py:1099`</sub>
+<sub>`apps/ffl_core/ffl_core/api/receive_goods.py:1102`</sub>
 
 ## `lookup_item`
 
@@ -159,7 +159,7 @@ ranked by item_name. Disabled items excluded.
 
 **Returns:** Up to `limit` rows with the same shape as `lookup_item`'s successful response (minus the `found` flag), so the JS can hand a picked row directly to the pending-card builder.
 
-<sub>`apps/ffl_core/ffl_core/api/receive_goods.py:817`</sub>
+<sub>`apps/ffl_core/ffl_core/api/receive_goods.py:820`</sub>
 
 ## `seller_payment_preview`
 
@@ -177,4 +177,4 @@ what the receipt will book (the same rule and amount as create_receive).
 
 **Returns:** {pays, amount, methods}; pays is false when nobody is paid at receipt (a dealer, Consignment, Gunsmithing or transfer receipt, or nothing costs anything); methods are the ways a seller can be paid.
 
-<sub>`apps/ffl_core/ffl_core/api/receive_goods.py:740`</sub>
+<sub>`apps/ffl_core/ffl_core/api/receive_goods.py:743`</sub>

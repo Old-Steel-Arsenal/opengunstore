@@ -15,12 +15,18 @@ actions here; the form's fields are the paper's.
 * **Authorization** — the customer signs the store's Per document agreement
   (FFL Settings › Gunsmithing) for this job on the signing tablet, by QR or email
   (``ffl_core.agreements``, ``reference_doctype`` / ``reference_name`` = the job).
+* **Register** — jobs are taken in and handed back at the POS register, so the
+  register's own checkout (cash, card, anything) takes the money: its Work Order
+  button takes a job in (:func:`create_work_order`) and Recent Orders › Work Orders
+  lists the open ones (:func:`register_work_orders`); the Desk form's Pick up sends
+  the clerk there.
 * **Deposit** — rung at the register: a POS Invoice with one GUNSMITH-DEPOSIT line,
   booked to the Customer Deposits liability and untaxed (``setup/gunsmith``). It is a
   locked line (``compliance/locked_lines``): its amount is the job's deposit.
 * **Pick-up** — a POS Invoice with the job's charges (labor on the labor item from
   FFL Settings, taxed by that item's own template; parts as ordinary items) and one
-  negative deposit line releasing what is held, up to the bill. Its submit marks the
+  negative deposit line releasing what is held, up to the bill (:func:`complete_work`
+  confirms the charges first). Its submit marks the
   job Picked Up and, for a logged gun, books the disposition. A deposit left over
   (cancelled job, or a bill smaller than the deposit) is refunded with a return of
   the deposit invoice (:func:`refund_deposit`).
@@ -39,11 +45,12 @@ from ffl_core.roles import COUNTER_ROLES
 from ffl_core.setup import gunsmith as setup
 from ffl_core.setup.customer_deposits import deposit_account
 from ffl_core.setup.gunsmith import DEPOSIT_ITEM, LINK_FIELD
-from ffl_core.setup.locked_lines import LOCKED_RATE_FIELD
+from ffl_core.setup.locked_lines import LOCKED_RATE_FIELD, locked_items
 
 DOCTYPE = "Gunsmith Work Order"
 RECEIVED, IN_PROGRESS, READY, PICKED_UP, CANCELLED = "Received", "In Progress", "Ready", "Picked Up", "Cancelled"
 CLOSED = (PICKED_UP, CANCELLED)
+OPEN = (RECEIVED, IN_PROGRESS, READY)
 RECEIVE_SOURCE = "Gunsmithing"
 ACQUISITION_TYPE = "Gunsmithing"
 NOTIFY_CHANNELS = ("Phone", "Email", "Text")
@@ -142,6 +149,140 @@ def get_state(name: str) -> dict:
 		"authorization": auth,
 		"drafts": {k: _open_draft(doc.name, k) for k in ("deposit", "pickup", "refund")},
 	}
+
+
+# ------------------------------------------------------------------ the register
+
+# What the register's intake dialog may set on a new job (the rest is the form's).
+_INTAKE_FIELDS = ("customer", "manufacturer", "model", "caliber", "serial_number", "firearm_type", "accessories",
+	"condition", "work_requested", "estimated_cost", "estimated_completion", "log_in_bound_book",
+	"id_type", "id_number")
+
+
+@frappe.whitelist(methods=["POST"])
+def create_work_order(payload: str | dict) -> dict:
+	"""Take a gun in at the register (its Work Order button): the job, logged in the
+	bound book now when asked.
+
+	Args:
+	    payload: JSON object of the job's intake fields — customer, manufacturer, model,
+	        serial_number and work_requested required; caliber, firearm_type, accessories,
+	        condition, estimated_cost, estimated_completion; log_in_bound_book with id_type
+	        and id_number to log the gun now.
+
+	Returns:
+	    {"name", "customer", "status", "purchase_receipt"}.
+	"""
+	frappe.only_for(COUNTER_ROLES)
+	data = frappe.parse_json(payload) if isinstance(payload, str) else (payload or {})
+	if not isinstance(data, dict):
+		frappe.throw(_("The work order details did not come through. Try again."))
+	setup.ensure()
+	doc = frappe.get_doc({"doctype": DOCTYPE, **{f: data.get(f) for f in _INTAKE_FIELDS if data.get(f) not in (None, "")}})
+	doc.log_in_bound_book = cint(doc.log_in_bound_book)
+	doc.insert()   # the user's own create permission; a logged gun is received in on_update (log_gun)
+	return {"name": doc.name, "customer": doc.customer, "status": doc.status, "purchase_receipt": doc.purchase_receipt}
+
+
+@frappe.whitelist()
+def register_work_orders(search_term: str | None = None, name: str | None = None) -> dict:
+	"""The open jobs for the register's Recent Orders › Work Orders list, with what its
+	Complete action needs.
+
+	Args:
+	    search_term: Part of the job's name, customer, gun or serial; optional.
+	    name: One job only (the Desk form sending the clerk to the register); optional.
+
+	Returns:
+	    {"labor_item", "orders": [{"name", "customer", "customer_name", "status", "manufacturer",
+	    "model", "caliber", "serial_number", "work_requested", "work_performed", "estimated_cost",
+	    "deposit_amount", "deposit_held", "deposit_collected", "logged", "lines": [{"item_code",
+	    "description", "qty", "rate"}], "drafts": {"deposit", "pickup"}}]}, Ready jobs first.
+	"""
+	frappe.only_for(COUNTER_ROLES)
+	filters = {"status": ("in", OPEN)}
+	if name:
+		filters["name"] = name
+	or_filters = None
+	term = (search_term or "").strip()
+	if term:
+		like = f"%{term}%"
+		or_filters = {f: ("like", like) for f in ("name", "customer", "customer_name", "manufacturer", "model",
+			"serial_number")}
+	# lazy: newest 100 open jobs, one query per job for its deposit / drafts; a shop has a handful open.
+	# Upgrade path: one aggregate over POS Invoice Item for the page.
+	rows = frappe.get_list(DOCTYPE, filters=filters, or_filters=or_filters, limit_page_length=100,
+		order_by="modified desc", fields=["name", "customer", "customer_name", "status", "manufacturer", "model",
+			"caliber", "serial_number", "work_requested", "work_performed", "estimated_cost", "deposit_amount",
+			"purchase_receipt"])
+	lines = {}
+	if rows:
+		for r in frappe.get_all("Gunsmith Work Order Line", filters={"parent": ("in", [r.name for r in rows]),
+				"parenttype": DOCTYPE}, fields=["parent", "item_code", "description", "qty", "rate"], order_by="idx"):
+			lines.setdefault(r.pop("parent"), []).append(r)
+	rank = {READY: 0, IN_PROGRESS: 1, RECEIVED: 2}
+	orders = []
+	for r in sorted(rows, key=lambda r: rank.get(r.status, 3)):
+		r["deposit_held"] = deposit_held(r.name)
+		r["deposit_collected"] = _deposit_collected(r.name)
+		r["logged"] = bool(r.pop("purchase_receipt"))
+		r["lines"] = lines.get(r.name, [])
+		r["drafts"] = {k: _open_draft(r.name, k) for k in ("deposit", "pickup")}
+		orders.append(r)
+	return {"labor_item": setup.labor_item(), "orders": orders}
+
+
+@frappe.whitelist(methods=["POST"])
+def complete_work(name: str, work_performed: str, lines: str | list | None = None) -> dict:
+	"""The register's Complete: the clerk confirms what was done and what it costs; the
+	job keeps them, is Ready, and is handed back as :func:`open_pickup` does — at once
+	with nothing to bill and nothing held, else through the draft pick-up invoice the
+	register loads into its cart.
+
+	Args:
+	    name: Gunsmith Work Order name; Received, In Progress or Ready, with no pick-up
+	        invoice open.
+	    work_performed: What was done.
+	    lines: JSON list of the charges, [{"item_code", "description", "qty", "rate"}];
+	        they replace the job's.
+
+	Returns:
+	    As :func:`open_pickup`: {"pos_invoice", "already": False} or {"picked_up": True, "refund_due"}.
+	"""
+	frappe.only_for(COUNTER_ROLES)
+	doc = _job(name)
+	setup.ensure()
+	if doc.status not in OPEN:
+		frappe.throw(_("A {0} work order cannot be completed.").format(_(doc.status)))
+	if _open_draft(doc.name, "pickup"):
+		frappe.throw(_("A pick-up invoice for this work order is open at the register. Open it from Recent "
+			"Orders, or delete it first."))
+	if _open_draft(doc.name, "deposit"):
+		frappe.throw(_("A deposit invoice for this work order is still open at the register. Complete or delete "
+			"it first."))
+	charges = frappe.parse_json(lines) if isinstance(lines, str) else (lines or [])
+	locked = locked_items()
+	rows = []
+	for r in charges or []:
+		item_code = (r.get("item_code") or "").strip()
+		if not item_code:
+			continue
+		if item_code in locked or not frappe.db.exists("Item", item_code):
+			frappe.throw(_("{0} cannot be a charge on a work order.").format(escape_html(item_code)))
+		if flt(r.get("rate")) < 0 or flt(r.get("qty") or 1) <= 0:
+			frappe.throw(_("A charge needs a quantity above 0 and a rate of 0 or more ({0}).").format(
+				escape_html(item_code)))
+		rows.append({"item_code": item_code, "description": (r.get("description") or "").strip() or None,
+			"qty": flt(r.get("qty")) or 1, "rate": flt(r.get("rate"))})
+	doc.work_performed = (work_performed or "").strip()
+	if not doc.work_performed:
+		frappe.throw(_("Write what was done in Work Performed first."), title=_("Work performed"))
+	doc.set("lines", rows)
+	if doc.status != READY:
+		doc.status = READY
+		doc.completed_on = nowdate()
+	_save(doc)
+	return _pickup(doc)
 
 
 # ------------------------------------------------------------------ status
@@ -444,6 +585,13 @@ def open_pickup(name: str) -> dict:
 	if _open_draft(doc.name, "deposit"):
 		frappe.throw(_("A deposit invoice for this work order is still open at the register. Complete or delete "
 			"it first."))
+	return _pickup(doc)
+
+
+def _pickup(doc) -> dict:
+	"""Hand a Ready job back (no draft of either kind open, the caller checked): picked
+	up now with nothing to bill, else the draft pick-up invoice — the job's charges and
+	a locked negative deposit line releasing what is held, up to the bill with tax."""
 	held = deposit_held(doc.name)
 	if not doc.get("lines"):
 		# Nothing to bill: the gun goes back now, and any deposit is refunded after.

@@ -19,7 +19,7 @@ from ffl_core.setup import gunsmith as setup
 from ffl_core.setup.customer_deposits import deposit_account
 from ffl_core.setup.gunsmith import DEPOSIT_ITEM, LABOR_ITEM
 from ffl_core.tests.test_agreements import _png
-from ffl_core.tests.test_customer_profile import _hooks, _uniq
+from ffl_core.tests.test_customer_profile import _hooks, _uniq, _user
 
 COMPANY = "FFL Test"
 PROFILE = "FFL Test Gunsmith"
@@ -406,6 +406,141 @@ class Money(_Base):
 		self.assertEqual(inv.items[0].income_account, deposit_account(COMPANY))
 
 
+class Register(_Base):
+	"""The POS register: the Work Order button's intake, Recent Orders › Work Orders, and
+	Complete (confirm the charges, then the pick-up invoice the cart loads)."""
+
+	def _intake(self, **fields):
+		return gunsmith.create_work_order(frappe.as_json({"customer": self.cust.name, "manufacturer": "Ruger",
+			"model": "10/22", "serial_number": "GR" + frappe.generate_hash(length=8).upper(),
+			"work_requested": "Trigger job.", **fields}))
+
+	def test_intake_creates_the_job(self):
+		out = self._intake(estimated_cost=120, accessories="Sling", status="Picked Up", deposit_held=500)
+		job = frappe.get_doc(gunsmith.DOCTYPE, out["name"])
+		self.assertEqual((job.status, job.customer, flt(job.estimated_cost), job.accessories),
+			("Received", self.cust.name, 120, "Sling"), "only intake fields are taken from the dialog")
+		self.assertEqual(flt(job.deposit_held), 0)
+		self.assertFalse(out["purchase_receipt"])
+		with self.assertRaises(frappe.ValidationError):
+			gunsmith.create_work_order(frappe.as_json({"customer": self.cust.name, "manufacturer": "Ruger"}))
+
+	def test_intake_logs_the_gun_when_asked(self):
+		with self.assertRaises(frappe.ValidationError):
+			self._intake(log_in_bound_book=1, caliber=".22 LR", firearm_type="Rifle")   # no ID
+		out = self._intake(log_in_bound_book=1, caliber=".22 LR", firearm_type="Rifle", id_type="Driver License",
+			id_number="D5550001")
+		self.assertTrue(out["purchase_receipt"])
+		self.assertEqual(frappe.db.get_value("Purchase Receipt", out["purchase_receipt"], "is_ffl_transfer"), 1)
+
+	def test_intake_is_a_counter_job(self):
+		frappe.set_user(_user("gunsmith-buyer@example.com", "Purchase User"))
+		with self.assertRaises(frappe.PermissionError):
+			self._intake()
+		with self.assertRaises(frappe.PermissionError):
+			gunsmith.register_work_orders()
+		with self.assertRaises(frappe.PermissionError):
+			gunsmith.complete_work("GWO-none", "x")
+
+	def test_the_button_shows_for_the_counter_roles(self):
+		"""The POS Work Order button (ffl_core.bundle.js) mirrors roles.COUNTER_ROLES, the gate on
+		create_work_order."""
+		import re
+
+		from ffl_core.roles import COUNTER_ROLES
+		from ffl_core.tests.front_end_invariants import code_only, read
+
+		js = code_only(read("ffl_core", "public", "js", "ffl_core.bundle.js"))
+		[listed] = re.findall(r"const WORK_ORDER_ROLES = \[([^\]]*)\];", js)
+		self.assertEqual(tuple(re.findall(r"'([^']+)'", listed)), COUNTER_ROLES)
+		self.assertIn("if (frappe.user.has_role(WORK_ORDER_ROLES)) ensureBtn(WORK_ORDER_BTN_ID,", js)
+
+	def test_the_list_holds_open_jobs_ready_first(self):
+		received = _job(self.cust)
+		ready = _ready(_job(self.cust), [(LABOR_ITEM, 75)])
+		closed = _job(self.cust)
+		gunsmith.cancel_work_order(closed.name, "No")
+		out = gunsmith.register_work_orders(search_term=self.cust.customer_name)
+		names = [r["name"] for r in out["orders"]]
+		self.assertEqual(out["labor_item"], LABOR_ITEM)
+		self.assertNotIn(closed.name, names)
+		self.assertLess(names.index(ready.name), names.index(received.name))
+		row = next(r for r in out["orders"] if r["name"] == ready.name)
+		self.assertEqual([(l["item_code"], flt(l["rate"])) for l in row["lines"]], [(LABOR_ITEM, 75)])
+		self.assertEqual(row["drafts"], {"deposit": None, "pickup": None})
+		self.assertFalse(row["logged"])
+		self.assertEqual([r["name"] for r in gunsmith.register_work_orders(name=received.name)["orders"]],
+			[received.name])
+		self.assertFalse(gunsmith.register_work_orders(search_term="zzz-no-such-job")["orders"])
+
+	def test_complete_keeps_the_charges_marks_ready_and_bills_at_checkout(self):
+		"""In Progress → Complete with $150 labor + $40 part: the job keeps them and is Ready;
+		the pick-up draft carries them (plus a cart's other goods) and its checkout picks it up."""
+		job = _job(self.cust, estimated_cost=100)
+		gunsmith.start_work(job.name)
+		out = gunsmith.complete_work(job.name, "Fitted a new extractor.", frappe.as_json([
+			{"item_code": LABOR_ITEM, "description": "Extractor fitting", "qty": 1, "rate": 150},
+			{"item_code": "_Test GW Part", "qty": 1, "rate": 40}, {"item_code": "", "rate": 5}]))
+		job.reload()
+		self.assertEqual((job.status, str(job.completed_on)), ("Ready", frappe.utils.nowdate()))
+		self.assertEqual(job.work_performed, "Fitted a new extractor.")
+		self.assertEqual([(r.item_code, flt(r.rate)) for r in job.lines], [(LABOR_ITEM, 150), ("_Test GW Part", 40)])
+		inv = frappe.get_doc("POS Invoice", out["pos_invoice"])
+		self.assertEqual((inv.docstatus, inv.customer, inv.ffl_work_order), (0, self.cust.name, job.name))
+		self.assertEqual([(r.item_code, flt(r.amount)) for r in inv.items], [(LABOR_ITEM, 150), ("_Test GW Part", 40)])
+		self.assertEqual(inv.items[0].description, "Extractor fitting")
+		self.assertEqual(flt(inv.grand_total), 192.4)
+		with self.assertRaises(frappe.ValidationError):
+			gunsmith.complete_work(job.name, "Again", "[]")   # the pick-up is open in the cart
+		self.assertEqual(gunsmith.register_work_orders(name=job.name)["orders"][0]["drafts"]["pickup"], inv.name)
+		# The cashier sells something else on the same ticket, then checks out normally.
+		inv.append("items", {"item_code": "_Test GW Part", "qty": 2, "rate": 10})
+		inv.flags.ignore_permissions = True
+		inv.save()
+		inv = _pay(inv.name)
+		job.reload()
+		self.assertEqual((job.status, job.pickup_invoice), ("Picked Up", inv.name))
+		self.assertEqual(gunsmith.register_work_orders(name=job.name)["orders"], [])
+
+	def test_complete_releases_a_deposit_held(self):
+		job = _job(self.cust, deposit_amount=100)
+		_pay(gunsmith.take_deposit(job.name)["pos_invoice"])
+		inv = frappe.get_doc("POS Invoice", gunsmith.complete_work(job.name, "Done.",
+			frappe.as_json([{"item_code": LABOR_ITEM, "qty": 1, "rate": 150}]))["pos_invoice"])
+		self.assertEqual([(r.item_code, flt(r.amount)) for r in inv.items], [(LABOR_ITEM, 150), (DEPOSIT_ITEM, -100)])
+		_pay(inv.name)
+		self.assertEqual(frappe.db.get_value(gunsmith.DOCTYPE, job.name, "status"), "Picked Up")
+		self.assertEqual(gunsmith.deposit_held(job.name), 0)
+
+	def test_complete_with_nothing_to_charge_picks_up_at_once(self):
+		job = _job(self.cust)
+		self.assertEqual(gunsmith.complete_work(job.name, "Inspected, nothing needed.", "[]"),
+			{"picked_up": True, "refund_due": 0})
+		self.assertEqual(frappe.db.get_value(gunsmith.DOCTYPE, job.name, "status"), "Picked Up")
+
+	def test_complete_refuses_what_is_not_a_charge(self):
+		job = _job(self.cust)
+		for bad in ([{"item_code": DEPOSIT_ITEM, "rate": 10}], [{"item_code": "No Such Item X", "rate": 10}],
+				[{"item_code": LABOR_ITEM, "rate": -5}]):
+			with self.subTest(bad=bad), self.assertRaises(frappe.ValidationError):
+				gunsmith.complete_work(job.name, "Done.", frappe.as_json(bad))
+		with self.assertRaises(frappe.ValidationError):
+			gunsmith.complete_work(job.name, "  ", "[]")
+		self.assertEqual(frappe.db.get_value(gunsmith.DOCTYPE, job.name, "status"), "Received")
+		gunsmith.cancel_work_order(job.name, "No")
+		with self.assertRaises(frappe.ValidationError):
+			gunsmith.complete_work(job.name, "Done.", "[]")
+
+	def test_a_logged_job_completed_at_the_register_books_the_disposition(self):
+		job = _job(self.cust, log_in_bound_book=1, id_type="Driver License", id_number="D7650001")
+		out = gunsmith.complete_work(job.name, "Cleaned.", frappe.as_json([{"item_code": LABOR_ITEM, "rate": 40}]))
+		_pay(out["pos_invoice"])
+		job.reload()
+		self.assertEqual(job.status, "Picked Up")
+		self.assertEqual(frappe.db.get_value("FFL Disposition", job.disposition, ["docstatus", "disposition_type"]),
+			(1, "Gunsmithing"))
+
+
 class SalesReport(FrappeTestCase):
 	"""A deposit is never a sale: intake $100 → Net 0; pick-up $150 + $40 − $100 → Net 190."""
 
@@ -433,9 +568,12 @@ class SalesReport(FrappeTestCase):
 class BoundBook(_Base):
 
 	def test_logged_at_intake_into_custody_and_out_at_pickup(self):
+		frappe.clear_messages()
 		job = _job(self.cust, log_in_bound_book=1, id_type="Driver License", id_number="D1234567")
 		job.reload()
 		self.assertTrue(job.purchase_receipt)
+		self.assertFalse([m for m in frappe.local.message_log if "No accounting entries" in str(m)],
+			"custody at zero cost is by design, not a missing account")
 		pr = frappe.get_doc("Purchase Receipt", job.purchase_receipt)
 		self.assertEqual((pr.ffl_acquisition_type, pr.is_ffl_transfer), ("Gunsmithing", 1))
 		sn = frappe.db.get_value("Serial No", job.serial_number, ["status", "purchase_rate", "warehouse"], as_dict=True)

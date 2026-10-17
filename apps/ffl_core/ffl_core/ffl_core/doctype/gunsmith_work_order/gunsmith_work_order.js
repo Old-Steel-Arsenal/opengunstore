@@ -45,6 +45,16 @@ function openInvoice(name) {
 	frappe.set_route('Form', 'POS Invoice', name);
 }
 
+// Pick-up is rung at the register, whose checkout takes cards: the register opens this
+// job's Complete (confirm the charges, then the cart) from these route options.
+function toRegister(frm) {
+	const go = () => {
+		frappe.route_options = { ffl_work_order: frm.doc.name, ffl_work_order_action: 'complete' };
+		frappe.set_route('point-of-sale');
+	};
+	return frm.is_dirty() ? frm.save().then(go) : go();
+}
+
 function draw(frm, st) {
 	const d = frm.doc;
 	const open = !['Picked Up', 'Cancelled'].includes(d.status);
@@ -86,9 +96,8 @@ function draw(frm, st) {
 	}
 	if (d.status === 'Ready') {
 		frm.add_custom_button(__('Notify customer'), () => notifyDialog(frm), __('Status'));
-		frm.add_custom_button(st.drafts && st.drafts.pickup ? __('Open pick-up invoice') : __('Pick up'), () => {
-			act(frm, 'open_pickup', {}, (m) => (m.pos_invoice ? openInvoice(m.pos_invoice) : frm.reload_doc()));
-		}).addClass('btn-primary');
+		frm.add_custom_button(st.drafts && st.drafts.pickup ? __('Open pick-up at the register') : __('Pick up at the register'),
+			() => toRegister(frm)).addClass('btn-primary');
 	}
 	if (open) {
 		frm.add_custom_button(__('Cancel work order'), () => {

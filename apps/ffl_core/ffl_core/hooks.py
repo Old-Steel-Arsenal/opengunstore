@@ -168,6 +168,9 @@ app_include_js = [
 	_hashed("js/pos_tender_guard.js"),
 	_hashed("js/payroc_charges.js"),
 	_hashed("js/pos_recycle_bin.js"),
+	# Recent Orders › Work Orders: open gunsmith jobs and their Complete (ffl.gunsmithRegister in the
+	# bundle above); needs ffl.installClassHook from pos_tender_guard.js above.
+	_hashed("js/pos_work_orders.js"),
 	# Cart "Charge exactly" row (tax-inclusive total → line rates); needs pos_tender_guard.js above.
 	_hashed("js/pos_charge_exactly.js"),
 	# Recent Orders draft chips (paid / entered / 4473); needs pos_tender_guard.js above.

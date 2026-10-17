@@ -869,10 +869,11 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		};
 		// Insert order: each goes to firstChild, so the LAST call lands
 		// leftmost. Customer Display first => it sits rightmost, after the
-		// firearm-workflow button: Trade-in | Customer Display.
+		// firearm-workflow buttons: Trade-in | Work Order | Customer Display.
 		ensureBtn('ffl-customer-display-btn', __('Customer Display'), function () {
 			if (window.fflOpenCustomerDisplay) window.fflOpenCustomerDisplay();
 		});
+		if (frappe.user.has_role(WORK_ORDER_ROLES)) ensureBtn(WORK_ORDER_BTN_ID, __('Work Order'), openWorkOrderDialog);
 		if (frappe.user.has_role(TRADE_IN_ROLES)) ensureBtn(BUTTON_ID, __('Trade-in'), openTradeInDialog);
 		renderExtensionPosActions(ensureBtn);
 	}
@@ -1336,6 +1337,192 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		dialog.onhide = () => skuPicker.destroy();
 	}
 
+	// --- Gunsmith work orders at the register (rules: ffl_core/gunsmith.py) ---
+	// The Work Order button takes a gun in (gunsmith.create_work_order). Recent Orders ›
+	// Work Orders (pos_work_orders.js) lists the open jobs and calls Complete below, which
+	// loads the job's pick-up invoice into the cart — a sale like any other, so its
+	// checkout takes the card. The Desk work-order form sends the clerk here with route
+	// options for the same.
+	const WORK_ORDER_BTN_ID = 'ffl-work-order-btn';
+	// Who sees it: roles.COUNTER_ROLES, mirrored (the server gate on create_work_order;
+	// test_gunsmith_work_order pins the two lists together).
+	const WORK_ORDER_ROLES = ['Sales User', 'Sales Manager', 'Stock Manager', 'System Manager'];
+	const GW = 'ffl_core.gunsmith.';
+
+	function workOrdersApi() { return (window.ffl && ffl.posWorkOrders) || null; }
+
+	function hideRecentOrders(pos) {
+		const list = pos.recent_order_list;
+		if (list && list.$component && list.$component.is(':visible') && typeof pos.toggle_recent_order === 'function') {
+			pos.toggle_recent_order();
+		}
+	}
+
+	// A server-built draft (the job's pick-up invoice) into the cart. A sale
+	// still unsaved in the cart is saved as a draft first (it stays in Recent Orders),
+	// never dropped.
+	async function openInRegister(name) {
+		const pos = window.cur_pos;
+		if (!pos || !pos.frm) return false;
+		const frm = pos.frm;
+		if (frm.doc.name !== name && (frm.doc.items || []).length && (frm.is_new() || frm.is_dirty())) {
+			const save = await new Promise((resolve) => frappe.confirm(
+				__('Save the sale in the cart as a draft first? It stays in Recent Orders.'),
+				() => resolve(true), () => resolve(false)));
+			if (!save) return false;
+			try { await frm.save(); } catch (e) { return false; }   // the server said why
+		}
+		hideRecentOrders(pos);
+		const ok = await loadInvoiceIntoCart(name);
+		if (ok && typeof pos.toggle_components === 'function') pos.toggle_components(true);
+		if (!ok) frappe.msgprint({ title: __('Not loaded'), indicator: 'red',
+			message: __('Invoice {0} could not be loaded into the cart. Open it from Recent Orders › Draft.', [name]) });
+		return ok;
+	}
+
+	// Complete: the clerk confirms Work Performed and the charges, the job keeps them
+	// and is Ready, and its pick-up invoice (the charges less the deposit held) goes into
+	// the cart; its checkout picks the job up (gunsmith.on_invoice_submit). An open
+	// pick-up draft is opened as it is.
+	function completeAtRegister(row, laborItem) {
+		if (row.drafts && row.drafts.pickup) return openInRegister(row.drafts.pickup);
+		const api = workOrdersApi();
+		const cur = (v) => format_currency(v, frappe.defaults.get_default('currency'));
+		const esc = (v) => frappe.utils.escape_html(v == null ? '' : String(v));
+		const gun = [row.manufacturer, row.model, row.serial_number && __('SN {0}', [row.serial_number])].filter(Boolean).join(' · ');
+		const notes = [esc(row.customer_name || row.customer) + ' · ' + esc(gun)];
+		if (flt(row.deposit_held) > 0) notes.push(esc(__('Deposit held {0} comes off the bill.', [cur(row.deposit_held)])));
+		if (row.logged) notes.push(esc(__('At checkout the gun is returned to its owner in the bound book.')));
+		const dialog = new frappe.ui.Dialog({
+			title: __('Complete {0}', [row.name]),
+			size: 'large',
+			fields: [
+				{ fieldtype: 'HTML', fieldname: 'about', options: '<p>' + notes.join('<br>') + '</p>' },
+				{ fieldtype: 'Small Text', fieldname: 'work_performed', label: __('Work Performed'), reqd: 1,
+					default: row.work_performed || '' },
+				{ fieldtype: 'Table', fieldname: 'lines', label: __('Charges'), cannot_add_rows: false, in_place_edit: true,
+					data: api ? api.defaultCharges(row, laborItem) : [],
+					fields: [
+						{ fieldtype: 'Link', fieldname: 'item_code', options: 'Item', label: __('Item'), reqd: 1, in_list_view: 1, columns: 3 },
+						{ fieldtype: 'Data', fieldname: 'description', label: __('Description'), in_list_view: 1, columns: 4 },
+						{ fieldtype: 'Float', fieldname: 'qty', label: __('Qty'), default: 1, in_list_view: 1, columns: 1 },
+						{ fieldtype: 'Currency', fieldname: 'rate', label: __('Rate'), in_list_view: 1, columns: 2 },
+					] },
+			],
+			primary_action_label: __('Confirm and load the cart'),
+			primary_action(values) {
+				const lines = (values.lines || []).filter((l) => l.item_code).map((l) => ({
+					item_code: l.item_code, description: l.description || '', qty: flt(l.qty) || 1, rate: flt(l.rate) }));
+				frappe.call({
+					method: GW + 'complete_work', freeze: true,
+					args: { name: row.name, work_performed: values.work_performed, lines: JSON.stringify(lines) },
+				}).then(async (r) => {
+					const m = (r && r.message) || {};
+					dialog.hide();
+					if (m.pos_invoice) return openInRegister(m.pos_invoice);
+					if (m.picked_up) {
+						frappe.show_alert({ indicator: 'green', message: flt(m.refund_due) > 0
+							? __('{0} picked up. {1} of deposit is still held: refund it from the work order.', [row.name, cur(m.refund_due)])
+							: __('{0} picked up.', [row.name]) }, 10);
+						const pos = window.cur_pos;
+						if (pos && pos.recent_order_list && pos.recent_order_list.$component.is(':visible')) pos.recent_order_list.refresh_list();
+					}
+				});
+			},
+		});
+		dialog.show();
+		return dialog;
+	}
+
+	window.ffl = window.ffl || {};
+	window.ffl.gunsmithRegister = { complete: completeAtRegister };
+
+	// The Desk form's Pick up: route options {ffl_work_order, ffl_work_order_action:
+	// 'complete'} (the router also keeps them in the URL — dropped once read, so a reload
+	// does not run them again).
+	function takeRouteJob() {
+		const ro = frappe.route_options;
+		if (!ro || !ro.ffl_work_order) return;
+		const job = { name: ro.ffl_work_order, action: ro.ffl_work_order_action };
+		frappe.route_options = null;
+		if (location.search.includes('ffl_work_order')) history.replaceState(history.state, '', location.pathname + location.hash);
+		// The register may still be opening (POS Opening Entry dialog, first load).
+		(function whenReady(left) {
+			const pos = window.cur_pos;
+			if (pos && pos.frm && pos.cart && pos.recent_order_list) return runRouteJob(job);
+			if (left > 0) setTimeout(() => whenReady(left - 1), 500);
+		})(240);
+	}
+	async function runRouteJob(job) {
+		if (job.action !== 'complete') return;
+		const r = await frappe.call({ method: GW + 'register_work_orders', args: { name: job.name } });
+		const out = (r && r.message) || {};
+		const row = (out.orders || [])[0];
+		if (!row) return frappe.show_alert({ indicator: 'orange', message: __('{0} is not open.', [job.name]) });
+		return completeAtRegister(row, out.labor_item);
+	}
+
+	function openWorkOrderDialog() {
+		const pos = window.cur_pos;
+		const posCustomer = (pos && pos.frm && pos.frm.doc.customer) || '';
+		const dialog = new frappe.ui.Dialog({
+			title: __('Gunsmith Work Order'),
+			size: 'large',
+			fields: [
+				{ fieldtype: 'Section Break', label: __('Customer') },
+				{
+					label: __('Customer'), fieldname: 'customer', fieldtype: 'Link', options: 'Customer', reqd: 1,
+					default: posCustomer,
+					change: () => {
+						// Banned box / alerts first (customer_flags.js), as the Trade-in does.
+						const cf = window.ffl && ffl.customerFlags;
+						if (cf && cf.guardControl) cf.guardControl(dialog.fields_dict.customer);
+					},
+				},
+				{ fieldtype: 'Section Break', label: __('Firearm') },
+				{ label: __('Manufacturer'), fieldname: 'manufacturer', fieldtype: 'Data', reqd: 1 },
+				{ label: __('Model'), fieldname: 'model', fieldtype: 'Data', reqd: 1 },
+				{ label: __('Caliber / Gauge'), fieldname: 'caliber', fieldtype: 'Data',
+					mandatory_depends_on: 'eval:doc.log_in_bound_book' },
+				{ fieldtype: 'Column Break' },
+				{ label: __('Serial Number'), fieldname: 'serial_number', fieldtype: 'Data', reqd: 1 },
+				{ label: __('Firearm Type'), fieldname: 'firearm_type', fieldtype: 'Select', options: ffl.FIREARM_TYPE_OPTIONS,
+					mandatory_depends_on: 'eval:doc.log_in_bound_book' },
+				{ fieldtype: 'Section Break' },
+				{ label: __('Accessories left with it'), fieldname: 'accessories', fieldtype: 'Small Text' },
+				{ fieldtype: 'Column Break' },
+				{ label: __('Condition at intake'), fieldname: 'condition', fieldtype: 'Small Text' },
+				{ fieldtype: 'Section Break', label: __('Work') },
+				{ label: __('Work Requested'), fieldname: 'work_requested', fieldtype: 'Small Text', reqd: 1 },
+				{ label: __('Estimated Cost'), fieldname: 'estimated_cost', fieldtype: 'Currency' },
+				{ fieldtype: 'Column Break' },
+				{ label: __('Estimated Completion'), fieldname: 'estimated_completion', fieldtype: 'Date' },
+				{ fieldtype: 'Section Break', label: __('Bound book') },
+				{ label: __('Log in bound book'), fieldname: 'log_in_bound_book', fieldtype: 'Check',
+					description: __('Received from the customer as a Gunsmithing acquisition, held in customer custody at zero cost (never for sale); a Gunsmithing disposition returns it at pick-up.') },
+				{ label: __('Customer ID Type'), fieldname: 'id_type', fieldtype: 'Select',
+					options: ['', 'Driver License', 'State ID', 'Passport', 'Military ID', 'Other'].join('\n'),
+					depends_on: 'eval:doc.log_in_bound_book', mandatory_depends_on: 'eval:doc.log_in_bound_book' },
+				{ fieldtype: 'Column Break' },
+				{ label: __('Customer ID Number'), fieldname: 'id_number', fieldtype: 'Data',
+					depends_on: 'eval:doc.log_in_bound_book', mandatory_depends_on: 'eval:doc.log_in_bound_book' },
+			],
+			primary_action_label: __('Save work order'),
+			primary_action(values) {
+				frappe.call({
+					method: GW + 'create_work_order', freeze: true, freeze_message: __('Saving work order…'),
+					args: { payload: JSON.stringify(values) },
+				}).then((r) => {
+					const m = (r && r.message) || {};
+					if (!m.name) return;
+					dialog.hide();
+					frappe.show_alert({ indicator: 'green', message: __('Work order {0} saved.', [m.name]) }, 8);
+				});
+			},
+		});
+		dialog.show();
+	}
+
 	function startObserver() {
 		// Try once immediately in case the page is already rendered.
 		maybeInjectButton(document);
@@ -1357,9 +1544,9 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		// Only activate on the POS route; we still load the script everywhere
 		// because Frappe Desk is a SPA and route changes don't reload scripts.
 		frappe.router && frappe.router.on('change', () => {
-			if (isPosRoute()) startObserver();
+			if (isPosRoute()) { startObserver(); takeRouteJob(); }
 		});
-		if (isPosRoute()) startObserver();
+		if (isPosRoute()) { startObserver(); takeRouteJob(); }
 		injectPosTouchStyles();
 	}
 
