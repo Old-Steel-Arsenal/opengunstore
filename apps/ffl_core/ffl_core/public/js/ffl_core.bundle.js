@@ -1013,7 +1013,7 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 	// its tile (a $0 price: the tombstone hides any list price) would match the
 	// locked row — price_list_rate 0 — and add a unit to it (a credit booked
 	// twice), and a qty or rate typed on the row would change it. Refused, except
-	// for injectTradeInCredit's own call. Removing the line is a different path
+	// for injectLockedLine's own call. Removing the line is a different path
 	// (remove_item_from_cart), untouched.
 	let injectingLocked = false;
 	function guardLockedCartLines() {
@@ -1036,44 +1036,50 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 	})(40);
 	if (frappe.router && frappe.router.on) frappe.router.on('change', guardLockedCartLines);
 
-	async function injectTradeInCredit(credit) {
+	// One locked line into the live cart: `stamp` is the row fields that tie it to its
+	// source (a trade-in's acquisition, a work order), and how a re-run finds it; `extra`
+	// is other row fields (a description).
+	async function injectLockedLine(itemCode, rate, stamp, extra) {
 		const pos = window.cur_pos;
 		if (!pos || typeof pos.on_cart_update !== 'function' || !pos.frm) return false;
 		guardLockedCartLines();
 		try {
 			// Dialog re-run against the same cart → don't stack a second row.
 			const existing = (pos.frm.doc.items || []).find(
-				(r) => r.ffl_trade_in_acquisition === credit.acquisition);
+				(r) => Object.keys(stamp).every((k) => r[k] === stamp[k]));
 			if (existing) return true;
-			// rate is negative (≠ 0), so POS's "Price is not set" guard passes.
+			// rate is never 0, so POS's "Price is not set" guard passes.
 			let row;
 			injectingLocked = true;
 			try {
 				row = await pos.on_cart_update({
 					field: 'qty', value: '+1',
-					item: { item_code: credit.item_code, uom: 'Nos', rate: credit.rate },
+					item: { item_code: itemCode, uom: 'Nos', rate },
 				});
 			} finally {
 				injectingLocked = false;
 			}
 			if (!row || $.isEmptyObject(row)) return false;
 			// trigger_new_item_events priced the row like any item (0, or the
-			// credit item's Item Price if one slipped in); stamp the acquisition
-			// + the lock, then pin. The rate trigger runs repinLockedRow, which
-			// also clears the pricing residue; the explicit call covers a rate
-			// that already happened to equal the credit (no trigger then).
-			await frappe.model.set_value(row.doctype, row.name, {
-				ffl_trade_in_acquisition: credit.acquisition,
-				ffl_locked_rate: credit.rate,
-				rate: credit.rate,
-			});
+			// item's Item Price if one slipped in); stamp the source + the lock,
+			// then pin. The rate trigger runs repinLockedRow, which also clears
+			// the pricing residue; the explicit call covers a rate that already
+			// happened to equal the locked amount (no trigger then).
+			await frappe.model.set_value(row.doctype, row.name, Object.assign({}, extra || {}, stamp, {
+				ffl_locked_rate: rate,
+				rate,
+			}));
 			await repinLockedRow(pos.frm, row.doctype, row.name);
 			pos.update_cart_html(row);
 			return true;
 		} catch (e) {
-			console.error('ffl: trade-in credit injection failed', e);
+			console.error('ffl: locked line injection failed', e);
 			return false;
 		}
+	}
+
+	function injectTradeInCredit(credit) {
+		return injectLockedLine(credit.item_code, credit.rate, { ffl_trade_in_acquisition: credit.acquisition });
 	}
 
 	async function openTradeInDialog() {
@@ -1338,11 +1344,12 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 	}
 
 	// --- Gunsmith work orders at the register (rules: ffl_core/gunsmith.py) ---
-	// The Work Order button takes a gun in (gunsmith.create_work_order). Recent Orders ›
-	// Work Orders (pos_work_orders.js) lists the open jobs and calls Complete below, which
-	// loads the job's pick-up invoice into the cart — a sale like any other, so its
-	// checkout takes the card. The Desk work-order form sends the clerk here with route
-	// options for the same.
+	// The Work Order button takes a gun in (gunsmith.create_work_order); what the customer
+	// pays now goes into the cart as the job's locked GUNSMITH-DEPOSIT line. Recent Orders
+	// › Work Orders (pos_work_orders.js) lists the open jobs and calls Take payment (another
+	// such line, any amount, any time) and Complete (the job's pick-up invoice into the
+	// cart) below. Each is a sale like any other, so its checkout takes the card. The Desk
+	// work-order form sends the clerk here with route options for Complete.
 	const WORK_ORDER_BTN_ID = 'ffl-work-order-btn';
 	// Who sees it: roles.COUNTER_ROLES, mirrored (the server gate on create_work_order;
 	// test_gunsmith_work_order pins the two lists together).
@@ -1358,6 +1365,79 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		}
 	}
 
+	// The cart's customer, the way the cart's own customer field sets it (pos_item_cart
+	// make_customer_selector's onchange), so the customer section and totals follow.
+	async function setCartCustomer(pos, customer) {
+		const frm = pos.frm;
+		if (!customer || frm.doc.customer === customer) return;
+		await frappe.model.set_value(frm.doc.doctype, frm.doc.name, 'customer', customer);
+		await frm.script_manager.trigger('customer', frm.doc.doctype, frm.doc.name);
+		const cart = pos.cart;
+		if (!cart || typeof cart.fetch_customer_details !== 'function') return;
+		try {
+			await cart.fetch_customer_details(customer);
+			if (cart.events && typeof cart.events.customer_details_updated === 'function') {
+				cart.events.customer_details_updated(cart.customer_info);
+			}
+			cart.update_customer_section();
+			cart.update_totals_section();
+		} catch (e) { /* cosmetic: the invoice has the customer */ }
+	}
+
+	function askToPark() {
+		return new Promise((resolve) => frappe.confirm(
+			__('Save the sale in the cart as a draft first? It stays in Recent Orders.'),
+			() => resolve(true), () => resolve(false)));
+	}
+
+	// The job's locked payment line into a cart for its customer: this one, or — when it
+	// holds another customer's sale — a new one, that sale parked as a draft first.
+	async function addPaymentToCart(customer, line) {
+		const pos = window.cur_pos;
+		if (!pos || !pos.frm) return false;
+		const api = workOrdersApi();
+		hideRecentOrders(pos);
+		if (api && api.cartConflict(pos.frm.doc, customer)) {
+			if (pos.frm.is_new() || pos.frm.is_dirty()) {
+				if (!(await askToPark())) return false;
+				try { await pos.frm.save(); } catch (e) { return false; }   // the server said why
+			}
+			await pos.make_new_invoice();
+		}
+		try { await setCartCustomer(pos, customer); } catch (e) { /* checked below */ }
+		if (pos.frm.doc.customer !== customer) return false;
+		if ((pos.frm.doc.items || []).some((r) => r.item_code === line.item_code)) {
+			// One gunsmith payment line per sale (gunsmith.guard_deposit_lines).
+			frappe.msgprint({ title: __('One payment per sale'), indicator: 'orange',
+				message: __('This sale already has a gunsmith payment line. Check it out first, then take the next payment.') });
+			return null;
+		}
+		return injectLockedLine(line.item_code, line.rate, { ffl_work_order: line.ffl_work_order },
+			{ description: line.description });
+	}
+
+	function paymentAdded(ok, name, rate) {
+		if (ok === null) return;
+		if (ok) {
+			frappe.show_alert({ indicator: 'green', message: __('{0} towards {1} is in the cart: check out to take it.',
+				[format_currency(rate), name]) }, 8);
+		} else {
+			frappe.msgprint({ title: __('Payment line not added'), indicator: 'red',
+				message: __('The payment towards {0} could not be added to the cart. Try Take payment from Recent Orders › Work Orders.', [name]) });
+		}
+	}
+
+	// Take payment: any amount towards an open job, as often as the customer likes.
+	function takePaymentAtRegister(row) {
+		frappe.prompt({ fieldtype: 'Currency', fieldname: 'amount', label: __('Amount'), reqd: 1,
+			description: __('Held for the customer and taken off the bill at pick-up.') }, async (v) => {
+			const r = await frappe.call({ method: GW + 'deposit_line', args: { name: row.name, amount: v.amount }, freeze: true });
+			const m = (r && r.message) || {};
+			if (!m.deposit_line) return;
+			paymentAdded(await addPaymentToCart(m.customer, m.deposit_line), row.name, m.deposit_line.rate);
+		}, __('Take payment for {0}', [row.name]), __('Add to cart'));
+	}
+
 	// A server-built draft (the job's pick-up invoice) into the cart. A sale
 	// still unsaved in the cart is saved as a draft first (it stays in Recent Orders),
 	// never dropped.
@@ -1366,10 +1446,7 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		if (!pos || !pos.frm) return false;
 		const frm = pos.frm;
 		if (frm.doc.name !== name && (frm.doc.items || []).length && (frm.is_new() || frm.is_dirty())) {
-			const save = await new Promise((resolve) => frappe.confirm(
-				__('Save the sale in the cart as a draft first? It stays in Recent Orders.'),
-				() => resolve(true), () => resolve(false)));
-			if (!save) return false;
+			if (!(await askToPark())) return false;
 			try { await frm.save(); } catch (e) { return false; }   // the server said why
 		}
 		hideRecentOrders(pos);
@@ -1435,7 +1512,7 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 	}
 
 	window.ffl = window.ffl || {};
-	window.ffl.gunsmithRegister = { complete: completeAtRegister };
+	window.ffl.gunsmithRegister = { complete: completeAtRegister, takePayment: takePaymentAtRegister };
 
 	// The Desk form's Pick up: route options {ffl_work_order, ffl_work_order_action:
 	// 'complete'} (the router also keeps them in the URL — dropped once read, so a reload
@@ -1495,8 +1572,10 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 				{ fieldtype: 'Section Break', label: __('Work') },
 				{ label: __('Work Requested'), fieldname: 'work_requested', fieldtype: 'Small Text', reqd: 1 },
 				{ label: __('Estimated Cost'), fieldname: 'estimated_cost', fieldtype: 'Currency' },
-				{ fieldtype: 'Column Break' },
 				{ label: __('Estimated Completion'), fieldname: 'estimated_completion', fieldtype: 'Date' },
+				{ fieldtype: 'Column Break' },
+				{ label: __('Pay now'), fieldname: 'pay_now', fieldtype: 'Currency',
+					description: __('Optional. Goes into this sale as a payment towards the job, taken at checkout, held for the customer and taken off the bill at pick-up.') },
 				{ fieldtype: 'Section Break', label: __('Bound book') },
 				{ label: __('Log in bound book'), fieldname: 'log_in_bound_book', fieldtype: 'Check',
 					description: __('Received from the customer as a Gunsmithing acquisition, held in customer custody at zero cost (never for sale); a Gunsmithing disposition returns it at pick-up.') },
@@ -1512,11 +1591,15 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 				frappe.call({
 					method: GW + 'create_work_order', freeze: true, freeze_message: __('Saving work order…'),
 					args: { payload: JSON.stringify(values) },
-				}).then((r) => {
+				}).then(async (r) => {
 					const m = (r && r.message) || {};
 					if (!m.name) return;
 					dialog.hide();
-					frappe.show_alert({ indicator: 'green', message: __('Work order {0} saved.', [m.name]) }, 8);
+					if (!m.deposit_line) {
+						frappe.show_alert({ indicator: 'green', message: __('Work order {0} saved.', [m.name]) }, 8);
+						return;
+					}
+					paymentAdded(await addPaymentToCart(m.customer, m.deposit_line), m.name, m.deposit_line.rate);
 				});
 			},
 		});

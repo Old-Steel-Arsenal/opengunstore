@@ -1,9 +1,10 @@
 // Gunsmith work orders at the register — a "Work Orders" entry in the Recent Orders
 // status filter that lists the shop's open jobs (ffl_core.gunsmith.register_work_orders)
-// with their customer, gun and status, and what the counter does with one: Complete
-// (confirm the charges, then the pick-up goes into the cart for a normal checkout).
-// The action itself lives in the bundle (ffl.gunsmithRegister), next to the Work
-// Order intake button, because it drives the live cart.
+// with their customer, gun, status and what is paid, and what the counter does with
+// one: Take payment (any amount towards it, into a cart) and Complete (confirm the
+// charges, then the pick-up goes into the cart), each a normal checkout. The actions
+// live in the bundle (ffl.gunsmithRegister), next to the Work Order intake button,
+// because they drive the live cart.
 //
 // Upgrade-safe, the pos_recycle_bin.js way: ERPNext's PastOrderList is wrapped on
 // its prototype (via ffl.installClassHook), never edited; every other status falls
@@ -37,11 +38,17 @@
 		return list.join('\n');
 	}
 
-	// What a job's card offers: Complete, on every open job (its open pick-up draft is
-	// opened instead of confirming the charges again).
+	// What a job's card offers, on every open job: Take payment, and Complete (its open
+	// pick-up draft is opened instead of confirming the charges again).
 	function cardActions(row) {
 		var drafts = row.drafts || {};
-		return [{ action: 'complete', label: drafts.pickup ? __('Open pick-up') : __('Complete'), primary: true }];
+		return [{ action: 'payment', label: __('Take payment') },
+			{ action: 'complete', label: drafts.pickup ? __('Open pick-up') : __('Complete'), primary: true }];
+	}
+
+	// The cart holds another customer's sale: a job's payment must not land on it.
+	function cartConflict(doc, customer) {
+		return !!(doc && (doc.items || []).length && doc.customer && doc.customer !== customer);
 	}
 
 	// Money already held for the job (it comes off the bill at pick-up), or nothing.
@@ -148,6 +155,7 @@
 		var state = list.__fflWorkOrders || {};
 		var row = (state.rows || []).filter(function (r) { return r.name === name; })[0];
 		if (!row) return false;
+		if (action === 'payment') return env.takePayment(row);
 		if (action === 'complete') return env.complete(row, state.labor_item);
 		return false;
 	}
@@ -157,6 +165,7 @@
 		LIST_METHOD: LIST_METHOD,
 		withWorkOrdersOption: withWorkOrdersOption,
 		cardActions: cardActions,
+		cartConflict: cartConflict,
 		depositText: depositText,
 		defaultCharges: defaultCharges,
 		cardHtml: cardHtml,
@@ -177,6 +186,7 @@
 		fmt: function (v) { return format_currency(v, frappe.defaults.get_default('currency')) || String(v); },
 		ellipsis: function (s, n) { return frappe.ellipsis(s, n); },
 		$: function (el) { return $(el); },
+		takePayment: function (row) { var g = register(); return g && g.takePayment(row); },
 		complete: function (row, laborItem) { var g = register(); return g && g.complete(row, laborItem); },
 	};
 	function apply(L) { ffl.posWorkOrders.applyPastOrderListPatch(L, env); }

@@ -404,7 +404,7 @@ A customer's gun left for gunsmithing: intake, authorization, deposit, the work,
 | `disposition` | Link | Disposition |  | FFL Disposition |
 | `work_requested` | Small Text | Work Requested | ✓ |  |
 | `estimated_cost` | Currency | Estimated Cost |  | Company:company:default_currency |
-| `deposit_amount` | Currency | Deposit |  | Company:company:default_currency |
+| `deposit_amount` | Currency | Paid at Intake |  | Company:company:default_currency |
 | `estimated_completion` | Date | Estimated Completion |  |  |
 | `intake_agreement` | Link | Intake Authorization |  | Customer Agreement |
 | `deposit_invoice` | Link | Deposit Invoice |  | POS Invoice |

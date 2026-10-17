@@ -16,7 +16,7 @@ _FIREARM_FIELDS = ("manufacturer", "model", "caliber", "serial_number", "firearm
 
 class GunsmithWorkOrder(Document):
 	def validate(self):
-		from ffl_core.gunsmith import CLOSED, deposit_held
+		from ffl_core.gunsmith import CLOSED
 
 		before = self.get_doc_before_save()
 		via = self.flags.via_work_order
@@ -50,10 +50,6 @@ class GunsmithWorkOrder(Document):
 			if changed:
 				frappe.throw(_("The gun is in the bound book as received, so {0} cannot change here.").format(
 					", ".join(changed)))
-		# Only once paid: an unpaid deposit draft follows the new amount (its line is locked to the job's).
-		if flt(self.deposit_amount, 2) != flt(before.deposit_amount, 2) and (
-				deposit_held(self.name) > 0 or self.deposit_invoice):
-			frappe.throw(_("A deposit has been taken for this work order, so its amount no longer changes."))
 
 	def on_update(self):
 		if self.log_in_bound_book and not self.purchase_receipt and self.status not in ("Picked Up", "Cancelled"):
@@ -85,6 +81,8 @@ class GunsmithWorkOrder(Document):
 			"work_order": self.name, "manufacturer": self.manufacturer, "model": self.model,
 			"caliber": self.caliber, "serial_no": self.serial_number, "firearm_type": self.firearm_type,
 			"accessories": self.accessories, "condition": self.condition, "work_requested": self.work_requested,
-			"estimated_cost": money(self.estimated_cost), "deposit": money(self.deposit_amount),
+			# Paid towards the job so far, else what is being paid at intake (its sale is still in the cart).
+			"estimated_cost": money(self.estimated_cost),
+			"deposit": money(flt(self.deposit_held) or self.deposit_amount),
 			"estimated_completion": formatdate(self.estimated_completion) if self.estimated_completion else "",
 		}

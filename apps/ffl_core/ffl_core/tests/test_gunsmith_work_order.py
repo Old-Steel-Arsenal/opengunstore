@@ -58,6 +58,18 @@ def _ready(job, lines=()):
 	return job
 
 
+def _payment(job, amount, *goods, header=False):
+	"""A register sale paying *amount* towards *job*: its locked line (gunsmith.deposit_line) in a
+	cart, with any other goods, the header link left to the deposit guard as at the register."""
+	line = gunsmith.deposit_line(job.name, amount)["deposit_line"]
+	inv = frappe.get_doc({"doctype": "POS Invoice", "company": COMPANY, "pos_profile": PROFILE, "customer": job.customer,
+		"items": [line, *goods], **({"ffl_work_order": job.name} if header else {})})
+	inv.set_missing_values()
+	inv.flags.ignore_permissions = True
+	inv.insert()
+	return inv.name
+
+
 def _pay(name, amount=None):
 	"""Submit a register invoice the way the register does: cash for what it comes to."""
 	inv = frappe.get_doc("POS Invoice", name)
@@ -258,24 +270,18 @@ class Authorization(_Base):
 class Money(_Base):
 
 	def test_deposit_then_pickup(self):
-		"""$100 deposit held as a liability, untaxed; pick-up bills $150 labor + $40 part (6% on the part
-		only) less the $100 deposit."""
-		job = _job(self.cust, deposit_amount=100)
-		inv = gunsmith.take_deposit(job.name)["pos_invoice"]
-		self.assertEqual(gunsmith.take_deposit(job.name), {"pos_invoice": inv, "already": True})
-		dep = _pay(inv)
+		"""$100 paid towards the job, held as a liability, untaxed; pick-up bills $150 labor + $40 part
+		(6% on the part only) less the $100."""
+		job = _job(self.cust)
+		dep = _pay(_payment(job, 100))
 		self.assertEqual(flt(dep.grand_total), 100)
 		self.assertEqual(flt(dep.total_taxes_and_charges), 0)
 		# A POS Invoice books through its consolidated Sales Invoice, which copies each row's account.
 		self.assertEqual(dep.items[0].income_account, deposit_account(COMPANY))
+		self.assertEqual(dep.ffl_work_order, job.name, "the guard links the header")
 		self.assertEqual(gunsmith.deposit_held(job.name), 100)
 		self.assertEqual(flt(frappe.db.get_value(gunsmith.DOCTYPE, job.name, "deposit_held")), 100)
-		with self.assertRaises(frappe.ValidationError):
-			gunsmith.take_deposit(job.name)
-		job.reload()
-		job.deposit_amount = 120
-		with self.assertRaises(frappe.ValidationError):
-			job.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value(gunsmith.DOCTYPE, job.name, "deposit_invoice"), dep.name)
 
 		job = _ready(job, [(LABOR_ITEM, 150), ("_Test GW Part", 40)])
 		pick = frappe.get_doc("POS Invoice", gunsmith.open_pickup(job.name)["pos_invoice"])
@@ -289,9 +295,51 @@ class Money(_Base):
 		self.assertEqual((job.status, job.pickup_invoice), ("Picked Up", pick.name))
 		self.assertEqual(gunsmith.deposit_held(job.name), 0)
 
+	def test_several_payments_any_amount_while_open(self):
+		"""$50 at intake's sale (with other goods, no header link), $30 later: $80 held, all released at
+		pick-up; a closed job takes no more."""
+		job = _job(self.cust)
+		first = _pay(_payment(job, 50, {"item_code": "_Test GW Part", "qty": 1, "rate": 20}))
+		self.assertEqual([(r.item_code, flt(r.amount)) for r in first.items], [(DEPOSIT_ITEM, 50), ("_Test GW Part", 20)])
+		self.assertEqual(flt(first.grand_total), 71.2, "6% on the part only")
+		gunsmith.start_work(job.name)
+		second = _pay(_payment(job, 30))
+		self.assertEqual(gunsmith.deposit_held(job.name), 80)
+		self.assertEqual(frappe.db.get_value(gunsmith.DOCTYPE, job.name, ["status", "deposit_invoice"]),
+			("In Progress", second.name), "a payment never picks the job up")
+		job = _ready(job, [(LABOR_ITEM, 100)])
+		_pay(_payment(job, 10))   # Ready still takes payments
+		pick = frappe.get_doc("POS Invoice", gunsmith.open_pickup(job.name)["pos_invoice"])
+		self.assertEqual([(r.item_code, flt(r.amount)) for r in pick.items], [(LABOR_ITEM, 100), (DEPOSIT_ITEM, -90)])
+		_pay(pick.name)
+		self.assertEqual(gunsmith.deposit_held(job.name), 0)
+		second.reload()
+		second.flags.ignore_permissions = True
+		with self.assertRaisesRegex(frappe.ValidationError, "already come off"):
+			second.cancel()   # its money came off the pick-up
+		with self.assertRaises(frappe.ValidationError):
+			gunsmith.deposit_line(job.name, 10)
+		for bad in (0, -5):
+			with self.subTest(amount=bad), self.assertRaises(frappe.ValidationError):
+				gunsmith.deposit_line(_job(self.cust).name, bad)
+
+	def test_a_payment_line_stays_at_its_own_amount(self):
+		"""The lock: typed, priced or re-stamped, the line keeps the amount it was made for."""
+		job = _job(self.cust)
+		inv = frappe.get_doc("POS Invoice", _payment(job, 60))
+		inv.items[0].rate = 5
+		inv.items[0].price_list_rate = 999
+		inv.save(ignore_permissions=True)
+		self.assertEqual(flt(inv.items[0].rate), 60)
+		self.assertEqual(flt(inv.items[0].price_list_rate), 0)
+		self.assertEqual(inv.items[0].income_account, deposit_account(COMPANY))
+		inv.items[0].ffl_locked_rate = 0
+		with self.assertRaises(frappe.ValidationError):
+			inv.save(ignore_permissions=True)   # a line with no lock is not from its work order
+
 	def test_a_deposit_bigger_than_the_bill_is_refunded(self):
-		job = _job(self.cust, deposit_amount=300)
-		_pay(gunsmith.take_deposit(job.name)["pos_invoice"])
+		job = _job(self.cust)
+		_pay(_payment(job, 300))
 		job = _ready(job, [(LABOR_ITEM, 120)])
 		pick = frappe.get_doc("POS Invoice", gunsmith.open_pickup(job.name)["pos_invoice"])
 		self.assertEqual(flt(pick.grand_total), 0)
@@ -306,8 +354,8 @@ class Money(_Base):
 			gunsmith.refund_deposit(job.name)
 
 	def test_a_used_deposit_invoice_cannot_be_cancelled(self):
-		job = _job(self.cust, deposit_amount=100)
-		dep = _pay(gunsmith.take_deposit(job.name)["pos_invoice"])
+		job = _job(self.cust)
+		dep = _pay(_payment(job, 100))
 		job = _ready(job, [(LABOR_ITEM, 150)])
 		pick = _pay(gunsmith.open_pickup(job.name)["pos_invoice"])
 		dep.reload()
@@ -331,8 +379,8 @@ class Money(_Base):
 			gunsmith.cancel_work_order(job.name, "Customer changed their mind")
 
 	def test_cancelled_job_refunds_the_whole_deposit(self):
-		job = _job(self.cust, deposit_amount=75)
-		_pay(gunsmith.take_deposit(job.name)["pos_invoice"])
+		job = _job(self.cust)
+		_pay(_payment(job, 75))
 		with self.assertRaises(frappe.ValidationError):
 			gunsmith.refund_deposit(job.name)   # still open: it comes off the bill
 		gunsmith.cancel_work_order(job.name, "Parts unavailable")
@@ -345,16 +393,16 @@ class Money(_Base):
 		self.assertEqual(frappe.db.get_value(gunsmith.DOCTYPE, job.name, "status"), "Picked Up")
 
 	def test_no_charges_with_a_deposit_hands_back_then_refunds(self):
-		job = _job(self.cust, deposit_amount=40)
-		_pay(gunsmith.take_deposit(job.name)["pos_invoice"])
+		job = _job(self.cust)
+		_pay(_payment(job, 40))
 		job = _ready(job)
 		self.assertEqual(gunsmith.open_pickup(job.name), {"picked_up": True, "refund_due": 40})
 		_pay(gunsmith.refund_deposit(job.name)["pos_invoice"])
 		self.assertEqual(gunsmith.deposit_held(job.name), 0)
 
 	def test_a_reopened_job_does_not_release_its_deposit(self):
-		job = _job(self.cust, deposit_amount=100)
-		_pay(gunsmith.take_deposit(job.name)["pos_invoice"])
+		job = _job(self.cust)
+		_pay(_payment(job, 100))
 		job = _ready(job, [(LABOR_ITEM, 150)])
 		pick = gunsmith.open_pickup(job.name)["pos_invoice"]
 		with self.assertRaises(frappe.ValidationError):
@@ -364,17 +412,36 @@ class Money(_Base):
 			_pay(pick)
 		self.assertEqual(gunsmith.deposit_held(job.name), 100)
 
-	def test_an_unpaid_deposit_draft_is_not_linked_on_the_job(self):
-		job = _job(self.cust, deposit_amount=100)
-		inv = gunsmith.take_deposit(job.name)["pos_invoice"]
+	def test_a_parked_payment_is_not_linked_on_the_job(self):
+		job = _job(self.cust)
+		inv = _payment(job, 100)
 		self.assertFalse(frappe.db.get_value(gunsmith.DOCTYPE, job.name, "deposit_invoice"))
+		self.assertEqual(gunsmith.get_state(job.name)["drafts"]["deposit"], inv)
+		job = _ready(job, [(LABOR_ITEM, 10)])
+		with self.assertRaises(frappe.ValidationError):
+			gunsmith.complete_work(job.name, "Done.", "[]")   # the parked payment first
 		frappe.delete_doc("POS Invoice", inv, ignore_permissions=True)
-		job.reload()
-		job.deposit_amount = 80
-		job.save(ignore_permissions=True)
+		self.assertEqual(gunsmith.deposit_held(job.name), 0)
+
+	def test_a_refund_goes_back_payment_by_payment(self):
+		"""$100 then $50 held on a cancelled job: the first return pays back the $50 (newest), the
+		next the $100 — a return never exceeds the payment it goes against."""
+		job = _job(self.cust)
+		_pay(_payment(job, 100))
+		_pay(_payment(job, 50))
+		gunsmith.cancel_work_order(job.name, "Parts unavailable")
+		first = gunsmith.refund_deposit(job.name)
+		self.assertEqual(first["amount"], 50)
+		_pay(first["pos_invoice"])
+		self.assertEqual(gunsmith.deposit_held(job.name), 100)
+		second = gunsmith.refund_deposit(job.name)
+		self.assertEqual(second["amount"], 100)
+		ret = _pay(second["pos_invoice"])
+		self.assertEqual(flt(ret.grand_total), -100)
+		self.assertEqual(gunsmith.deposit_held(job.name), 0)
 
 	def test_deposit_line_only_from_its_work_order(self):
-		job = _job(self.cust, deposit_amount=100)
+		job = _job(self.cust)
 
 		def ticket(customer, **row):
 			inv = frappe.get_doc({"doctype": "POS Invoice", "company": COMPANY, "pos_profile": PROFILE,
@@ -390,20 +457,17 @@ class Money(_Base):
 		with self.assertRaises(frappe.ValidationError):
 			ticket(self.cust.name, ffl_work_order=job.name, ffl_locked_rate=100, rate=100,
 				qty=2).insert()
+		with self.assertRaises(frappe.ValidationError):
+			ticket(self.cust.name, ffl_work_order=job.name).insert()   # no lock: not made by its work order
+		gunsmith.cancel_work_order(job.name, "No")
+		with self.assertRaises(frappe.ValidationError):
+			ticket(self.cust.name, ffl_work_order=job.name, ffl_locked_rate=100).insert()   # closed
 		si = frappe.new_doc("Sales Invoice")
 		si.company = COMPANY
 		si.customer = self.cust.name
 		si.append("items", {"item_code": DEPOSIT_ITEM, "qty": 1, "rate": 100, "ffl_work_order": job.name})
 		with self.assertRaises(frappe.ValidationError):
 			gunsmith.guard_deposit_lines(si)
-
-	def test_a_typed_rate_is_pinned_back_to_the_deposit(self):
-		job = _job(self.cust, deposit_amount=100)
-		inv = frappe.get_doc("POS Invoice", gunsmith.take_deposit(job.name)["pos_invoice"])
-		inv.items[0].rate = 5
-		inv.save(ignore_permissions=True)
-		self.assertEqual(flt(inv.items[0].rate), 100)
-		self.assertEqual(inv.items[0].income_account, deposit_account(COMPANY))
 
 
 class Register(_Base):
@@ -417,6 +481,7 @@ class Register(_Base):
 
 	def test_intake_creates_the_job(self):
 		out = self._intake(estimated_cost=120, accessories="Sling", status="Picked Up", deposit_held=500)
+		self.assertIsNone(out["deposit_line"])
 		job = frappe.get_doc(gunsmith.DOCTYPE, out["name"])
 		self.assertEqual((job.status, job.customer, flt(job.estimated_cost), job.accessories),
 			("Received", self.cust.name, 120, "Sling"), "only intake fields are taken from the dialog")
@@ -424,6 +489,26 @@ class Register(_Base):
 		self.assertFalse(out["purchase_receipt"])
 		with self.assertRaises(frappe.ValidationError):
 			gunsmith.create_work_order(frappe.as_json({"customer": self.cust.name, "manufacturer": "Ruger"}))
+
+	def test_pay_now_at_intake(self):
+		"""Pay now: the job keeps the amount (its authorization prints it) and the register gets the
+		locked line for the cart, which books as a payment towards the job at checkout."""
+		out = self._intake(pay_now=75)
+		line = out["deposit_line"]
+		self.assertEqual((line["item_code"], flt(line["rate"]), flt(line["ffl_locked_rate"]), line["ffl_work_order"]),
+			(DEPOSIT_ITEM, 75, 75, out["name"]))
+		job = frappe.get_doc(gunsmith.DOCTYPE, out["name"])
+		self.assertEqual(flt(job.deposit_amount), 75)
+		self.assertIn("75.00", job.agreement_context()["deposit"])
+		inv = frappe.get_doc({"doctype": "POS Invoice", "company": COMPANY, "pos_profile": PROFILE,
+			"customer": self.cust.name, "items": [line]})
+		inv.set_missing_values()
+		inv.flags.ignore_permissions = True
+		inv.insert()
+		_pay(inv.name)
+		self.assertEqual(gunsmith.deposit_held(job.name), 75)
+		with self.assertRaises(frappe.ValidationError):
+			self._intake(pay_now=-1)
 
 	def test_intake_logs_the_gun_when_asked(self):
 		with self.assertRaises(frappe.ValidationError):
@@ -503,8 +588,8 @@ class Register(_Base):
 		self.assertEqual(gunsmith.register_work_orders(name=job.name)["orders"], [])
 
 	def test_complete_releases_a_deposit_held(self):
-		job = _job(self.cust, deposit_amount=100)
-		_pay(gunsmith.take_deposit(job.name)["pos_invoice"])
+		job = _job(self.cust)
+		_pay(_payment(job, 100))
 		inv = frappe.get_doc("POS Invoice", gunsmith.complete_work(job.name, "Done.",
 			frappe.as_json([{"item_code": LABOR_ITEM, "qty": 1, "rate": 150}]))["pos_invoice"])
 		self.assertEqual([(r.item_code, flt(r.amount)) for r in inv.items], [(LABOR_ITEM, 150), (DEPOSIT_ITEM, -100)])

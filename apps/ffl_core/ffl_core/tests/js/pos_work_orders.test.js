@@ -14,6 +14,7 @@ function fakeEnv(calls, response) {
 		ellipsis: (s, n) => (s.length > n ? s.slice(0, n) + '...' : s),
 		$: () => ({}),
 		complete: (row, labor) => { calls.push(['complete', row.name, labor]); return true; },
+		takePayment: (row) => { calls.push(['payment', row.name]); return true; },
 	};
 }
 
@@ -73,7 +74,9 @@ test('Work Orders renders the open jobs, escaped, with Complete', () => {
 	assert.ok(html.includes('Colt 1911'));
 	assert.ok(html.includes('Deposit held $100'));
 	assert.ok(html.includes('data-action="complete"'));
-	assert.ok(!html.includes('data-action="deposit"'));
+	assert.ok(html.includes('data-action="payment"'));
+	assert.strictEqual(wo.runAction(l, fakeEnv(calls, {}), 'payment', READY.name), true);
+	assert.deepStrictEqual(calls[calls.length - 1], ['payment', READY.name]);
 	assert.strictEqual(wo.runAction(l, fakeEnv(calls, {}), 'complete', READY.name), true);
 	assert.deepStrictEqual(calls[calls.length - 1], ['complete', READY.name, 'GUNSMITHING']);
 	assert.strictEqual(wo.runAction(l, fakeEnv(calls, {}), 'complete', 'GWO-other'), false);
@@ -89,8 +92,8 @@ test('an empty list says so', () => {
 });
 
 test('an open pick-up draft is opened, not confirmed again', () => {
-	assert.deepStrictEqual(wo.cardActions(READY).map((a) => a.label), ['Complete']);
-	assert.deepStrictEqual(wo.cardActions({ ...READY, drafts: { pickup: 'ACC-PSINV-1' } }).map((a) => a.label), ['Open pick-up']);
+	assert.deepStrictEqual(wo.cardActions(READY).map((a) => a.label), ['Take payment', 'Complete']);
+	assert.deepStrictEqual(wo.cardActions({ ...READY, drafts: { pickup: 'ACC-PSINV-1' } }).map((a) => a.label), ['Take payment', 'Open pick-up']);
 	assert.strictEqual(wo.depositText({ deposit_held: 0 }, String), '');
 });
 
@@ -100,4 +103,12 @@ test('Complete starts from the job\'s charges, else one labor line at the estima
 	assert.deepStrictEqual(wo.defaultCharges({ lines: [{ item_code: 'P', qty: '2', rate: '5.5' }] }, 'GUNSMITHING'),
 		[{ item_code: 'P', description: '', qty: 2, rate: 5.5 }]);
 	assert.deepStrictEqual(wo.defaultCharges({ lines: [] }, ''), []);
+});
+
+test('cartConflict: only a cart with goods for another customer', () => {
+	assert.strictEqual(wo.cartConflict({ customer: 'A', items: [{}] }, 'B'), true);
+	assert.strictEqual(wo.cartConflict({ customer: 'A', items: [{}] }, 'A'), false);
+	assert.strictEqual(wo.cartConflict({ customer: 'A', items: [] }, 'B'), false, 'an empty cart takes the new customer');
+	assert.strictEqual(wo.cartConflict({ customer: '', items: [{}] }, 'B'), false);
+	assert.strictEqual(wo.cartConflict(null, 'B'), false);
 });
