@@ -14,7 +14,7 @@ Everyone who can sign in at the counter, for the switch-user list.
 
 **Returns:** [{"user", "full_name", "image", "current": bool}] for enabled desk users holding a counter role, by name (never Administrator, the site's superuser); the signed-in one is marked current.
 
-<sub>`apps/ffl_core/ffl_core/staff_switch.py:63`</sub>
+<sub>`apps/ffl_core/ffl_core/staff_switch.py:70`</sub>
 
 ## `lock_screen`
 
@@ -26,7 +26,7 @@ Lock this session's screen (idle, or the clerk walked away).
 
 **Returns:** {"locked": 1}.
 
-<sub>`apps/ffl_core/ffl_core/staff_switch.py:84`</sub>
+<sub>`apps/ffl_core/ffl_core/staff_switch.py:91`</sub>
 
 ## `unlock_screen`
 
@@ -45,4 +45,4 @@ counters share one address). Signing in as someone else is frappe's login.
 
 **Returns:** {"locked": 0}.
 
-<sub>`apps/ffl_core/ffl_core/staff_switch.py:96`</sub>
+<sub>`apps/ffl_core/ffl_core/staff_switch.py:103`</sub>
