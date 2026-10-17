@@ -9,6 +9,8 @@
   "version",
   "column_break_settings",
   "valid_days",
+  "requirement",
+  "scope",
   "show_on_counter_panel",
   "minors_need_guardian",
   "section_body",
@@ -51,7 +53,26 @@
    "label": "Valid For (Days)",
    "default": "0",
    "non_negative": 1,
-   "description": "0 = never expires. A range waiver is usually 365."
+   "description": "0 = never expires. A range waiver is usually 365.",
+   "depends_on": "eval:doc.scope!='Each firearm sold'"
+  },
+  {
+   "fieldname": "requirement",
+   "fieldtype": "Select",
+   "label": "Required",
+   "options": "Optional\nRequired by item\nRequired for every sale",
+   "default": "Required by item",
+   "in_list_view": 1,
+   "description": "Optional: only offered from the Agreements button. Required by item: a counter sale of an Item (or Item Group) that names this agreement waits for it. Required for every sale: every counter sale waits for it (not an FFL dealer's; a walk-in sale needs a named customer to sign)."
+  },
+  {
+   "fieldname": "scope",
+   "fieldtype": "Select",
+   "label": "Signed",
+   "options": "Per customer\nEach firearm sold",
+   "default": "Per customer",
+   "in_list_view": 1,
+   "description": "Per customer: one signature covers every visit until it expires. Each firearm sold: a new copy for every gun sold, naming that gun (a no-return agreement)."
   },
   {
    "fieldname": "show_on_counter_panel",
@@ -77,7 +98,7 @@
    "fieldtype": "Text Editor",
    "label": "Agreement Text",
    "reqd": 1,
-   "description": "Placeholders: {{ customer_name }}, {{ first_name }}, {{ date }}, {{ store_name }}, {{ store_address }}, {{ valid_days }}."
+   "description": "Placeholders: {{ customer_name }}, {{ first_name }}, {{ date }}, {{ store_name }}, {{ store_address }}, {{ valid_days }}; for Each firearm sold also {{ item_name }}, {{ manufacturer }}, {{ model }}, {{ caliber }}, {{ serial_no }}, {{ price }}."
   },
   {
    "fieldname": "description",
@@ -88,7 +109,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-16 12:00:00.000000",
+ "modified": "2026-10-17 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Agreement Template",

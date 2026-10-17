@@ -165,15 +165,14 @@ class SendToTablet(_Base):
 
 class RegisterPrompt(_Base):
 
-	def test_missing_for_items(self):
+	def test_the_cart_lists_what_it_needs(self):
 		item = frappe.get_doc({"doctype": "Item", "item_code": _uniq("Lane Hour"), "item_group": "All Item Groups",
 			"stock_uom": "Nos", "is_stock_item": 0, "ffl_required_agreement": self.tpl.name})
 		item.insert(ignore_permissions=True)
-		plain = frappe.get_doc({"doctype": "Item", "item_code": _uniq("Targets"), "item_group": "All Item Groups",
-			"stock_uom": "Nos", "is_stock_item": 0})
-		plain.insert(ignore_permissions=True)
-		self.assertEqual(agreements.missing_for_items(self.cust.name, [item.name, plain.name]), [self.tpl.name])
+		rows = lambda: agreements.agreements_for_sale(self.cust.name, [{"item_code": item.name}])["rows"]
+		mine = [r for r in rows() if r["template"] == self.tpl.name]
+		self.assertEqual([(r["required"], r["state"]) for r in mine], [(True, "missing")])
 		_, token = self.request()
 		self.sign(token)
-		self.assertEqual(agreements.missing_for_items(self.cust.name, frappe.as_json([item.name])), [])
-		self.assertEqual(agreements.missing_for_items(self.cust.name, []), [])
+		mine = [r for r in rows() if r["template"] == self.tpl.name]
+		self.assertEqual([(r["required"], r["state"]) for r in mine], [(True, "signed")])

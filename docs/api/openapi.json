@@ -142,6 +142,23 @@
             "type": "integer",
             "description": "Valid For (Days)"
           },
+          "requirement": {
+            "type": "string",
+            "enum": [
+              "Optional",
+              "Required by item",
+              "Required for every sale"
+            ],
+            "description": "Required"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "Per customer",
+              "Each firearm sold"
+            ],
+            "description": "Signed"
+          },
           "show_on_counter_panel": {
             "type": "integer",
             "enum": [
@@ -646,6 +663,14 @@
           "template_version": {
             "type": "integer",
             "description": "Agreement Version"
+          },
+          "serial_no": {
+            "type": "string",
+            "description": "Firearm (Serial No) (Link: Serial No)"
+          },
+          "item_code": {
+            "type": "string",
+            "description": "Item (Link: Item)"
           },
           "status": {
             "type": "string",
@@ -4933,17 +4958,75 @@
     }
   },
   "paths": {
+    "/api/method/ffl_core.agreements.agreements_for_sale": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Every active agreement and where this customer stands, for the register's Agreements button.",
+        "description": "**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/agreements.py:336`",
+        "operationId": "ffl_core.agreements.agreements_for_sale",
+        "responses": {
+          "200": {
+            "description": "{\"rows\": [{\"template\", \"scope\", \"requirement\", \"required\": whether this sale needs it, \"serial_no\", \"item_code\", \"item_name\", \"rate\", \"state\", \"expires_on\", \"agreement\"}]} — a Per customer template once, an Each firearm sold one once per gun in the cart (or once with no gun when the cart has none, so it can still be seen).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "customer": {
+                    "type": "string",
+                    "description": "Customer name (document id)."
+                  },
+                  "items": {
+                    "description": "The cart: [{\"item_code\", \"serial_no\", \"rate\"}] (serial_no may hold several, one per line)."
+                  },
+                  "sale": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The POS Invoice, once saved."
+                  }
+                },
+                "required": [
+                  "customer"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.agreements.get_customer_agreements": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "The Agreements section of the Customer form.",
-        "description": "**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/agreements.py:449`",
+        "description": "**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/agreements.py:635`",
         "operationId": "ffl_core.agreements.get_customer_agreements",
         "responses": {
           "200": {
-            "description": "{\"rows\": [{\"name\", \"template\", \"status\", \"signed_on\", \"signed_via\", \"expires_on\", \"signed_pdf\"}] newest first, \"can_manage\": whether the caller may void or record paper copies}.",
+            "description": "{\"rows\": [{\"name\", \"template\", \"serial_no\", \"status\", \"signed_on\", \"signed_via\", \"expires_on\", \"signed_pdf\"}] newest first, \"can_manage\": whether the caller may void or record paper copies}.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4987,7 +5070,7 @@
           "webhooks"
         ],
         "summary": "What the signing page shows for a one-time link (Guest).",
-        "description": "Only the customer's name, the agreement's title and text, and the store's\nname — nothing else about the customer. Every invalid, used, void or\nexpired link gets the same error. 30 calls an hour per link and 600 per IP\naddress. A copy sent before its template's text changed is shown (and from\nthen on carries) the current text.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/agreements.py:539`",
+        "description": "Only the customer's name, the agreement's title and text, and the store's\nname — nothing else about the customer. Every invalid, used, void or\nexpired link gets the same error. 30 calls an hour per link and 600 per IP\naddress. A copy sent before its template's text changed is shown (and from\nthen on carries) the current text.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/agreements.py:725`",
         "operationId": "ffl_core.agreements.load_for_signing",
         "responses": {
           "200": {
@@ -5030,65 +5113,13 @@
         }
       }
     },
-    "/api/method/ffl_core.agreements.missing_for_items": {
-      "post": {
-        "tags": [
-          "ffl_core"
-        ],
-        "summary": "Agreements these Items require that *customer* has not signed (the register's prompt).",
-        "description": "Only the Items' own ``ffl_required_agreement``; extension providers need the\nwhole sale and are checked at submit (:func:`refuse_missing_required`).\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/agreements.py:203`",
-        "operationId": "ffl_core.agreements.missing_for_items",
-        "responses": {
-          "200": {
-            "description": "Active Agreement Template names still to sign (pending or expired count as unsigned).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "message": {
-                      "type": "array"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/FrappeError"
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "customer": {
-                    "type": "string",
-                    "description": "Customer name (document id)."
-                  },
-                  "item_codes": {
-                    "description": "Item codes in the cart."
-                  }
-                },
-                "required": [
-                  "customer",
-                  "item_codes"
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/method/ffl_core.agreements.record_paper_agreement": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "Manager records a copy the customer signed on paper.",
-        "description": "The scan must already be attached to this Customer Agreement; it is made\nprivate and becomes the signed copy. The copy turns Signed via Paper, its\nexpiry counts from the date on the paper, and who recorded it, when, and the\nfile go on the timeline. A missing signature can never be waived: without a\nsigned scan there is nothing to record.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/agreements.py:387`",
+        "description": "The scan must already be attached to this Customer Agreement; it is made\nprivate and becomes the signed copy. The copy turns Signed via Paper, its\nexpiry counts from the date on the paper, and who recorded it, when, and the\nfile go on the timeline. A missing signature can never be waived: without a\nsigned scan there is nothing to record.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/agreements.py:573`",
         "operationId": "ffl_core.agreements.record_paper_agreement",
         "responses": {
           "200": {
@@ -5161,7 +5192,7 @@
           "ffl_core"
         ],
         "summary": "Build a signed copy's PDF again (when the background job failed).",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/agreements.py:469`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/agreements.py:655`",
         "operationId": "ffl_core.agreements.regenerate_signed_pdf",
         "responses": {
           "200": {
@@ -5209,7 +5240,7 @@
           "ffl_core"
         ],
         "summary": "Send a customer an agreement to sign.",
-        "description": "Creates the customer's Pending copy of the template, or re-issues the one\nalready pending (its old link stops working and its text is rendered again).\nWhile that copy still has a working link — the customer may be signing on the\ntablet right now — nothing changes unless ``replace`` is 1: the answer is\n``{\"name\", \"link_open\": True, \"token_expires\"}`` so the counter can ask first.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/agreements.py:265`",
+        "description": "Creates the customer's Pending copy of the template, or re-issues the one\nalready pending (its old link stops working and its text is rendered again).\nWhile that copy still has a working link — the customer may be signing on the\ntablet right now — nothing changes unless ``replace`` is 1: the answer is\n``{\"name\", \"link_open\": True, \"token_expires\"}`` so the counter can ask first.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/agreements.py:439`",
         "operationId": "ffl_core.agreements.request_agreement",
         "responses": {
           "200": {
@@ -5261,6 +5292,20 @@
                       "null"
                     ],
                     "description": "Signing Terminal name, for ``tablet``; must be active and paired."
+                  },
+                  "serial_no": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The gun, for an Each firearm sold template (required there)."
+                  },
+                  "price": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "The gun's price in this sale, for the text's ``{{ price }}``."
                   }
                 },
                 "required": [
@@ -5279,7 +5324,7 @@
           "webhooks"
         ],
         "summary": "Sign an agreement through a one-time link (Guest).",
-        "description": "Checked before anything is written: the \"I agree\" tick, the typed name, the\ntoken (same error for every invalid one), the signature (a PNG of at most\n500 KB and 2000 px with ink on it) and the age rule. A link opened as a QR\ncode at the counter, or on a paired signing tablet (its device key sent as\n``terminal_secret``; the copy records which tablet), is recorded as signed on\na Tablet, an emailed one as Remote. The link is used up; the signed PDF is built and emailed afterwards.\nWhen the template's text changed after the page was opened, nothing is signed\nand the signer is asked to reload and read the new text. 10 calls an hour per\nlink and 300 per IP address.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/agreements.py:617`",
+        "description": "Checked before anything is written: the \"I agree\" tick, the typed name, the\ntoken (same error for every invalid one), the signature (a PNG of at most\n500 KB and 2000 px with ink on it) and the age rule. A link opened as a QR\ncode at the counter, or on a paired signing tablet (its device key sent as\n``terminal_secret``; the copy records which tablet), is recorded as signed on\na Tablet, an emailed one as Remote. The link is used up; the signed PDF is built and emailed afterwards.\nWhen the template's text changed after the page was opened, nothing is signed\nand the signer is asked to reload and read the new text. 10 calls an hour per\nlink and 300 per IP address.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/agreements.py:804`",
         "operationId": "ffl_core.agreements.submit_signature",
         "responses": {
           "200": {
@@ -5360,7 +5405,7 @@
           "ffl_core"
         ],
         "summary": "Manager voids a copy (sent by mistake, signed by the wrong person).",
-        "description": "A Pending copy's link stops working. The copy is kept, marked Void, and the\nreason goes on its timeline.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/agreements.py:359`",
+        "description": "A Pending copy's link stops working. The copy is kept, marked Void, and the\nreason goes on its timeline.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/agreements.py:545`",
         "operationId": "ffl_core.agreements.void_agreement",
         "responses": {
           "200": {
