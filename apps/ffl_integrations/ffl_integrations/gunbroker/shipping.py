@@ -382,8 +382,7 @@ def _read_back(client: GunBrokerClient, order, tracking: str,
 		# Only when we actually sent one. An order we deliberately sent no
 		# Carrier for reads back 0/Unknown, and asserting on that would fail
 		# every DHL shipment for doing exactly what it was told to do.
-		stored_carrier = cint(get_field(remote, "shipCarrier", "ShipCarrier",
-			default=0))
+		stored_carrier = cint(kv_key(get_field(remote, "shipCarrier", "ShipCarrier"), 0))
 		if stored_carrier != carrier:
 			return False, (f"GunBroker reports carrier {stored_carrier}, "
 				f"we sent {carrier}"), status

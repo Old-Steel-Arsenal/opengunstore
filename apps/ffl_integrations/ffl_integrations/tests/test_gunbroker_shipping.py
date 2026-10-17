@@ -193,6 +193,17 @@ class TestWriteBack(_ShippingCase):
 		self.assertIn("carrier not mapped: dhl_express", result["warnings"])
 		self.assertEqual(self.alerts, [])
 
+	def test_the_read_back_reads_gunbrokers_key_pair_enums(self):
+		# GET /Orders returns shipCarrier and status as {"code": "label"}, not
+		# bare integers. Parsed as ints both read 0, and every mapped-carrier
+		# shipment would fail its read-back for ever.
+		order = self._order()
+		result, _client = self._push(order, label=("1Z999", "ups", ""),
+			remote=fx.order_detail(tracking="1Z999", carrier={"2": "UPS"},
+				status={"5": "Order Complete"}))
+		self.assertTrue(result["ok"])
+		self.assertEqual(result["gb_status"], 5)
+
 	def test_the_read_back_is_what_decides_success(self):
 		# A 200 from a PUT is not evidence: GunBroker accepts and silently
 		# ignores fields it does not want.

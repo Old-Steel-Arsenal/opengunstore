@@ -144,7 +144,7 @@
   {
    "fieldname": "gb_status",
    "fieldtype": "Int",
-   "label": "GunBroker Status",
+   "label": "GunBroker Status Code",
    "read_only": 1,
    "hidden": 1
   },
@@ -759,7 +759,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-17 18:00:00",
+ "modified": "2026-10-17 18:30:00",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "GunBroker Order",

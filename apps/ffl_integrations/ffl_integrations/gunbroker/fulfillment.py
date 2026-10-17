@@ -225,7 +225,9 @@ def _pending_row(order, *, ss_enabled: bool, limit_days: int = 7, today=None,
 		"customer": order.customer or order.customer_name or order.name,
 		"customer_name": order.customer_name or order.buyer_username or "",
 		"is_business": False,
-		"paid": bool(order.payment_received),
+		# Money WE recorded, the fact the Dispose gate reads; GunBroker's own
+		# paymentReceived is a click on their site.
+		"paid": bool((order.payment_mode_used or "").strip()),
 		"paid_total": flt(order.payment_amount),
 		"outstanding_amount": flt(invoice.get("outstanding_amount")),
 		"grand_total": flt(order.order_total),
