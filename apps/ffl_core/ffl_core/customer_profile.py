@@ -98,11 +98,13 @@ def blank_id_numbers_unless_enabled(doc) -> None:
 
 
 def stored_id_counts() -> dict:
-	"""How many dates of birth and ID numbers are stored across all customers."""
+	"""How many dates of birth and ID numbers are stored across all customers (a gunsmith
+	work order's copy of the owner's ID number counts as one)."""
 	return {
 		"dates_of_birth": frappe.db.count("Customer", {"date_of_birth": ["is", "set"]}),
 		"id_numbers": frappe.db.count("Customer ID Document",
-			{"parenttype": "Customer", "id_number": ["is", "set"]}),
+			{"parenttype": "Customer", "id_number": ["is", "set"]})
+			+ frappe.db.count("Gunsmith Work Order", {"id_number": ["is", "set"]}),
 	}
 
 
@@ -123,6 +125,8 @@ def erase_stored_ids() -> dict:
 	frappe.db.sql("UPDATE `tabCustomer` SET date_of_birth = NULL WHERE date_of_birth IS NOT NULL")
 	frappe.db.sql("UPDATE `tabCustomer ID Document` SET id_number = NULL "
 		"WHERE parenttype = 'Customer' AND id_number IS NOT NULL AND id_number != ''")
+	# The bound book's own record (the acquisition) keeps the ID it needs; the work order's copy goes.
+	frappe.db.sql("UPDATE `tabGunsmith Work Order` SET id_number = NULL WHERE id_number IS NOT NULL AND id_number != ''")
 	frappe.clear_cache(doctype="Customer")
 	return counts
 

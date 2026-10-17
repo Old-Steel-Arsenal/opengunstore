@@ -18,7 +18,7 @@ The family a customer belongs to, for the Customer form's Family section.
 
 **Returns:** {"primary": {"name", "customer_name"} or None, "relationship": the customer's relationship to that primary or None, "members": [{"name", "customer_name", "relationship"}] — empty for a member, "can_merge": whether the caller may merge customers (drives the form's Merge button)}.
 
-<sub>`apps/ffl_core/ffl_core/customer_profile.py:293`</sub>
+<sub>`apps/ffl_core/ffl_core/customer_profile.py:297`</sub>
 
 ## `get_stored_id_counts`
 
@@ -30,7 +30,7 @@ What turning off Store Customer ID Numbers would erase, for the FFL Settings con
 
 **Returns:** {"dates_of_birth": int, "id_numbers": int, "total": int} across all customers.
 
-<sub>`apps/ffl_core/ffl_core/customer_profile.py:131`</sub>
+<sub>`apps/ffl_core/ffl_core/customer_profile.py:135`</sub>
 
 ## `merge_customer`
 
@@ -62,4 +62,4 @@ would nest one family inside another.
 
 **Returns:** {"name": target, "customer_name": target's display name, "alerts_copied": int, "ids_copied": int}.
 
-<sub>`apps/ffl_core/ffl_core/customer_profile.py:319`</sub>
+<sub>`apps/ffl_core/ffl_core/customer_profile.py:323`</sub>

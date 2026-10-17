@@ -1657,6 +1657,8 @@ def issue_serial(item_code: str, serial: str, warehouse: str, *, remarks: str | 
 		frappe.throw(
 			frappe._("Cannot issue stock for {0}: warehouse {1} has no company.").format(serial, warehouse),
 			title=frappe._("Warehouse Misconfigured"))
+	from ffl_core.warehouses import custody_warehouse_names
+
 	se = frappe.get_doc({
 		"doctype": "Stock Entry",
 		"stock_entry_type": "Material Issue",
@@ -1668,6 +1670,8 @@ def issue_serial(item_code: str, serial: str, warehouse: str, *, remarks: str | 
 			"s_warehouse": warehouse,
 			"use_serial_batch_fields": 1,
 			"serial_no": serial,
+			# A customer's gun in custody is held at zero cost by design; issuing it is not a missing valuation.
+			"allow_zero_valuation_rate": 1 if warehouse in custody_warehouse_names() else 0,
 		}],
 	})
 	se.flags.ignore_permissions = True

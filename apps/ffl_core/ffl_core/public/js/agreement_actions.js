@@ -40,12 +40,14 @@
 
 	// The pending copy may still have a working link — the customer could be signing
 	// on the tablet right now. Ask before a new link cancels it.
-	// extra: {serial_no, price} for an agreement signed for each firearm sold.
+	// extra: {serial_no, price} for an agreement signed for each firearm sold;
+	// {reference_doctype, reference_name} for one signed for a record (Per document).
 	function send(customer, template, deliver, replace, terminal, extra) {
 		extra = extra || {};
 		return frappe.call({ method: M + 'request_agreement', freeze: true,
 			args: { customer: customer, template: template, deliver: deliver, replace: replace ? 1 : 0, terminal: terminal || null,
-				serial_no: extra.serial_no || null, price: extra.price || null } })
+				serial_no: extra.serial_no || null, price: extra.price || null,
+				reference_doctype: extra.reference_doctype || null, reference_name: extra.reference_name || null } })
 			.then(function (r) {
 				var m = r.message || {};
 				if (!m.link_open) return m;
@@ -76,8 +78,10 @@
 		var done = opts.done || function () {};
 		var manager = isManager();
 		var who = opts.customer_name || customer;
-		// One gun's copy of an Each firearm sold agreement: the template and the gun are fixed.
-		var extra = opts.serial_no ? { serial_no: opts.serial_no, price: opts.price } : null;
+		// One gun's copy of an Each firearm sold agreement, or one record's copy of a Per
+		// document one: the template and what it is for are fixed.
+		var extra = opts.serial_no ? { serial_no: opts.serial_no, price: opts.price }
+			: opts.reference_name ? { reference_doctype: opts.reference_doctype, reference_name: opts.reference_name } : null;
 		return frappe.call({ method: 'ffl_core.signing_terminal.list_terminals' })
 			.then(function (r) { return (r.message || []).filter(function (t) { return t.paired; }); },
 				function () { return []; })
@@ -91,7 +95,10 @@
 					: { fieldtype: 'Link', fieldname: 'template', label: __('Agreement'), options: 'Agreement Template', reqd: 1,
 						default: template || '', get_query: function () { return { filters: { active: 1, scope: 'Per customer' } }; } },
 			];
-			if (extra) {
+			if (extra && extra.reference_name) {
+				fields.push({ fieldtype: 'HTML', fieldname: 'record', options: '<p>' + __('For {0} {1}',
+					[esc(__(extra.reference_doctype)), '<b>' + esc(extra.reference_name) + '</b>']) + '</p>' });
+			} else if (extra) {
 				fields.push({ fieldtype: 'HTML', fieldname: 'gun', options: '<p>' + __('For the firearm {0}', ['<b>'
 					+ esc((opts.item_name ? opts.item_name + ' · ' : '') + __('serial {0}', [opts.serial_no])) + '</b>']) + '</p>' });
 			}

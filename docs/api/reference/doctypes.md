@@ -38,7 +38,7 @@ The text of a waiver or agreement customers sign.
 | `version` | Int | Version |  |  |
 | `valid_days` | Int | Valid For (Days) |  |  |
 | `requirement` | Select | Required |  | Optional, Required by item, Required for every sale |
-| `scope` | Select | Signed |  | Per customer, Each firearm sold |
+| `scope` | Select | Signed |  | Per customer, Each firearm sold, Per document |
 | `show_on_counter_panel` | Check | Show on Counter Panel |  |  |
 | `minors_need_guardian` | Check | Minors Need a Parent or Guardian |  |  |
 | `body` | Text Editor | Agreement Text | ✓ |  |
@@ -337,6 +337,8 @@ app: `ffl_core` · module: FFL Core · single · roles: System Manager
 | `receipt_footer_note` | Small Text | Receipt Footer Note |  |  |
 | `shipping_price_includes_tax` | Check | Shipping Price Includes Sales Tax |  |  |
 | `counter_lock_minutes` | Int | Lock Idle Screen After (minutes) |  |  |
+| `gunsmith_labor_item` | Link | Gunsmith Labor Item |  | Item |
+| `gunsmith_agreement_template` | Link | Intake Authorization |  | Agreement Template |
 | `paper_4473_mode` | Check | Paper 4473 Mode |  |  |
 | `transfer_fee_item` | Link | Transfer Fee Item |  | Item |
 | `transfer_fee_amount` | Currency | Default Transfer Fee |  |  |
@@ -367,6 +369,69 @@ One row per completed ATF Form 4473 (FastBound, paper or manager override). Neve
 | `pdf_file` | Attach | Signed 4473 PDF (private copy) |  |  |
 | `pdf_attempts` | Int | PDF Fetch Attempts |  |  |
 | `pdf_error` | Small Text | Last PDF Fetch Error |  |  |
+
+## Gunsmith Work Order
+
+app: `ffl_core` · module: FFL Core · roles: Sales Manager, Sales User, Stock Manager, System Manager
+
+A customer's gun left for gunsmithing: intake, authorization, deposit, the work, and pick-up.
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `customer` | Link | Customer | ✓ | Customer |
+| `customer_name` | Data | Customer Name |  |  |
+| `phone` | Data | Phone |  | Phone |
+| `email` | Data | Email |  | Email |
+| `address` | Small Text | Address |  |  |
+| `status` | Select | Status |  | Received, In Progress, Ready, Picked Up, Cancelled |
+| `company` | Link | Company | ✓ | Company |
+| `received_by` | Link | Received By |  | User |
+| `received_on` | Date | Date Received | ✓ |  |
+| `manufacturer` | Data | Manufacturer | ✓ |  |
+| `model` | Data | Model | ✓ |  |
+| `caliber` | Data | Caliber / Gauge |  |  |
+| `serial_number` | Data | Serial Number | ✓ |  |
+| `firearm_type` | Select | Firearm Type |  | , Pistol, Revolver, Rifle, Shotgun, Receiver, Other Firearm, Silencer, Short Barreled Rifle, Short Barreled Shotgun, Machine Gun, Destructive Device, Any Other Weapon |
+| `accessories` | Small Text | Accessories |  |  |
+| `condition` | Small Text | Condition |  |  |
+| `firearm_notes` | Small Text | Notes |  |  |
+| `log_in_bound_book` | Check | Log in Bound Book |  |  |
+| `id_type` | Select | Customer ID Type |  | , Driver License, State ID, Passport, Military ID, Other |
+| `id_number` | Data | Customer ID Number |  |  |
+| `purchase_receipt` | Link | Custody Receipt |  | Purchase Receipt |
+| `item_code` | Link | Item |  | Item |
+| `serial_no` | Link | Serial No |  | Serial No |
+| `disposition` | Link | Disposition |  | FFL Disposition |
+| `work_requested` | Small Text | Work Requested | ✓ |  |
+| `estimated_cost` | Currency | Estimated Cost |  | Company:company:default_currency |
+| `deposit_amount` | Currency | Deposit |  | Company:company:default_currency |
+| `estimated_completion` | Date | Estimated Completion |  |  |
+| `intake_agreement` | Link | Intake Authorization |  | Customer Agreement |
+| `deposit_invoice` | Link | Deposit Invoice |  | POS Invoice |
+| `deposit_held` | Currency | Deposit Held |  | Company:company:default_currency |
+| `gunsmith` | Link | Gunsmith |  | User |
+| `work_performed` | Text | Work Performed |  |  |
+| `lines` | Table | Charges |  | Gunsmith Work Order Line |
+| `final_cost` | Currency | Final Cost |  | Company:company:default_currency |
+| `completed_on` | Date | Date Completed |  |  |
+| `notified_via` | Select | Customer Notified By |  | , Phone, Email, Text |
+| `notified_on` | Datetime | Date Notified |  |  |
+| `notified_by` | Link | Notified By |  | User |
+| `pickup_invoice` | Link | Pick-up Invoice |  | POS Invoice |
+| `picked_up_on` | Datetime | Date Picked Up |  |  |
+| `cancel_reason` | Small Text | Cancel Reason |  |  |
+
+## Gunsmith Work Order Line
+
+app: `ffl_core` · module: FFL Core · child table
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `item_code` | Link | Item | ✓ | Item |
+| `description` | Small Text | Description |  |  |
+| `qty` | Float | Qty | ✓ |  |
+| `rate` | Currency | Rate |  |  |
+| `amount` | Currency | Amount |  |  |
 
 ## Inventory Count
 

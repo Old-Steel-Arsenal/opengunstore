@@ -108,6 +108,21 @@
    "open_in_new_tab": 0,
    "show_arrow": 0,
    "type": "Link",
+   "label": "Gunsmith work orders",
+   "link_type": "DocType",
+   "link_to": "Gunsmith Work Order"
+  },
+  {
+   "added": 0,
+   "child": 1,
+   "collapsible": 1,
+   "hidden": 0,
+   "indent": 0,
+   "is_default_module": 1,
+   "keep_closed": 0,
+   "open_in_new_tab": 0,
+   "show_arrow": 0,
+   "type": "Link",
    "label": "Cash drawer",
    "link_type": "Page",
    "link_to": "cash-drawer"
@@ -514,7 +529,7 @@
    "icon": "settings"
   }
  ],
- "modified": "2026-10-17 10:00:00.000000",
+ "modified": "2026-10-17 18:30:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Gun Shop",

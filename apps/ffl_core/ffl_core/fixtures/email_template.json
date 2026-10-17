@@ -22,5 +22,13 @@
   "use_html": 1,
   "response_html": "<p>Hi {{ customer_name | e }},</p><p>Thank you for signing <strong>{{ title | e }}</strong>. Your signed copy is attached.</p><p>— {{ store_name | e }}</p>",
   "response": "Hi {{ customer_name }}, thank you for signing {{ title }}. Your signed copy is attached."
+ },
+ {
+  "doctype": "Email Template",
+  "name": "Gunsmith Work Ready",
+  "subject": "Your {{ firearm }} is ready for pick-up — {{ store_name }}",
+  "use_html": 1,
+  "response_html": "<p>Hi {{ customer_name | e }},</p><p>The work on your <strong>{{ firearm | e }}</strong> (work order {{ work_order | e }}) is done and it is ready to pick up at {{ store_name | e }}.</p><p>Please bring a photo ID.</p><p>— {{ store_name | e }}</p>",
+  "response": "Hi {{ customer_name }}, your {{ firearm }} (work order {{ work_order }}) is ready to pick up at {{ store_name }}. Please bring a photo ID."
  }
 ]

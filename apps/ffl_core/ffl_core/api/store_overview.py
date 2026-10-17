@@ -312,6 +312,7 @@ CORE_RECORDS = [
 		("POS invoices", "DocType", "POS Invoice"),
 		("Sales invoices", "DocType", "Sales Invoice"),
 		("Sales orders", "DocType", "Sales Order"),
+		("Gunsmith work orders", "DocType", "Gunsmith Work Order"),
 		("Sales report", "Report", "Sales Report"),
 		("Cash drawer weekly", "Report", "Cash Drawer Weekly"),
 		("Card payments", "DocType", "Payroc Terminal Payment"),
