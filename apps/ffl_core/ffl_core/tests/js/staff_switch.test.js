@@ -22,3 +22,15 @@ test('pickAction: yourself closes (or unlocks when locked), anyone else signs in
 	assert.strictEqual(ss.pickAction('b@x', 'a@x', false), 'login');
 	assert.strictEqual(ss.pickAction('b@x', 'a@x', true), 'login');
 });
+
+test('withMenuItem: the entry goes first in the first group, once, and nothing else moves', () => {
+	const item = { name: 'ffl-switch-user', label: 'Switch user' };
+	const groups = [{ group: '', options: [{ name: 'settings' }, { name: 'reload' }] }, { group: '', options: [{ name: 'logout' }] }];
+	const out = ss.withMenuItem(groups, item);
+	assert.deepStrictEqual(out[0].options.map((o) => o.name), ['ffl-switch-user', 'settings', 'reload']);
+	assert.deepStrictEqual(out[1], groups[1]);
+	assert.deepStrictEqual(groups[0].options.map((o) => o.name), ['settings', 'reload'], 'input left as it was');
+	assert.strictEqual(ss.withMenuItem(out, item)[0].options.length, 3, 'added once');
+	assert.deepStrictEqual(ss.withMenuItem([], item), []);
+	assert.strictEqual(ss.withMenuItem(undefined, item), undefined);
+});
