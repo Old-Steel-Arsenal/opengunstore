@@ -1180,6 +1180,10 @@
             ],
             "description": "Shipping Price Includes Sales Tax"
           },
+          "counter_lock_minutes": {
+            "type": "integer",
+            "description": "Lock Idle Screen After (minutes)"
+          },
           "gunsmith_labor_item": {
             "type": "string",
             "description": "Gunsmith Labor Item (Link: Item)"
@@ -13376,6 +13380,114 @@
                 },
                 "required": [
                   "secret"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.staff_switch.counter_users": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Everyone who can sign in at the counter, for the switch-user list.",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:63`",
+        "operationId": "ffl_core.staff_switch.counter_users",
+        "responses": {
+          "200": {
+            "description": "[{\"user\", \"full_name\", \"image\", \"current\": bool}] for enabled desk users holding a counter role, by name (never Administrator, the site's superuser); the signed-in one is marked current.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "array"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.staff_switch.lock_screen": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Lock this session's screen (idle, or the clerk walked away).",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:84`",
+        "operationId": "ffl_core.staff_switch.lock_screen",
+        "responses": {
+          "200": {
+            "description": "{\"locked\": 1}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.staff_switch.unlock_screen": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "The signed-in person unlocks their own screen with their password: 10 wrong",
+        "description": "tries per person per 10 minutes (counted per person, not per IP — a shop's\ncounters share one address). Signing in as someone else is frappe's login.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:96`",
+        "operationId": "ffl_core.staff_switch.unlock_screen",
+        "responses": {
+          "200": {
+            "description": "{\"locked\": 0}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "password": {
+                    "type": "string",
+                    "description": "The signed-in user's password."
+                  }
+                },
+                "required": [
+                  "password"
                 ]
               }
             }

@@ -14,6 +14,7 @@
   "pending_order_age_alert_days",
   "receipt_footer_note",
   "shipping_price_includes_tax",
+  "counter_lock_minutes",
   "section_gunsmithing",
   "gunsmith_labor_item",
   "column_break_gunsmithing",
@@ -87,6 +88,14 @@
    "label": "Shipping Price Includes Sales Tax",
    "default": "1",
    "description": "On: when an order is taxed, the shipping you enter is what the customer pays, with the sales tax already inside it, and the receipt says \"sales tax included\". Off: sales tax is added on top of the shipping. Only affects new orders; an existing order keeps the way it was created."
+  },
+  {
+   "fieldname": "counter_lock_minutes",
+   "fieldtype": "Int",
+   "label": "Lock Idle Screen After (minutes)",
+   "default": "5",
+   "non_negative": 1,
+   "description": "After this long with no touch or key, a counter screen locks and shows the staff list: the same person unlocks with their password, or another signs in. 0 = never."
   },
   {
    "fieldname": "section_gunsmithing",

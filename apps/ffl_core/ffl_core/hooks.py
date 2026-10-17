@@ -149,7 +149,11 @@ def _hashed(rel_path: str) -> str:
 
 # Extension SDK (since core 0.1.0): frappe.boot.gunshop_extensions = {id: {enabled, version, title}}
 # is what gunstore.extensions renders from.
-extend_bootinfo = ["ffl_core.extensions.extend_bootinfo"]
+extend_bootinfo = [
+	"ffl_core.extensions.extend_bootinfo",
+	# Idle lock minutes and whether this session's screen is locked (staff_switch.py).
+	"ffl_core.staff_switch.extend_bootinfo",
+]
 
 
 app_include_js = [
@@ -179,6 +183,8 @@ app_include_js = [
 	# ffl.agreements.request: the Request agreement dialog (QR code / email / paper)
 	# the Customer form and the counter panel's agreement chips open.
 	_hashed("js/agreement_actions.js"),
+	# Switch staff from the sidebar's bottom-left corner, and the idle lock screen.
+	_hashed("js/staff_switch.js"),
 ]
 
 doc_events = {
