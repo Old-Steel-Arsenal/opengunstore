@@ -351,6 +351,8 @@ doc_events = {
 			# A merged negative trade-in ticket: its payout is set against this invoice
 			# (compliance/trade_in_settlement), so nothing is left outstanding.
 			"ffl_core.compliance.trade_in_settlement.reconcile_payout_on_merge",
+			# Each firearm sold agreements this sale used (agreements.py).
+			"ffl_core.agreements.mark_firearm_agreements_used",
 		],
 		"on_cancel": [
 			# First: a merged invoice whose ticket's payout a drawer count relied on stays
@@ -366,6 +368,8 @@ doc_events = {
 			# SRBNB) + pay_on_sale_settled flipped back so the gun can re-sell.
 			"ffl_core.compliance.pay_on_sale.reverse_pay_on_sale_on_cancel",
 			"ffl_core.storage.stock_document_cancelled",
+			# Each firearm sold agreements this sale used (agreements.py).
+			"ffl_core.agreements.release_firearm_agreements",
 		],
 	},
 	"Sales Order": {
@@ -515,6 +519,8 @@ doc_events = {
 			# Invoice (is_consolidated=0) settles; its consolidated Sales Invoice
 			# (is_consolidated=1) is skipped, so each sale settles exactly once.
 			"ffl_core.compliance.pay_on_sale.settle_pay_on_sale_on_submit",
+			# Each firearm sold agreements this sale used (agreements.py).
+			"ffl_core.agreements.mark_firearm_agreements_used",
 		],
 		# A negative trade-in ticket: the payout goes back to the drawer first,
 		# refused once a count relied on it (compliance/trade_in_settlement).
@@ -529,6 +535,8 @@ doc_events = {
 			"ffl_core.compliance.consignment.reverse_consignment_payable",
 			# Pay-on-sale settlement reversed symmetrically + flag flipped back.
 			"ffl_core.compliance.pay_on_sale.reverse_pay_on_sale_on_cancel",
+			# Each firearm sold agreements this sale used (agreements.py).
+			"ffl_core.agreements.release_firearm_agreements",
 		],
 	},
 	"Purchase Receipt": {

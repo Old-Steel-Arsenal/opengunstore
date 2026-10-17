@@ -305,7 +305,7 @@ function fflRenderAgreements(frm) {
 		if (frm.doc.name !== name) return;
 		const rows = (r.message || {}).rows || [];
 		const body = rows.map((a) => `<tr>
-			<td>${frappe.utils.get_form_link('Customer Agreement', a.name, true, esc(a.template))}</td>
+			<td>${frappe.utils.get_form_link('Customer Agreement', a.name, true, esc(a.template))}${a.serial_no ? `<div class="small text-muted">${esc(__('serial {0}', [a.serial_no]))}</div>` : ''}</td>
 			<td><span class="indicator-pill ${tones[a.status] || 'gray'}">${esc(__(a.status))}</span></td>
 			<td class="text-muted">${a.signed_on ? esc(frappe.datetime.str_to_user(a.signed_on)) : ''}${a.signed_via ? ` · ${esc(__(a.signed_via))}` : ''}</td>
 			<td class="text-muted">${a.expires_on ? esc(__('Expires {0}', [frappe.datetime.str_to_user(a.expires_on)])) : ''}</td></tr>`).join('');

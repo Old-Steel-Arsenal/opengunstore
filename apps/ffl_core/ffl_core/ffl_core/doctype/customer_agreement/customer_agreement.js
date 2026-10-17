@@ -7,7 +7,7 @@ frappe.ui.form.on('Customer Agreement', {
 		const d = frm.doc;
 		if (d.status === 'Pending') {
 			frm.add_custom_button(__('Send again'), () => ffl.agreements.request(d.customer, d.template,
-				{customer_name: d.customer_name, done: () => frm.reload_doc()}));
+				{customer_name: d.customer_name, serial_no: d.serial_no, item_name: d.item_code, done: () => frm.reload_doc()}));
 			if (manager) {
 				frm.add_custom_button(__('Record paper copy'), () => ffl.agreements.recordPaper(frm));
 			}

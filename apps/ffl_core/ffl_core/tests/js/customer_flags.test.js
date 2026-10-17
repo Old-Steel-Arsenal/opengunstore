@@ -79,3 +79,12 @@ test('stripHtml: an agreement to ask for is a clickable, escaped chip', () => {
 	assert.match(html, /indicator-pill green" style="margin:2px 4px 0 0">Photo signed/);
 	assert.strictEqual((html.match(/data-ffl-agreement-template/g) || []).length, 1);
 });
+
+test('summarize: an Optional agreement not signed reads neutral, a required one orange', () => {
+	const chips = cf.summarize({ ...base, agreements: [
+		{ template: 'Range Waiver', state: 'missing', requirement: 'Optional' },
+		{ template: 'Lane Rules', state: 'missing', requirement: 'Required by item' },
+	] }).chips;
+	assert.deepStrictEqual(chips.map((c) => [c.label, c.tone]),
+		[['Range Waiver not signed', 'gray'], ['Lane Rules needed', 'orange']]);
+});

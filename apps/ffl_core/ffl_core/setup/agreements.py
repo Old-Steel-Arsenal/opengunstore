@@ -4,6 +4,8 @@
   have signed it before a counter sale of this Item is submitted
   (``agreements.refuse_missing_required``). Next to the Firearm flags on the
   first tab.
+* **Item Group** — the same field: every Item in the group and its sub-groups needs it,
+  unless the Item names its own (``agreements.required_for_item``).
 * **Customer** — an "Agreements" section on the Profile tab, after the merged
   aliases: one HTML slot the form script fills with the customer's copies and the
   Request agreement button.
@@ -21,6 +23,12 @@ FIELDS = {
 			"label": "Agreement Required to Buy", "insert_after": "is_antique",
 			"description": "The customer must have signed this before a counter sale of the item is submitted."},
 	],
+	"Item Group": [
+		{"fieldname": "ffl_required_agreement", "fieldtype": "Link", "options": "Agreement Template",
+			"label": "Agreement Required to Buy", "insert_after": "parent_item_group",
+			"description": "Every Item in this group (and its sub-groups) needs this agreement signed before a "
+				"counter sale is submitted, unless the Item names its own."},
+	],
 	"Customer": [
 		{"fieldname": "section_customer_agreements", "fieldtype": "Section Break", "label": "Agreements",
 			"insert_after": "customer_aliases"},
@@ -37,6 +45,12 @@ def ensure() -> dict:
 			ignore_validate=True)
 		for dt in FIELDS:
 			frappe.clear_cache(doctype=dt)
+		# Templates saved before Required / Signed existed keep what they meant then.
+		if frappe.db.table_exists("Agreement Template") and frappe.db.has_column("Agreement Template", "requirement"):
+			frappe.db.sql("""update `tabAgreement Template` set requirement = 'Required by item'
+				where ifnull(requirement, '') = ''""")
+			frappe.db.sql("""update `tabAgreement Template` set scope = 'Per customer'
+				where ifnull(scope, '') = ''""")
 		return {"ok": 1}
 	except Exception:
 		frappe.log_error(title="agreements.ensure failed", message=frappe.get_traceback())

@@ -8,7 +8,7 @@
 
 | module | endpoints |
 |---|---|
-| [`ffl_core.agreements`](ffl_core/agreements.md) | `get_customer_agreements`, `load_for_signing`, `missing_for_items`, `record_paper_agreement`, `regenerate_signed_pdf`, `request_agreement`, `submit_signature`, `void_agreement` |
+| [`ffl_core.agreements`](ffl_core/agreements.md) | `agreements_for_sale`, `get_customer_agreements`, `load_for_signing`, `record_paper_agreement`, `regenerate_signed_pdf`, `request_agreement`, `submit_signature`, `void_agreement` |
 | [`ffl_core.api.atf_link`](ffl_core/api.atf_link.md) | `create_party_from_atf` |
 | [`ffl_core.api.cash_drawer`](ffl_core/api.cash_drawer.md) | `clear_paid_outside`, `close_day`, `get_log`, `get_today`, `mark_paid_outside`, `preview_close`, `record_deposit`, `record_expense`, `record_from_bank`, `record_goods_payout`, `record_payout`, `undo_close`, `undo_entry` |
 | [`ffl_core.api.changelog`](ffl_core/api.changelog.md) | `get_changelog` |
