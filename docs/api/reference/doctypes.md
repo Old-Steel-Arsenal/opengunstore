@@ -404,7 +404,7 @@ A customer's gun left for gunsmithing: intake, authorization, deposit, the work,
 | `disposition` | Link | Disposition |  | FFL Disposition |
 | `work_requested` | Small Text | Work Requested | ✓ |  |
 | `estimated_cost` | Currency | Estimated Cost |  | Company:company:default_currency |
-| `deposit_amount` | Currency | Deposit |  | Company:company:default_currency |
+| `deposit_amount` | Currency | Paid at Intake |  | Company:company:default_currency |
 | `estimated_completion` | Date | Estimated Completion |  |  |
 | `intake_agreement` | Link | Intake Authorization |  | Customer Agreement |
 | `deposit_invoice` | Link | Deposit Invoice |  | POS Invoice |
@@ -891,8 +891,8 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sal
 |---|---|---|---|---|
 | `gb_order_id` | Data | GunBroker Order ID | ✓ |  |
 | `order_status` | Select | Status | ✓ | Pending Fulfillment, Transferred, Cancelled |
-| `gb_status` | Int | GunBroker Status |  |  |
-| `gb_status_label` | Data | GunBroker Status Label |  |  |
+| `gb_status` | Int | GunBroker Status Code |  |  |
+| `gb_status_label` | Data | GunBroker Status |  |  |
 | `order_date` | Datetime | Order Date |  |  |
 | `gb_last_modified` | Datetime | GunBroker Last Modified |  |  |
 | `acknowledged_at` | Datetime | Acknowledged At |  |  |
@@ -916,8 +916,8 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sal
 | `ffl_received` | Check | FFL Received |  |  |
 | `ffl_received_at` | Datetime | FFL Received At |  |  |
 | `ffl_status` | Data | FFL Status |  |  |
-| `effl_url` | Data | eFFL URL |  |  |
-| `seller_packet_url` | Data | Seller Packet URL |  |  |
+| `effl_url` | Small Text | eFFL URL |  |  |
+| `seller_packet_url` | Small Text | Seller Packet URL |  |  |
 | `cr_contact_name` | Data | Collector Name (as printed on license) |  |  |
 | `cr_license_expiry` | Date | C&R License Expiration |  |  |
 | `cr_premise_street` | Data | Licensed Premises — Address 1 |  |  |

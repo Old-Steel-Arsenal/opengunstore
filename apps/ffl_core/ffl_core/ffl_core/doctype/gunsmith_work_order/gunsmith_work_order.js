@@ -41,8 +41,15 @@ function act(frm, method, args, after) {
 	return frm.is_dirty() ? frm.save().then(run) : run();
 }
 
-function openInvoice(name) {
-	frappe.set_route('Form', 'POS Invoice', name);
+// Payments and pick-up are rung at the register, whose checkout takes cards (Recent
+// Orders › Work Orders: Take payment, Complete); Pick up opens this job's Complete there
+// (confirm the charges, then the cart) from these route options.
+function toRegister(frm, action) {
+	const go = () => {
+		frappe.route_options = { ffl_work_order: frm.doc.name, ffl_work_order_action: action || 'complete' };
+		frappe.set_route('point-of-sale');
+	};
+	return frm.is_dirty() ? frm.save().then(go) : go();
 }
 
 function draw(frm, st) {
@@ -59,7 +66,7 @@ function draw(frm, st) {
 		lines.push(__('Intake authorization: {0}', [label]));
 	}
 	if (st.deposit_held) lines.push(__('Deposit held: {0}', [cur(st.deposit_held)]));
-	if (st.drafts && st.drafts.deposit) lines.push(__('Deposit invoice {0} is open at the register.', [st.drafts.deposit]));
+	if (st.drafts && st.drafts.deposit) lines.push(__('A payment for this job is parked at the register ({0}).', [st.drafts.deposit]));
 	if (st.drafts && st.drafts.pickup) lines.push(__('Pick-up invoice {0} is open at the register.', [st.drafts.pickup]));
 	if (st.drafts && st.drafts.refund) lines.push(__('Deposit refund {0} is open at the register.', [st.drafts.refund]));
 	if (lines.length) frm.dashboard.set_headline(lines.map(frappe.utils.escape_html).join('<br>'));
@@ -69,10 +76,6 @@ function draw(frm, st) {
 			ffl.agreements.request(d.customer, auth.template, { customer_name: d.customer_name,
 				reference_doctype: d.doctype, reference_name: d.name, done: () => frm.reload_doc() });
 		}).addClass('btn-primary');
-	}
-	if (open && flt(d.deposit_amount) > 0 && !st.deposit_collected) {
-		frm.add_custom_button(st.drafts && st.drafts.deposit ? __('Open deposit invoice') : __('Take deposit'),
-			() => act(frm, 'take_deposit', {}, (m) => openInvoice(m.pos_invoice)), __('Money'));
 	}
 	if (open && !d.purchase_receipt) {
 		frm.add_custom_button(__('Log in bound book'), () => logDialog(frm), __('Bound book'));
@@ -86,9 +89,8 @@ function draw(frm, st) {
 	}
 	if (d.status === 'Ready') {
 		frm.add_custom_button(__('Notify customer'), () => notifyDialog(frm), __('Status'));
-		frm.add_custom_button(st.drafts && st.drafts.pickup ? __('Open pick-up invoice') : __('Pick up'), () => {
-			act(frm, 'open_pickup', {}, (m) => (m.pos_invoice ? openInvoice(m.pos_invoice) : frm.reload_doc()));
-		}).addClass('btn-primary');
+		frm.add_custom_button(st.drafts && st.drafts.pickup ? __('Open pick-up at the register') : __('Pick up at the register'),
+			() => toRegister(frm)).addClass('btn-primary');
 	}
 	if (open) {
 		frm.add_custom_button(__('Cancel work order'), () => {
@@ -97,8 +99,9 @@ function draw(frm, st) {
 		}, __('Status'));
 	}
 	if (!open && flt(st.deposit_held) > 0) {
-		frm.add_custom_button(st.drafts && st.drafts.refund ? __('Open deposit refund') : __('Refund deposit'),
-			() => act(frm, 'refund_deposit', {}, (m) => openInvoice(m.pos_invoice)), __('Money'));
+		// At the register, so a card payment is refunded to the card.
+		frm.add_custom_button(st.drafts && st.drafts.refund ? __('Open refund at the register') : __('Refund deposit at the register'),
+			() => toRegister(frm, 'refund'), __('Money'));
 	}
 }
 

@@ -278,10 +278,11 @@
   {
    "fieldname": "deposit_amount",
    "fieldtype": "Currency",
-   "label": "Deposit",
+   "label": "Paid at Intake",
    "options": "Company:company:default_currency",
    "non_negative": 1,
-   "description": "Taken at the register with Take deposit; it is held for the customer and comes off the bill at pick-up."
+   "read_only": 1,
+   "description": "What the customer paid towards the job when the gun was left (the register's Pay now). Payments are held for the customer (Deposit Held) and come off the bill at pick-up."
   },
   {
    "fieldname": "estimated_completion",

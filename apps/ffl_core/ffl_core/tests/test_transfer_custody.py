@@ -452,6 +452,20 @@ class TransferReceivePostsNoGeneralLedger(FrappeTestCase):
 		self.assertEqual(
 			[r for r in self._gl(res["name"]) if r["account"] == srbnb], [])
 
+	def test_no_missing_account_popup_for_a_custody_receive(self):
+		"""ERPNext tells the clerk "No accounting entries for the following warehouses: Customer
+		Custody - …" for every zero-valued row; for custody that is the design, not a missing
+		account, so the notice is dropped (gunsmith and transfer custody share this path)."""
+		text = "No accounting entries for the following warehouses"
+		frappe.clear_messages()
+		self._receive("TCU-GL-XFER-4", transfer=True, rate=10.0)
+		self.assertFalse([m for m in frappe.local.message_log if text in str(m)])
+		# Only custody: the same notice on any other receipt is ERPNext's and stays.
+		from ffl_core.api.receive_goods import _drop_no_accounting_notice
+		frappe.local.message_log = [{"message": "keep"}, {"message": text + ": X"}]
+		_drop_no_accounting_notice(1)
+		self.assertEqual(frappe.local.message_log, [{"message": "keep"}])
+
 	def test_a_transfer_gun_is_never_marked_pay_on_sale(self):
 		"""pay_on_sale parks a cost in SRBNB to settle at sale.  A custody gun
 		has no cost and will never be sold by this store."""
