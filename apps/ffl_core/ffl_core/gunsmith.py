@@ -179,7 +179,6 @@ def create_work_order(payload: str | dict) -> dict:
 		frappe.throw(_("Pay now is an amount paid towards the job, 0 or more."))
 	doc = frappe.get_doc({"doctype": DOCTYPE, **{f: data.get(f) for f in _INTAKE_FIELDS if data.get(f) not in (None, "")}})
 	doc.log_in_bound_book = cint(doc.log_in_bound_book)
-	doc.deposit_amount = pay_now
 	doc.insert()   # the user's own create permission; a logged gun is received in on_update (log_gun)
 	return {"name": doc.name, "customer": doc.customer, "status": doc.status, "purchase_receipt": doc.purchase_receipt,
 		"deposit_line": _deposit_row(doc, pay_now) if pay_now > 0 else None}
@@ -793,8 +792,12 @@ def on_invoice_submit(doc, method=None) -> None:
 		if cint(doc.is_return):
 			continue
 		job = frappe.get_doc(DOCTYPE, wo)
-		if any(r.item_code == DEPOSIT_ITEM and r.get(LINK_FIELD) == wo and flt(r.amount) > 0 for r in doc.items):
-			job.db_set("deposit_invoice", doc.name, update_modified=False)
+		paid = sum(flt(r.amount) for r in doc.items
+			if r.item_code == DEPOSIT_ITEM and r.get(LINK_FIELD) == wo and flt(r.amount) > 0)
+		if paid > 0:
+			# Paid at Intake is the first payment actually rung, not what the dialog said (a cart can be abandoned).
+			job.db_set({"deposit_invoice": doc.name, **({} if flt(job.deposit_amount) else {"deposit_amount": paid})},
+				update_modified=False)
 		elif job.status == READY:
 			complete_pickup(job, invoice=doc.name)
 

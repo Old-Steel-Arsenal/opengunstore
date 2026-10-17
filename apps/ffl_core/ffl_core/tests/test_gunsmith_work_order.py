@@ -491,15 +491,14 @@ class Register(_Base):
 			gunsmith.create_work_order(frappe.as_json({"customer": self.cust.name, "manufacturer": "Ruger"}))
 
 	def test_pay_now_at_intake(self):
-		"""Pay now: the job keeps the amount (its authorization prints it) and the register gets the
-		locked line for the cart, which books as a payment towards the job at checkout."""
+		"""Pay now: the register gets the locked line for the cart; the line books as a payment
+		towards the job, which records the amount (its authorization prints it) once that cart is paid."""
 		out = self._intake(pay_now=75)
 		line = out["deposit_line"]
 		self.assertEqual((line["item_code"], flt(line["rate"]), flt(line["ffl_locked_rate"]), line["ffl_work_order"]),
 			(DEPOSIT_ITEM, 75, 75, out["name"]))
 		job = frappe.get_doc(gunsmith.DOCTYPE, out["name"])
-		self.assertEqual(flt(job.deposit_amount), 75)
-		self.assertIn("75.00", job.agreement_context()["deposit"])
+		self.assertEqual(flt(job.deposit_amount), 0, "nothing is paid until the cart checks out")
 		inv = frappe.get_doc({"doctype": "POS Invoice", "company": COMPANY, "pos_profile": PROFILE,
 			"customer": self.cust.name, "items": [line]})
 		inv.set_missing_values()
@@ -507,6 +506,9 @@ class Register(_Base):
 		inv.insert()
 		_pay(inv.name)
 		self.assertEqual(gunsmith.deposit_held(job.name), 75)
+		job.reload()
+		self.assertEqual(flt(job.deposit_amount), 75)
+		self.assertIn("75.00", job.agreement_context()["deposit"])
 		with self.assertRaises(frappe.ValidationError):
 			self._intake(pay_now=-1)
 
