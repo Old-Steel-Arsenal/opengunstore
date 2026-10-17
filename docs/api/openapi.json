@@ -12616,11 +12616,11 @@
           "ffl_core"
         ],
         "summary": "Everyone who can sign in at the counter, for the switch-user list.",
-        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:68`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:63`",
         "operationId": "ffl_core.staff_switch.counter_users",
         "responses": {
           "200": {
-            "description": "[{\"user\", \"full_name\", \"image\", \"current\": bool}] for enabled desk users holding a counter role, by name; the signed-in one is marked current.",
+            "description": "[{\"user\", \"full_name\", \"image\", \"current\": bool}] for enabled desk users holding a counter role, by name (never Administrator, the site's superuser); the signed-in one is marked current.",
             "content": {
               "application/json": {
                 "schema": {
@@ -12646,7 +12646,7 @@
           "ffl_core"
         ],
         "summary": "Lock this session's screen (idle, or the clerk walked away).",
-        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:88`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:84`",
         "operationId": "ffl_core.staff_switch.lock_screen",
         "responses": {
           "200": {
@@ -12675,8 +12675,8 @@
         "tags": [
           "ffl_core"
         ],
-        "summary": "The signed-in person unlocks their own screen with their password (10 tries",
-        "description": "per 10 minutes per IP address).\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:101`",
+        "summary": "The signed-in person unlocks their own screen with their password: 10 wrong",
+        "description": "tries per person per 10 minutes (counted per person, not per IP — a shop's\ncounters share one address). Signing in as someone else is frappe's login.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:96`",
         "operationId": "ffl_core.staff_switch.unlock_screen",
         "responses": {
           "200": {

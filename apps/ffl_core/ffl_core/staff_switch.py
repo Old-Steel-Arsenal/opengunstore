@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.rate_limiter import rate_limit
 from frappe.utils import cint
 from frappe.utils.password import check_password
 
@@ -33,6 +32,7 @@ class WrongPassword(frappe.ValidationError):
 
 
 LOCK_KEY = "ffl_screen_locked"
+UNLOCK_TRIES, UNLOCK_WINDOW = 10, 600
 DEFAULT_LOCK_MINUTES = 5
 
 
@@ -59,23 +59,19 @@ def extend_bootinfo(bootinfo) -> None:
 	bootinfo.ffl_screen_locked = 1 if _session_locked() else 0
 
 
-def _require_counter_user() -> None:
-	if frappe.session.user == "Guest" or not (set(frappe.get_roles()) & set(COUNTER_ROLES)):
-		frappe.throw(_("Only counter staff can switch users here."), frappe.PermissionError)
-
-
 @frappe.whitelist()
 def counter_users() -> list[dict]:
 	"""Everyone who can sign in at the counter, for the switch-user list.
 
 	Returns:
 	    [{"user", "full_name", "image", "current": bool}] for enabled desk users
-	    holding a counter role, by name; the signed-in one is marked current.
+	    holding a counter role, by name (never Administrator, the site's superuser);
+	    the signed-in one is marked current.
 	"""
-	_require_counter_user()
+	frappe.only_for(COUNTER_ROLES)
 	holders = set(frappe.get_all("Has Role", filters={"role": ("in", COUNTER_ROLES), "parenttype": "User"},
 		pluck="parent"))
-	holders.discard("Guest")
+	holders -= {"Guest", "Administrator"}
 	if not holders:
 		return []
 	rows = frappe.get_all("User", filters={"name": ("in", list(holders)), "enabled": 1, "user_type": "System User"},
@@ -91,16 +87,16 @@ def lock_screen() -> dict:
 	Returns:
 	    {"locked": 1}.
 	"""
-	_require_counter_user()
+	frappe.only_for(COUNTER_ROLES)
 	_set_locked(1)
 	return {"locked": 1}
 
 
 @frappe.whitelist(methods=["POST"])
-@rate_limit(limit=10, seconds=600)
 def unlock_screen(password: str) -> dict:
-	"""The signed-in person unlocks their own screen with their password (10 tries
-	per 10 minutes per IP address).
+	"""The signed-in person unlocks their own screen with their password: 10 wrong
+	tries per person per 10 minutes (counted per person, not per IP — a shop's
+	counters share one address). Signing in as someone else is frappe's login.
 
 	Args:
 	    password: The signed-in user's password.
@@ -108,12 +104,19 @@ def unlock_screen(password: str) -> dict:
 	Returns:
 	    {"locked": 0}.
 	"""
-	_require_counter_user()
+	frappe.only_for(COUNTER_ROLES)
+	key = frappe.cache.make_key(f"ffl-unlock-fail:{frappe.session.user}")
+	if cint(frappe.cache.get(key)) >= UNLOCK_TRIES:
+		frappe.throw(_("Too many wrong passwords. Wait a few minutes, or pick someone else to sign in."),
+			WrongPassword, title=_("Locked"))
 	try:
 		check_password(frappe.session.user, password or "")
 	except frappe.AuthenticationError:
+		frappe.cache.set(key, 0, ex=UNLOCK_WINDOW, nx=True)
+		frappe.cache.incrby(key, 1)
 		# Not AuthenticationError itself: frappe answers that by clearing the session
 		# cookies (app.handle_exception), which would sign the person out for a typo.
 		frappe.throw(_("That password is not right."), WrongPassword, title=_("Locked"))
+	frappe.cache.delete(key)
 	_set_locked(0)
 	return {"locked": 0}

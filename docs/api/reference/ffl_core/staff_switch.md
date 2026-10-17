@@ -8,35 +8,36 @@ Source: `apps/ffl_core/ffl_core/staff_switch.py` · 3 endpoint(s)
 
 `POST /api/method/ffl_core.staff_switch.counter_users`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager
 
 Everyone who can sign in at the counter, for the switch-user list.
 
-**Returns:** [{"user", "full_name", "image", "current": bool}] for enabled desk users holding a counter role, by name; the signed-in one is marked current.
+**Returns:** [{"user", "full_name", "image", "current": bool}] for enabled desk users holding a counter role, by name (never Administrator, the site's superuser); the signed-in one is marked current.
 
-<sub>`apps/ffl_core/ffl_core/staff_switch.py:68`</sub>
+<sub>`apps/ffl_core/ffl_core/staff_switch.py:63`</sub>
 
 ## `lock_screen`
 
 `POST /api/method/ffl_core.staff_switch.lock_screen`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager
 
 Lock this session's screen (idle, or the clerk walked away).
 
 **Returns:** {"locked": 1}.
 
-<sub>`apps/ffl_core/ffl_core/staff_switch.py:88`</sub>
+<sub>`apps/ffl_core/ffl_core/staff_switch.py:84`</sub>
 
 ## `unlock_screen`
 
 `POST /api/method/ffl_core.staff_switch.unlock_screen`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager
 
-The signed-in person unlocks their own screen with their password (10 tries
+The signed-in person unlocks their own screen with their password: 10 wrong
 
-per 10 minutes per IP address).
+tries per person per 10 minutes (counted per person, not per IP — a shop's
+counters share one address). Signing in as someone else is frappe's login.
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
@@ -44,4 +45,4 @@ per 10 minutes per IP address).
 
 **Returns:** {"locked": 0}.
 
-<sub>`apps/ffl_core/ffl_core/staff_switch.py:101`</sub>
+<sub>`apps/ffl_core/ffl_core/staff_switch.py:96`</sub>

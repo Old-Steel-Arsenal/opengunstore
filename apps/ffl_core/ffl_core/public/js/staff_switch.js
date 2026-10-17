@@ -9,7 +9,8 @@
 //   (frappe.boot.ffl_counter_lock_minutes, 0 = never) the screen locks: the same
 //   list, no way out but a password — yours unlocks, anyone else's signs them in.
 //   The lock lives on the server session, so a reload comes back locked
-//   (frappe.boot.ffl_screen_locked).
+//   (frappe.boot.ffl_screen_locked), and every other desk tab of the browser locks,
+//   unlocks and follows a switch of user with it (BroadcastChannel).
 //
 // The pure half (idleMs, initials, pickAction) is Node-tested.
 (function (root, factory) {
@@ -48,6 +49,10 @@
 	var M = 'ffl_core.staff_switch.';
 	var esc = function (s) { return frappe.utils.escape_html(s == null ? '' : String(s)); };
 	var overlay = null;
+	// Every desk tab of this browser shares the session: lock, unlock and a switch of
+	// user reach them all, or the tab next door would be a way round the lock.
+	var channel = window.BroadcastChannel ? new BroadcastChannel('ffl-staff-switch') : null;
+	function tell(type) { try { if (channel) channel.postMessage({ type: type, user: frappe.session.user }); } catch (e) { /* best effort */ } }
 
 	function close() {
 		if (overlay) { overlay.remove(); overlay = null; }
@@ -136,8 +141,8 @@
 			$err.text('');
 			var action = api.pickAction(picked.user, frappe.session.user, locked);
 			var done = action === 'unlock'
-				? post(M + 'unlock_screen', { password: pwd }).then(function () { close(); resetIdle(); })
-				: login(picked.user, pwd).then(function () { location.reload(); });
+				? post(M + 'unlock_screen', { password: pwd }).then(function () { close(); resetIdle(); tell('unlock'); })
+				: login(picked.user, pwd).then(function () { tell('switch'); location.reload(); });
 			done.catch(function (e) {
 				$err.text((e && e.message) || __('That password is not right.'));
 				$pwd.val('').trigger('focus');
@@ -154,6 +159,7 @@
 	var idleTimer = null;
 	function lock() {
 		post(M + 'lock_screen').then(function () { show({ locked: true }); }, function () { show({ locked: true }); });
+		tell('lock');
 	}
 	function resetIdle() {
 		var ms = api.idleMs(frappe.boot && frappe.boot.ffl_counter_lock_minutes);
@@ -189,6 +195,14 @@
 		['mousemove', 'mousedown', 'keydown', 'touchstart', 'wheel', 'scroll'].forEach(function (ev) {
 			document.addEventListener(ev, poke, { passive: true, capture: true });
 		});
+		if (channel) {
+			channel.onmessage = function (e) {
+				var type = e.data && e.data.type;
+				if (type === 'lock') show({ locked: true });
+				else if (type === 'unlock' && overlay) { close(); resetIdle(); }
+				else if (type === 'switch') location.reload();   // the session now belongs to someone else
+			};
+		}
 		if (frappe.boot.ffl_screen_locked) show({ locked: true });
 		else resetIdle();
 	}

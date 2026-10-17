@@ -35,6 +35,7 @@ class StaffList(FrappeTestCase):
 		self.assertIn(manager, rows)
 		self.assertNotIn(buyer, rows)
 		self.assertNotIn(gone, rows)
+		self.assertNotIn("Administrator", rows)
 		self.assertTrue(rows[clerk]["current"])
 		self.assertFalse(rows[manager]["current"])
 
@@ -60,6 +61,21 @@ class Locking(SettingsSandbox, FrappeTestCase):
 			# A bare AuthenticationError would make frappe drop the session cookies.
 			self.assertIsNot(type(cm.exception), frappe.AuthenticationError)
 			self.assertTrue(staff_switch._session_locked())
+			staff_switch.unlock_screen(_PASSWORD)
+			self.assertFalse(staff_switch._session_locked())
+
+	def test_ten_wrong_passwords_pause_unlocking_for_that_person(self):
+		key = frappe.cache.make_key(f"ffl-unlock-fail:{frappe.session.user}")
+		self.addCleanup(frappe.cache.delete, key)
+		with _no_session_write():
+			staff_switch.lock_screen()
+			for _ in range(staff_switch.UNLOCK_TRIES):
+				with self.assertRaises(staff_switch.WrongPassword):
+					staff_switch.unlock_screen("wrong")
+			with self.assertRaisesRegex(staff_switch.WrongPassword, "Too many"):
+				staff_switch.unlock_screen(_PASSWORD)   # even the right one waits
+			self.assertGreater(frappe.cache.ttl(key), 0)
+			frappe.cache.delete(key)
 			staff_switch.unlock_screen(_PASSWORD)
 			self.assertFalse(staff_switch._session_locked())
 
