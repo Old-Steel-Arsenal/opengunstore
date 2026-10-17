@@ -112,3 +112,24 @@ test('cartConflict: only a cart with goods for another customer', () => {
 	assert.strictEqual(wo.cartConflict({ customer: '', items: [{}] }, 'B'), false);
 	assert.strictEqual(wo.cartConflict(null, 'B'), false);
 });
+
+test('cardActions: an unsigned open job offers Get it signed; a closed job holding money only Refund deposit', () => {
+	const open = { name: 'GWO-1', status: 'Received', authorization: 'missing', drafts: {} };
+	assert.deepStrictEqual(wo.cardActions(open).map((a) => a.action), ['authorize', 'payment', 'complete']);
+	assert.deepStrictEqual(wo.cardActions({ ...open, authorization: 'signed' }).map((a) => a.action), ['payment', 'complete']);
+	const closed = { name: 'GWO-2', status: 'Cancelled', deposit_held: 40, drafts: {} };
+	assert.deepStrictEqual(wo.cardActions(closed).map((a) => [a.action, a.label]), [['refund', 'Refund deposit']]);
+	assert.deepStrictEqual(wo.cardActions({ ...closed, drafts: { refund: 'ACC-PSINV-9' } }).map((a) => a.label), ['Open refund']);
+	assert.deepStrictEqual(wo.cardActions({ ...closed, deposit_held: 0 }), []);
+});
+
+test('runAction: Refund and Get it signed reach the register with the job (and the template)', () => {
+	const calls = [];
+	const env = { ...fakeEnv(calls, {}), refund: (row) => { calls.push(['refund', row.name]); return true; },
+		authorize: (row, t) => { calls.push(['authorize', row.name, t]); return true; } };
+	const list = { __fflWorkOrders: { authorization_template: 'Gunsmithing Authorization',
+		rows: [{ name: 'GWO-1', status: 'Cancelled' }, { name: 'GWO-2', status: 'Received' }] } };
+	wo.runAction(list, env, 'refund', 'GWO-1');
+	wo.runAction(list, env, 'authorize', 'GWO-2');
+	assert.deepStrictEqual(calls, [['refund', 'GWO-1'], ['authorize', 'GWO-2', 'Gunsmithing Authorization']]);
+});

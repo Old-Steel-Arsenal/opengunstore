@@ -554,7 +554,7 @@ class Register(_Base):
 		self.assertLess(names.index(ready.name), names.index(received.name))
 		row = next(r for r in out["orders"] if r["name"] == ready.name)
 		self.assertEqual([(l["item_code"], flt(l["rate"])) for l in row["lines"]], [(LABOR_ITEM, 75)])
-		self.assertEqual(row["drafts"], {"deposit": None, "pickup": None})
+		self.assertEqual(row["drafts"], {"deposit": None, "pickup": None, "refund": None})
 		self.assertFalse(row["logged"])
 		self.assertEqual([r["name"] for r in gunsmith.register_work_orders(name=received.name)["orders"]],
 			[received.name])
@@ -598,6 +598,45 @@ class Register(_Base):
 		_pay(inv.name)
 		self.assertEqual(frappe.db.get_value(gunsmith.DOCTYPE, job.name, "status"), "Picked Up")
 		self.assertEqual(gunsmith.deposit_held(job.name), 0)
+
+	def test_a_bill_cut_below_the_release_is_refused(self):
+		"""Complete sized the release to the bill; cutting the charges in the cart afterwards
+		would ring a negative pick-up: ERPNext refuses a negative non-return ticket."""
+		job = _job(self.cust)
+		_pay(_payment(job, 100))
+		inv = frappe.get_doc("POS Invoice", gunsmith.complete_work(job.name, "Done.",
+			frappe.as_json([{"item_code": LABOR_ITEM, "qty": 1, "rate": 150}]))["pos_invoice"])
+		inv.items[0].rate = inv.items[0].price_list_rate = 60
+		with self.assertRaises(frappe.ValidationError):
+			inv.save()
+
+	def test_a_closed_job_holding_money_is_listed_for_its_refund(self):
+		job = _job(self.cust)
+		_pay(_payment(job, 40))
+		gunsmith.cancel_work_order(job.name, "Customer took it back")
+		rows = gunsmith.register_work_orders(name=job.name)["orders"]
+		self.assertEqual([(r["name"], r["status"], flt(r["deposit_held"]), r["authorization"]) for r in rows],
+			[(job.name, "Cancelled", 40, None)])
+		self.assertEqual(gunsmith.register_work_orders(name=_job(self.cust).name)["orders"][0]["status"], "Received")
+
+	def test_a_refund_goes_back_the_way_it_was_paid(self):
+		"""Paid by card, refunded on the card row (the register's checkout refunds the card), not on
+		whatever row came first."""
+		mop = "GW Test Card"
+		if not frappe.db.exists("Mode of Payment", mop):
+			frappe.get_doc({"doctype": "Mode of Payment", "mode_of_payment": mop, "type": "Bank",
+				"accounts": [{"company": COMPANY, "default_account": "Cash - FT"}]}).insert(ignore_permissions=True)
+		job = _job(self.cust)
+		inv = frappe.get_doc("POS Invoice", _payment(job, 30))
+		inv.set("payments", [])
+		inv.append("payments", {"mode_of_payment": "Cash", "amount": 0, "default": 1})
+		inv.append("payments", {"mode_of_payment": mop, "amount": 30})
+		inv.flags.ignore_permissions = True
+		inv.save()
+		inv.submit()
+		gunsmith.cancel_work_order(job.name, "Parts unavailable")
+		ret = frappe.get_doc("POS Invoice", gunsmith.refund_deposit(job.name)["pos_invoice"])
+		self.assertEqual({p.mode_of_payment: flt(p.amount) for p in ret.payments if flt(p.amount)}, {mop: -30})
 
 	def test_complete_with_nothing_to_charge_picks_up_at_once(self):
 		job = _job(self.cust)

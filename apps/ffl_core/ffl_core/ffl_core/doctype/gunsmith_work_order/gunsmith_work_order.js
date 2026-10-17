@@ -41,16 +41,12 @@ function act(frm, method, args, after) {
 	return frm.is_dirty() ? frm.save().then(run) : run();
 }
 
-function openInvoice(name) {
-	frappe.set_route('Form', 'POS Invoice', name);
-}
-
 // Payments and pick-up are rung at the register, whose checkout takes cards (Recent
 // Orders › Work Orders: Take payment, Complete); Pick up opens this job's Complete there
 // (confirm the charges, then the cart) from these route options.
-function toRegister(frm) {
+function toRegister(frm, action) {
 	const go = () => {
-		frappe.route_options = { ffl_work_order: frm.doc.name, ffl_work_order_action: 'complete' };
+		frappe.route_options = { ffl_work_order: frm.doc.name, ffl_work_order_action: action || 'complete' };
 		frappe.set_route('point-of-sale');
 	};
 	return frm.is_dirty() ? frm.save().then(go) : go();
@@ -103,8 +99,9 @@ function draw(frm, st) {
 		}, __('Status'));
 	}
 	if (!open && flt(st.deposit_held) > 0) {
-		frm.add_custom_button(st.drafts && st.drafts.refund ? __('Open deposit refund') : __('Refund deposit'),
-			() => act(frm, 'refund_deposit', {}, (m) => openInvoice(m.pos_invoice)), __('Money'));
+		// At the register, so a card payment is refunded to the card.
+		frm.add_custom_button(st.drafts && st.drafts.refund ? __('Open refund at the register') : __('Refund deposit at the register'),
+			() => toRegister(frm, 'refund'), __('Money'));
 	}
 }
 

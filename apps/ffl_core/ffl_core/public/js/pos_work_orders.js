@@ -23,7 +23,7 @@
 
 	var WORK_ORDERS = 'Work Orders';
 	var LIST_METHOD = 'ffl_core.gunsmith.register_work_orders';
-	var STATUS_COLOR = { 'Received': 'gray', 'In Progress': 'blue', 'Ready': 'green' };
+	var STATUS_COLOR = { 'Received': 'gray', 'In Progress': 'blue', 'Ready': 'green', 'Picked Up': 'gray', 'Cancelled': 'red' };
 
 	function __(s, args) {
 		var t = (typeof window !== 'undefined' && window.__) ? window.__(s, args) : s;
@@ -38,12 +38,25 @@
 		return list.join('\n');
 	}
 
-	// What a job's card offers, on every open job: Take payment, and Complete (its open
-	// pick-up draft is opened instead of confirming the charges again).
+	var OPEN = ['Received', 'In Progress', 'Ready'];
+	var SIGNED = ['signed', 'expiring'];
+
+	// What a job's card offers. An open job: Get it signed while its intake authorization
+	// is not, Take payment, and Complete (its open pick-up draft is opened instead of
+	// confirming the charges again). A closed job still holding a payment: Refund deposit
+	// (its open refund draft, if there is one), checked out at the register so a card
+	// payment goes back to the card.
 	function cardActions(row) {
 		var drafts = row.drafts || {};
-		return [{ action: 'payment', label: __('Take payment') },
-			{ action: 'complete', label: drafts.pickup ? __('Open pick-up') : __('Complete'), primary: true }];
+		if (OPEN.indexOf(row.status) === -1) {
+			return flt(row.deposit_held) > 0
+				? [{ action: 'refund', label: drafts.refund ? __('Open refund') : __('Refund deposit'), primary: true }] : [];
+		}
+		var out = [];
+		if (row.authorization && SIGNED.indexOf(row.authorization) === -1) out.push({ action: 'authorize', label: __('Get it signed') });
+		out.push({ action: 'payment', label: __('Take payment') },
+			{ action: 'complete', label: drafts.pickup ? __('Open pick-up') : __('Complete'), primary: true });
+		return out;
 	}
 
 	// The cart holds another customer's sale: a job's payment must not land on it.
@@ -124,7 +137,7 @@
 				callback: function (r) {
 					var out = (r && r.message) || {};
 					var rows = out.orders || [];
-					me.__fflWorkOrders = { labor_item: out.labor_item, rows: rows };
+					me.__fflWorkOrders = { labor_item: out.labor_item, authorization_template: out.authorization_template, rows: rows };
 					if (!rows.length) { me.$invoices_container.append(emptyHtml(env.esc)); return; }
 					rows.forEach(function (row) { me.$invoices_container.append(cardHtml(row, env)); });
 				},
@@ -157,6 +170,8 @@
 		if (!row) return false;
 		if (action === 'payment') return env.takePayment(row);
 		if (action === 'complete') return env.complete(row, state.labor_item);
+		if (action === 'refund') return env.refund(row);
+		if (action === 'authorize') return env.authorize(row, state.authorization_template);
 		return false;
 	}
 
@@ -188,6 +203,8 @@
 		$: function (el) { return $(el); },
 		takePayment: function (row) { var g = register(); return g && g.takePayment(row); },
 		complete: function (row, laborItem) { var g = register(); return g && g.complete(row, laborItem); },
+		refund: function (row) { var g = register(); return g && g.refund(row); },
+		authorize: function (row, template) { var g = register(); return g && g.authorize(row, template); },
 	};
 	function apply(L) { ffl.posWorkOrders.applyPastOrderListPatch(L, env); }
 	function fallbackRetry(left) {

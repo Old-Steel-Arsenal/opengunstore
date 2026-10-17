@@ -1502,10 +1502,9 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 					if (m.pos_invoice) return openInRegister(m.pos_invoice);
 					if (m.picked_up) {
 						frappe.show_alert({ indicator: 'green', message: flt(m.refund_due) > 0
-							? __('{0} picked up. {1} of deposit is still held: refund it from the work order.', [row.name, cur(m.refund_due)])
+							? __('{0} picked up. {1} of deposit is still held: refund it from Recent Orders › Work Orders.', [row.name, cur(m.refund_due)])
 							: __('{0} picked up.', [row.name]) }, 10);
-						const pos = window.cur_pos;
-						if (pos && pos.recent_order_list && pos.recent_order_list.$component.is(':visible')) pos.recent_order_list.refresh_list();
+						refreshWorkOrders();
 					}
 				});
 			},
@@ -1514,8 +1513,30 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		return dialog;
 	}
 
+	function refreshWorkOrders() {
+		const pos = window.cur_pos;
+		if (pos && pos.recent_order_list && pos.recent_order_list.$component.is(':visible')) pos.recent_order_list.refresh_list();
+	}
+
+	// The customer signs the job's intake authorization (tablet, QR, email or a paper copy).
+	function authorizeAtRegister(row, template) {
+		if (!template || !(window.ffl && ffl.agreements)) return false;
+		return ffl.agreements.request(row.customer, template, { customer_name: row.customer_name,
+			reference_doctype: 'Gunsmith Work Order', reference_name: row.name, done: refreshWorkOrders });
+	}
+
+	// Refund a closed job's leftover payment: its return goes into the cart and is checked
+	// out here, where a card payment is refunded to the card (never from the Desk).
+	async function refundAtRegister(row) {
+		if (row.drafts && row.drafts.refund) return openInRegister(row.drafts.refund);
+		const r = await frappe.call({ method: GW + 'refund_deposit', args: { name: row.name }, freeze: true });
+		const m = (r && r.message) || {};
+		return m.pos_invoice ? openInRegister(m.pos_invoice) : false;
+	}
+
 	window.ffl = window.ffl || {};
-	window.ffl.gunsmithRegister = { complete: completeAtRegister, takePayment: takePaymentAtRegister };
+	window.ffl.gunsmithRegister = { complete: completeAtRegister, takePayment: takePaymentAtRegister,
+		refund: refundAtRegister, authorize: authorizeAtRegister };
 
 	// The Desk form's Pick up: route options {ffl_work_order, ffl_work_order_action:
 	// 'complete'} (the router also keeps them in the URL — dropped once read, so a reload
@@ -1534,12 +1555,12 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		})(240);
 	}
 	async function runRouteJob(job) {
-		if (job.action !== 'complete') return;
+		if (job.action !== 'complete' && job.action !== 'refund') return;
 		const r = await frappe.call({ method: GW + 'register_work_orders', args: { name: job.name } });
 		const out = (r && r.message) || {};
 		const row = (out.orders || [])[0];
-		if (!row) return frappe.show_alert({ indicator: 'orange', message: __('{0} is not open.', [job.name]) });
-		return completeAtRegister(row, out.labor_item);
+		if (!row) return frappe.show_alert({ indicator: 'orange', message: __('{0} has nothing to do at the register.', [job.name]) });
+		return job.action === 'refund' ? refundAtRegister(row) : completeAtRegister(row, out.labor_item);
 	}
 
 	function openWorkOrderDialog() {
@@ -1600,9 +1621,12 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 					dialog.hide();
 					if (!m.deposit_line) {
 						frappe.show_alert({ indicator: 'green', message: __('Work order {0} saved.', [m.name]) }, 8);
-						return;
+					} else {
+						paymentAdded(await addPaymentToCart(m.customer, m.deposit_line), m.name, m.deposit_line.rate);
 					}
-					paymentAdded(await addPaymentToCart(m.customer, m.deposit_line), m.name, m.deposit_line.rate);
+					// Then the customer signs the intake authorization (the paper form's signature).
+					authorizeAtRegister({ name: m.name, customer: m.customer, customer_name: m.customer_name },
+						m.authorization_template);
 				});
 			},
 		});

@@ -81,7 +81,7 @@ class GunsmithWorkOrder(Document):
 			"work_order": self.name, "manufacturer": self.manufacturer, "model": self.model,
 			"caliber": self.caliber, "serial_no": self.serial_number, "firearm_type": self.firearm_type,
 			"accessories": self.accessories, "condition": self.condition, "work_requested": self.work_requested,
-			# Paid towards the job so far, else what is being paid at intake (its sale is still in the cart).
+			# Paid towards the job so far, else what was paid at intake.
 			"estimated_cost": money(self.estimated_cost),
 			"deposit": money(flt(self.deposit_held) or self.deposit_amount),
 			"estimated_completion": formatdate(self.estimated_completion) if self.estimated_completion else "",

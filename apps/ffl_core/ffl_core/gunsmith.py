@@ -166,7 +166,8 @@ def create_work_order(payload: str | dict) -> dict:
 	        and id_number to log the gun now; pay_now, an amount paid towards the job now.
 
 	Returns:
-	    {"name", "customer", "status", "purchase_receipt", "deposit_line": the locked
+	    {"name", "customer", "customer_name", "status", "purchase_receipt", "authorization_template": the intake
+	    authorization the register asks the customer to sign next, or None, "deposit_line": the locked
 	    GUNSMITH-DEPOSIT row for pay_now (as :func:`deposit_line`), or None}.
 	"""
 	frappe.only_for(COUNTER_ROLES)
@@ -180,7 +181,8 @@ def create_work_order(payload: str | dict) -> dict:
 	doc = frappe.get_doc({"doctype": DOCTYPE, **{f: data.get(f) for f in _INTAKE_FIELDS if data.get(f) not in (None, "")}})
 	doc.log_in_bound_book = cint(doc.log_in_bound_book)
 	doc.insert()   # the user's own create permission; a logged gun is received in on_update (log_gun)
-	return {"name": doc.name, "customer": doc.customer, "status": doc.status, "purchase_receipt": doc.purchase_receipt,
+	return {"name": doc.name, "customer": doc.customer, "customer_name": doc.customer_name, "status": doc.status,
+		"purchase_receipt": doc.purchase_receipt, "authorization_template": setup.agreement_template(),
 		"deposit_line": _deposit_row(doc, pay_now) if pay_now > 0 else None}
 
 
@@ -221,12 +223,15 @@ def register_work_orders(search_term: str | None = None, name: str | None = None
 	    {"labor_item", "orders": [{"name", "customer", "customer_name", "status", "manufacturer",
 	    "model", "caliber", "serial_number", "work_requested", "work_performed", "estimated_cost",
 	    "deposit_held", "logged", "lines": [{"item_code",
-	    "description", "qty", "rate"}], "drafts": {"deposit", "pickup"}}]}, Ready jobs first.
+	    "description", "qty", "rate"}], "drafts": {"deposit", "pickup", "refund"}, "authorization": the intake
+	    authorization's state (signed / pending / missing …) for an open job, else None}], "authorization_template"}:
+	    open jobs (Ready first), then closed ones still holding a payment to refund.
 	"""
 	frappe.only_for(COUNTER_ROLES)
-	filters = {"status": ("in", OPEN)}
+	# Open jobs, and closed ones still holding a payment (their Refund deposit).
+	filters = [["status", "in", OPEN]]
 	if name:
-		filters["name"] = name
+		filters.append(["name", "=", name])
 	or_filters = None
 	term = (search_term or "").strip()
 	if term:
@@ -235,23 +240,32 @@ def register_work_orders(search_term: str | None = None, name: str | None = None
 			"serial_number")}
 	# lazy: newest 100 open jobs, one query per job for its deposit / drafts; a shop has a handful open.
 	# Upgrade path: one aggregate over POS Invoice Item for the page.
+	fields = ["name", "customer", "customer_name", "status", "manufacturer", "model", "caliber", "serial_number",
+		"work_requested", "work_performed", "estimated_cost", "purchase_receipt"]
+	closed = [["status", "in", CLOSED], ["deposit_held", ">", _TOL]] + [f for f in filters if f[0] == "name"]
 	rows = frappe.get_list(DOCTYPE, filters=filters, or_filters=or_filters, limit_page_length=100,
-		order_by="modified desc", fields=["name", "customer", "customer_name", "status", "manufacturer", "model",
-			"caliber", "serial_number", "work_requested", "work_performed", "estimated_cost", "purchase_receipt"])
+		order_by="modified desc", fields=fields)
+	rows += frappe.get_list(DOCTYPE, filters=closed, or_filters=or_filters, limit_page_length=100,
+		order_by="modified desc", fields=fields)
 	lines = {}
 	if rows:
 		for r in frappe.get_all("Gunsmith Work Order Line", filters={"parent": ("in", [r.name for r in rows]),
 				"parenttype": DOCTYPE}, fields=["parent", "item_code", "description", "qty", "rate"], order_by="idx"):
 			lines.setdefault(r.pop("parent"), []).append(r)
+	from ffl_core.agreements import agreement_status
+
+	template = setup.agreement_template()
 	rank = {READY: 0, IN_PROGRESS: 1, RECEIVED: 2}
 	orders = []
 	for r in sorted(rows, key=lambda r: rank.get(r.status, 3)):
 		r["deposit_held"] = deposit_held(r.name)
 		r["logged"] = bool(r.pop("purchase_receipt"))
 		r["lines"] = lines.get(r.name, [])
-		r["drafts"] = {k: _open_draft(r.name, k) for k in ("deposit", "pickup")}
+		r["drafts"] = {k: _open_draft(r.name, k) for k in ("deposit", "pickup", "refund")}
+		r["authorization"] = agreement_status(r.customer, template, reference=(DOCTYPE, r.name))["state"] \
+			if template and r.status in OPEN else None
 		orders.append(r)
-	return {"labor_item": setup.labor_item(), "orders": orders}
+	return {"labor_item": setup.labor_item(), "authorization_template": template, "orders": orders}
 
 
 @frappe.whitelist(methods=["POST"])
@@ -662,11 +676,18 @@ def refund_deposit(name: str) -> dict:
 	ret.flags.ignore_permissions = True
 	ret.set_missing_values()
 	ret.calculate_taxes_and_totals()
-	# The register pays the refund out; the copied tender is the deposit's, not this amount.
-	for p in ret.get("payments") or []:
+	# The refund goes back the way the payment came in (the mode that took the most on the
+	# source sale), so a card payment is refunded to the card when the register checks
+	# the return out (its Payroc refund runs there, never on the Desk).
+	paid = dict(frappe.get_all("Sales Invoice Payment", filters={"parent": source[0][0], "parenttype": "POS Invoice"},
+		fields=["mode_of_payment", "amount"], as_list=True))
+	back = max(paid, key=lambda m: flt(paid[m])) if paid else None
+	rows = ret.get("payments") or []
+	for p in rows:
 		p.amount = p.base_amount = 0
-	if ret.get("payments"):
-		ret.payments[0].amount = ret.payments[0].base_amount = flt(ret.rounded_total) or flt(ret.grand_total)
+	target = next((p for p in rows if p.mode_of_payment == back), rows[0] if rows else None)
+	if target:
+		target.amount = target.base_amount = flt(ret.rounded_total) or flt(ret.grand_total)
 	# Totals do not re-sum a POS return's tender; the header must agree with the rows.
 	ret.paid_amount = ret.base_paid_amount = sum(flt(p.amount) for p in ret.get("payments") or [])
 	ret.insert()
