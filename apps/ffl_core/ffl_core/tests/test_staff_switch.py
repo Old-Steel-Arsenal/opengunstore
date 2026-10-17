@@ -6,6 +6,7 @@ from frappe.tests.utils import FrappeTestCase
 
 from ffl_core import staff_switch
 from ffl_core.tests.settings_sandbox import SettingsSandbox
+from ffl_core.utils import single_raw
 from ffl_core.tests.test_customer_profile import _user
 
 _PASSWORD = "Counter-Pass-91!"
@@ -93,6 +94,24 @@ class Locking(SettingsSandbox, FrappeTestCase):
 		self.assertEqual(staff_switch.lock_minutes(), 0)
 		self.set_single("FFL Settings", "counter_lock_minutes", 12)
 		self.assertEqual(staff_switch.lock_minutes(), 12)
+
+	def test_patch_turns_a_stored_zero_into_five_and_keeps_a_choice(self):
+		from ffl_core.patches import seed_counter_lock_minutes as patch
+		self.set_single("FFL Settings", "counter_lock_minutes", 0)
+		patch.execute()
+		self.assertEqual(staff_switch.lock_minutes(), 5)
+		self.set_single("FFL Settings", "counter_lock_minutes", 12)
+		patch.execute()
+		self.assertEqual(staff_switch.lock_minutes(), 12)
+
+	def test_fresh_install_stores_five_and_keeps_a_choice(self):
+		self.clear_single("FFL Settings", "counter_lock_minutes")
+		staff_switch.ensure_lock_default()
+		self.assertEqual(single_raw("FFL Settings", "counter_lock_minutes"), "5")
+		self.set_single("FFL Settings", "counter_lock_minutes", 0)
+		staff_switch.ensure_lock_default()
+		self.assertEqual(staff_switch.lock_minutes(), 0)
+		self.assertIn("ffl_core.staff_switch.ensure_lock_default", _hooks_list("after_install"))
 
 	def test_wired_into_boot(self):
 		self.assertIn("ffl_core.staff_switch.extend_bootinfo", _hooks_list("extend_bootinfo"))

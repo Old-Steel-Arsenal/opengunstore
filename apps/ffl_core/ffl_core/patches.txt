@@ -79,3 +79,5 @@ ffl_core.patches.remove_dealer_store
 ffl_core.patches.v0_1_0_reset_last_known_versions
 # 0.1.2: the Gun Shop sidebars use the product mark ("gunstore") as their header icon.
 ffl_core.patches.v0_1_2_gunstore_header_icon
+# The idle counter lock defaults to 5 minutes on stores whose settings stored 0 for the new field.
+ffl_core.patches.seed_counter_lock_minutes

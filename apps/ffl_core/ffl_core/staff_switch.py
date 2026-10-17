@@ -42,6 +42,13 @@ def lock_minutes() -> int:
 	return DEFAULT_LOCK_MINUTES if raw in (None, "") else max(0, cint(raw))
 
 
+def ensure_lock_default() -> None:
+	"""Store the 5-minute default when the site has no row for it yet (fresh install: patches
+	don't run there), so a first Save of FFL Settings can't silently write 0. A stated value is kept."""
+	if single_raw("FFL Settings", "counter_lock_minutes") is None:
+		frappe.db.set_single_value("FFL Settings", "counter_lock_minutes", DEFAULT_LOCK_MINUTES)
+
+
 def _session_locked() -> bool:
 	return bool(cint((frappe.session.data or {}).get(LOCK_KEY)))
 

@@ -12661,7 +12661,7 @@
           "ffl_core"
         ],
         "summary": "Everyone who can sign in at the counter, for the switch-user list.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:63`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:70`",
         "operationId": "ffl_core.staff_switch.counter_users",
         "responses": {
           "200": {
@@ -12691,7 +12691,7 @@
           "ffl_core"
         ],
         "summary": "Lock this session's screen (idle, or the clerk walked away).",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:84`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:91`",
         "operationId": "ffl_core.staff_switch.lock_screen",
         "responses": {
           "200": {
@@ -12721,7 +12721,7 @@
           "ffl_core"
         ],
         "summary": "The signed-in person unlocks their own screen with their password: 10 wrong",
-        "description": "tries per person per 10 minutes (counted per person, not per IP — a shop's\ncounters share one address). Signing in as someone else is frappe's login.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:96`",
+        "description": "tries per person per 10 minutes (counted per person, not per IP — a shop's\ncounters share one address). Signing in as someone else is frappe's login.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:103`",
         "operationId": "ffl_core.staff_switch.unlock_screen",
         "responses": {
           "200": {

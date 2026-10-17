@@ -322,7 +322,8 @@ class Signing(_Base):
 		self.assertTrue(doc.signed_pdf.startswith("/private/files/"))
 		pdf = frappe.get_doc("File", {"file_url": doc.signed_pdf}).get_content()
 		from pypdf import PdfReader
-		text = " ".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf)).pages)
+		# Split and re-join: Ubuntu's wkhtmltopdf (GitHub-hosted CI) extracts word gaps as tabs.
+		text = " ".join(" ".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf)).pages).split())
 		self.assertIn(self.cust.customer_name, text)
 		self.assertIn("Jane Roe", text)
 		kwargs = send.call_args.kwargs
