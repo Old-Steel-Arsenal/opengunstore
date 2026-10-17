@@ -65,6 +65,7 @@ from ffl_core.marketplace_accounts import (
 	MARKETPLACE_FEE_ACCOUNTS, MARKETPLACE_TAX_ACCOUNTS, ORDER_DOCTYPE)
 from ffl_core.setup.shipping_charge import shipping_account_name
 from ffl_core.setup.tax import _company_sales_tax_accounts
+from ffl_core.setup.gunsmith import DEPOSIT_ITEM
 from ffl_core.setup.trade_in_credit import TRADE_IN_CREDIT_ITEM
 from ffl_core.utils import split_serials
 
@@ -709,7 +710,7 @@ def _trade_in_settlement(header, lines, trade_in_net, tax_rows) -> tuple[float, 
 		return 0.0, 0.0
 	accounts = [t.get("account_head") for t in tax_rows or [] if t.get("charge_type") == "On Net Total"]
 	goods = sum(flt(l.get("base_net_amount")) for l in lines
-		if l.get("item_code") != TRADE_IN_CREDIT_ITEM
+		if l.get("item_code") not in (TRADE_IN_CREDIT_ITEM, DEPOSIT_ITEM)
 		and flt(l.get("base_net_amount")) > 0 and _line_taxable(l, header.get("company"), accounts))
 	return min(credit, goods), max(0.0, -(flt(header.get("rounded_total")) or flt(header.get("grand_total"))))
 
@@ -761,7 +762,14 @@ def _build_rows(headers, lines_by_invoice, item_meta, serial_cost, product_type,
 		trade_in_net = sum(
 			flt(l.get("base_net_amount")) for l in lines
 			if l.get("item_code") == TRADE_IN_CREDIT_ITEM)
-		net = flt(h.get("base_net_total")) - trade_in_net
+		# A gunsmith deposit row is customer money held, never revenue: the
+		# collecting invoice is all deposit (+100 → Net 0) and the pick-up invoice
+		# releases it (−100 → the work's full amount). Both come out of the net,
+		# the same way a trade-in allowance does.
+		deposit_net = sum(
+			flt(l.get("base_net_amount")) for l in lines
+			if l.get("item_code") == DEPOSIT_ITEM)
+		net = flt(h.get("base_net_total")) - trade_in_net - deposit_net
 		total = flt(h.get("grand_total"))
 		profit = net - cost
 		applied, payout = _trade_in_settlement(h, lines, trade_in_net, (taxes_by_invoice or {}).get(h["name"]))
@@ -1275,6 +1283,10 @@ def _build_product_rows(headers, lines_by_invoice, item_meta, serial_cost, consi
 		order_missing = False
 		product_rows = []
 		for line in lines:
+			if line.get("item_code") == DEPOSIT_ITEM:
+				# Money held for the customer, not a product line: it would report a
+				# negative-price "item" with 100% margin. It comes off order_net below.
+				continue
 			meta = item_meta.get(line.get("item_code"), {})
 			line_cost, line_missing = _line_cost(line, item_meta, serial_cost, consignment,
 				is_ffl_transfer=h.get("is_ffl_transfer"),
@@ -1320,7 +1332,9 @@ def _build_product_rows(headers, lines_by_invoice, item_meta, serial_cost, consi
 				"tax_mismatch": bd["tax_mismatch"],
 			})
 
-		order_net = flt(h.get("base_net_total"))
+		# A gunsmith deposit is customer money held, never a sale (Order view, same rule).
+		order_net = flt(h.get("base_net_total")) - sum(flt(l.get("base_net_amount")) for l in lines
+			if l.get("item_code") == DEPOSIT_ITEM)
 		trade_in_net = sum(flt(l.get("base_net_amount")) for l in lines
 			if l.get("item_code") == TRADE_IN_CREDIT_ITEM)
 		applied, payout = _trade_in_settlement(h, lines, trade_in_net, taxes_by_invoice.get(name))

@@ -105,7 +105,7 @@ fixtures = [
 	},
 	{
 		"dt": "Email Template",
-		"filters": [["name", "in", ["Sale Receipt", "Agreement Signing Link", "Agreement Signed Copy"]]],
+		"filters": [["name", "in", ["Sale Receipt", "Agreement Signing Link", "Agreement Signed Copy", "Gunsmith Work Ready"]]],
 	},
 	{
 		"dt": "Print Format",
@@ -182,6 +182,8 @@ app_include_js = [
 ]
 
 doc_events = {
+	# A copy requested for a gunsmith work order is its intake authorization (gunsmith.py).
+	"Customer Agreement": {"on_update": "ffl_core.gunsmith.link_intake_agreement"},
 	# A store flipping an integration's switch re-shapes the Gun Shop sidebar and home page
 	# (setup/gunshop_sidebar.py).
 	"WooCommerce Settings": {"on_update": "ffl_core.setup.gunshop_sidebar.on_settings_update"},
@@ -321,6 +323,8 @@ doc_events = {
 			# A merged negative trade-in ticket gives no change: ERPNext's paid - total
 			# would pay its payout out a second time (compliance/trade_in_settlement).
 			"ffl_core.compliance.trade_in_settlement.keep_merged_change",
+			# A gunsmith deposit line only on a register invoice (gunsmith.py).
+			"ffl_core.gunsmith.guard_deposit_lines",
 			# Locked lines: refuse what ERPNext's own validate did to them after the
 			# before_validate pin (pricing rules, coupons). Last, after every other hook.
 			"ffl_core.compliance.locked_lines.assert_locked_lines",
@@ -469,6 +473,8 @@ doc_events = {
 			# Counter pickup ticket: refuse one ERPNext's validate put money back on
 			# after the before_validate pin (fail closed).
 			"ffl_core.api.counter_pickup.assert_ticket_free",
+			# A gunsmith deposit line comes only from its work order, within what it holds (gunsmith.py).
+			"ffl_core.gunsmith.guard_deposit_lines",
 			# Locked lines: refuse what ERPNext's own validate did to them after the
 			# before_validate pin (pricing rules, coupons). Last, after every other hook.
 			"ffl_core.compliance.locked_lines.assert_locked_lines",
@@ -515,10 +521,16 @@ doc_events = {
 			"ffl_core.compliance.pay_on_sale.settle_pay_on_sale_on_submit",
 			# Each firearm sold agreements this sale used (agreements.py).
 			"ffl_core.agreements.mark_firearm_agreements_used",
+			# A gunsmith work order's deposit / pick-up invoice (gunsmith.py).
+			"ffl_core.gunsmith.on_invoice_submit",
 		],
 		# A negative trade-in ticket: the payout goes back to the drawer first,
 		# refused once a count relied on it (compliance/trade_in_settlement).
-		"before_cancel": "ffl_core.compliance.trade_in_settlement.void_payout_on_cancel",
+		"before_cancel": [
+			"ffl_core.compliance.trade_in_settlement.void_payout_on_cancel",
+			# A gunsmith pick-up whose gun left the bound book stays (gunsmith.py).
+			"ffl_core.gunsmith.before_invoice_cancel",
+		],
 		"on_cancel": [
 			"ffl_core.listing.status_sync.on_sales_invoice_cancel",
 			# Counter pickup's 4473 ticket cancelled → the gun is back in stock
@@ -531,6 +543,7 @@ doc_events = {
 			"ffl_core.compliance.pay_on_sale.reverse_pay_on_sale_on_cancel",
 			# Each firearm sold agreements this sale used (agreements.py).
 			"ffl_core.agreements.release_firearm_agreements",
+			"ffl_core.gunsmith.on_invoice_cancel",
 		],
 	},
 	"Purchase Receipt": {
@@ -794,6 +807,9 @@ after_migrate = [
 	"ffl_core.setup.customer_profile.ensure",
 	# Item "Agreement Required to Buy" + the Customer form's Agreements section.
 	"ffl_core.setup.agreements.ensure",
+	# Gunsmith work orders: labor + deposit items, invoice links, the intake agreement (after
+	# tax / customer_deposits / agreements, which it builds on).
+	"ffl_core.setup.gunsmith.ensure",
 	"ffl_core.setup.buyer_type.ensure",
 	"ffl_core.setup.shipping_charge.ensure",
 	# Pin "Allow Negative rates for Items" on so trade-in credit

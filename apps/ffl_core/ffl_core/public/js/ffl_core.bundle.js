@@ -1022,7 +1022,7 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		C.prototype.on_cart_update = function (args) {
 			const item = args && args.item;
 			if (!injectingLocked && window.ffl && ffl.isLockedLine && ffl.isLockedLine(item)) {
-				frappe.show_alert({ indicator: 'orange', message: __('Trade-in credits come from the Trade-in button, and their amount is fixed. Remove the line to undo it.') });
+				frappe.show_alert({ indicator: 'orange', message: __('Trade-in credits come from the Trade-in button and gunsmith deposits from their work order, and their amount is fixed. Remove the line to undo it.') });
 				return Promise.resolve({});
 			}
 			return orig.apply(this, arguments);
