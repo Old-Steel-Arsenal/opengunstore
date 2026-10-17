@@ -911,16 +911,19 @@ def rebuild_signed_pdf(name: str) -> None:
 
 def _attach_pdf(doc, replace: bool = False) -> bytes:
 	pdf = _pdf_bytes(doc)
-	if replace and doc.get("signed_pdf"):
-		for old in frappe.get_all("File", filters={"file_url": doc.signed_pdf, "attached_to_doctype": DOCTYPE,
-				"attached_to_name": doc.name}, pluck="name"):
-			frappe.delete_doc("File", old, ignore_permissions=True, force=True)
+	previous = doc.get("signed_pdf") if replace else None
 	f = frappe.get_doc({"doctype": "File", "file_name": f"{doc.name}.pdf", "is_private": 1,
 		"attached_to_doctype": DOCTYPE, "attached_to_name": doc.name, "attached_to_field": "signed_pdf",
 		"content": pdf})
 	f.flags.ignore_permissions = True
 	f.insert()
 	doc.db_set("signed_pdf", f.file_url, update_modified=False)
+	# Only once the new copy is saved: deleting a File removes it from disk at once,
+	# which no rollback brings back.
+	if previous and previous != f.file_url:
+		for old in frappe.get_all("File", filters={"file_url": previous, "attached_to_doctype": DOCTYPE,
+				"attached_to_name": doc.name}, pluck="name"):
+			frappe.delete_doc("File", old, ignore_permissions=True, force=True)
 	return pdf
 
 

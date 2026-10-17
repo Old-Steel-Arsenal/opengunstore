@@ -30,7 +30,7 @@
 		{% if doc.serial_no %}<tr><td>Firearm</td><td>{{ (doc.item_code or "") | e }} · serial {{ doc.serial_no | e }}</td></tr>{% endif %}
 		<tr><td>Signed by</td><td>{{ doc.signer_name | e }}{% if doc.signer_relationship and doc.signer_relationship != "Self" %} — {{ doc.signer_relationship | e }}{% endif %}</td></tr>
 		<tr><td>Signed on</td><td>{{ signed_on }} ({{ doc.signed_via | e }})</td></tr>
-		{% if doc.reference_name %}<tr><td>Invoice / receipt no.</td><td>{{ doc.reference_name | e }}</td></tr>{% endif %}
+		{% if doc.reference_name %}<tr><td>Invoice / receipt no.</td><td>{{ doc.reference_name | e }} <span class="muted">(recorded by the store after signing)</span></td></tr>{% endif %}
 		{% if witness %}<tr><td>Store witness</td><td>{{ witness | e }} · {{ signed_on }}</td></tr>{% endif %}
 		<tr><td>IP address</td><td>{{ doc.signer_ip | e }}</td></tr>
 		{% if doc.expires_on %}<tr><td>Valid until</td><td>{{ doc.expires_on }}</td></tr>{% endif %}
