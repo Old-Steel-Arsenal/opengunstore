@@ -10,7 +10,9 @@
 //       signed scan is attached and recorded.
 //   ffl.agreements.recordPaper(frm) — the paper-copy dialog on a Customer Agreement.
 // The counter panel's agreement chips (customer_flags.js) and the Customer form's
-// Agreements section open request().
+// Agreements section open request(). ffl.agreements.forSale(frm) — the register's
+// Agreements button: every active agreement for this customer and cart, each
+// Each firearm sold one once per gun, with a Send per row.
 (function () {
 	if (typeof window === 'undefined' || typeof module === 'object') return;
 	window.ffl = window.ffl || {};
@@ -38,16 +40,19 @@
 
 	// The pending copy may still have a working link — the customer could be signing
 	// on the tablet right now. Ask before a new link cancels it.
-	function send(customer, template, deliver, replace, terminal) {
+	// extra: {serial_no, price} for an agreement signed for each firearm sold.
+	function send(customer, template, deliver, replace, terminal, extra) {
+		extra = extra || {};
 		return frappe.call({ method: M + 'request_agreement', freeze: true,
-			args: { customer: customer, template: template, deliver: deliver, replace: replace ? 1 : 0, terminal: terminal || null } })
+			args: { customer: customer, template: template, deliver: deliver, replace: replace ? 1 : 0, terminal: terminal || null,
+				serial_no: extra.serial_no || null, price: extra.price || null } })
 			.then(function (r) {
 				var m = r.message || {};
 				if (!m.link_open) return m;
 				return new Promise(function (resolve) {
 					frappe.confirm(__('A signing link for this agreement is still open (until {0}); the customer may be signing it now. Make a new one? The open link will stop working.',
 						[esc(frappe.datetime.str_to_user(m.token_expires))]),
-					function () { resolve(send(customer, template, deliver, true, terminal)); });
+					function () { resolve(send(customer, template, deliver, true, terminal, extra)); });
 				});
 			});
 	}
@@ -71,6 +76,8 @@
 		var done = opts.done || function () {};
 		var manager = isManager();
 		var who = opts.customer_name || customer;
+		// One gun's copy of an Each firearm sold agreement: the template and the gun are fixed.
+		var extra = opts.serial_no ? { serial_no: opts.serial_no, price: opts.price } : null;
 		return frappe.call({ method: 'ffl_core.signing_terminal.list_terminals' })
 			.then(function (r) { return (r.message || []).filter(function (t) { return t.paired; }); },
 				function () { return []; })
@@ -79,9 +86,15 @@
 		function dialog(terminals) {
 			var tablets = terminals.length > 0;
 			var fields = [
-				{ fieldtype: 'Link', fieldname: 'template', label: __('Agreement'), options: 'Agreement Template', reqd: 1,
-					default: template || '', get_query: function () { return { filters: { active: 1 } }; } },
+				// A gun's copy is fixed (and an Each firearm sold template is not one the picker offers).
+				extra ? { fieldtype: 'Data', fieldname: 'template', label: __('Agreement'), read_only: 1, default: template }
+					: { fieldtype: 'Link', fieldname: 'template', label: __('Agreement'), options: 'Agreement Template', reqd: 1,
+						default: template || '', get_query: function () { return { filters: { active: 1, scope: 'Per customer' } }; } },
 			];
+			if (extra) {
+				fields.push({ fieldtype: 'HTML', fieldname: 'gun', options: '<p>' + __('For the firearm {0}', ['<b>'
+					+ esc((opts.item_name ? opts.item_name + ' · ' : '') + __('serial {0}', [opts.serial_no])) + '</b>']) + '</p>' });
+			}
 			if (tablets) {
 				fields.push({ fieldtype: 'Select', fieldname: 'terminal', label: __('Signing tablet'),
 					options: terminals.map(function (t) { return t.name; }), default: pickTerminal(terminals) });
@@ -91,7 +104,7 @@
 				+ __('Show QR code: the customer scans it with a tablet or their phone. Email link: they sign from home.')
 				+ (manager ? ' ' + __('Record paper copy: attach a copy the customer signed on paper.') : '') + '</p>' });
 			var showQrCode = function (v) {
-				send(customer, v.template, 'qr').then(function (r) {
+				send(customer, v.template, 'qr', false, null, extra).then(function (r) {
 					d.hide();
 					showQr(r, who).onhide = done;
 				});
@@ -102,7 +115,7 @@
 				primary_action_label: tablets ? __('Send to tablet') : __('Show QR code'),
 				primary_action: function (v) {
 					if (!tablets) return showQrCode(v);
-					send(customer, v.template, 'tablet', false, v.terminal).then(function (r) {
+					send(customer, v.template, 'tablet', false, v.terminal, extra).then(function (r) {
 						try { localStorage.setItem(LAST_TERMINAL, v.terminal); } catch (e) { /* no storage */ }
 						d.hide();
 						frappe.show_alert({ message: __('Sent to {0}. {1} can sign there now.', [esc(r.terminal), esc(who)]), indicator: 'green' });
@@ -118,7 +131,7 @@
 				},
 			});
 			var emailLink = function (v) {
-				send(customer, v.template, 'email').then(function (r) {
+				send(customer, v.template, 'email', false, null, extra).then(function (r) {
 					d.hide();
 					frappe.show_alert({ message: __('Signing link emailed to {0}', [esc(r.email)]), indicator: 'green' });
 					done();
@@ -134,7 +147,7 @@
 				d.add_custom_action(__('Record paper copy'), function () {
 					var v = d.get_values();
 					if (!v) return;
-					send(customer, v.template, 'none').then(function (r) {
+					send(customer, v.template, 'none', false, null, extra).then(function (r) {
 						d.hide();
 						// A new tab: the register's cart (or the customer form) stays as it is.
 						window.open('/app/customer-agreement/' + encodeURIComponent(r.name) + '?ffl_record_paper=1', '_blank');
@@ -181,29 +194,89 @@
 		return d;
 	}
 
-	// The register: adding an Item that needs an agreement the customer has not signed
-	// prompts right away (the submit is refused anyway: agreements.refuse_missing_required).
-	// Once per sale and agreement; after ERPNext's own add-item work, never in its way.
+	// The cart as agreements_for_sale reads it.
+	function cartOf(frm) {
+		return (frm.doc.items || []).filter(function (r) { return r.item_code; })
+			.map(function (r) { return { item_code: r.item_code, serial_no: r.serial_no || '', rate: r.rate || 0 }; });
+	}
+
+	var STATE = {
+		signed: [__('Signed'), 'green'], expiring: [__('Expires soon'), 'yellow'], pending: [__('Sent, not signed'), 'yellow'],
+		expired: [__('Expired'), 'orange'], missing: [__('Not signed'), 'gray'],
+	};
+
+	// The register's Agreements button: every active agreement and where this customer
+	// stands for this cart — an Each firearm sold one once per gun. Each row sends it
+	// (tablet / QR / email) through request().
+	function forSale(frm) {
+		var customer = frm.doc.customer;
+		if (!customer) { frappe.msgprint(__('Pick the customer first.')); return; }
+		var d = new frappe.ui.Dialog({ title: __('Agreements for {0}', [esc(frm.doc.customer_name || customer)]),
+			fields: [{ fieldtype: 'HTML', fieldname: 'rows' }], size: 'large' });
+		var load = function () {
+			frappe.call({ method: M + 'agreements_for_sale', args: { customer: customer, items: cartOf(frm),
+				sale: frm.doc.__islocal ? null : frm.doc.name } }).then(function (r) {
+				var rows = (r.message || {}).rows || [];
+				if (!rows.length) {
+					d.fields_dict.rows.$wrapper.html('<p class="text-muted">' + __('No agreements are switched on. Add one under Customers → Agreement templates.') + '</p>');
+					return;
+				}
+				var html = rows.map(function (row, i) {
+					var st = STATE[row.state] || STATE.missing;
+					var done = row.state === 'signed' || row.state === 'expiring';
+					var gun = row.serial_no ? '<div class="small text-muted">' + esc((row.item_name || row.item_code || '') + ' · ' + __('serial {0}', [row.serial_no])) + '</div>'
+						: (row.scope === 'Each firearm sold' ? '<div class="small text-muted">' + __('Signed for each firearm sold; no gun with a serial in the cart yet.') + '</div>' : '');
+					var needs = row.required ? ' <span class="indicator-pill red">' + __('This sale needs it') + '</span>' : '';
+					var act = (row.scope === 'Each firearm sold' && !row.serial_no) || done ? ''
+						: '<button class="btn btn-xs btn-primary" data-ffl-send="' + i + '">' + __('Send') + '</button>';
+					return '<div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid var(--border-color)">'
+						+ '<div><b>' + esc(row.template) + '</b>' + needs + gun + '</div>'
+						+ '<div style="display:flex; align-items:center; gap:8px; white-space:nowrap"><span class="indicator-pill ' + st[1] + '">' + esc(st[0]) + '</span>' + act + '</div></div>';
+				}).join('');
+				d.fields_dict.rows.$wrapper.html(html);
+				d.fields_dict.rows.$wrapper.find('[data-ffl-send]').on('click', function () {
+					var row = rows[+$(this).attr('data-ffl-send')];
+					request(customer, row.template, { customer_name: frm.doc.customer_name, serial_no: row.serial_no,
+						price: row.rate, item_name: row.item_name, done: load });
+				});
+			});
+		};
+		d.show();
+		load();
+		return d;
+	}
+
+	// The register: once the cart holds something this customer must sign (an Item or
+	// its Item Group that names an agreement, a gun for an Each firearm sold one, or an
+	// agreement every sale needs), say so once and offer the Agreements list. The submit
+	// is refused anyway (agreements.refuse_missing_required).
 	var prompted = {};
+	var promptTimer = null;
+	function promptIfNeeded(frm) {
+		var customer = frm.doc.customer;
+		if (!customer || frm.doc.is_return || frm.doc.docstatus !== 0) return;
+		clearTimeout(promptTimer);
+		promptTimer = setTimeout(function () {
+			frappe.call({ method: M + 'agreements_for_sale', args: { customer: customer, items: cartOf(frm),
+				sale: frm.doc.__islocal ? null : frm.doc.name } }).then(function (r) {
+				var fresh = ((r.message || {}).rows || []).filter(function (row) {
+					var key = customer + '|' + row.template + '|' + (row.serial_no || '');
+					if (!row.required || row.state === 'signed' || row.state === 'expiring' || prompted[key]) return false;
+					prompted[key] = true;
+					return true;
+				});
+				if (!fresh.length) return;
+				var list = fresh.map(function (row) {
+					return '<li><b>' + esc(row.template) + '</b>' + (row.serial_no ? ' — ' + esc((row.item_name || '') + ' · ' + row.serial_no) : '') + '</li>';
+				}).join('');
+				frappe.confirm('<p>' + __('This sale needs:') + '</p><ul>' + list + '</ul><p>' + __('Open Agreements to send them?') + '</p>',
+					function () { forSale(frm); });
+			}, function () { /* a hint; the submit gate holds */ });
+		}, 600);
+	}
 	frappe.ui.form.on('POS Invoice Item', {
-		item_code: function (frm, cdt, cdn) {
-			var row = locals[cdt] && locals[cdt][cdn];
-			var customer = frm.doc.customer;
-			if (!row || !row.item_code || !customer || frm.doc.is_return || frm.doc.docstatus !== 0) return;
-			frappe.call({ method: M + 'missing_for_items', args: { customer: customer, item_codes: [row.item_code] } })
-				.then(function (r) {
-					(r.message || []).forEach(function (tpl) {
-						var key = (frm.doc.name || '') + '|' + customer + '|' + tpl;
-						if (prompted[key]) return;
-						prompted[key] = true;
-						setTimeout(function () {
-							frappe.confirm(__('{0} needs {1} signed before this sale can complete. Send it now?',
-								['<b>' + esc(row.item_name || row.item_code) + '</b>', '<b>' + esc(tpl) + '</b>']),
-							function () { request(customer, tpl, { customer_name: frm.doc.customer_name }); });
-						}, 300);
-					});
-				}, function () { /* a hint; the submit gate holds */ });
-		},
+		item_code: function (frm) { promptIfNeeded(frm); },
+		serial_no: function (frm) { promptIfNeeded(frm); },
 	});
 
 	// Counter panel chips (customer_flags.stripHtml): click to ask for the agreement.
@@ -212,5 +285,5 @@
 		request($(this).attr('data-ffl-agreement-customer'), $(this).attr('data-ffl-agreement-template'));
 	});
 
-	window.ffl.agreements = { request: request, recordPaper: recordPaper, showQr: showQr };
+	window.ffl.agreements = { request: request, recordPaper: recordPaper, showQr: showQr, forSale: forSale };
 })();

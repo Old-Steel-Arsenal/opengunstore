@@ -32,7 +32,11 @@ An **Agreement Template** holds the text (a range waiver, a rental agreement); a
   :class:`AgreementRequired` for an extension that needs a signature first.
   :func:`expire_agreements` (daily) turns copies past ``expires_on`` to Expired.
 * **Sale gate** — an Item can name the agreement its buyer must have signed
-  (the register prompts when such an Item is added: :func:`missing_for_items`)
+  or its Item Group does (:func:`required_for_item`); a template's ``requirement`` says
+  whether that matters, or every sale needs it, or it is only offered; its ``scope``
+  says whether one signature covers the customer or each firearm sold needs its own
+  copy naming the gun (:func:`sale_requirements`). The register's Agreements button
+  lists them all for the cart (:func:`agreements_for_sale`).
   (``Item.ffl_required_agreement``, ``setup/agreements.py``), and extensions can add
   more through the ``gunshop_required_agreements`` hook. :func:`refuse_missing_required`
   refuses to submit a counter sale (POS Invoice / Sales Invoice) until the customer
@@ -52,7 +56,7 @@ from datetime import timedelta
 import frappe
 from frappe import _
 from frappe.rate_limiter import rate_limit
-from frappe.utils import add_days, cint, escape_html, formatdate, get_datetime, get_url, getdate, \
+from frappe.utils import add_days, cint, escape_html, flt, fmt_money, formatdate, get_datetime, get_url, getdate, \
 	now_datetime, nowdate
 from frappe.utils.html_utils import sanitize_html
 
@@ -79,6 +83,9 @@ _PDF_TEMPLATE = "templates/agreement/agreement_pdf.html"
 INVALID_LINK = "This signing link is not valid any more. Ask the store for a new one."
 DELIVERIES = ("tablet", "qr", "email", "none")
 RELATIONSHIPS = ("Self", "Parent", "Guardian")
+# Agreement Template.requirement / .scope (see the doctype's field descriptions).
+OPTIONAL, BY_ITEM, EVERY_SALE = "Optional", "Required by item", "Required for every sale"
+PER_CUSTOMER, PER_FIREARM = "Per customer", "Each firearm sold"
 
 
 class AgreementRequired(frappe.ValidationError):
@@ -107,14 +114,18 @@ def _age_on(dob, on) -> int:
 
 
 def _expires_on(template, signed_day):
-	days = cint(frappe.db.get_value(TEMPLATE, template, "valid_days"))
+	row = frappe.db.get_value(TEMPLATE, template, ["valid_days", "scope"], as_dict=True) or frappe._dict()
+	if row.scope == PER_FIREARM:   # belongs to one sale of one gun; never runs out by days
+		return None
+	days = cint(row.valid_days)
 	return add_days(getdate(signed_day), days) if days > 0 else None
 
 
-def render_body(template_doc, customer_doc, company: str | None) -> str:
+def render_body(template_doc, customer_doc, company: str | None, firearm: dict | None = None) -> str:
 	"""The template's text for this customer, placeholders filled, sanitized.
 
-	Only the documented placeholders are in the context, each value HTML-escaped.
+	Only the documented placeholders are in the context, each value HTML-escaped;
+	*firearm* (:func:`firearm_context`) adds the gun's for an Each firearm sold copy.
 	"""
 	brand = company_brand(company)
 	name = customer_doc.customer_name or customer_doc.name
@@ -122,29 +133,74 @@ def render_body(template_doc, customer_doc, company: str | None) -> str:
 	ctx = {k: escape_html(str(v)) for k, v in {
 		"customer_name": name, "first_name": first, "date": formatdate(nowdate()),
 		"store_name": brand.get("name") or "", "store_address": brand.get("address_line") or "",
-		"valid_days": template_doc.valid_days or "",
+		"valid_days": template_doc.valid_days or "", **(firearm or {}),
 	}.items()}
 	return sanitize_html(frappe.render_template(template_doc.body or "", ctx))
+
+
+def firearm_context(serial_no: str, price=None) -> dict:
+	"""The gun an Each firearm sold copy names: its Serial No's own make / model /
+	caliber, else its Item's."""
+	sn = frappe.db.get_value("Serial No", serial_no, ["item_code", "manufacturer", "model_name", "caliber"],
+		as_dict=True) or frappe._dict()
+	item = frappe.db.get_value("Item", sn.item_code, ["item_name", "manufacturer", "model_name", "caliber"],
+		as_dict=True) if sn.get("item_code") else None
+	item = item or frappe._dict()
+	return {"serial_no": serial_no, "item_name": item.item_name or sn.item_code or "",
+		"manufacturer": sn.manufacturer or item.manufacturer or "", "model": sn.model_name or item.model_name or "",
+		"caliber": sn.caliber or item.caliber or "",
+		"price": fmt_money(flt(price), currency=frappe.defaults.get_global_default("currency")) if price else ""}
+
+
+def _template_rows(names=None) -> dict:
+	filters = {"active": 1}
+	if names is not None:
+		filters["name"] = ("in", list(names) or [""])
+	rows = frappe.get_all(TEMPLATE, filters=filters,
+		fields=["name", "requirement", "scope", "show_on_counter_panel"], order_by="title asc")
+	for r in rows:   # a template saved before the two settings existed
+		r.requirement = r.requirement or BY_ITEM
+		r.scope = r.scope or PER_CUSTOMER
+	return {r.name: r for r in rows}
+
+
+def is_per_firearm(template: str) -> bool:
+	return frappe.db.get_value(TEMPLATE, template, "scope") == PER_FIREARM
 
 
 # ------------------------------------------------------------------ status
 
 
-def agreement_status(customer: str, template: str, today=None) -> dict:
+def agreement_status(customer: str, template: str, today=None, serial_no: str | None = None,
+		sale: str | None = None) -> dict:
 	"""Where *customer* stands with *template* today.
 
+	For an Each firearm sold template pass the gun (*serial_no*) and, when there is
+	one, the sale it is for (*sale*): a signed copy for that gun counts until a
+	submitted sale has used it (``reference_name``), and never expires.
+
 	Returns:
-	    {"template", "state", "expires_on", "agreement"} where state is
+	    {"template", "serial_no", "state", "expires_on", "agreement"} where state is
 	    ``signed`` (valid, not expiring within 30 days), ``expiring``, ``expired``
 	    (the last signed copy ran out), ``pending`` (sent, not signed) or
 	    ``missing``. ``agreement`` is the copy the state comes from.
 	"""
 	today = getdate(today or nowdate())
-	rows = frappe.get_all(DOCTYPE, filters={"customer": customer, "template": template,
-		"status": ("in", ("Signed", "Pending", "Expired"))},
-		fields=["name", "status", "expires_on"], order_by="creation desc")
+	filters = {"customer": customer, "template": template, "status": ("in", ("Signed", "Pending", "Expired"))}
+	filters["serial_no"] = serial_no if serial_no else ("is", "not set")
+	rows = frappe.get_all(DOCTYPE, filters=filters, fields=["name", "status", "expires_on", "reference_name"],
+		order_by="creation desc")
+	out = {"template": template, "serial_no": serial_no, "state": "missing", "expires_on": None, "agreement": None}
+	if serial_no:
+		usable = [r for r in rows if r.status == "Signed" and (not r.reference_name or r.reference_name == sale)]
+		if usable:
+			out.update(state="signed", agreement=usable[0].name)
+			return out
+		pending = next((r for r in rows if r.status == "Pending"), None)
+		if pending:
+			out.update(state="pending", agreement=pending.name)
+		return out
 	valid = [r for r in rows if r.status == "Signed" and (not r.expires_on or getdate(r.expires_on) >= today)]
-	out = {"template": template, "state": "missing", "expires_on": None, "agreement": None}
 	if valid:
 		# Never-expiring first, then the one that lasts longest.
 		best = max(valid, key=lambda r: (r.expires_on is None, getdate(r.expires_on) if r.expires_on else today))
@@ -163,73 +219,158 @@ def agreement_status(customer: str, template: str, today=None) -> dict:
 	return out
 
 
+def _satisfied(status: dict) -> bool:
+	return status["state"] in ("signed", "expiring")
+
+
 def require_agreement(customer: str, template: str) -> None:
 	"""Raise :class:`AgreementRequired` unless *customer* holds a valid signed *template*."""
-	if agreement_status(customer, template)["state"] not in ("signed", "expiring"):
+	if not _satisfied(agreement_status(customer, template)):
 		name = frappe.db.get_value("Customer", customer, "customer_name") or customer
 		frappe.throw(_("{0} has not signed {1}.").format(frappe.bold(escape_html(name)),
 			frappe.bold(escape_html(template))), AgreementRequired, title=_("Agreement needed"))
 
 
 def counter_panel_rows(customer: str) -> list[dict]:
-	"""Status of every active template marked "Show on Counter Panel"."""
-	templates = frappe.get_all(TEMPLATE, filters={"active": 1, "show_on_counter_panel": 1},
-		pluck="name", order_by="title asc")
-	return [agreement_status(customer, t) for t in templates]
+	"""Status of every active Per customer template marked "Show on Counter Panel"
+	(an Each firearm sold one depends on the cart: the Agreements button shows it)."""
+	return [agreement_status(customer, t.name) for t in _template_rows().values()
+		if t.show_on_counter_panel and t.scope != PER_FIREARM]
+
+
+def required_for_item(item_code: str) -> str | None:
+	"""The agreement an Item needs: its own ``ffl_required_agreement``, else the
+	nearest Item Group (the Item's group or a parent) that names one."""
+	row = frappe.db.get_value("Item", item_code, ["ffl_required_agreement", "item_group"], as_dict=True) \
+		if frappe.db.has_column("Item", "ffl_required_agreement") else None
+	if not row:
+		return None
+	if row.ffl_required_agreement:
+		return row.ffl_required_agreement
+	if not row.item_group or not frappe.db.has_column("Item Group", "ffl_required_agreement"):
+		return None
+	lft, rgt = frappe.db.get_value("Item Group", row.item_group, ["lft", "rgt"]) or (None, None)
+	if lft is None:
+		return None
+	hit = frappe.get_all("Item Group", filters={"lft": ("<=", lft), "rgt": (">=", rgt),
+		"ffl_required_agreement": ("is", "set")}, pluck="ffl_required_agreement", order_by="lft desc", limit=1)
+	return hit[0] if hit else None
+
+
+def _row_serials(row) -> list[str]:
+	return [s.strip() for s in (row.get("serial_no") or "").replace(",", "\n").splitlines() if s.strip()]
+
+
+def sale_requirements(doc) -> list[dict]:
+	"""What a counter sale's customer must have signed: [{"template", "serial_no",
+	"item_code"}] (serial_no only for an Each firearm sold template, one entry per gun).
+
+	* Required for every sale — every sale (an Each firearm sold one: every gun in it);
+	* Required by item — the Items (or their Item Groups) that name it, and whatever
+	  ``gunshop_required_agreements`` providers name (a failing provider is logged and
+	  adds nothing);
+	* Optional — never; it is offered from the Agreements button only.
+
+	An Each firearm sold template applies to the sale's serial-numbered lines only.
+	"""
+	rows = [r for r in doc.get("items") or [] if r.get("item_code")]
+	named: dict[str, list] = {}
+	for r in rows:
+		t = required_for_item(r.item_code)
+		if t:
+			named.setdefault(t, []).append(r)
+	for hook in frappe.get_hooks("gunshop_required_agreements"):
+		try:
+			for t in frappe.get_attr(hook)(doc) or []:
+				if isinstance(t, str):
+					named.setdefault(t, []).extend(rows)
+		except Exception:
+			frappe.log_error(title=f"gunshop_required_agreements provider failed: {hook}")
+	templates = _template_rows()
+	out, seen = [], set()
+
+	def add(t, serial, item):
+		key = (t, serial)
+		if key not in seen:
+			seen.add(key)
+			out.append({"template": t, "serial_no": serial, "item_code": item})
+
+	for t, row in templates.items():
+		if row.requirement == EVERY_SALE:
+			lines = rows
+		elif row.requirement == BY_ITEM and t in named:
+			lines = named[t]
+		else:
+			continue
+		if row.scope == PER_FIREARM:
+			for r in lines:
+				for serial in _row_serials(r):
+					add(t, serial, r.item_code)
+		else:
+			add(t, None, None)
+	return out
 
 
 def required_templates(doc) -> list[str]:
-	"""Active templates a sale's customer must have signed: the Items' own
-	``ffl_required_agreement`` plus whatever ``gunshop_required_agreements``
-	providers name. A provider that fails is logged and adds nothing."""
-	codes = list({r.item_code for r in doc.get("items") or [] if r.get("item_code")})
-	names = []
-	if codes and frappe.db.has_column("Item", "ffl_required_agreement"):
-		names += frappe.get_all("Item", filters={"name": ("in", codes), "ffl_required_agreement": ("is", "set")},
-			pluck="ffl_required_agreement")
-	for hook in frappe.get_hooks("gunshop_required_agreements"):
-		try:
-			names += [n for n in (frappe.get_attr(hook)(doc) or []) if isinstance(n, str)]
-		except Exception:
-			frappe.log_error(title=f"gunshop_required_agreements provider failed: {hook}")
-	names = list(dict.fromkeys(names))
-	if not names:
-		return []
-	active = set(frappe.get_all(TEMPLATE, filters={"name": ("in", names), "active": 1}, pluck="name"))
-	return [n for n in names if n in active]
+	"""The templates :func:`sale_requirements` names (each once)."""
+	return list(dict.fromkeys(n["template"] for n in sale_requirements(doc)))
+
+
+def _sale_name(doc) -> str | None:
+	return None if doc.is_new() else doc.name
+
+
+def missing_requirements(doc) -> list[dict]:
+	"""The :func:`sale_requirements` the customer has not signed yet."""
+	customer = doc.get("customer")
+	return [n for n in sale_requirements(doc) if not _satisfied(
+		agreement_status(customer, n["template"], serial_no=n["serial_no"], sale=_sale_name(doc)))]
 
 
 @frappe.whitelist()
-def missing_for_items(customer: str, item_codes: list | str) -> list[str]:
-	"""Agreements these Items require that *customer* has not signed (the register's prompt).
-
-	Only the Items' own ``ffl_required_agreement``; extension providers need the
-	whole sale and are checked at submit (:func:`refuse_missing_required`).
+def agreements_for_sale(customer: str, items: list | str | None = None, sale: str | None = None) -> dict:
+	"""Every active agreement and where this customer stands, for the register's Agreements button.
 
 	Args:
 	    customer: Customer name (document id).
-	    item_codes: Item codes in the cart.
+	    items: The cart: [{"item_code", "serial_no", "rate"}] (serial_no may hold
+	        several, one per line).
+	    sale: The POS Invoice, once saved.
 
 	Returns:
-	    Active Agreement Template names still to sign (pending or expired count as unsigned).
+	    {"rows": [{"template", "scope", "requirement", "required": whether this
+	    sale needs it, "serial_no", "item_code", "item_name", "rate", "state",
+	    "expires_on", "agreement"}]} — a Per customer template once, an Each
+	    firearm sold one once per gun in the cart (or once with no gun when the cart
+	    has none, so it can still be seen).
 	"""
 	frappe.has_permission("Customer", "read", doc=customer, throw=True)
-	codes = frappe.parse_json(item_codes) if isinstance(item_codes, str) else (item_codes or [])
-	codes = [c for c in codes if isinstance(c, str)][:200]
-	if not codes or not frappe.db.has_column("Item", "ffl_required_agreement"):
-		return []
-	names = list(dict.fromkeys(frappe.get_all("Item", filters={"name": ("in", codes),
-		"ffl_required_agreement": ("is", "set")}, pluck="ffl_required_agreement")))
-	active = set(frappe.get_all(TEMPLATE, filters={"name": ("in", names), "active": 1}, pluck="name")) if names else set()
-	return [n for n in names if n in active
-		and agreement_status(customer, n)["state"] not in ("signed", "expiring")]
+	cart = frappe.parse_json(items) if isinstance(items, str) else (items or [])
+	cart = [frappe._dict(r) for r in cart if isinstance(r, dict) and isinstance(r.get("item_code"), str)][:200]
+	needed = {(n["template"], n["serial_no"]) for n in sale_requirements(frappe._dict(items=cart, customer=customer))}
+	guns = [(serial, r) for r in cart for serial in _row_serials(r)]
+	names = {r.item_code: r for r in frappe.get_all("Item", filters={"name": ("in", [g[1].item_code for g in guns] or [""])},
+		fields=["name as item_code", "item_name"])}
+	out = []
+	for t, row in _template_rows().items():
+		targets = [(serial, r) for serial, r in guns] if row.scope == PER_FIREARM and guns else [(None, None)]
+		for serial, r in targets:
+			st = agreement_status(customer, t, serial_no=serial, sale=sale)
+			out.append({"template": t, "scope": row.scope, "requirement": row.requirement,
+				"required": (t, serial) in needed, "serial_no": serial,
+				"item_code": r.item_code if r else None,
+				"item_name": (names.get(r.item_code) or {}).get("item_name") if r else None,
+				"rate": flt(r.get("rate")) if r else None,
+				"state": st["state"], "expires_on": st["expires_on"], "agreement": st["agreement"]})
+	out.sort(key=lambda x: (not x["required"], x["template"], x["serial_no"] or ""))
+	return {"rows": out}
 
 
 def refuse_missing_required(doc, method=None) -> None:
 	"""POS Invoice / Sales Invoice before_submit: the customer must have signed what the sale needs.
 
-	There is no override: the customer signs (Request agreement on the customer),
-	or a manager records a copy signed on paper.
+	There is no override: the customer signs (the Agreements button at the register,
+	or Request agreement on the customer), or a manager records a copy signed on paper.
 	"""
 	customer = doc.get("customer")
 	if not customer or doc.get("is_return") or doc.get("is_consolidated"):
@@ -238,16 +379,40 @@ def refuse_missing_required(doc, method=None) -> None:
 		return
 	if is_channel_mirrored_invoice(doc):
 		return
-	missing = [t for t in required_templates(doc)
-		if agreement_status(customer, t)["state"] not in ("signed", "expiring")]
+	missing = missing_requirements(doc)
 	if not missing:
 		return
 	name = frappe.db.get_value("Customer", customer, "customer_name") or customer
-	frappe.throw(_("{0} must sign {1} before this sale. At the register, click the agreement under "
-		"the customer's name (or Request agreement on the customer) to show a QR code or email a link; "
-		"or a manager records a copy signed on paper.").format(
-		frappe.bold(escape_html(name)), ", ".join(frappe.bold(escape_html(t)) for t in missing)),
+	what = ", ".join(frappe.bold(escape_html(n["template"] + (f" ({n['serial_no']})" if n["serial_no"] else "")))
+		for n in missing)
+	frappe.throw(_("{0} must sign {1} before this sale. At the register, click Agreements under the "
+		"customer's name to send it to the tablet, show a QR code or email a link; or a manager records a "
+		"copy signed on paper.").format(frappe.bold(escape_html(name)), what),
 		AgreementRequired, title=_("Agreement needed"))
+
+
+def mark_firearm_agreements_used(doc, method=None) -> None:
+	"""POS Invoice / Sales Invoice on_submit: the Each firearm sold copies this sale
+	relied on now belong to it (``reference_*``), so selling the same gun again —
+	after a return, say — needs a new one."""
+	if doc.get("is_return") or doc.get("is_consolidated") or is_channel_mirrored_invoice(doc):
+		return
+	for n in sale_requirements(doc):
+		if not n["serial_no"]:
+			continue
+		st = agreement_status(doc.customer, n["template"], serial_no=n["serial_no"], sale=doc.name)
+		if st["state"] == "signed" and st["agreement"]:
+			frappe.db.set_value(DOCTYPE, st["agreement"], {"reference_doctype": doc.doctype,
+				"reference_name": doc.name}, update_modified=False)
+
+
+def release_firearm_agreements(doc, method=None) -> None:
+	"""POS Invoice / Sales Invoice on_cancel: a cancelled sale gives its Each firearm
+	sold copies back (the gun did not leave)."""
+	for name in frappe.get_all(DOCTYPE, filters={"reference_doctype": doc.doctype, "reference_name": doc.name},
+			pluck="name"):
+		frappe.db.set_value(DOCTYPE, name, {"reference_doctype": None, "reference_name": None},
+			update_modified=False)
 
 
 # ------------------------------------------------------------------ staff side
@@ -263,7 +428,7 @@ def _qr_data_uri(url: str) -> str:
 
 @frappe.whitelist(methods=["POST"])
 def request_agreement(customer: str, template: str, deliver: str = "qr", replace: int = 0,
-		terminal: str | None = None) -> dict:
+		terminal: str | None = None, serial_no: str | None = None, price: float | None = None) -> dict:
 	"""Send a customer an agreement to sign.
 
 	Creates the customer's Pending copy of the template, or re-issues the one
@@ -284,6 +449,8 @@ def request_agreement(customer: str, template: str, deliver: str = "qr", replace
 	        manager then records a paper copy on it).
 	    replace: 1 to re-issue even though the pending copy's link still works.
 	    terminal: Signing Terminal name, for ``tablet``; must be active and paired.
+	    serial_no: The gun, for an Each firearm sold template (required there).
+	    price: The gun's price in this sale, for the text's ``{{ price }}``.
 
 	Returns:
 	    {"name": the Customer Agreement, "deliver", "token_expires"} plus, for
@@ -298,6 +465,14 @@ def request_agreement(customer: str, template: str, deliver: str = "qr", replace
 	if not tpl.active:
 		frappe.throw(_("{0} is switched off.").format(escape_html(template)))
 	cust = frappe.get_doc("Customer", customer)
+	serial_no = (serial_no or "").strip() or None
+	if tpl.scope == PER_FIREARM:
+		if not serial_no or not frappe.db.exists("Serial No", serial_no):
+			frappe.throw(_("{0} is signed for each firearm sold: pick the gun it is for.").format(
+				escape_html(template)), title=_("Which firearm?"))
+	else:
+		serial_no = None
+	firearm = firearm_context(serial_no, price) if serial_no else None
 	email = (cust.get("email_id") or "").strip()
 	if deliver == "tablet":
 		row = frappe.db.get_value("Signing Terminal", terminal or "", ["active", "device_secret_hash"], as_dict=True)
@@ -311,8 +486,9 @@ def request_agreement(customer: str, template: str, deliver: str = "qr", replace
 	expires = now_datetime() + timedelta(hours=TOKEN_HOURS) if token else None
 	company = _default_company()
 	with atomic("request agreement"):
-		existing = frappe.db.get_value(DOCTYPE, {"customer": customer, "template": template,
-			"status": "Pending"}, ["name", "sign_token_hash", "token_expires"], as_dict=True, for_update=True)
+		existing = frappe.db.get_value(DOCTYPE, {"customer": customer, "template": template, "status": "Pending",
+			"serial_no": serial_no or ("is", "not set")}, ["name", "sign_token_hash", "token_expires"],
+			as_dict=True, for_update=True)
 		if existing and existing.sign_token_hash and existing.token_expires \
 				and get_datetime(existing.token_expires) > now_datetime() and not cint(replace):
 			return {"name": existing.name, "link_open": True, "token_expires": str(existing.token_expires)}
@@ -320,7 +496,8 @@ def request_agreement(customer: str, template: str, deliver: str = "qr", replace
 		doc.update({
 			"customer": customer, "template": template, "template_version": tpl.version or 1,
 			"company": company, "status": "Pending",
-			"body_snapshot": render_body(tpl, cust, company),
+			"body_snapshot": render_body(tpl, cust, company, firearm),
+			"serial_no": serial_no, "item_code": firearm and frappe.db.get_value("Serial No", serial_no, "item_code"),
 			"sign_token_hash": _hash(token) if token else None, "token_expires": expires,
 			"delivery_channel": {"tablet": "Terminal", "qr": "QR", "email": "Email"}.get(deliver),
 			"requested_by": frappe.session.user,
@@ -453,13 +630,13 @@ def get_customer_agreements(customer: str) -> dict:
 	    customer: Customer name (document id).
 
 	Returns:
-	    {"rows": [{"name", "template", "status", "signed_on", "signed_via",
+	    {"rows": [{"name", "template", "serial_no", "status", "signed_on", "signed_via",
 	    "expires_on", "signed_pdf"}] newest first, "can_manage": whether the caller
 	    may void or record paper copies}.
 	"""
 	frappe.has_permission("Customer", "read", doc=customer, throw=True)
 	rows = frappe.get_all(DOCTYPE, filters={"customer": customer},
-		fields=["name", "template", "status", "signed_on", "signed_via", "expires_on", "signed_pdf"],
+		fields=["name", "template", "serial_no", "status", "signed_on", "signed_via", "expires_on", "signed_pdf"],
 		order_by="creation desc", limit=50) if frappe.has_permission(DOCTYPE, "read") else []
 	return {"rows": [{**r, "signed_on": str(r.signed_on or ""), "expires_on": str(r.expires_on or "")}
 		for r in rows], "can_manage": _is_manager()}
@@ -574,7 +751,8 @@ def _refresh_text(doc) -> bool:
 	if cint(doc.template_version) == cint(tpl.version or 1):
 		return False
 	cust = frappe.get_doc("Customer", doc.customer)
-	doc.db_set({"body_snapshot": render_body(tpl, cust, doc.company), "template_version": tpl.version or 1},
+	firearm = firearm_context(doc.serial_no) if doc.get("serial_no") else None
+	doc.db_set({"body_snapshot": render_body(tpl, cust, doc.company, firearm), "template_version": tpl.version or 1},
 		update_modified=False)
 	return True
 

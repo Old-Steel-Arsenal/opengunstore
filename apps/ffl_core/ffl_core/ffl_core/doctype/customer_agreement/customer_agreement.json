@@ -10,6 +10,8 @@
   "column_break_main",
   "template",
   "template_version",
+  "serial_no",
+  "item_code",
   "status",
   "expires_on",
   "section_signed",
@@ -84,6 +86,23 @@
    "fieldtype": "Int",
    "label": "Agreement Version",
    "read_only": 1
+  },
+  {
+   "fieldname": "serial_no",
+   "fieldtype": "Link",
+   "options": "Serial No",
+   "label": "Firearm (Serial No)",
+   "read_only": 1,
+   "search_index": 1,
+   "description": "For an agreement signed for each firearm sold: the gun it names."
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "options": "Item",
+   "label": "Item",
+   "read_only": 1,
+   "depends_on": "eval:doc.serial_no"
   },
   {
    "fieldname": "status",
@@ -260,7 +279,8 @@
    "fieldtype": "Dynamic Link",
    "label": "Reference",
    "options": "reference_doctype",
-   "read_only": 1
+   "read_only": 1,
+   "description": "For an agreement signed for each firearm sold: the sale it was used for."
   },
   {
    "fieldname": "section_body",
@@ -278,7 +298,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-17 09:00:00.000000",
+ "modified": "2026-10-17 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Customer Agreement",

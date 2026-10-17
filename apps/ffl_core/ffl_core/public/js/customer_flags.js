@@ -15,7 +15,7 @@
 //     the register shows under the customer's name. An agreement still to sign
 //     is a clickable chip that opens ffl.agreements.request (agreement_actions.js).
 // The POS wiring is here too: the POS Invoice `customer` event (both the register
-// and the Desk form), the ItemCart customer section (strip + "Scan ID" lookup,
+// and the Desk form), the ItemCart customer section (strip + Agreements button + "Scan ID" lookup,
 // shown only while FFL Settings → Store Customer ID Numbers is on), wrapped on
 // ERPNext's prototype via ffl.installClassHook — never edited.
 // New Customer dialog: confirmNotDuplicate(values) — customer_quick_entry.js asks
@@ -368,8 +368,15 @@
 				var cart = this, c = this.customer_info && this.customer_info.customer;
 				var paint = function () {
 					var html = c && cache[c] ? api.stripHtml(cache[c], __) : '';
-					cart.$customer_section.find('.ffl-customer-flags').remove();
-					if (html) cart.$customer_section.find('.customer-details').first().append(html);
+					var $details = cart.$customer_section.find('.customer-details').first();
+					cart.$customer_section.find('.ffl-customer-flags, .ffl-agreements-btn').remove();
+					if (html) $details.append(html);
+					// Agreements for this customer and cart (agreement_actions.js).
+					if (c && window.ffl && ffl.agreements && ffl.agreements.forSale) {
+						$('<button class="btn btn-xs btn-default ffl-agreements-btn" style="margin-top:4px">' + __('Agreements') + '</button>')
+							.appendTo($details)
+							.on('click', function (e) { e.stopPropagation(); ffl.agreements.forSale(cart.events.get_frm()); });
+					}
 				};
 				paint();
 				// A resumed held draft (load_invoice) never fires the customer event, so its

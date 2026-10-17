@@ -27,6 +27,7 @@
 	{% if signature_uri %}<img src="{{ signature_uri }}"><br>{% endif %}
 	<table class="meta">
 		<tr><td>Participant</td><td><b>{{ doc.customer_name | e }}</b>{% if doc.participant_is_minor %} (under 18){% endif %}</td></tr>
+		{% if doc.serial_no %}<tr><td>Firearm</td><td>{{ (doc.item_code or "") | e }} · serial {{ doc.serial_no | e }}</td></tr>{% endif %}
 		<tr><td>Signed by</td><td>{{ doc.signer_name | e }}{% if doc.signer_relationship and doc.signer_relationship != "Self" %} — {{ doc.signer_relationship | e }}{% endif %}</td></tr>
 		<tr><td>Signed on</td><td>{{ signed_on }} ({{ doc.signed_via | e }})</td></tr>
 		<tr><td>IP address</td><td>{{ doc.signer_ip | e }}</td></tr>

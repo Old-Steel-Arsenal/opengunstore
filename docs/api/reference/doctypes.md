@@ -37,6 +37,8 @@ The text of a waiver or agreement customers sign.
 | `active` | Check | Active |  |  |
 | `version` | Int | Version |  |  |
 | `valid_days` | Int | Valid For (Days) |  |  |
+| `requirement` | Select | Required |  | Optional, Required by item, Required for every sale |
+| `scope` | Select | Signed |  | Per customer, Each firearm sold |
 | `show_on_counter_panel` | Check | Show on Counter Panel |  |  |
 | `minors_need_guardian` | Check | Minors Need a Parent or Guardian |  |  |
 | `body` | Text Editor | Agreement Text | ✓ |  |
@@ -202,6 +204,8 @@ One customer's copy of an agreement: requested, signed (on a tablet, by a link o
 | `company` | Link | Company |  | Company |
 | `template` | Link | Agreement | ✓ | Agreement Template |
 | `template_version` | Int | Agreement Version |  |  |
+| `serial_no` | Link | Firearm (Serial No) |  | Serial No |
+| `item_code` | Link | Item |  | Item |
 | `status` | Select | Status |  | Pending, Signed, Void, Expired |
 | `expires_on` | Date | Expires On |  |  |
 | `signed_on` | Datetime | Signed On |  |  |
