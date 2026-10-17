@@ -2,6 +2,8 @@
 frappe.ui.form.on('Gunsmith Work Order', {
 	refresh(frm) {
 		if (frm.is_new()) return;
+		// A closed job is kept as it is (the server refuses changes too).
+		if (['Picked Up', 'Cancelled'].includes(frm.doc.status)) frm.disable_form();
 		frappe.call({ method: 'ffl_core.gunsmith.get_state', args: { name: frm.doc.name } })
 			.then((r) => draw(frm, r.message || {}));
 	},
