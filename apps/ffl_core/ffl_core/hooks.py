@@ -149,6 +149,11 @@ def _hashed(rel_path: str) -> str:
 
 # Extension SDK (since core 0.1.0): frappe.boot.gunshop_extensions = {id: {enabled, version, title}}
 # is what gunstore.extensions renders from.
+# A password sign-in turns a counter PIN that wrong tries switched off back on (staff_switch.py).
+on_login = ["ffl_core.staff_switch.on_password_login"]
+# Wrong counter-PIN tries outlive `bench clear-cache` (staff_switch.PIN_FAIL_KEY).
+persistent_cache_keys = ["ffl-pin-fail:*"]
+
 extend_bootinfo = [
 	"ffl_core.extensions.extend_bootinfo",
 	# Idle lock minutes and whether this session's screen is locked (staff_switch.py).

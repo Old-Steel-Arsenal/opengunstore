@@ -13545,17 +13545,65 @@
         }
       }
     },
+    "/api/method/ffl_core.staff_switch.clear_pin": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Clear someone's counter PIN (they sign in with the password, and may set a new one).",
+        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:237`",
+        "operationId": "ffl_core.staff_switch.clear_pin",
+        "responses": {
+          "200": {
+            "description": "{\"has_pin\": False}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "user": {
+                    "type": "string",
+                    "description": "The user whose PIN goes."
+                  }
+                },
+                "required": [
+                  "user"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.staff_switch.counter_users": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "Everyone who can sign in at the counter, for the switch-user list.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:70`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:84`",
         "operationId": "ffl_core.staff_switch.counter_users",
         "responses": {
           "200": {
-            "description": "[{\"user\", \"full_name\", \"image\", \"current\": bool}] for enabled desk users holding a counter role, by name (never Administrator, the site's superuser), and always the signed-in one, marked current: a locked screen is unlocked by picking yourself, whatever your roles.",
+            "description": "[{\"user\", \"full_name\", \"image\", \"current\": bool, \"has_pin\": bool, \"pin_off\": bool (five wrong PINs: their password until they next use it)}] for enabled desk users holding a counter role, by name (never Administrator, the site's superuser), and always the signed-in one, marked current: a locked screen is unlocked by picking yourself, whatever your roles.",
             "content": {
               "application/json": {
                 "schema": {
@@ -13581,7 +13629,7 @@
           "ffl_core"
         ],
         "summary": "Lock this session's screen (idle, or the clerk walked away).",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:94`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:111`",
         "operationId": "ffl_core.staff_switch.lock_screen",
         "responses": {
           "200": {
@@ -13605,13 +13653,124 @@
         }
       }
     },
+    "/api/method/ffl_core.staff_switch.set_pin": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Set (or change) the signed-in user's counter PIN.",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:213`",
+        "operationId": "ffl_core.staff_switch.set_pin",
+        "responses": {
+          "200": {
+            "description": "{\"has_pin\": True}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "password": {
+                    "type": "string",
+                    "description": "Their login password."
+                  },
+                  "pin": {
+                    "type": "string",
+                    "description": "The new PIN, 4–6 digits, not 1111 / 1234-style."
+                  },
+                  "confirm": {
+                    "type": "string",
+                    "description": "The new PIN again."
+                  }
+                },
+                "required": [
+                  "password",
+                  "pin",
+                  "confirm"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.staff_switch.switch_with_pin": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Sign someone else in at this counter with their PIN: a new session for them",
+        "description": "(frappe's LoginManager, so the login history records it, and its IP / hours rules\napply) and this one ends. Only a counter user who has a PIN, without a second sign-in\nstep; anyone else signs in with their password (frappe's login).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:253`",
+        "operationId": "ffl_core.staff_switch.switch_with_pin",
+        "responses": {
+          "200": {
+            "description": "{\"user\"}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "user": {
+                    "type": "string",
+                    "description": "Who is taking over the counter."
+                  },
+                  "pin": {
+                    "type": "string",
+                    "description": "Their counter PIN."
+                  }
+                },
+                "required": [
+                  "user",
+                  "pin"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.staff_switch.unlock_screen": {
       "post": {
         "tags": [
           "ffl_core"
         ],
-        "summary": "The signed-in person unlocks their own screen with their password: 10 wrong",
-        "description": "tries per person per 10 minutes (counted per person, not per IP — a shop's\ncounters share one address). Signing in as someone else is frappe's login.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:106`",
+        "summary": "The signed-in person unlocks their own screen with their password (10 wrong",
+        "description": "tries per person per 10 minutes, counted per person, not per IP — a shop's\ncounters share one address) or their counter PIN (5 wrong ones turn it off).\nSigning in as someone else is frappe's login, or :func:`switch_with_pin`.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/staff_switch.py:123`",
         "operationId": "ffl_core.staff_switch.unlock_screen",
         "responses": {
           "200": {
@@ -13640,13 +13799,20 @@
                 "type": "object",
                 "properties": {
                   "password": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "description": "The signed-in user's password."
+                  },
+                  "pin": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Or their counter PIN."
                   }
-                },
-                "required": [
-                  "password"
-                ]
+                }
               }
             }
           }
