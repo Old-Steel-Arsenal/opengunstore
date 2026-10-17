@@ -3,8 +3,9 @@
 The fields come from ``setup/customer_profile.py``; the doc events below are
 wired in ``hooks.doc_events["Customer"]``.
 
-* **Status** — a customer without one is Active; Banned needs a reason. (A later change
-  reads Banned at the counter; nothing here blocks a sale.)
+* **Status** — a customer without one is Active; Banned needs a reason and a
+  manager (``customer_flags.guard_ban_fields``); the counter gate and the
+  manager override live in ``customer_flags``.
 * **ID numbers and date of birth** — kept only while FFL Settings → Store
   Customer ID Numbers is on. Off, every save blanks ``date_of_birth`` and each
   ``customer_ids[].id_number``. This validate is the rule; the form hiding the
@@ -57,6 +58,8 @@ def validate_customer(doc, method=None) -> None:
 	if doc.customer_status == BANNED and not (doc.get("status_reason") or "").strip():
 		frappe.throw(_("Enter a reason before marking {0} as Banned.").format(
 			frappe.bold(escape_html(doc.customer_name or doc.name))), title=_("Reason required"))
+	from ffl_core.customer_flags import guard_ban_fields
+	guard_ban_fields(doc)
 	_refuse_alias_edits(doc)
 	blank_id_numbers_unless_enabled(doc)
 	_stamp_alerts(doc)
@@ -95,11 +98,13 @@ def blank_id_numbers_unless_enabled(doc) -> None:
 
 
 def stored_id_counts() -> dict:
-	"""How many dates of birth and ID numbers are stored across all customers."""
+	"""How many dates of birth and ID numbers are stored across all customers (a gunsmith
+	work order's copy of the owner's ID number counts as one)."""
 	return {
 		"dates_of_birth": frappe.db.count("Customer", {"date_of_birth": ["is", "set"]}),
 		"id_numbers": frappe.db.count("Customer ID Document",
-			{"parenttype": "Customer", "id_number": ["is", "set"]}),
+			{"parenttype": "Customer", "id_number": ["is", "set"]})
+			+ frappe.db.count("Gunsmith Work Order", {"id_number": ["is", "set"]}),
 	}
 
 
@@ -120,6 +125,8 @@ def erase_stored_ids() -> dict:
 	frappe.db.sql("UPDATE `tabCustomer` SET date_of_birth = NULL WHERE date_of_birth IS NOT NULL")
 	frappe.db.sql("UPDATE `tabCustomer ID Document` SET id_number = NULL "
 		"WHERE parenttype = 'Customer' AND id_number IS NOT NULL AND id_number != ''")
+	# The bound book's own record (the acquisition) keeps the ID it needs; the work order's copy goes.
+	frappe.db.sql("UPDATE `tabGunsmith Work Order` SET id_number = NULL WHERE id_number IS NOT NULL AND id_number != ''")
 	frappe.clear_cache(doctype="Customer")
 	return counts
 

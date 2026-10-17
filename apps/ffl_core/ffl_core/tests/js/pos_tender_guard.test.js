@@ -463,6 +463,7 @@ test('lockedRowFix: nothing to do when exact, unlocked, or the lock is unknown',
 // does not come from its own flow.
 test('isLockedLine: the locked item by code, and any row carrying a lock', () => {
 	assert.strictEqual(isLockedLine({ item_code: 'TRADE-IN-CREDIT' }), true);
+	assert.strictEqual(isLockedLine({ item_code: 'GUNSMITH-DEPOSIT' }), true, 'a tile tap on the deposit item');
 	assert.strictEqual(isLockedLine({ item_code: 'X', ffl_locked_rate: -50 }), true);
 	assert.strictEqual(isLockedLine({ item_code: 'GLOCK-17', rate: 569, ffl_locked_rate: 0 }), false);
 	assert.strictEqual(isLockedLine(null), false);

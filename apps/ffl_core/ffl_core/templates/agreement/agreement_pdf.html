@@ -1,0 +1,39 @@
+{#- Signed copy of a Customer Agreement (ffl_core.agreements._pdf_bytes).
+    body_html is the frozen, sanitized text; the signature arrives as a data URI
+    because the PDF renderer has no session to fetch a private file with. -#}
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>
+	body { font-family: Helvetica, Arial, sans-serif; font-size: 11pt; color: #111; line-height: 1.45; }
+	.head { border-bottom: 1px solid #999; padding-bottom: 8px; margin-bottom: 14px; }
+	.head img { max-height: 48px; float: right; }
+	.store { font-size: 13pt; font-weight: bold; }
+	.muted { color: #555; font-size: 9pt; }
+	h1 { font-size: 15pt; margin: 12px 0 4px; }
+	.sig { margin-top: 22px; border-top: 1px solid #999; padding-top: 10px; page-break-inside: avoid; }
+	.sig img { width: 300px; border-bottom: 1px solid #111; }
+	table.meta td { padding: 2px 12px 2px 0; vertical-align: top; font-size: 10pt; }
+</style></head>
+<body>
+<div class="head">
+	{% if brand.logo_url %}<img src="{{ brand.logo_url }}">{% endif %}
+	<div class="store">{{ brand.name | e }}</div>
+	<div class="muted">{{ brand.address_line | e }}</div>
+</div>
+<h1>{{ doc.template | e }}</h1>
+<div class="muted">{{ doc.name | e }} · version {{ doc.template_version or 1 }}</div>
+<div class="body">{{ body_html }}</div>
+<div class="sig">
+	{% if signature_uri %}<img src="{{ signature_uri }}"><br>{% endif %}
+	<table class="meta">
+		<tr><td>Participant</td><td><b>{{ doc.customer_name | e }}</b>{% if doc.participant_is_minor %} (under 18){% endif %}</td></tr>
+		{% if doc.serial_no %}<tr><td>Firearm</td><td>{{ (doc.item_code or "") | e }} · serial {{ doc.serial_no | e }}</td></tr>{% endif %}
+		<tr><td>Signed by</td><td>{{ doc.signer_name | e }}{% if doc.signer_relationship and doc.signer_relationship != "Self" %} — {{ doc.signer_relationship | e }}{% endif %}</td></tr>
+		<tr><td>Signed on</td><td>{{ signed_on }} ({{ doc.signed_via | e }})</td></tr>
+		{% if doc.reference_name and not doc.serial_no %}<tr><td>{{ doc.reference_doctype | e }}</td><td>{{ doc.reference_name | e }}</td></tr>{% elif doc.reference_name %}<tr><td>Invoice / receipt no.</td><td>{{ doc.reference_name | e }} <span class="muted">(recorded by the store after signing)</span></td></tr>{% endif %}
+		{% if witness %}<tr><td>Store witness</td><td>{{ witness | e }} · {{ signed_on }}</td></tr>{% endif %}
+		<tr><td>IP address</td><td>{{ doc.signer_ip | e }}</td></tr>
+		{% if doc.expires_on %}<tr><td>Valid until</td><td>{{ doc.expires_on }}</td></tr>{% endif %}
+	</table>
+</div>
+</body></html>

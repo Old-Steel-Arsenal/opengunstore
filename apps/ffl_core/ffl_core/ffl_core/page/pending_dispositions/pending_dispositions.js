@@ -315,7 +315,30 @@ class PendingDispositionsApp {
 				.sort((a, b) => day(a).localeCompare(day(b)));
 			this.rows = rows;
 			this._render(rows);
+			this._markBanned(rows);
 		});
+	}
+
+	// A Banned buyer's order gets a red badge (ffl_core.customer_flags.banned_order_rows):
+	// web and GunBroker orders still come in (booked after the goods leave), so staff
+	// decide here whether to ship or cancel. Re-renders only when something matched.
+	_markBanned(rows) {
+		const pick = (k) => rows.map((r) => r[k]).filter(Boolean);
+		frappe.call({
+			method: 'ffl_core.customer_flags.banned_order_rows',
+			args: { woo_orders: pick('woo_online_order'), gb_orders: pick('gunbroker_order'),
+				customers: rows.filter((r) => !r.source || r.source === 'counter').map((r) => r.customer).filter(Boolean) },
+		}).then((r) => {
+			const hit = r.message || {};
+			const woo = new Set(hit.woo || []), gb = new Set(hit.gb || []), cust = new Set(hit.customers || []);
+			let any = false;
+			rows.forEach((row) => {
+				row.banned_customer = woo.has(row.woo_online_order) || gb.has(row.gunbroker_order)
+					|| ((!row.source || row.source === 'counter') && cust.has(row.customer));
+				any = any || row.banned_customer;
+			});
+			if (any && this.rows === rows) this._render(rows);
+		}).catch(() => { /* the badge is a hint; the queue works without it */ });
 	}
 
 	_render(rows) {
@@ -490,6 +513,8 @@ class PendingDispositionsApp {
 				? `<span class="badge warn">${__('Serial conflict')}</span>` : '';
 			// Says WHY this row has no Dispose button, so nobody goes looking for
 			// one — or worse, decides the order is broken and hand-books it.
+			const bannedBadge = row.banned_customer
+				? `<span class="badge warn" title="${__('This buyer is marked Banned. Decide whether to ship or cancel and refund.')}">${__('Banned customer')}</span>` : '';
 			const pickupBadge = (can.pickup && row.store_pickup === true)
 				? `<span class="badge amber">${row.pickup_invoice
 					? __('In-store pickup · counter order open')
@@ -584,7 +609,7 @@ class PendingDispositionsApp {
 			const $card = $(`
 				<div class="card">
 					<div>
-						<div class="who">${frappe.utils.escape_html(row.customer_name || row.customer)} ${typeBadge} ${fflBadge} ${payBadge} ${disposedBadge} ${shippedBadge} ${wcStatusBadge} ${gbStatusBadge} ${conflictBadge} ${pickupBadge}</div>
+						<div class="who">${frappe.utils.escape_html(row.customer_name || row.customer)} ${typeBadge} ${fflBadge} ${payBadge} ${disposedBadge} ${shippedBadge} ${wcStatusBadge} ${gbStatusBadge} ${conflictBadge} ${pickupBadge} ${bannedBadge}</div>
 						<div class="meta">
 							${ref}
 							· ${__('to')} ${frappe.utils.escape_html(row.destination_ffl_name || row.destination_ffl

@@ -777,7 +777,7 @@ class AuthResolver:
 def auth_display(ep: dict) -> str:
     """One-line auth summary emitted into markdown + OpenAPI description."""
     if ep["allow_guest"]:
-        return "Guest — no session; the endpoint verifies the caller itself (HMAC signature or HTTP Basic credentials)."
+        return "Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token)."
     auth = ep.get("auth")
     if not auth:
         return (

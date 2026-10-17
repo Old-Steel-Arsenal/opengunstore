@@ -1,0 +1,113 @@
+{
+ "actions": [],
+ "creation": "2026-10-17 09:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "autoname": "field:terminal_name",
+ "naming_rule": "By fieldname",
+ "description": "A store tablet paired to sign agreements: the counter sends an agreement to it and the customer signs there.",
+ "field_order": [
+  "terminal_name",
+  "active",
+  "pos_profile",
+  "column_break_main",
+  "paired_on",
+  "paired_by",
+  "last_seen",
+  "device_secret_hash",
+  "pairing_help"
+ ],
+ "fields": [
+  {
+   "fieldname": "terminal_name",
+   "fieldtype": "Data",
+   "label": "Tablet Name",
+   "reqd": 1,
+   "unique": 1,
+   "description": "For example \"Counter 1 iPad\"."
+  },
+  {
+   "fieldname": "active",
+   "fieldtype": "Check",
+   "label": "Active",
+   "default": "1",
+   "description": "Untick when the tablet is lost or replaced: it stops working at once."
+  },
+  {
+   "fieldname": "pos_profile",
+   "fieldtype": "Link",
+   "options": "POS Profile",
+   "label": "Register",
+   "description": "The register this tablet sits next to; Send to tablet picks it there by default."
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "paired_on",
+   "fieldtype": "Datetime",
+   "label": "Paired On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "paired_by",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "Paired By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_seen",
+   "fieldtype": "Datetime",
+   "label": "Last Seen",
+   "read_only": 1
+  },
+  {
+   "fieldname": "device_secret_hash",
+   "fieldtype": "Data",
+   "label": "Device Key (hash)",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "pairing_help",
+   "fieldtype": "HTML",
+   "label": "Pairing"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-17 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FFL Core",
+ "name": "Signing Terminal",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "delete": 1,
+   "report": 1
+  },
+  {
+   "role": "Sales Manager",
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "delete": 1,
+   "report": 1
+  },
+  {
+   "role": "Sales User",
+   "read": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "terminal_name",
+ "track_changes": 1
+}

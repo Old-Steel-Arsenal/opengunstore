@@ -8,7 +8,7 @@ Source: `apps/ffl_core/ffl_core/api/oauth_dcr.py` · 1 endpoint(s)
 
 `POST /api/method/ffl_core.api.oauth_dcr.register_client`
 
-**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature or HTTP Basic credentials).
+**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).
 
 RFC 7591 dynamic client registration (Frappe's), plus localhost loopback
 

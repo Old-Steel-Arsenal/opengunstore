@@ -1022,7 +1022,7 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		C.prototype.on_cart_update = function (args) {
 			const item = args && args.item;
 			if (!injectingLocked && window.ffl && ffl.isLockedLine && ffl.isLockedLine(item)) {
-				frappe.show_alert({ indicator: 'orange', message: __('Trade-in credits come from the Trade-in button, and their amount is fixed. Remove the line to undo it.') });
+				frappe.show_alert({ indicator: 'orange', message: __('Trade-in credits come from the Trade-in button and gunsmith deposits from their work order, and their amount is fixed. Remove the line to undo it.') });
 				return Promise.resolve({});
 			}
 			return orig.apply(this, arguments);
@@ -1124,7 +1124,13 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 					label: __('Customer'), fieldname: 'source_name', fieldtype: 'Link',
 					options: 'Customer', reqd: 1, default: posCustomer,
 					description: __('Person trading in the firearm. Pre-filled from POS customer.'),
-					change: () => prefillSeller(),
+					change: () => {
+						// Banned box / alerts first (customer_flags.js): a Banned seller is
+						// cleared and nothing of theirs is filled in.
+						const cf = window.ffl && ffl.customerFlags;
+						const ok = cf && cf.guardControl ? cf.guardControl(dialog.fields_dict.source_name) : Promise.resolve(true);
+						ok.then((go) => go && prefillSeller());
+					},
 				},
 				{
 					label: __('First Name'), fieldname: 'source_first_name', fieldtype: 'Data', reqd: 1,

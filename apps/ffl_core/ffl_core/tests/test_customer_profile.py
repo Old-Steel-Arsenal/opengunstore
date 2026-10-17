@@ -18,6 +18,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from ffl_core import customer_profile
+from ffl_core.setup import agreements as agreements_setup
 from ffl_core.setup import customer_profile as profile_setup
 from ffl_core.tests.settings_sandbox import SettingsSandbox
 
@@ -135,8 +136,10 @@ class ProfileSetup(FrappeTestCase):
 		Property Setter (the Item form lost a tab to one). Fields that setter has
 		never seen must still land by insert_after."""
 		self.addCleanup(frappe.clear_cache, doctype="Customer")
+		# Nor has it seen the Agreements section that ships at the end of the tab.
+		ours = _OUR_FIELDS + [f["fieldname"] for f in agreements_setup.FIELDS["Customer"]]
 		order = [f.fieldname for f in frappe.get_meta("Customer").fields
-			if f.fieldname not in _OUR_FIELDS]
+			if f.fieldname not in ours]
 		ps = frappe.get_doc({"doctype": "Property Setter", "doctype_or_field": "DocType",
 			"doc_type": "Customer", "property": "field_order", "property_type": "Data",
 			"value": json.dumps(order)})
@@ -147,7 +150,7 @@ class ProfileSetup(FrappeTestCase):
 
 		names = [f.fieldname for f in frappe.get_meta("Customer").fields]
 		start = names.index("loyalty_program_tier") + 1
-		self.assertEqual(names[start:start + len(_OUR_FIELDS)], _OUR_FIELDS)
+		self.assertEqual(names[start:start + len(ours)], ours)
 
 
 class DefaultCustomerType(FrappeTestCase):

@@ -105,7 +105,7 @@ fixtures = [
 	},
 	{
 		"dt": "Email Template",
-		"filters": [["name", "in", ["Sale Receipt"]]],
+		"filters": [["name", "in", ["Sale Receipt", "Agreement Signing Link", "Agreement Signed Copy", "Gunsmith Work Ready"]]],
 	},
 	{
 		"dt": "Print Format",
@@ -149,7 +149,11 @@ def _hashed(rel_path: str) -> str:
 
 # Extension SDK (since core 0.1.0): frappe.boot.gunshop_extensions = {id: {enabled, version, title}}
 # is what gunstore.extensions renders from.
-extend_bootinfo = ["ffl_core.extensions.extend_bootinfo"]
+extend_bootinfo = [
+	"ffl_core.extensions.extend_bootinfo",
+	# Idle lock minutes and whether this session's screen is locked (staff_switch.py).
+	"ffl_core.staff_switch.extend_bootinfo",
+]
 
 
 app_include_js = [
@@ -171,10 +175,21 @@ app_include_js = [
 	# aamva.js parses a driver-licence PDF417 payload (pure); customer_quick_entry.js
 	# subclasses ERPNext's CustomerQuickEntryForm (name parts once + Scan ID).
 	_hashed("js/aamva.js"),
+	# customer_flags.js: the counter customer panel (Banned box + manager override,
+	# alerts, status strip, Scan ID lookup, duplicate check) — needs pos_tender_guard.js
+	# (installClassHook) and aamva.js above; customer_quick_entry.js calls it.
+	_hashed("js/customer_flags.js"),
 	_hashed("js/customer_quick_entry.js"),
+	# ffl.agreements.request: the Request agreement dialog (QR code / email / paper)
+	# the Customer form and the counter panel's agreement chips open.
+	_hashed("js/agreement_actions.js"),
+	# Switch staff from the sidebar's bottom-left corner, and the idle lock screen.
+	_hashed("js/staff_switch.js"),
 ]
 
 doc_events = {
+	# A copy requested for a gunsmith work order is its intake authorization (gunsmith.py).
+	"Customer Agreement": {"on_update": "ffl_core.gunsmith.link_intake_agreement"},
 	# A store flipping an integration's switch re-shapes the Gun Shop sidebar and home page
 	# (setup/gunshop_sidebar.py).
 	"WooCommerce Settings": {"on_update": "ffl_core.setup.gunshop_sidebar.on_settings_update"},
@@ -251,7 +266,12 @@ doc_events = {
 	"Sales Invoice": {
 		# Units a web order is waiting on are not the counter's to sell (a counter
 		# order that ships from the shelf; web orders' own invoices are skipped).
-		"before_submit": "ffl_core.compliance.web_hold.refuse_held_units",
+		"before_submit": [
+			"ffl_core.compliance.web_hold.refuse_held_units",
+			# The customer must have signed what the sale's Items (or extensions) require
+			# (agreements.refuse_missing_required; no override — sign or a paper copy).
+			"ffl_core.agreements.refuse_missing_required",
+		],
 		# Dealer firearm invoices ship from the invoice unless a DN is in
 		# play — default Update Stock on at creation (once; unchecking sticks).
 		"before_insert": [
@@ -276,6 +296,9 @@ doc_events = {
 			"ffl_core.compliance.locked_lines.pin_locked_lines",
 		],
 		"validate": [
+			# No counter sale to a Banned customer without a manager's open override
+			# (customer_flags.refuse_banned_customer; returns and channel mirrors pass).
+			"ffl_core.customer_flags.refuse_banned_customer",
 			# Owner policy: consignment guns are never returnable — block before
 			# any other validation bothers running. See the function's own
 			# docstring for why this fires on every validate, not just submit.
@@ -306,6 +329,8 @@ doc_events = {
 			# A merged negative trade-in ticket gives no change: ERPNext's paid - total
 			# would pay its payout out a second time (compliance/trade_in_settlement).
 			"ffl_core.compliance.trade_in_settlement.keep_merged_change",
+			# A gunsmith deposit line only on a register invoice (gunsmith.py).
+			"ffl_core.gunsmith.guard_deposit_lines",
 			# Locked lines: refuse what ERPNext's own validate did to them after the
 			# before_validate pin (pricing rules, coupons). Last, after every other hook.
 			"ffl_core.compliance.locked_lines.assert_locked_lines",
@@ -330,6 +355,8 @@ doc_events = {
 			# A merged negative trade-in ticket: its payout is set against this invoice
 			# (compliance/trade_in_settlement), so nothing is left outstanding.
 			"ffl_core.compliance.trade_in_settlement.reconcile_payout_on_merge",
+			# Each firearm sold agreements this sale used (agreements.py).
+			"ffl_core.agreements.mark_firearm_agreements_used",
 		],
 		"on_cancel": [
 			# First: a merged invoice whose ticket's payout a drawer count relied on stays
@@ -345,12 +372,17 @@ doc_events = {
 			# SRBNB) + pay_on_sale_settled flipped back so the gun can re-sell.
 			"ffl_core.compliance.pay_on_sale.reverse_pay_on_sale_on_cancel",
 			"ffl_core.storage.stock_document_cancelled",
+			# Each firearm sold agreements this sale used (agreements.py).
+			"ffl_core.agreements.release_firearm_agreements",
 		],
 	},
 	"Sales Order": {
 		# A new order's freight tax basis from FFL Settings.
 		"before_insert": "ffl_core.compliance.shipping_charge.stamp_shipping_tax_basis",
 		"validate": [
+			# No counter sale to a Banned customer without a manager's open override
+			# (customer_flags.refuse_banned_customer; returns and channel mirrors pass).
+			"ffl_core.customer_flags.refuse_banned_customer",
 			"ffl_core.compliance.firearm.require_serial_for_firearm",
 			"ffl_core.compliance.interstate_tax.apply_interstate_tax",
 			# Keep after apply_interstate_tax — see the Sales Invoice note above.
@@ -414,6 +446,9 @@ doc_events = {
 		# webhook-owned 4473 fields on a Draft save. Restores them from the DB.
 		"before_save": "ffl_core.compliance.webhook_fields.protect_webhook_4473_fields",
 		"validate": [
+			# No counter sale to a Banned customer without a manager's open override
+			# (customer_flags.refuse_banned_customer; returns and channel mirrors pass).
+			"ffl_core.customer_flags.refuse_banned_customer",
 			# Owner policy: consignment guns are never returnable — block before
 			# any other validation bothers running. See the function's own
 			# docstring for why this fires on every validate, not just submit.
@@ -444,6 +479,8 @@ doc_events = {
 			# Counter pickup ticket: refuse one ERPNext's validate put money back on
 			# after the before_validate pin (fail closed).
 			"ffl_core.api.counter_pickup.assert_ticket_free",
+			# A gunsmith deposit line comes only from its work order, within what it holds (gunsmith.py).
+			"ffl_core.gunsmith.guard_deposit_lines",
 			# Locked lines: refuse what ERPNext's own validate did to them after the
 			# before_validate pin (pricing rules, coupons). Last, after every other hook.
 			"ffl_core.compliance.locked_lines.assert_locked_lines",
@@ -461,6 +498,9 @@ doc_events = {
 			# The guns' half of the same refusal: the last uniform-price gun a sold
 			# online order is owed (web or GunBroker) is not the counter's to sell.
 			"ffl_core.compliance.web_hold.refuse_claimed_firearm_units",
+			# Before anything books: the customer must have signed what the sale needs
+			# (agreements.refuse_missing_required; no override — sign or a paper copy).
+			"ffl_core.agreements.refuse_missing_required",
 			"ffl_core.compliance.trade_in_credit.book_trade_ins_on_submit",
 			# Counter pickup's 4473 ticket: the gun leaves only against a settled
 			# order (the money is on the Sales Invoice, not the ticket).
@@ -485,10 +525,18 @@ doc_events = {
 			# Invoice (is_consolidated=0) settles; its consolidated Sales Invoice
 			# (is_consolidated=1) is skipped, so each sale settles exactly once.
 			"ffl_core.compliance.pay_on_sale.settle_pay_on_sale_on_submit",
+			# Each firearm sold agreements this sale used (agreements.py).
+			"ffl_core.agreements.mark_firearm_agreements_used",
+			# A gunsmith work order's deposit / pick-up invoice (gunsmith.py).
+			"ffl_core.gunsmith.on_invoice_submit",
 		],
 		# A negative trade-in ticket: the payout goes back to the drawer first,
 		# refused once a count relied on it (compliance/trade_in_settlement).
-		"before_cancel": "ffl_core.compliance.trade_in_settlement.void_payout_on_cancel",
+		"before_cancel": [
+			"ffl_core.compliance.trade_in_settlement.void_payout_on_cancel",
+			# A gunsmith deposit already used, or a pick-up whose gun left the bound book, stays (gunsmith.py).
+			"ffl_core.gunsmith.before_invoice_cancel",
+		],
 		"on_cancel": [
 			"ffl_core.listing.status_sync.on_sales_invoice_cancel",
 			# Counter pickup's 4473 ticket cancelled → the gun is back in stock
@@ -499,6 +547,9 @@ doc_events = {
 			"ffl_core.compliance.consignment.reverse_consignment_payable",
 			# Pay-on-sale settlement reversed symmetrically + flag flipped back.
 			"ffl_core.compliance.pay_on_sale.reverse_pay_on_sale_on_cancel",
+			# Each firearm sold agreements this sale used (agreements.py).
+			"ffl_core.agreements.release_firearm_agreements",
+			"ffl_core.gunsmith.on_invoice_cancel",
 		],
 	},
 	"Purchase Receipt": {
@@ -690,6 +741,8 @@ after_install = [
 	"ffl_core.setup.customer_identity.ensure",
 	# Customer Profile tab (status, alerts, IDs, family) + existing customers → Active.
 	"ffl_core.setup.customer_profile.ensure",
+	# Item "Agreement Required to Buy" + the Customer form's Agreements section.
+	"ffl_core.setup.agreements.ensure",
 	"ffl_core.setup.buyer_type.ensure",
 	"ffl_core.setup.selling.ensure",
 	# Custom fields only (no Item, no Warehouse, no master) — safe at
@@ -697,6 +750,8 @@ after_install = [
 	"ffl_core.setup.custody.ensure",
 	# A Single write only — store the switch's ON default (patches don't run on install).
 	"ffl_core.setup.shipping_charge.ensure_shipping_tax_switch",
+	# Same for the idle counter lock's 5-minute default (staff_switch).
+	"ffl_core.staff_switch.ensure_lock_default",
 	# Cash drawer: the two POS Closing Entry fields (accounts wait for a company, at after_migrate).
 	"ffl_core.setup.cash_drawer.ensure_fields_only",
 ]
@@ -758,6 +813,11 @@ after_migrate = [
 	"ffl_core.setup.customer_identity.ensure",
 	# Customer Profile tab (status, alerts, IDs, family) + existing customers → Active.
 	"ffl_core.setup.customer_profile.ensure",
+	# Item "Agreement Required to Buy" + the Customer form's Agreements section.
+	"ffl_core.setup.agreements.ensure",
+	# Gunsmith work orders: labor + deposit items, invoice links, the intake agreement (after
+	# tax / customer_deposits / agreements, which it builds on).
+	"ffl_core.setup.gunsmith.ensure",
 	"ffl_core.setup.buyer_type.ensure",
 	"ffl_core.setup.shipping_charge.ensure",
 	# Pin "Allow Negative rates for Items" on so trade-in credit
@@ -884,6 +944,8 @@ scheduler_events = {
 		# What newer extension versions the update service offers — the
 		# Extensions page's Update button. Installs nothing.
 		"ffl_core.extensions.updates.check",
+		# Signed agreements past their expiry date → Expired (agreements.py).
+		"ffl_core.agreements.expire_agreements",
 	],
 }
 

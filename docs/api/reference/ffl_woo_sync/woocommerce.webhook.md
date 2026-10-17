@@ -8,7 +8,7 @@ Source: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/webhook.py` · 1 endpoint(s)
 
 `POST /api/method/ffl_woo_sync.woocommerce.webhook.woo_event`
 
-**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature or HTTP Basic credentials).
+**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).
 
 Single WooCommerce webhook entry point (guest, HMAC-verified).
 

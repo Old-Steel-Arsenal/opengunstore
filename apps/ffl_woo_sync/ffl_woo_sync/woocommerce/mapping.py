@@ -480,14 +480,19 @@ MAP_META_KEYS = ("_osa_map_price", "_osa_map_mode")
 MAP_ITEM_FIELDS = ("map_price", "brand", "manufacturer", "is_used")
 
 
+# The mode a site without a registrant carries: the website price never goes
+# below MAP. Called "Floor" before; the storefront reads either name.
+MAP_MODE_DEFAULT = "MAP is minimum price"
+
+
 def map_mode_for_item(item_code, brand) -> str:
     """The ``map_mode_for_item`` hook's answer (ffl_integrations' brand table);
-    Floor on a site without a registrant."""
+    ``MAP_MODE_DEFAULT`` on a site without a registrant."""
     for fn in frappe.get_hooks("map_mode_for_item"):
         mode = frappe.get_attr(fn)(item_code, brand)
         if mode:
             return str(mode)
-    return "Floor"
+    return MAP_MODE_DEFAULT
 
 
 def map_meta(item) -> dict:

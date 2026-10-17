@@ -200,7 +200,7 @@
 
 	return {
 		INDIVIDUAL: INDIVIDUAL, PARTS: PARTS, SCAN_FIELD: SCAN_FIELD, SCAN_MAP: SCAN_MAP, SUFFIXES: SUFFIXES,
-		ID_SCAN_MAP: ID_SCAN_MAP,
+		ID_SCAN_MAP: ID_SCAN_MAP, ID_NUMBER_FIELD: ID_NUMBER_FIELD,
 		composeName: composeName, splitDisplayName: splitDisplayName, arrangeFields: arrangeFields, familyTitle: familyTitle,
 		scanValues: scanValues, stripScan: stripScan, applyIdRow: applyIdRow,
 	};
@@ -438,6 +438,33 @@
 				api.stripScan(this.doc);
 				if (this.dialog && this.dialog.doc !== this.doc) api.stripScan(this.dialog.doc);
 				return doc;
+			}
+
+			// Before the save: customers that already hold this email, phone or (IDs
+			// on) licence number (ffl.customerFlags.confirmNotDuplicate). "Use this
+			// customer" hands the existing one to whoever opened the dialog, the way
+			// a save would; "Create new anyway" saves as before. Asked once per dialog.
+			insert() {
+				var me = this, cf = window.ffl && ffl.customerFlags;
+				if (me.__fflDupAsked || !(cf && cf.confirmNotDuplicate) || me.__fflIsFamilyFlow()) return super.insert();
+				var get = function (f) { return me.dialog.fields_dict[f] ? (me.dialog.get_value(f) || '') : ''; };
+				var values = { email: get('email_address'), phone: get('mobile_number'),
+					id_number: me.__fflIds ? get(api.ID_NUMBER_FIELD) : '' };
+				var stock = function () { return Base.prototype.insert.call(me); };
+				return cf.confirmNotDuplicate(values).then(function (answer) {
+					me.dialog.working = false;
+					if (answer.use) {
+						me.dialog.hide();
+						var doc = { doctype: 'Customer', name: answer.use };
+						if (frappe._from_link) frappe.ui.form.update_calling_link(doc);
+						else if (me.after_insert) me.after_insert(doc);
+						return new Promise(function () {});   // no "saved" toast: nothing was saved
+					}
+					if (answer.cancel) return new Promise(function () {});
+					me.__fflDupAsked = true;
+					me.dialog.working = true;
+					return stock();
+				}, stock);
 			}
 		};
 		// Flag BEFORE assigning: under the installClassHook trap the assignment

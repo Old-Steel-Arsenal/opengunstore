@@ -1,5 +1,5 @@
-"""Setup for LOCKED invoice lines — today the one TRADE-IN-CREDIT line
-(setup/trade_in_credit).
+"""Setup for LOCKED invoice lines — the TRADE-IN-CREDIT line (setup/trade_in_credit)
+and the GUNSMITH-DEPOSIT line (setup/gunsmith).
 
 A locked line's amount is not a price: it is minus the trade-in's recorded
 cost. Two things keep ERPNext's pricing machinery away from it (incident
@@ -47,7 +47,7 @@ _ROW_FIELDS = {
 			"label": "Locked Rate",
 			"read_only": 1,
 			"no_copy": 0,
-			"description": "Amount this line is locked to (trade-in credit); "
+			"description": "Amount this line is locked to (trade-in credit, gunsmith deposit); "
 				"the invoice pins rate to it on every save.",
 			"insert_after": "rate",
 		}
@@ -58,8 +58,9 @@ _ROW_FIELDS = {
 
 def locked_items() -> tuple[str, ...]:
 	"""The locked line items. Lazy: setup/trade_in_credit imports this module."""
+	from ffl_core.setup.gunsmith import DEPOSIT_ITEM
 	from ffl_core.setup.trade_in_credit import TRADE_IN_CREDIT_ITEM
-	return (TRADE_IN_CREDIT_ITEM,)
+	return (TRADE_IN_CREDIT_ITEM, DEPOSIT_ITEM)
 
 
 def ensure_fields() -> None:

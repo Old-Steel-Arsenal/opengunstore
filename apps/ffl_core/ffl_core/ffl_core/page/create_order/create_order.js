@@ -1543,8 +1543,13 @@ class CreateOrderApp {
 			&& cur.toLowerCase() === (this._editing.ctx.contact_email || '').trim().toLowerCase()) {
 			this.fields.email.set_value('');
 		}
+		// Banned box / alerts first (customer_flags.js): a Banned customer is cleared
+		// and nothing of theirs is filled in.
+		const cf = window.ffl && ffl.customerFlags;
+		const allowed = cust && cf && cf.guardControl ? cf.guardControl(this.fields.customer) : Promise.resolve(true);
 		if (cust) {
-			frappe.db.get_value('Customer', cust, ['email_id', 'mobile_no', 'customer_name']).then((r) => {
+			allowed.then((ok) => ok && frappe.db.get_value('Customer', cust, ['email_id', 'mobile_no', 'customer_name'])).then((r) => {
+				if (!r) return;
 				const m = r.message || {};
 				if (m.email_id && !this.fields.email.get_value()) this.fields.email.set_value(m.email_id);
 				if (m.mobile_no && !this.fields.phone.get_value()) this.fields.phone.set_value(m.mobile_no);

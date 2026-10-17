@@ -155,6 +155,7 @@ frappe.ui.form.on('Customer', {
 	refresh(frm) {
 		fflHideIdNumbersUnlessStored(frm);
 		fflRenderFamily(frm, true);
+		fflRenderAgreements(frm);
 	},
 });
 
@@ -285,4 +286,35 @@ function fflMergeInto(frm) {
 		},
 	});
 	dialog.show();
+}
+
+// Agreements section (setup/agreements.py, rules in ffl_core/agreements.py): the
+// customer's copies, newest first, and Request agreement (agreement_actions.js).
+function fflRenderAgreements(frm) {
+	const field = frm.fields_dict.customer_agreements_html;
+	const $w = field && field.$wrapper;
+	if (!$w) return;
+	if (frm.is_new()) {
+		$w.html(`<p class="text-muted">${__('Save the customer to request agreements.')}</p>`);
+		return;
+	}
+	const esc = frappe.utils.escape_html;
+	const name = frm.doc.name;
+	const tones = {Signed: 'green', Pending: 'yellow', Expired: 'orange', Void: 'gray'};
+	frappe.call({method: 'ffl_core.agreements.get_customer_agreements', args: {customer: name}}).then((r) => {
+		if (frm.doc.name !== name) return;
+		const rows = (r.message || {}).rows || [];
+		const body = rows.map((a) => `<tr>
+			<td>${frappe.utils.get_form_link('Customer Agreement', a.name, true, esc(a.template))}${a.serial_no ? `<div class="small text-muted">${esc(__('serial {0}', [a.serial_no]))}</div>` : ''}</td>
+			<td><span class="indicator-pill ${tones[a.status] || 'gray'}">${esc(__(a.status))}</span></td>
+			<td class="text-muted">${a.signed_on ? esc(frappe.datetime.str_to_user(a.signed_on)) : ''}${a.signed_via ? ` · ${esc(__(a.signed_via))}` : ''}</td>
+			<td class="text-muted">${a.expires_on ? esc(__('Expires {0}', [frappe.datetime.str_to_user(a.expires_on)])) : ''}</td></tr>`).join('');
+		$w.html(`${rows.length
+			? `<table class="table table-sm" style="margin-bottom:8px"><tbody>${body}</tbody></table>`
+			: `<p class="text-muted">${__('No agreements yet.')}</p>`}
+			<button class="btn btn-xs btn-default" data-ffl-request-agreement>${__('Request agreement')}</button>`);
+		$w.find('[data-ffl-request-agreement]').on('click', () => {
+			ffl.agreements.request(name, null, {customer_name: frm.doc.customer_name, done: () => fflRenderAgreements(frm)});
+		});
+	});
 }

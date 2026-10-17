@@ -8,7 +8,7 @@ Source: `apps/ffl_integrations/ffl_integrations/fastbound/webhook.py` · 1 endpo
 
 `POST /api/method/ffl_integrations.fastbound.webhook.fastbound_event`
 
-**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature or HTTP Basic credentials).
+**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).
 
 Single FastBound webhook entry point (guest, HMAC-verified).
 

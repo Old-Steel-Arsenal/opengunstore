@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="ffl-csrf" content="{{ csrf_token or '' }}">
+<title>Sign</title>
+<link rel="stylesheet" href="{{ page_css }}">
+</head>
+<body>
+<main id="app" class="app" aria-live="polite">
+	<section class="screen screen-message" data-screen="loading"><p class="lead">Loading…</p></section>
+
+	<section class="screen screen-message" data-screen="error" hidden>
+		<h1>Cannot open this agreement</h1>
+		<p class="lead" data-error></p>
+	</section>
+
+	<section class="screen screen-done" data-screen="done" hidden>
+		<div class="done-mark" aria-hidden="true">✓</div>
+		<h1>Thank you</h1>
+		<p class="lead">Your signature is recorded<span data-done-store></span>. You can close this page, or hand the device back to the store.</p>
+	</section>
+
+	<form class="screen screen-sign" data-screen="sign" hidden novalidate>
+		<header class="top">
+			<div class="store" data-store></div>
+			<h1 data-title></h1>
+			<div class="for">For <strong data-customer></strong></div>
+		</header>
+		<article class="text" data-body tabindex="0"></article>
+		<div class="panel">
+			<fieldset class="minor" data-minor hidden>
+				<label class="row check" data-minor-declare>
+					<input type="checkbox" name="participant_is_minor"> <span>The participant is under 18</span>
+				</label>
+				<p class="note" data-minor-note hidden>The participant is under 18: a parent or guardian signs below.</p>
+				<div class="row relationship" data-guardian hidden>
+					<span>I am the participant's</span>
+					<label><input type="radio" name="signer_relationship" value="Parent"> Parent</label>
+					<label><input type="radio" name="signer_relationship" value="Guardian"> Guardian</label>
+				</div>
+			</fieldset>
+			<label class="field">
+				<span data-name-label>Your full name</span>
+				<input type="text" name="signer_name" autocomplete="name" autocapitalize="words" maxlength="140" required>
+			</label>
+			<label class="row check agree">
+				<input type="checkbox" name="agreed"> <span>I have read this agreement and I agree to it.</span>
+			</label>
+			<div class="pad-wrap">
+				<div class="pad-head"><span>Sign here with your finger or a pen</span>
+					<button type="button" class="btn btn-ghost" data-clear>Clear</button></div>
+				<canvas class="pad" data-pad aria-label="Signature box"></canvas>
+			</div>
+			<p class="problem" data-problem role="alert" hidden></p>
+			<button type="submit" class="btn btn-primary" data-submit>Sign</button>
+		</div>
+	</form>
+</main>
+<script src="{{ pad_js }}"></script>
+<script src="{{ page_js }}"></script>
+</body>
+</html>

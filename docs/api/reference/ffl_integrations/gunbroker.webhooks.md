@@ -8,7 +8,7 @@ Source: `apps/ffl_integrations/ffl_integrations/gunbroker/webhooks.py` · 5 endp
 
 `POST /api/method/ffl_integrations.gunbroker.webhooks.fixed_price_listing_failed`
 
-**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature or HTTP Basic credentials).
+**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).
 
 GunBroker FixedPriceListingFailed webhook: a listing failed, so record why and re-check the gun.
 
@@ -22,7 +22,7 @@ GunBroker FixedPriceListingFailed webhook: a listing failed, so record why and r
 
 `POST /api/method/ffl_integrations.gunbroker.webhooks.items_sold`
 
-**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature or HTTP Basic credentials).
+**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).
 
 GunBroker ItemsSold webhook: an item sold, so pull the order now.
 
@@ -36,7 +36,7 @@ GunBroker ItemsSold webhook: an item sold, so pull the order now.
 
 `POST /api/method/ffl_integrations.gunbroker.webhooks.items_unsold_not_relisted`
 
-**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature or HTTP Basic credentials).
+**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).
 
 GunBroker ItemsUnsoldNotRelisted webhook: a listing ended with no sale, so re-check the gun.
 
@@ -50,7 +50,7 @@ GunBroker ItemsUnsoldNotRelisted webhook: a listing ended with no sale, so re-ch
 
 `POST /api/method/ffl_integrations.gunbroker.webhooks.order_status_update`
 
-**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature or HTTP Basic credentials).
+**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).
 
 GunBroker OrderStatusUpdate webhook: an order changed, so pull it now.
 
@@ -64,7 +64,7 @@ GunBroker OrderStatusUpdate webhook: an order changed, so pull it now.
 
 `POST /api/method/ffl_integrations.gunbroker.webhooks.winning_bid_received`
 
-**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature or HTTP Basic credentials).
+**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).
 
 GunBroker WinningBidReceived webhook: an auction took a bid, so lock the gun now.
 

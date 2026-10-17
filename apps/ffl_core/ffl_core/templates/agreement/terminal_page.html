@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="ffl-csrf" content="{{ csrf_token or '' }}">
+<title>Signing tablet</title>
+<link rel="stylesheet" href="{{ page_css }}">
+</head>
+<body>
+<main id="app" class="app" aria-live="polite">
+	<section class="screen screen-message" data-screen="loading"><p class="lead">Loading…</p></section>
+
+	<form class="screen screen-message" data-screen="pair" hidden novalidate>
+		<h1>Pair this tablet</h1>
+		<p class="lead">A manager opens the tablet's Signing Terminal record in the POS, clicks <b>Pair a tablet</b>, and types the 6-digit code here.</p>
+		<label class="field pair-field">
+			<span>Pairing code</span>
+			<input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="\d{6}">
+		</label>
+		<p class="problem" data-problem role="alert" hidden></p>
+		<button type="submit" class="btn btn-primary pair-button" data-pair>Pair</button>
+	</form>
+
+	<section class="screen screen-message" data-screen="idle" hidden>
+		<div class="store idle-store" data-store></div>
+		<h1>Ready</h1>
+		<p class="lead">The store will send your agreement to this tablet.</p>
+		<p class="terminal-name" data-terminal></p>
+		<p class="problem" data-offline role="alert" hidden>No connection — waiting for the network…</p>
+	</section>
+</main>
+<script src="{{ pad_js }}"></script>
+<script src="{{ page_js }}"></script>
+</body>
+</html>

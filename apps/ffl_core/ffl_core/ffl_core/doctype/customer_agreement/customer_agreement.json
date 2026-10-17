@@ -1,0 +1,334 @@
+{
+ "actions": [],
+ "creation": "2026-10-16 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "customer",
+  "customer_name",
+  "company",
+  "column_break_main",
+  "template",
+  "template_version",
+  "serial_no",
+  "item_code",
+  "status",
+  "expires_on",
+  "section_signed",
+  "signed_on",
+  "signed_via",
+  "signer_name",
+  "signer_relationship",
+  "participant_is_minor",
+  "minor_determined_by",
+  "column_break_signed",
+  "signature",
+  "signed_pdf",
+  "paper_signed_on",
+  "recorded_by",
+  "signer_ip",
+  "signer_user_agent",
+  "signing_terminal",
+  "section_request",
+  "requested_by",
+  "delivery_channel",
+  "token_expires",
+  "sign_token_hash",
+  "void_reason",
+  "column_break_request",
+  "reference_doctype",
+  "reference_name",
+  "section_body",
+  "body_snapshot"
+ ],
+ "fields": [
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer",
+   "reqd": 1,
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "customer_name",
+   "fieldtype": "Data",
+   "label": "Customer Name",
+   "fetch_from": "customer.customer_name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "template",
+   "fieldtype": "Link",
+   "label": "Agreement",
+   "options": "Agreement Template",
+   "reqd": 1,
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "template_version",
+   "fieldtype": "Int",
+   "label": "Agreement Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "serial_no",
+   "fieldtype": "Link",
+   "options": "Serial No",
+   "label": "Firearm (Serial No)",
+   "read_only": 1,
+   "search_index": 1,
+   "description": "For an agreement signed for each firearm sold: the gun it names."
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "options": "Item",
+   "label": "Item",
+   "read_only": 1,
+   "depends_on": "eval:doc.serial_no"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Pending\nSigned\nVoid\nExpired",
+   "default": "Pending",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "expires_on",
+   "fieldtype": "Date",
+   "label": "Expires On",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "section_signed",
+   "fieldtype": "Section Break",
+   "label": "Signature"
+  },
+  {
+   "fieldname": "signed_on",
+   "fieldtype": "Datetime",
+   "label": "Signed On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "signed_via",
+   "fieldtype": "Select",
+   "label": "Signed Via",
+   "options": "\nTablet\nRemote\nPaper",
+   "read_only": 1
+  },
+  {
+   "fieldname": "signer_name",
+   "fieldtype": "Data",
+   "label": "Signed By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "signer_relationship",
+   "fieldtype": "Select",
+   "label": "Signer Is",
+   "options": "\nSelf\nParent\nGuardian",
+   "read_only": 1
+  },
+  {
+   "fieldname": "participant_is_minor",
+   "fieldtype": "Check",
+   "label": "Participant Under 18",
+   "read_only": 1
+  },
+  {
+   "fieldname": "minor_determined_by",
+   "fieldtype": "Select",
+   "label": "Age Taken From",
+   "options": "\nDate of Birth\nSelf-declared\nPaper",
+   "read_only": 1,
+   "depends_on": "eval:doc.participant_is_minor"
+  },
+  {
+   "fieldname": "column_break_signed",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "signature",
+   "fieldtype": "Attach Image",
+   "label": "Signature",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "signed_pdf",
+   "fieldtype": "Attach",
+   "label": "Signed Copy (PDF)",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "paper_signed_on",
+   "fieldtype": "Date",
+   "label": "Date on Paper",
+   "read_only": 1,
+   "depends_on": "eval:doc.signed_via=='Paper'"
+  },
+  {
+   "fieldname": "recorded_by",
+   "fieldtype": "Link",
+   "label": "Paper Copy Recorded By",
+   "options": "User",
+   "read_only": 1,
+   "depends_on": "eval:doc.signed_via=='Paper'"
+  },
+  {
+   "fieldname": "signer_ip",
+   "fieldtype": "Data",
+   "label": "Signer IP",
+   "read_only": 1
+  },
+  {
+   "fieldname": "signer_user_agent",
+   "fieldtype": "Small Text",
+   "label": "Signer Device",
+   "read_only": 1
+  },
+  {
+   "fieldname": "signing_terminal",
+   "fieldtype": "Link",
+   "options": "Signing Terminal",
+   "label": "Signing Terminal",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_request",
+   "fieldtype": "Section Break",
+   "label": "Request",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "requested_by",
+   "fieldtype": "Link",
+   "label": "Requested By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "delivery_channel",
+   "fieldtype": "Select",
+   "label": "Sent As",
+   "options": "\nQR\nEmail\nTerminal",
+   "read_only": 1,
+   "description": "How the signing link last went out: QR = shown at the counter, Email = sent to the customer, Terminal = sent to a paired store tablet."
+  },
+  {
+   "fieldname": "token_expires",
+   "fieldtype": "Datetime",
+   "label": "Link Expires",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "sign_token_hash",
+   "fieldtype": "Data",
+   "label": "Sign Token Hash",
+   "length": 64,
+   "hidden": 1,
+   "read_only": 1,
+   "no_copy": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "void_reason",
+   "fieldtype": "Small Text",
+   "label": "Void Reason",
+   "read_only": 1,
+   "depends_on": "eval:doc.status=='Void'"
+  },
+  {
+   "fieldname": "column_break_request",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "Reference Type",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Reference",
+   "options": "reference_doctype",
+   "read_only": 1,
+   "description": "For an agreement signed for each firearm sold: the sale it was used for."
+  },
+  {
+   "fieldname": "section_body",
+   "fieldtype": "Section Break",
+   "label": "Text Signed",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "body_snapshot",
+   "fieldtype": "Long Text",
+   "label": "Text",
+   "read_only": 1,
+   "no_copy": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-17 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FFL Core",
+ "name": "Customer Agreement",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "Sales Manager",
+   "read": 1,
+   "write": 1,
+   "report": 1
+  },
+  {
+   "role": "Sales User",
+   "read": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "format:AGR-{YYYY}-{#####}",
+ "naming_rule": "Expression",
+ "title_field": "customer_name",
+ "show_title_field_in_link": 0,
+ "track_changes": 1,
+ "description": "One customer's copy of an agreement: requested, signed (on a tablet, by a link or on paper), void or expired."
+}

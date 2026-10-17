@@ -6,5 +6,29 @@
   "use_html": 1,
   "response_html": "{% set store = company_brand(doc.company).name %}<p>Hi {{ customer_name }},</p>{% set due = doc.rounded_total or doc.grand_total %}{% if due < 0 and not doc.is_return %}<p>Thank you for your trade. Your receipt for <strong>{{ doc.name }}</strong> is attached: we paid you {{ frappe.utils.fmt_money(0 - due, currency=doc.currency) }}{% if doc.get(\"ffl_trade_in_payout_method\") %} by {{ doc.ffl_trade_in_payout_method | e }}{% endif %}.</p>{% else %}<p>Thank you for your purchase. Your receipt for <strong>{{ doc.name }}</strong> (total {{ doc.grand_total }}) is attached.</p>{% endif %}<p>— {{ store }}</p>",
   "response": "Hi {{ customer_name }}, {% set due = doc.rounded_total or doc.grand_total %}{% if due < 0 and not doc.is_return %}thank you for your trade. Your receipt for {{ doc.name }} is attached: we paid you {{ frappe.utils.fmt_money(0 - due, currency=doc.currency) }}{% if doc.get(\"ffl_trade_in_payout_method\") %} by {{ doc.ffl_trade_in_payout_method | e }}{% endif %}.{% else %}thank you for your purchase. Your receipt for {{ doc.name }} (total {{ doc.grand_total }}) is attached.{% endif %}"
+ },
+ {
+  "doctype": "Email Template",
+  "name": "Agreement Signing Link",
+  "subject": "Please sign: {{ title }} — {{ store_name }}",
+  "use_html": 1,
+  "response_html": "<p>Hi {{ customer_name | e }},</p><p>{{ store_name | e }} asks you to read and sign <strong>{{ title | e }}</strong>.</p><p><a href=\"{{ sign_url }}\">Read and sign</a></p><p>The link works once, for {{ hours }} hours. If it has run out, ask the store for a new one.</p><p>— {{ store_name | e }}</p>",
+  "response": "Hi {{ customer_name }}, {{ store_name }} asks you to read and sign {{ title }}: {{ sign_url }} (the link works once, for {{ hours }} hours)."
+ },
+ {
+  "doctype": "Email Template",
+  "name": "Agreement Signed Copy",
+  "subject": "Your signed copy: {{ title }} — {{ store_name }}",
+  "use_html": 1,
+  "response_html": "<p>Hi {{ customer_name | e }},</p><p>Thank you for signing <strong>{{ title | e }}</strong>. Your signed copy is attached.</p><p>— {{ store_name | e }}</p>",
+  "response": "Hi {{ customer_name }}, thank you for signing {{ title }}. Your signed copy is attached."
+ },
+ {
+  "doctype": "Email Template",
+  "name": "Gunsmith Work Ready",
+  "subject": "Your {{ firearm }} is ready for pick-up — {{ store_name }}",
+  "use_html": 1,
+  "response_html": "<p>Hi {{ customer_name | e }},</p><p>The work on your <strong>{{ firearm | e }}</strong> (work order {{ work_order | e }}) is done and it is ready to pick up at {{ store_name | e }}.</p><p>Please bring a photo ID.</p><p>— {{ store_name | e }}</p>",
+  "response": "Hi {{ customer_name }}, your {{ firearm }} (work order {{ work_order }}) is ready to pick up at {{ store_name }}. Please bring a photo ID."
  }
 ]

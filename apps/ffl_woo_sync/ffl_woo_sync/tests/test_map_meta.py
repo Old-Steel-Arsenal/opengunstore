@@ -5,7 +5,7 @@ the brand's mode. The POS owns both keys: they ride every retail push (empty whe
 there is no MAP, so taking a MAP off reaches the store), never a non-retail store's
  and lean pushes keep them; reconcile heals a lost
 re-push. The mode comes from the ``map_mode_for_item`` hook (ffl_integrations' brand table, exercised for real in
-its test_dropship_pricing); a site without a registrant is Floor.
+its test_dropship_pricing); a site without a registrant is "MAP is minimum price".
 """
 from __future__ import annotations
 
@@ -51,12 +51,13 @@ class RetailPayload(FrappeTestCase):
 		self.assertEqual((meta["_osa_map_price"], meta["_osa_map_mode"], meta["_x"]),
 			("599.00", "Email for price", "1"))
 
-	def test_no_registrant_or_no_answer_is_floor(self):
+	def test_no_registrant_or_no_answer_is_map_is_minimum_price(self):
 		with _hooks():
-			self.assertEqual(_meta(self._payload(map_price=10, brand="Glock"))["_osa_map_mode"], "Floor")
+			self.assertEqual(_meta(self._payload(map_price=10, brand="Glock"))["_osa_map_mode"],
+				"MAP is minimum price")
 		with _hooks("email_mode"):
 			self.assertEqual(_meta(self._payload(map_price=10, manufacturer="Ruger"))["_osa_map_mode"],
-				"Floor")
+				"MAP is minimum price")
 
 	def test_no_map_clears_both_keys(self):
 		with _hooks("email_mode"):

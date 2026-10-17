@@ -23,4 +23,4 @@ shared by every user for up to a minute.
 
 **Returns:** {today, now, sales: {days: [{date, net_sales, transactions, ticket_net}] (8 days, oldest first, today last; transactions and ticket_net leave returns out), report}, open_4473: {rows: [{invoice, customer_name, guns: [{serial, item_name}], nics_status, form_4473_status, started}], records, can_open}, pickups: {total, rows: [{customer, item_name, serial, source_name, days_in_store}]}, stock: {total, consignment, transfers}, drawer: {opening, expected, lines: [{kind, amount}], open_shifts, counted}, ad: {off} or {off, acquired, disposed, retrying, needs_person, synced_at, can_review, records?: [{doctype, name, error, terminal}]}, arriving: {total, orders: [{name, distributor, status, outstanding, received, expected}]}, records (only with with_records): [{title, items: [{label, link_type, link_to, is_query_report?, ref_doctype?}]}], links: {pos, new_order, receive, add_customer, cash_drawer, pickups}}.
 
-<sub>`apps/ffl_core/ffl_core/api/store_overview.py:428`</sub>
+<sub>`apps/ffl_core/ffl_core/api/store_overview.py:432`</sub>

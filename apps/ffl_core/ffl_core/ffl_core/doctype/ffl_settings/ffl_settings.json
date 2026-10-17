@@ -14,6 +14,11 @@
   "pending_order_age_alert_days",
   "receipt_footer_note",
   "shipping_price_includes_tax",
+  "counter_lock_minutes",
+  "section_gunsmithing",
+  "gunsmith_labor_item",
+  "column_break_gunsmithing",
+  "gunsmith_agreement_template",
   "tab_compliance",
   "section_compliance_mode",
   "paper_4473_mode",
@@ -83,6 +88,37 @@
    "label": "Shipping Price Includes Sales Tax",
    "default": "1",
    "description": "On: when an order is taxed, the shipping you enter is what the customer pays, with the sales tax already inside it, and the receipt says \"sales tax included\". Off: sales tax is added on top of the shipping. Only affects new orders; an existing order keeps the way it was created."
+  },
+  {
+   "fieldname": "counter_lock_minutes",
+   "fieldtype": "Int",
+   "label": "Lock Idle Screen After (minutes)",
+   "default": "5",
+   "non_negative": 1,
+   "description": "After this long with no touch or key, a counter screen locks and shows the staff list: the same person unlocks with their password, or another signs in. 0 = never."
+  },
+  {
+   "fieldname": "section_gunsmithing",
+   "fieldtype": "Section Break",
+   "label": "Gunsmithing"
+  },
+  {
+   "fieldname": "gunsmith_labor_item",
+   "fieldtype": "Link",
+   "label": "Gunsmith Labor Item",
+   "options": "Item",
+   "description": "The service item a work order's labor is billed on (default GUNSMITHING). Its own Item Tax Template decides whether labor is taxed — in some states repair labor is taxable, in others separately stated labor is not; ask your accountant."
+  },
+  {
+   "fieldname": "column_break_gunsmithing",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "gunsmith_agreement_template",
+   "fieldtype": "Link",
+   "label": "Intake Authorization",
+   "options": "Agreement Template",
+   "description": "The Per document agreement the customer signs for a work order (default Gunsmithing Authorization)."
   },
   {
    "fieldname": "tab_compliance",
@@ -174,7 +210,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-09 00:00:00",
+ "modified": "2026-10-17 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "FFL Settings",
