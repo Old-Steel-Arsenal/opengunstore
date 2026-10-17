@@ -638,6 +638,25 @@ class Register(_Base):
 		ret = frappe.get_doc("POS Invoice", gunsmith.refund_deposit(job.name)["pos_invoice"])
 		self.assertEqual({p.mode_of_payment: flt(p.amount) for p in ret.payments if flt(p.amount)}, {mop: -30})
 
+	def test_a_split_payment_is_refunded_in_the_same_shares(self):
+		"""$10 cash + $20 card: the refund never asks the card for more than it took."""
+		mop = "GW Test Card"
+		if not frappe.db.exists("Mode of Payment", mop):
+			frappe.get_doc({"doctype": "Mode of Payment", "mode_of_payment": mop, "type": "Bank",
+				"accounts": [{"company": COMPANY, "default_account": "Cash - FT"}]}).insert(ignore_permissions=True)
+		job = _job(self.cust)
+		inv = frappe.get_doc("POS Invoice", _payment(job, 30))
+		inv.set("payments", [])
+		inv.append("payments", {"mode_of_payment": "Cash", "amount": 10, "default": 1})
+		inv.append("payments", {"mode_of_payment": mop, "amount": 20})
+		inv.flags.ignore_permissions = True
+		inv.save()
+		inv.submit()
+		gunsmith.cancel_work_order(job.name, "Parts unavailable")
+		ret = frappe.get_doc("POS Invoice", gunsmith.refund_deposit(job.name)["pos_invoice"])
+		self.assertEqual({p.mode_of_payment: flt(p.amount) for p in ret.payments if flt(p.amount)},
+			{"Cash": -10, mop: -20})
+
 	def test_complete_with_nothing_to_charge_picks_up_at_once(self):
 		job = _job(self.cust)
 		self.assertEqual(gunsmith.complete_work(job.name, "Inspected, nothing needed.", "[]"),

@@ -676,18 +676,28 @@ def refund_deposit(name: str) -> dict:
 	ret.flags.ignore_permissions = True
 	ret.set_missing_values()
 	ret.calculate_taxes_and_totals()
-	# The refund goes back the way the payment came in (the mode that took the most on the
-	# source sale), so a card payment is refunded to the card when the register checks
-	# the return out (its Payroc refund runs there, never on the Desk).
-	paid = dict(frappe.get_all("Sales Invoice Payment", filters={"parent": source[0][0], "parenttype": "POS Invoice"},
-		fields=["mode_of_payment", "amount"], as_list=True))
-	back = max(paid, key=lambda m: flt(paid[m])) if paid else None
+	# The refund goes back the way the payment came in, split across the modes in the same
+	# shares as the source sale ($10 cash + $20 card → a third cash, two thirds card), so a
+	# card is never asked for more than it was charged; the register refunds the card part
+	# when it checks the return out (Payroc refunds run there, never on the Desk).
+	paid = {}
+	for mode, amt in frappe.get_all("Sales Invoice Payment", filters={"parent": source[0][0],
+			"parenttype": "POS Invoice"}, fields=["mode_of_payment", "amount"], as_list=True):
+		paid[mode] = paid.get(mode, 0) + max(flt(amt), 0)
+	total_paid = sum(paid.values())
+	refund = flt(ret.rounded_total) or flt(ret.grand_total)   # negative
 	rows = ret.get("payments") or []
 	for p in rows:
 		p.amount = p.base_amount = 0
-	target = next((p for p in rows if p.mode_of_payment == back), rows[0] if rows else None)
-	if target:
-		target.amount = target.base_amount = flt(ret.rounded_total) or flt(ret.grand_total)
+	shares = [(p, paid.get(p.mode_of_payment, 0)) for p in rows if paid.get(p.mode_of_payment, 0) > 0]
+	if not shares and rows:
+		shares = [(rows[0], 1)]
+		total_paid = 1
+	left = refund
+	for i, (p, share) in enumerate(shares):
+		part = left if i == len(shares) - 1 else flt(refund * share / total_paid, 2)
+		p.amount = p.base_amount = part
+		left = flt(left - part, 2)
 	# Totals do not re-sum a POS return's tender; the header must agree with the rows.
 	ret.paid_amount = ret.base_paid_amount = sum(flt(p.amount) for p in ret.get("payments") or [])
 	ret.insert()
