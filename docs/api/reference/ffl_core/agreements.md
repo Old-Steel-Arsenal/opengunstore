@@ -20,7 +20,7 @@ Every active agreement and where this customer stands, for the register's Agreem
 
 **Returns:** {"rows": [{"template", "scope", "requirement", "required": whether this sale needs it, "serial_no", "item_code", "item_name", "rate", "state", "expires_on", "agreement"}]} — a Per customer template once, an Each firearm sold one once per gun in the cart (or once with no gun when the cart has none, so it can still be seen).
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:331`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:336`</sub>
 
 ## `get_customer_agreements`
 
@@ -36,7 +36,7 @@ The Agreements section of the Customer form.
 
 **Returns:** {"rows": [{"name", "template", "serial_no", "status", "signed_on", "signed_via", "expires_on", "signed_pdf"}] newest first, "can_manage": whether the caller may void or record paper copies}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:626`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:635`</sub>
 
 ## `load_for_signing`
 
@@ -58,7 +58,7 @@ then on carries) the current text.
 
 **Returns:** {"customer_name", "title", "body_html", "store_name", "minors_need_guardian", "minor_by_dob": true / false from the customer's date of birth, or null when the store keeps none (the page then asks)}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:716`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:725`</sub>
 
 ## `record_paper_agreement`
 
@@ -85,7 +85,7 @@ signed scan there is nothing to record.
 
 **Returns:** {"name", "status", "expires_on", "signed_pdf"}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:564`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:573`</sub>
 
 ## `regenerate_signed_pdf`
 
@@ -101,7 +101,7 @@ Build a signed copy's PDF again (when the background job failed).
 
 **Returns:** {"signed_pdf": file URL}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:646`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:655`</sub>
 
 ## `request_agreement`
 
@@ -129,7 +129,7 @@ tablet right now — nothing changes unless ``replace`` is 1: the answer is
 
 **Returns:** {"name": the Customer Agreement, "deliver", "token_expires"} plus, for ``qr``, "sign_url" and "qr_svg" (an SVG data URI); for ``email``, "email". The link itself is never stored.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:430`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:439`</sub>
 
 ## `submit_signature`
 
@@ -161,7 +161,7 @@ link and 300 per IP address.
 
 **Returns:** {"signed": true, "store_name"}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:795`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:804`</sub>
 
 ## `void_agreement`
 
@@ -181,4 +181,4 @@ reason goes on its timeline.
 
 **Returns:** {"name", "status": "Void"}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:536`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:545`</sub>

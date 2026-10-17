@@ -60,7 +60,11 @@
 		});
 		(f.agreements || []).forEach(function (a) {
 			var ask = { customer: f.name, template: a.template };
-			if (a.state === 'missing') chips.push({ label: L('{0} needed', [a.template]), tone: 'orange', request: ask });
+			// Optional: nothing waits for it, so it reads neutral, never "needed".
+			if (a.requirement === 'Optional' && (a.state === 'missing' || a.state === 'expired')) {
+				chips.push({ label: L('{0} not signed', [a.template]), tone: 'gray', request: ask });
+			}
+			else if (a.state === 'missing') chips.push({ label: L('{0} needed', [a.template]), tone: 'orange', request: ask });
 			else if (a.state === 'expired') {
 				chips.push({ label: a.expires_on ? L('{0} expired {1}', [a.template, a.expires_on]) : L('{0} expired', [a.template]),
 					tone: 'orange', request: ask });

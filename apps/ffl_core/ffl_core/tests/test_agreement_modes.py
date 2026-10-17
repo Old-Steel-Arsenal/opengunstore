@@ -89,6 +89,17 @@ class Modes(_Base):
 		self.sign(token)
 		self.gate(self.sale((_item().name, None)))
 
+	def test_every_sale_leaves_an_ffl_dealer_alone(self):
+		tpl = _template(requirement="Required for every sale")
+		self.addCleanup(frappe.db.set_value, "Agreement Template", tpl.name, "active", 0)
+		frappe.db.set_value("Customer", self.cust.name, "is_ffl_dealer", 1)
+		self.gate(self.sale((_item().name, None)))
+
+	def test_the_panel_says_how_each_agreement_is_required(self):
+		tpl = _template(requirement="Optional", show_on_counter_panel=1)
+		row = [r for r in agreements.counter_panel_rows(self.cust.name) if r["template"] == tpl.name]
+		self.assertEqual([(r["state"], r["requirement"]) for r in row], [("missing", "Optional")])
+
 	def test_a_template_saved_before_the_settings_reads_as_by_item(self):
 		frappe.db.set_value("Agreement Template", self.tpl.name, {"requirement": None, "scope": None})
 		item = _item(ffl_required_agreement=self.tpl.name)
@@ -150,6 +161,20 @@ class EachFirearmSold(_Base):
 			agreements.refuse_missing_required(self.sale(name="SINV-AGR-TEST-2"))   # selling it again needs a new one
 		agreements.release_firearm_agreements(first)
 		agreements.refuse_missing_required(self.sale(name="SINV-AGR-TEST-2"))
+
+	def test_a_sale_taking_the_copy_rebuilds_its_pdf_in_place(self):
+		r, token = self.ask()
+		self.sign(token)
+		agreements.finish_signed_agreement(r["name"])
+		before = frappe.db.get_value("Customer Agreement", r["name"], "signed_pdf")
+		self.assertTrue(before)
+		agreements.mark_firearm_agreements_used(self.sale(name="SINV-AGR-TEST-9"))
+		agreements.rebuild_signed_pdf(r["name"])
+		after = frappe.db.get_value("Customer Agreement", r["name"], "signed_pdf")
+		self.assertEqual(frappe.db.get_value("Customer Agreement", r["name"], "reference_name"), "SINV-AGR-TEST-9")
+		self.assertEqual(frappe.db.count("File", {"attached_to_doctype": "Customer Agreement",
+			"attached_to_name": r["name"], "attached_to_field": "signed_pdf"}), 1)
+		self.assertTrue(after)
 
 	def test_the_register_lists_one_row_per_gun_and_never_puts_it_on_the_panel(self):
 		frappe.db.set_value("Agreement Template", self.tpl.name, "show_on_counter_panel", 1)

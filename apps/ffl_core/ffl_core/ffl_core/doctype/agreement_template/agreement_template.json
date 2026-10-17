@@ -63,7 +63,7 @@
    "options": "Optional\nRequired by item\nRequired for every sale",
    "default": "Required by item",
    "in_list_view": 1,
-   "description": "Optional: only offered from the Agreements button. Required by item: a counter sale of an Item (or Item Group) that names this agreement waits for it. Required for every sale: every counter sale waits for it."
+   "description": "Optional: only offered from the Agreements button. Required by item: a counter sale of an Item (or Item Group) that names this agreement waits for it. Required for every sale: every counter sale waits for it (not an FFL dealer's; a walk-in sale needs a named customer to sign)."
   },
   {
    "fieldname": "scope",

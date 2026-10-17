@@ -56,8 +56,8 @@ from datetime import timedelta
 import frappe
 from frappe import _
 from frappe.rate_limiter import rate_limit
-from frappe.utils import add_days, cint, escape_html, flt, fmt_money, formatdate, get_datetime, get_url, getdate, \
-	now_datetime, nowdate
+from frappe.utils import add_days, cint, escape_html, flt, fmt_money, formatdate, get_datetime, get_fullname, get_url, \
+	getdate, now_datetime, nowdate
 from frappe.utils.html_utils import sanitize_html
 
 from ffl_core.compliance.channel_invoice import is_channel_mirrored_invoice
@@ -234,7 +234,7 @@ def require_agreement(customer: str, template: str) -> None:
 def counter_panel_rows(customer: str) -> list[dict]:
 	"""Status of every active Per customer template marked "Show on Counter Panel"
 	(an Each firearm sold one depends on the cart: the Agreements button shows it)."""
-	return [agreement_status(customer, t.name) for t in _template_rows().values()
+	return [{**agreement_status(customer, t.name), "requirement": t.requirement} for t in _template_rows().values()
 		if t.show_on_counter_panel and t.scope != PER_FIREARM]
 
 
@@ -265,7 +265,8 @@ def sale_requirements(doc) -> list[dict]:
 	"""What a counter sale's customer must have signed: [{"template", "serial_no",
 	"item_code"}] (serial_no only for an Each firearm sold template, one entry per gun).
 
-	* Required for every sale — every sale (an Each firearm sold one: every gun in it);
+	* Required for every sale — every sale (an Each firearm sold one: every gun in it),
+	  except an FFL dealer's;
 	* Required by item — the Items (or their Item Groups) that name it, and whatever
 	  ``gunshop_required_agreements`` providers name (a failing provider is logged and
 	  adds nothing);
@@ -287,6 +288,8 @@ def sale_requirements(doc) -> list[dict]:
 		except Exception:
 			frappe.log_error(title=f"gunshop_required_agreements provider failed: {hook}")
 	templates = _template_rows()
+	# An FFL dealer buying wholesale is not who a store-wide waiver is for.
+	dealer = bool(doc.get("customer") and frappe.db.get_value("Customer", doc.get("customer"), "is_ffl_dealer"))
 	out, seen = [], set()
 
 	def add(t, serial, item):
@@ -297,6 +300,8 @@ def sale_requirements(doc) -> list[dict]:
 
 	for t, row in templates.items():
 		if row.requirement == EVERY_SALE:
+			if dealer:
+				continue
 			lines = rows
 		elif row.requirement == BY_ITEM and t in named:
 			lines = named[t]
@@ -404,6 +409,10 @@ def mark_firearm_agreements_used(doc, method=None) -> None:
 		if st["state"] == "signed" and st["agreement"]:
 			frappe.db.set_value(DOCTYPE, st["agreement"], {"reference_doctype": doc.doctype,
 				"reference_name": doc.name}, update_modified=False)
+			# The signed copy now names its invoice / receipt number: build it again.
+			if frappe.db.get_value(DOCTYPE, st["agreement"], "signature"):
+				frappe.enqueue("ffl_core.agreements.rebuild_signed_pdf", queue="short",
+					enqueue_after_commit=True, name=st["agreement"])
 
 
 def release_firearm_agreements(doc, method=None) -> None:
@@ -884,12 +893,28 @@ def _pdf_bytes(doc) -> bytes:
 		"doc": doc, "brand": company_brand(doc.company), "body_html": sanitize_html(doc.body_snapshot or ""),
 		"signature_uri": "data:image/png;base64," + base64.b64encode(sig).decode() if sig else "",
 		"signed_on": str(get_datetime(doc.signed_on).strftime("%Y-%m-%d %H:%M")) if doc.signed_on else "",
+		# The store's witness: whoever sent it to be signed (or recorded the paper copy).
+		"witness": get_fullname(doc.get("recorded_by") or doc.get("requested_by")) if (doc.get("recorded_by")
+			or doc.get("requested_by")) else "",
 	})
 	return get_pdf(html)
 
 
-def _attach_pdf(doc) -> bytes:
+def rebuild_signed_pdf(name: str) -> None:
+	"""Background: build a signed copy's PDF again in place (after a sale took it)."""
+	with guest_job_elevated():
+		try:
+			_attach_pdf(frappe.get_doc(DOCTYPE, name), replace=True)
+		except Exception:
+			frappe.log_error(title=f"Agreement PDF rebuild failed: {name}")
+
+
+def _attach_pdf(doc, replace: bool = False) -> bytes:
 	pdf = _pdf_bytes(doc)
+	if replace and doc.get("signed_pdf"):
+		for old in frappe.get_all("File", filters={"file_url": doc.signed_pdf, "attached_to_doctype": DOCTYPE,
+				"attached_to_name": doc.name}, pluck="name"):
+			frappe.delete_doc("File", old, ignore_permissions=True, force=True)
 	f = frappe.get_doc({"doctype": "File", "file_name": f"{doc.name}.pdf", "is_private": 1,
 		"attached_to_doctype": DOCTYPE, "attached_to_name": doc.name, "attached_to_field": "signed_pdf",
 		"content": pdf})
