@@ -1048,13 +1048,16 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 			const existing = (pos.frm.doc.items || []).find(
 				(r) => Object.keys(stamp).every((k) => r[k] === stamp[k]));
 			if (existing) return true;
-			// rate is never 0, so POS's "Price is not set" guard passes.
+			// rate is never 0, so POS's "Price is not set" guard passes. stock_uom too:
+			// with negative stock off, ERPNext's check_stock_availability reads
+			// item_row.stock_uom.bold() and, without it, throws before get_item_details
+			// ever runs — a bare row with no tax template or income account.
 			let row;
 			injectingLocked = true;
 			try {
 				row = await pos.on_cart_update({
 					field: 'qty', value: '+1',
-					item: { item_code: itemCode, uom: 'Nos', rate },
+					item: { item_code: itemCode, uom: 'Nos', stock_uom: 'Nos', rate },
 				});
 			} finally {
 				injectingLocked = false;
