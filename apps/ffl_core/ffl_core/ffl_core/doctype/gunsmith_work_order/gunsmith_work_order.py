@@ -25,6 +25,10 @@ class GunsmithWorkOrder(Document):
 				or frappe.db.get_single_value("Global Defaults", "default_company")
 		self.serial_number = (self.serial_number or "").strip()
 		self._fill_contact()
+		from ffl_core.feature_gate import customer_id_numbers_enabled
+		if not customer_id_numbers_enabled() and not (self.log_in_bound_book and not self.purchase_receipt):
+			# Kept only for the bound-book entry this save makes (log_gun clears it after).
+			self.id_number = None
 		for row in self.get("lines") or []:
 			row.qty = flt(row.qty) or 1
 			row.amount = flt(row.qty * flt(row.rate), 2)

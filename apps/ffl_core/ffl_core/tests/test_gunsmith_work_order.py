@@ -471,6 +471,17 @@ class BoundBook(_Base):
 		acq = frappe.get_doc("FFL Acquisition", {"purchase_receipt": job.purchase_receipt})
 		self.assertEqual(acq.source_id_number, "D2468101")
 
+	def test_unlogged_job_and_switch_off_keep_no_id_number(self):
+		with patch("ffl_core.feature_gate.customer_id_numbers_enabled", return_value=False):
+			job = _job(self.cust, id_type="Driver License", id_number="D1357911")
+		self.assertFalse(frappe.db.get_value(gunsmith.DOCTYPE, job.name, "id_number"))
+		with patch("ffl_core.feature_gate.customer_id_numbers_enabled", return_value=True):
+			kept = _job(self.cust, id_type="Driver License", id_number="D1122334")
+		self.assertEqual(frappe.db.get_value(gunsmith.DOCTYPE, kept.name, "id_number"), "D1122334")
+		from ffl_core.customer_profile import erase_stored_ids
+		erase_stored_ids()
+		self.assertFalse(frappe.db.get_value(gunsmith.DOCTYPE, kept.name, "id_number"))
+
 	def test_logged_later(self):
 		job = _job(self.cust)
 		self.assertFalse(job.purchase_receipt)
