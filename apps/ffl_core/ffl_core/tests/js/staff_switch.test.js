@@ -59,3 +59,12 @@ test('serverMessage: frappe\'s refusal text, else null', () => {
 	assert.strictEqual(ss.serverMessage({ _server_messages: 'junk' }), null);
 	assert.strictEqual(ss.serverMessage(null), null);
 });
+
+test('msUntilLock: an idle tab waits on while another tab was used; never with the lock off', () => {
+	const ms = 300000, now = 1_000_000_000;
+	assert.strictEqual(ss.msUntilLock(now - 300000, now, ms), 0, 'nobody anywhere for 5 min: lock');
+	assert.strictEqual(ss.msUntilLock(now - 60000, now, ms), 240000, 'used 1 min ago in another tab: 4 more min');
+	assert.strictEqual(ss.msUntilLock(0, now, ms), 0, 'no shared time: this tab\'s own timer decides');
+	assert.strictEqual(ss.msUntilLock(now + 5000, now, ms), 0, 'a clock in the future is ignored');
+	assert.strictEqual(ss.msUntilLock(now, now, 0), Infinity);
+});
