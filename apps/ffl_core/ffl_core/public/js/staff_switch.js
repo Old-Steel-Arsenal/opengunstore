@@ -32,6 +32,15 @@
 		return m > 0 ? m * 60 * 1000 : 0;
 	}
 
+	// How long until the screen may lock, given the latest activity seen in ANY tab of this
+	// browser (`lastActive`, ms epoch; 0 = unknown): 0 means lock now. Each tab runs its own
+	// timer, so an idle tab must not lock the one being used (the lock reaches every tab).
+	function msUntilLock(lastActive, now, ms) {
+		if (!ms) return Infinity;
+		var since = lastActive > 0 && lastActive <= now ? now - lastActive : ms;
+		return Math.max(0, ms - since);
+	}
+
 	// "Jane Roe" → "JR" for a user without a picture.
 	function initials(name) {
 		var parts = String(name || '').trim().split(/\s+/).filter(Boolean);
@@ -88,7 +97,7 @@
 		return null;
 	}
 
-	return { idleMs: idleMs, initials: initials, pickAction: pickAction, withMenuItem: withMenuItem,
+	return { idleMs: idleMs, msUntilLock: msUntilLock, initials: initials, pickAction: pickAction, withMenuItem: withMenuItem,
 		authMode: authMode, pinProblem: pinProblem, serverMessage: serverMessage };
 });
 
@@ -252,22 +261,42 @@
 
 	// ---- idle lock -------------------------------------------------------
 
+	// Activity is shared by every desk tab of this browser (localStorage), so a tab left
+	// open in the background never locks the one at work: its timer checks the shared
+	// time first and waits on. Per-browser convenience only — the lock itself is on the
+	// server session.
+	var ACTIVE_KEY = 'ffl-staff-last-active';
+	function lastActive() {
+		try { return parseInt(window.localStorage.getItem(ACTIVE_KEY), 10) || 0; } catch (e) { return 0; }
+	}
+	function markActive(now) {
+		try { window.localStorage.setItem(ACTIVE_KEY, String(now)); } catch (e) { /* private window: this tab only */ }
+	}
+
 	var idleTimer = null;
+	var lastPoke = 0;
 	function lock() {
 		post(M + 'lock_screen').then(function () { show({ locked: true }); }, function () { show({ locked: true }); });
 		tell('lock');
+	}
+	function idleDue() {
+		var ms = api.idleMs(frappe.boot && frappe.boot.ffl_counter_lock_minutes);
+		var wait = api.msUntilLock(Math.max(lastActive(), lastPoke), Date.now(), ms);
+		if (wait === Infinity) return;
+		if (wait > 0) { idleTimer = setTimeout(idleDue, wait); return; }   // another tab was used since
+		lock();
 	}
 	function resetIdle() {
 		var ms = api.idleMs(frappe.boot && frappe.boot.ffl_counter_lock_minutes);
 		clearTimeout(idleTimer);
 		if (!ms || (overlay && overlay.find('.ffl-staff-cancel').length === 0)) return;   // never, or already locked
-		idleTimer = setTimeout(lock, ms);
+		idleTimer = setTimeout(idleDue, ms);
 	}
-	var lastPoke = 0;
 	function poke() {
 		var now = Date.now();
 		if (now - lastPoke < 1000) return;   // a mouse move fires many times a second
 		lastPoke = now;
+		markActive(now);
 		resetIdle();
 	}
 
@@ -310,7 +339,7 @@
 			};
 		}
 		if (frappe.boot.ffl_screen_locked) show({ locked: true });
-		else resetIdle();
+		else { lastPoke = Date.now(); markActive(lastPoke); resetIdle(); }
 	}
 	$(document).on('app_ready', function () { setTimeout(wire, 0); });
 
