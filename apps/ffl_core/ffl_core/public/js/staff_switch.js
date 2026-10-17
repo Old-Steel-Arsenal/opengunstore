@@ -193,9 +193,10 @@
 		var Sidebar = frappe.ui && frappe.ui.Sidebar;
 		if (!Sidebar || !Sidebar.prototype.create_user_menu || Sidebar.prototype.create_user_menu.fflSwitch) return;
 		var orig = Sidebar.prototype.create_user_menu;
-		var item = { name: 'ffl-switch-user', label: __('Switch user'), icon: 'users',
-			onclick: function () { show({ locked: false }); } };
 		Sidebar.prototype.create_user_menu = function () {
+			// Built per menu, so the label is translated in the user's language.
+			var item = { name: 'ffl-switch-user', label: __('Switch user'), icon: 'users',
+				onclick: function () { show({ locked: false }); } };
 			var Dropdown = frappe.ui.Dropdown;
 			frappe.ui.Dropdown = function (opts) {
 				if (frappe.session.user !== 'Guest') opts = Object.assign({}, opts, { options: api.withMenuItem(opts.options, item) });
