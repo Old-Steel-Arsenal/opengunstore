@@ -72,13 +72,16 @@ def counter_users() -> list[dict]:
 
 	Returns:
 	    [{"user", "full_name", "image", "current": bool}] for enabled desk users
-	    holding a counter role, by name (never Administrator, the site's superuser);
-	    the signed-in one is marked current.
+	    holding a counter role, by name (never Administrator, the site's superuser),
+	    and always the signed-in one, marked current: a locked screen is unlocked
+	    by picking yourself, whatever your roles.
 	"""
 	frappe.only_for(COUNTER_ROLES)
 	holders = set(frappe.get_all("Has Role", filters={"role": ("in", COUNTER_ROLES), "parenttype": "User"},
 		pluck="parent"))
 	holders -= {"Guest", "Administrator"}
+	if frappe.session.user != "Guest":
+		holders.add(frappe.session.user)
 	if not holders:
 		return []
 	rows = frappe.get_all("User", filters={"name": ("in", list(holders)), "enabled": 1, "user_type": "System User"},

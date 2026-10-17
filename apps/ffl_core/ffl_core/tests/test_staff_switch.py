@@ -40,6 +40,17 @@ class StaffList(FrappeTestCase):
 		self.assertTrue(rows[clerk]["current"])
 		self.assertFalse(rows[manager]["current"])
 
+	def test_the_signed_in_user_is_always_listed(self):
+		"""A locked screen is unlocked by picking yourself: Administrator (no counter role
+		needed, never listed for others) sees itself, marked current."""
+		frappe.set_user("Administrator")
+		rows = {r["user"]: r for r in staff_switch.counter_users()}
+		self.assertIn("Administrator", rows)
+		self.assertTrue(rows["Administrator"]["current"])
+		self.assertEqual(sum(1 for r in rows.values() if r["current"]), 1)
+		frappe.set_user(_staff("switch-clerk@example.com", "Sales User"))
+		self.assertNotIn("Administrator", {r["user"] for r in staff_switch.counter_users()})
+
 	def test_only_counter_staff_may_list(self):
 		frappe.set_user(_staff("switch-buyer@example.com", "Purchase User"))
 		with self.assertRaises(frappe.PermissionError):
