@@ -117,3 +117,12 @@ def _address_line(company: str) -> str:
 	street = ", ".join(p for p in (a.get("address_line1"), a.get("address_line2")) if p)
 	region = " ".join(p for p in (a.get("state"), a.get("pincode")) if p)
 	return ", ".join(p for p in (street, a.get("city"), region) if p)
+
+
+def extend_bootinfo(bootinfo) -> None:
+	"""``frappe.boot.app_logo_dark``: Navbar Settings' Dark Mode Logo (custom field), or "".
+
+	The desk swaps it in for the Application Logo under the dark theme (ffl_core.bundle.js);
+	Frappe has one logo field and no dark variant.
+	"""
+	bootinfo.app_logo_dark = frappe.db.get_single_value("Navbar Settings", "app_logo_dark") or ""

@@ -18,7 +18,8 @@ fresh-install path never sees:
   - a redundant standard Link icon from the now-deleted
     desktop_icon/gun_shop.json fixture (Frappe doesn't drop standard docs
     when their JSON is removed),
-  - an auto-generated workspace Link icon nested under the old app folder.
+  - an auto-generated workspace Link icon nested under the old app folder,
+  - the App tile's logo_url still naming a logo file that has since been renamed.
 Leaving those produces a stale "FFL Core" folder and/or a duplicate
 "Gun Shop" tile after deploy. So we treat the add_to_apps_screen App tile
 as the one canonical entry, delete the other home-workspace tiles, and
@@ -62,13 +63,21 @@ def ensure_gun_shop_desktop_tile() -> None:
 			# 2. Relabel the App tile to the current app_title (older sites have
 			#    it as "FFL Core"). Display uses `label`, so a field update is
 			#    enough — no doc rename / name collision to worry about.
+			# 3. Re-point the tile at the hook's current logo. Frappe copies `logo` into the
+			#    tile once, at creation, so renaming the asset left a broken image on sites
+			#    whose tile predates the rename (/assets/ffl_core/images/gun_shop.svg).
+			screens = frappe.get_hooks("add_to_apps_screen", app_name=APP) or [{}]
+			logo = screens[0].get("logo")
 			for name in app_icons:
-				if frappe.db.get_value("Desktop Icon", name, "label") != app_title:
+				label, logo_url = frappe.db.get_value("Desktop Icon", name, ["label", "logo_url"])
+				if label != app_title:
 					frappe.db.set_value("Desktop Icon", name, "label", app_title)
+				if logo and logo_url != logo:
+					frappe.db.set_value("Desktop Icon", name, "logo_url", logo)
 		# else: no App tile (e.g. test-bootstrap fallback created a Link icon as
 		# the sole entry) — leave that lone tile in place; just hide children below.
 
-		# 3. Hide child-workspace tiles so the app tile stays a direct link
+		# 4. Hide child-workspace tiles so the app tile stays a direct link
 		#    (no folder popup). They remain reachable from the Gun Shop sidebar.
 		child_workspaces = frappe.get_all(
 			"Workspace",
