@@ -26,8 +26,8 @@ ARG ERPNEXT_REMOTE=https://github.com/frappe/erpnext
 # deliberately, validating in CI/dev first. FRAPPE_BRANCH above stays a branch —
 # it only tags the frappe/build + frappe/base toolchain images, which aren't
 # published per-patch-version.
-ARG FRAPPE_REF=v16.50.0
-ARG ERPNEXT_REF=v16.50.0
+ARG FRAPPE_REF=v16.52.0
+ARG ERPNEXT_REF=v16.51.1
 # Change to force a fresh clone of erpnext even if layers are cached.
 ARG CACHE_BUST=""
 

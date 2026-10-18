@@ -35,9 +35,9 @@ def default_stock_warehouse(company: str) -> str | None:
 	warehouse on any site old enough to have one, and gave no way to pin a
 	deliberate answer):
 
-	  1. Stock Settings.default_warehouse, if it belongs to this company and
-		 still passes the safety filters below — the explicit, operator-set
-		 answer, when one exists.
+	  1. Company.default_warehouse (Company › Warehouse Defaults; ERPNext 16.51
+		 moved it there from Stock Settings), if it still passes the safety
+		 filters below — the explicit, operator-set answer, when one exists.
 	  2. This company's own POS Profile.warehouse — the same source
 		 ffl_integrations.fastbound.importer._default_warehouse and
 		 ffl_core.api.firearm_intake._default_warehouse already prefer before
@@ -83,7 +83,7 @@ def default_stock_warehouse(company: str) -> str | None:
 			"consignment_dealer": ("is", "not set"), "disabled": 0,
 		}))
 
-	configured = frappe.db.get_single_value("Stock Settings", "default_warehouse")
+	configured = frappe.db.get_value("Company", company, "default_warehouse")
 	if _eligible(configured):
 		return configured
 
@@ -144,11 +144,11 @@ def _log_heuristic_fallback(company: str, fallback: str) -> None:
 	frappe.log_error(
 		title="default_stock_warehouse: heuristic fallback used",
 		message=(
-			f"No Stock Settings.default_warehouse / POS Profile warehouse / "
+			f"No Company.default_warehouse / POS Profile warehouse / "
 			f'a warehouse named "Stores" resolved for company {company} — '
 			f"falling back to the oldest non-group, non-consignment, "
 			f"non-disabled, non-Transit warehouse ({fallback}). Configure "
-			"Stock Settings.default_warehouse or a POS Profile warehouse "
+			"the Company's Default Warehouse or a POS Profile warehouse "
 			"for this company to make this deterministic. (This log is "
 			"throttled to once an hour per company.)"
 		),
