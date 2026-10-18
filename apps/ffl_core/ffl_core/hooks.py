@@ -158,6 +158,8 @@ extend_bootinfo = [
 	"ffl_core.extensions.extend_bootinfo",
 	# Idle lock minutes and whether this session's screen is locked (staff_switch.py).
 	"ffl_core.staff_switch.extend_bootinfo",
+	# Navbar Settings' Dark Mode Logo for the dark desk theme (store_identity.py).
+	"ffl_core.store_identity.extend_bootinfo",
 ]
 
 

@@ -621,6 +621,21 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		maybeRedirectToGunShop();
 	}
 
+	// --- 1b. Dark-theme brand logo ---
+	// Navbar Settings has one Application Logo; a black-on-white mark sits as a white box on the
+	// dark desk. The Dark Mode Logo field (frappe.boot.app_logo_dark) replaces it under the dark
+	// theme, CSS-only: the original image is pushed out of its own box and the dark one painted as
+	// its background, so it follows a theme switch with no re-render. #brand-logo is the logo on
+	// the /desk landing (frappe desktop.html / desktop_icons.html).
+	if (window.frappe && frappe.boot && frappe.boot.app_logo_dark) {
+		const style = document.createElement('style');
+		style.textContent = `[data-theme="dark"] #brand-logo {
+			object-position: -99999px 0;
+			background: url(${JSON.stringify(frappe.boot.app_logo_dark)}) center / contain no-repeat;
+		}`;
+		document.head.appendChild(style);
+	}
+
 	// --- 2. Language toggle ---
 	// Inject a small EN ↔ zh button into the navbar next to the bell icon.
 	// One click flips the current user's language preference and reloads.
