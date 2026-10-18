@@ -123,6 +123,7 @@ def extend_bootinfo(bootinfo) -> None:
 	"""``frappe.boot.app_logo_dark``: Navbar Settings' Dark Mode Logo (custom field), or "".
 
 	The desk swaps it in for the Application Logo under the dark theme (ffl_core.bundle.js);
-	Frappe has one logo field and no dark variant.
+	Frappe has one logo field and no dark variant. Read raw: get_single_value throws while the
+	custom field is not synced yet (a deploy before migrate), and boot must never fail.
 	"""
-	bootinfo.app_logo_dark = frappe.db.get_single_value("Navbar Settings", "app_logo_dark") or ""
+	bootinfo.app_logo_dark = single_raw("Navbar Settings", "app_logo_dark") or ""
