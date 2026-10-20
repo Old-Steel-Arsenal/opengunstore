@@ -27,6 +27,9 @@ class CheckMoneyOrderMode(BuildOrderMixin, FrappeTestCase):
 		# A real bank account for the company, as every store has (store_setup
 		# makes it); the bare test site otherwise has none.
 		cls.bank = ensure_accounts(cls.company)["bank"]
+		# ensure_manual_modes_of_payment honours an existing asset row, so a row another module's fixture
+		# pointed at Cash (test_pos_close fills every unmapped mode with Cash) would stick. Start clean.
+		frappe.db.delete("Mode of Payment Account", {"parent": CHECK_MONEY_ORDER, "company": cls.company})
 		ensure_manual_modes_of_payment()
 
 	def _account(self, mode):
