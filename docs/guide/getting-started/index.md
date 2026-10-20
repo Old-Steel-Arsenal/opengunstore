@@ -108,6 +108,12 @@ Or press ++ctrl+shift+g++ to open the **Switch Theme** dialog.
 To switch the language, open the same **Settings**, go to **Preferences** and
 click **Change Language**.
 
+The store logo at the top of the app screen is the **Application Logo** in
+**Navbar Settings**. A logo drawn in black on white shows as a white box in dark
+mode, so a store manager can upload a second version in the same place, under
+**Dark Mode Logo**. Dark mode then shows that one instead. Leave it empty and
+the Application Logo shows in both themes.
+
 ## Where to find help
 
 This guide is the manual. Three places are worth knowing:

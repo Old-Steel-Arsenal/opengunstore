@@ -19,11 +19,18 @@ def close_stale_pos_openings() -> None:
 
 
 def todays_pos_opening(company: str, pos_profile: str = "FFL Test") -> str:
-	"""The session user's Open POS Opening Entry, started today: reused, or opened on ``pos_profile``."""
+	"""The session user's Open POS Opening Entry on ``pos_profile``, started today: reused, or opened.
+
+	An Open entry of the user's on another profile is marked Closed first: ERPNext allows a cashier one Open entry,
+	and a module selling on its own profile (the gunsmith's) otherwise ran after one that opened ``FFL Test`` with
+	no shift for its profile at all."""
 	close_stale_pos_openings()
-	name = frappe.db.get_value("POS Opening Entry", {"user": frappe.session.user, "status": "Open", "docstatus": 1})
+	open_entry = {"user": frappe.session.user, "status": "Open", "docstatus": 1}
+	name = frappe.db.get_value("POS Opening Entry", {**open_entry, "pos_profile": pos_profile})
 	if name:
 		return name
+	for other in frappe.get_all("POS Opening Entry", filters=open_entry, pluck="name"):
+		frappe.db.set_value("POS Opening Entry", other, "status", "Closed", update_modified=False)
 	opening = frappe.get_doc({
 		"doctype": "POS Opening Entry",
 		"company": company,

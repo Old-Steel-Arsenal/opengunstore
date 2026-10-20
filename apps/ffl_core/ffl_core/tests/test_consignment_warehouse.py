@@ -273,33 +273,33 @@ class DefaultStockWarehouseResolutionOrder(DefaultStockWarehouseFixtures):
 		self.assertTrue(stores, "ERPNext must have auto-created a Stores warehouse for a new Company")
 		self.assertEqual(default_stock_warehouse(company), stores)
 
-	def test_stock_settings_default_warehouse_wins_over_naming_convention(self):
+	def test_company_default_warehouse_wins_over_naming_convention(self):
 		from ffl_core.warehouses import default_stock_warehouse
 
 		company = self._fresh_company("B")
 		configured = self._plain_eligible_warehouse(company, "Configured Default B")
-		prev = frappe.db.get_single_value("Stock Settings", "default_warehouse")
-		frappe.db.set_single_value("Stock Settings", "default_warehouse", configured)
+		prev = frappe.db.get_value("Company", company, "default_warehouse")
+		frappe.db.set_value("Company", company, "default_warehouse", configured)
 		try:
 			self.assertEqual(default_stock_warehouse(company), configured)
 		finally:
-			frappe.db.set_single_value("Stock Settings", "default_warehouse", prev)
+			frappe.db.set_value("Company", company, "default_warehouse", prev)
 
-	def test_pos_profile_warehouse_wins_over_naming_convention_when_stock_settings_unset(self):
+	def test_pos_profile_warehouse_wins_over_naming_convention_when_company_default_unset(self):
 		from ffl_core.warehouses import default_stock_warehouse
 
 		company = self._fresh_company("C")
 		configured = self._plain_eligible_warehouse(company, "POS Profile Default C")
-		prev = frappe.db.get_single_value("Stock Settings", "default_warehouse")
-		frappe.db.set_single_value("Stock Settings", "default_warehouse", None)
+		prev = frappe.db.get_value("Company", company, "default_warehouse")
+		frappe.db.set_value("Company", company, "default_warehouse", None)
 		try:
 			self._ensure_pos_profile(company, configured)
 			self.assertEqual(default_stock_warehouse(company), configured)
 		finally:
-			frappe.db.set_single_value("Stock Settings", "default_warehouse", prev)
+			frappe.db.set_value("Company", company, "default_warehouse", prev)
 
 	def test_falls_back_to_oldest_match_and_logs_when_nothing_else_resolves(self):
-		"""No Stock Settings default, no POS Profile warehouse, and Stores
+		"""No Company default warehouse, no POS Profile warehouse, and Stores
 		itself renamed away — the last-resort heuristic still returns SOME
 		safe (non-consignment/non-disabled/non-Transit) warehouse rather than
 		None, and leaves a log_error trail so an operator notices the site is
@@ -310,8 +310,8 @@ class DefaultStockWarehouseResolutionOrder(DefaultStockWarehouseFixtures):
 		stores = frappe.db.get_value(
 			"Warehouse", {"company": company, "warehouse_name": "Stores"}, "name")
 		frappe.db.set_value("Warehouse", stores, "warehouse_name", "Not Stores Anymore")
-		prev = frappe.db.get_single_value("Stock Settings", "default_warehouse")
-		frappe.db.set_single_value("Stock Settings", "default_warehouse", None)
+		prev = frappe.db.get_value("Company", company, "default_warehouse")
+		frappe.db.set_value("Company", company, "default_warehouse", None)
 		self._clear_fallback_log_throttle(company)
 		error_count_before = frappe.db.count("Error Log")
 		try:
@@ -323,7 +323,7 @@ class DefaultStockWarehouseResolutionOrder(DefaultStockWarehouseFixtures):
 				frappe.db.count("Error Log"), error_count_before,
 				"the heuristic fallback must log_error so it doesn't fail silently forever")
 		finally:
-			frappe.db.set_single_value("Stock Settings", "default_warehouse", prev)
+			frappe.db.set_value("Company", company, "default_warehouse", prev)
 			frappe.db.set_value("Warehouse", stores, "warehouse_name", "Stores")
 
 
@@ -334,8 +334,8 @@ class DefaultStockWarehouseHotPathHygiene(DefaultStockWarehouseFixtures):
 	last-resort branch complains."""
 
 	def _unconfigure(self, company: str):
-		prev = frappe.db.get_single_value("Stock Settings", "default_warehouse")
-		frappe.db.set_single_value("Stock Settings", "default_warehouse", None)
+		prev = frappe.db.get_value("Company", company, "default_warehouse")
+		frappe.db.set_value("Company", company, "default_warehouse", None)
 		return prev
 
 	def test_a_disabled_pos_profile_never_answers(self):
@@ -354,7 +354,7 @@ class DefaultStockWarehouseHotPathHygiene(DefaultStockWarehouseFixtures):
 			# Tier 2 must decline, so tier 3 (the "Stores" naming convention) answers.
 			self.assertEqual(default_stock_warehouse(company), stores)
 		finally:
-			frappe.db.set_single_value("Stock Settings", "default_warehouse", prev)
+			frappe.db.set_value("Company", company, "default_warehouse", prev)
 
 	def test_the_oldest_enabled_pos_profile_wins_deterministically(self):
 		from ffl_core.warehouses import default_stock_warehouse
@@ -373,7 +373,7 @@ class DefaultStockWarehouseHotPathHygiene(DefaultStockWarehouseFixtures):
 				update_modified=False)
 			self.assertEqual(default_stock_warehouse(company), first_wh)
 		finally:
-			frappe.db.set_single_value("Stock Settings", "default_warehouse", prev)
+			frappe.db.set_value("Company", company, "default_warehouse", prev)
 
 	def test_the_fallback_error_log_is_throttled_per_company(self):
 		"""Reaching the heuristic branch is a standing misconfiguration, not a
@@ -384,13 +384,16 @@ class DefaultStockWarehouseHotPathHygiene(DefaultStockWarehouseFixtures):
 		company = self._fresh_company("F")
 		other = self._fresh_company("G")
 		renamed = []
-		prev = frappe.db.get_single_value("Stock Settings", "default_warehouse")
-		frappe.db.set_single_value("Stock Settings", "default_warehouse", None)
+		prev = frappe.db.get_value("Company", company, "default_warehouse")
+		frappe.db.set_value("Company", company, "default_warehouse", None)
 		try:
 			for co in (company, other):
 				stores = frappe.db.get_value(
 					"Warehouse", {"company": co, "warehouse_name": "Stores"}, "name")
 				frappe.db.set_value("Warehouse", stores, "warehouse_name", "Not Stores Anymore")
+				# A new Company gets Stores as its Default Warehouse (ERPNext 16.51); renaming
+				# keeps the docname, so clear it or tier 1 would still answer.
+				frappe.db.set_value("Company", co, "default_warehouse", None)
 				renamed.append(stores)
 				self._clear_fallback_log_throttle(co)
 
@@ -412,6 +415,6 @@ class DefaultStockWarehouseHotPathHygiene(DefaultStockWarehouseFixtures):
 				frappe.db.count("Error Log"), after_first + 1,
 				"the throttle is per company, not global")
 		finally:
-			frappe.db.set_single_value("Stock Settings", "default_warehouse", prev)
+			frappe.db.set_value("Company", company, "default_warehouse", prev)
 			for stores in renamed:
 				frappe.db.set_value("Warehouse", stores, "warehouse_name", "Stores")
