@@ -150,6 +150,85 @@ class PostDisposition(FrappeTestCase):
 		self.assertNotIn("already disposed", msg)
 
 
+class ReacquiredInFastBound(FrappeTestCase):
+	"""A gun that comes back (a returned transfer, a trip to the gunsmith) and is
+	re-booked by hand in FastBound becomes a NEW item with the same serial and no
+	externalId. The Serial No still points at the old, disposed item, so the next
+	sale's push 400s "already disposed". When the new item is unambiguously the
+	same gun coming back, dispose it and repoint the Serial No."""
+
+	OLD = {"id": "fbitem-1", "itemNumber": "00327", "serial": "DSN-1",
+		"manufacturer": "Walther", "status": {"id": 3, "name": "Disposed"},
+		"dispositionType": "FFL Transfer", "dispose_Date": "2026-09-16T17:10:20",
+		"dispose_LicenseName": "FIRST BUYER INC", "dispositionId": "prior-1"}
+	NEW = {"id": "fbitem-2", "itemNumber": "01412", "serial": "DSN-1",
+		"manufacturer": "Walther", "disposed": False, "deleted": False,
+		"acquire_Date": "2026-10-02T00:00:00"}
+
+	def _push(self, new_item):
+		client = _client()
+		posted: list[str] = []
+
+		def side_effect(method, path, **kw):
+			if method == "POST" and path == "Dispositions/CreateAndCommit":
+				item_id = kw["json_body"]["items"][0]["id"]
+				posted.append(item_id)
+				if item_id == "fbitem-1":
+					raise FastBoundError(
+						'POST Dispositions/CreateAndCommit → 400: '
+						'{"errors":[{"message":"Item 00327 was disposed on 9/16/2026."}]}',
+						status_code=400)
+				return None
+			if method == "GET" and path == "Items":
+				return {"items": [self.OLD | {"disposed": True}] + ([new_item] if new_item else [])}
+			if method == "GET" and path == "Items/fbitem-1":
+				return self.OLD
+			if method == "GET" and path == "Items/fbitem-2":
+				return {"dispositionId": "fbdisp-new"}
+			return None
+
+		with patch("ffl_integrations.fastbound.client.frappe.db", new_callable=MagicMock) as db, \
+		     patch.object(client, "find_contact_by_ffl_number", return_value={"id": "c-1"}), \
+		     patch.object(client, "_request", side_effect=side_effect):
+			db.exists.return_value = True
+			db.get_value.return_value = "fbitem-1"  # the stale pointer
+			try:
+				result = client.post_disposition(_disp())
+			except FastBoundError as exc:
+				result = exc
+		return result, posted, db.set_value
+
+	def test_the_reacquired_item_is_disposed_and_the_serial_repointed(self):
+		result, posted, set_value = self._push(self.NEW)
+		self.assertEqual(result, "fbdisp-new")
+		self.assertEqual(posted, ["fbitem-1", "fbitem-2"])
+		set_value.assert_called_once_with(
+			"Serial No", "DSN-1", "fastbound_item_id", "fbitem-2", update_modified=False)
+
+	def test_a_different_manufacturer_is_another_gun_and_is_left_alone(self):
+		result, posted, set_value = self._push(self.NEW | {"manufacturer": "Ruger"})
+		self.assertIsInstance(result, FastBoundError)
+		self.assertTrue(result.terminal)
+		self.assertIn("already disposed", str(result))
+		self.assertEqual(posted, ["fbitem-1"])
+		set_value.assert_not_called()
+
+	def test_an_item_acquired_before_the_disposition_is_not_a_return(self):
+		result, posted, set_value = self._push(self.NEW | {"acquire_Date": "2026-09-01T00:00:00"})
+		self.assertIsInstance(result, FastBoundError)
+		self.assertTrue(result.terminal)
+		self.assertEqual(posted, ["fbitem-1"])
+		set_value.assert_not_called()
+
+	def test_no_in_stock_item_keeps_the_terminal_error(self):
+		result, posted, set_value = self._push(None)
+		self.assertIsInstance(result, FastBoundError)
+		self.assertTrue(result.terminal)
+		self.assertIn("FIRST BUYER INC", str(result))
+		self.assertEqual(posted, ["fbitem-1"])
+		set_value.assert_not_called()
+
+
 class PendingDispositionConflict(FrappeTestCase):
 	"""DISP-2026-02000: an abandoned FastBound 4473 wizard left an UNCOMMITTED
 	disposition holding item 00843. Every later push for that gun 400'd with

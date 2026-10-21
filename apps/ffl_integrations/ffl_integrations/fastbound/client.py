@@ -926,6 +926,35 @@ class FastBoundClient:
 		)
 		return f"FastBound item #{num}, disposed {ddate} as {dtype!r} to {recipient!r}"
 
+	def _reacquired_item_id(self, serial: str, disposed_id: str) -> str | None:
+		"""For the 'already disposed' 400: the in-stock item that re-acquired this
+		gun after ``disposed_id`` left the book, or None.
+
+		Adopted only when it is unambiguously the same gun coming back: the old
+		item really is disposed, exactly one in-stock item carries the serial
+		(``find_item_by_serial`` raises on more), it has the old item's
+		manufacturer, and it was acquired on or after the old disposition date.
+		Best-effort like the summaries: any lookup failure returns None, so the
+		caller keeps the original 400."""
+		try:
+			old = self.get_item(disposed_id) or {}
+			if not self._item_is_disposed(old):
+				return None
+			new = self.find_item_by_serial(serial) or {}
+		except Exception:  # noqa: BLE001 — see _existing_disposition_summary
+			return None
+		new_id = new.get("id") or new.get("itemId")
+		if not new_id or new_id == disposed_id or self._item_is_disposed(new):
+			return None
+		if (new.get("manufacturer") or "").strip().casefold() != (
+				old.get("manufacturer") or "").strip().casefold():
+			return None
+		disposed_on = (old.get("dispose_Date") or "")[:10]
+		acquired_on = (new.get("acquire_Date") or "")[:10]
+		if not disposed_on or acquired_on < disposed_on:
+			return None
+		return new_id
+
 	def _holding_disposition_summary(self, fb_item_id: str) -> str | None:
 		"""For the 'has already been added to another disposition' 400: name the
 		disposition that is SITTING ON the item.
@@ -1119,6 +1148,17 @@ class FastBoundClient:
 		try:
 			response = self._request("POST", "Dispositions/CreateAndCommit", json_body=body)
 		except FastBoundError as exc:
+			# A gun back in stock that was re-booked by hand in FastBound (a returned
+			# transfer, a trip to the gunsmith) is a NEW item; the Serial No still
+			# points at the old, disposed one. Dispose the re-acquired item and
+			# repoint the Serial No so every later lookup finds the right one.
+			newer = self._reacquired_item_id(serial, fb_item_id) if exc.status_code == 400 else None
+			if newer:
+				frappe.db.set_value("Serial No", serial, "fastbound_item_id", newer,
+					update_modified=False)
+				fb_item_id = newer
+				body["items"] = [{"id": newer}]
+				response = self._request("POST", "Dispositions/CreateAndCommit", json_body=body)
 			# FastBound refuses to dispose an item that's already disposed (e.g. a
 			# transfer/return booked directly in FastBound, or a duplicate sale):
 			# "Item <n> was disposed on <date>." A firearm can't be disposed twice,
@@ -1127,7 +1167,7 @@ class FastBoundClient:
 			# date), burying an ATF discrepancy. Re-raise a clear, operator-
 			# actionable message naming the existing disposition; the record stays
 			# in fastbound_sync_error for a human to reconcile.
-			if exc.status_code == 400:
+			elif exc.status_code == 400:
 				existing = self._existing_disposition_summary(fb_item_id)
 				if existing:
 					raise FastBoundError(
@@ -1172,7 +1212,8 @@ class FastBoundClient:
 						f"free. FastBound said: {exc}",
 						status_code=exc.status_code,
 					) from exc
-			raise
+			if not newer:
+				raise
 		# CreateAndCommit returns 204 No Content — no id in the response. The
 		# committed disposition's id lands on the disposed item, so re-fetch the
 		# item to capture it (future-proof: also accept an id in the body).
