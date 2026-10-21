@@ -182,6 +182,9 @@ app_include_js = [
 	_hashed("js/pos_charge_exactly.js"),
 	# Recent Orders draft chips (paid / entered / 4473); needs pos_tender_guard.js above.
 	_hashed("js/pos_order_status.js"),
+	# Desk password fields: autocomplete="new-password", so the browser never fills
+	# the store's saved login into a key/secret pair on some form.
+	_hashed("js/password_no_autofill.js"),
 	# aamva.js parses a driver-licence PDF417 payload (pure); customer_quick_entry.js
 	# subclasses ERPNext's CustomerQuickEntryForm (name parts once + Scan ID).
 	_hashed("js/aamva.js"),
