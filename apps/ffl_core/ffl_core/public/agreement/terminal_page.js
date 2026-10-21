@@ -4,7 +4,8 @@
 // (/agreement/sign#t=…&from=terminal), which comes back here once it is signed.
 // The device key lives in this browser only (SigningPad.device); an unknown or
 // switched-off tablet goes back to the pairing screen. While idle it also offers
-// Start Form 4473 (FastBound's customer page, 4473.io) when the store uses it.
+// Start Form 4473 (FastBound's customer page, 4473.io) when the store uses it, in a
+// new tab so this one keeps polling: a link sent meanwhile lives only 10 minutes.
 (function () {
 	'use strict';
 	var $ = function (sel, el) { return (el || document).querySelector(sel); };

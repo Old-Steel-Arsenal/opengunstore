@@ -121,6 +121,8 @@ class Pairing(FrappeTestCase):
 				self.assertEqual(_poll(secret)["form_4473_url"], "")
 			with single_value("FastBound Settings", "enabled", 0):
 				self.assertEqual(_poll(secret)["form_4473_url"], "")
+			with single_value("FastBound Settings", "account_num", "12/3 4"):
+				self.assertEqual(_poll(secret)["form_4473_url"], "https://4473.io/12%2F3%204")
 		with single_value("FastBound Settings", "account_num", ""):
 			self.assertEqual(_poll(secret)["form_4473_url"], "")
 

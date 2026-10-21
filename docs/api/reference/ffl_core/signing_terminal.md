@@ -14,7 +14,7 @@ Active signing tablets, for the Request agreement dialog.
 
 **Returns:** [{"name", "pos_profile", "paired"}], by name.
 
-<sub>`apps/ffl_core/ffl_core/signing_terminal.py:84`</sub>
+<sub>`apps/ffl_core/ffl_core/signing_terminal.py:85`</sub>
 
 ## `pair_terminal`
 
@@ -34,7 +34,7 @@ anywhere in 10 minutes, pairing pauses until the window passes.
 
 **Returns:** {"secret": the device key (shown this once), "terminal_name"}.
 
-<sub>`apps/ffl_core/ffl_core/signing_terminal.py:116`</sub>
+<sub>`apps/ffl_core/ffl_core/signing_terminal.py:117`</sub>
 
 ## `start_pairing`
 
@@ -50,7 +50,7 @@ Manager starts pairing a tablet: a 6-digit code to type on it.
 
 **Returns:** {"code", "expires_in_minutes", "page": the URL to open on the tablet}.
 
-<sub>`apps/ffl_core/ffl_core/signing_terminal.py:95`</sub>
+<sub>`apps/ffl_core/ffl_core/signing_terminal.py:96`</sub>
 
 ## `terminal_poll`
 
@@ -69,4 +69,4 @@ tablets together, about 16 of them polling all hour).
 
 **Returns:** {"paired": false} for an unknown or switched-off tablet (the page goes back to pairing); {"paired": true, "token"} when the counter sent a link (handed out once); otherwise {"paired": true, "idle": true, "terminal_name", "store_name", "form_4473_url"} — form_4473_url is the store's FastBound customer 4473 page, or "" when the store has no electronic 4473.
 
-<sub>`apps/ffl_core/ffl_core/signing_terminal.py:163`</sub>
+<sub>`apps/ffl_core/ffl_core/signing_terminal.py:164`</sub>

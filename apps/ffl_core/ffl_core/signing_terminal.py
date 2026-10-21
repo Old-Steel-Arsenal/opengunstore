@@ -26,6 +26,7 @@ import hashlib
 import re
 import secrets
 from datetime import timedelta
+from urllib.parse import quote
 
 import frappe
 from frappe import _
@@ -35,7 +36,7 @@ from frappe.utils import cint, escape_html, get_datetime, now_datetime
 from ffl_core.compliance.mode import paper_4473_mode
 from ffl_core.roles import CUSTOMER_MANAGER_ROLES
 from ffl_core.store_identity import company_brand
-from ffl_core.utils import single_flag, single_raw
+from ffl_core.utils import _flag_from_raw, single_raw_map
 
 DOCTYPE = "Signing Terminal"
 PAIR_MINUTES = 10
@@ -196,7 +197,10 @@ def _form_4473_url() -> str:
 	"""FastBound's customer-facing 4473 page for this store, for the tablet's
 	Start Form 4473 button; "" in paper mode or with FastBound off or unset.
 	Read raw: ffl_core does not import ffl_integrations (FastBound Settings lives there)."""
-	if paper_4473_mode() or not single_flag("FastBound Settings", "enabled", default=1):
+	if paper_4473_mode():
 		return ""
-	account = (single_raw("FastBound Settings", "account_num") or "").strip()
-	return f"https://4473.io/{account}" if account else ""
+	fb = single_raw_map("FastBound Settings")   # one query: this runs on every 2 s poll
+	account = (fb.get("account_num") or "").strip()
+	if not account or not _flag_from_raw(fb.get("enabled"), default=1):
+		return ""
+	return "https://4473.io/" + quote(account, safe="")
