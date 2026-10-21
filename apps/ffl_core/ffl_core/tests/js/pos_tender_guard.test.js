@@ -373,6 +373,8 @@ test('isFullyTendered: paid covers rounded_total (else grand_total), half-cent t
 	assert.strictEqual(isFullyTendered({ grand_total: 535.84, rounded_total: 536, paid_amount: 535.84 }), false);
 	assert.strictEqual(isFullyTendered({ grand_total: 535.84, rounded_total: 536, paid_amount: 536 }), true);
 	assert.strictEqual(isFullyTendered({}), true);   // nothing due
+	assert.strictEqual(isFullyTendered({ grand_total: 100.4, paid_amount: 100, write_off_amount: 0.4 }), true);
+	assert.strictEqual(isFullyTendered({ grand_total: 100.4, paid_amount: 100, write_off_amount: 0.2 }), false);
 });
 
 test('hasHeldPayment: only the held stamp counts', () => {

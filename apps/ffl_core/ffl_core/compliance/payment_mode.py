@@ -151,13 +151,16 @@ def require_full_payment(doc, method: str | None = None) -> None:
 	if cint(doc.get("is_return")):
 		return
 	total = invoice_total(doc)
-	short = flt(doc.get("outstanding_amount"))
+	# POS Invoice.set_outstanding_amount is total - paid; a write-off within the profile's limit covers the rest.
+	short = flt(doc.get("outstanding_amount")) - flt(doc.get("write_off_amount"))
 	if total <= 0 or short <= 0.01:
 		return
 	fmt = lambda v: frappe.format_value(v, {"fieldtype": "Currency"})  # noqa: E731
-	frappe.throw(_(
+	message = _(
 		"This sale comes to {0} but {1} of it is not paid yet, so it cannot be completed. If the customer pays the "
 		"rest later, leave it as a draft: what was paid stays on the order, and you collect the rest from Recent "
-		"Orders → Edit. A card charged outside the register (Virtual Terminal) goes in the Credit Card amount, with "
-		"a manager ticking Manual Card Settlement and entering the approval code."
-	).format(fmt(total), fmt(short)))
+		"Orders → Edit.").format(fmt(total), fmt(short))
+	if "ffl_integrations" in frappe.get_installed_apps():  # the card integration, and its manual-settlement box
+		message += " " + _("A card charged outside the register (Virtual Terminal) goes in the Credit Card amount, "
+			"with a manager ticking Manual Card Settlement and entering the approval code.")
+	frappe.throw(message)

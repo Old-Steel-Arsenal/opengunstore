@@ -6,6 +6,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from ffl_core.compliance.payment_mode import require_full_payment
+from ffl_core.tests.test_cash_drawer_pos import ShiftFixtures
 
 
 def _ticket(**kw):
@@ -27,6 +28,11 @@ class RequireFullPayment(FrappeTestCase):
 		require_full_payment(_ticket())
 		require_full_payment(_ticket(outstanding_amount=0.01))  # rounding noise
 
+	def test_write_off_covers_the_rest(self):
+		require_full_payment(_ticket(paid_amount=481.31, outstanding_amount=0.40, write_off_amount=0.40))
+		with self.assertRaises(frappe.ValidationError):
+			require_full_payment(_ticket(paid_amount=481.31, outstanding_amount=0.40, write_off_amount=0.20))
+
 	def test_reads_the_outstanding_erpnext_sets_at_submit(self):
 		"""POS Invoice.set_outstanding_amount (ERPNext before_submit) is what the gate reads."""
 		inv = frappe.new_doc("POS Invoice")
@@ -46,3 +52,22 @@ class RequireFullPayment(FrappeTestCase):
 	def test_wired_on_pos_invoice_before_submit(self):
 		hooks = frappe.get_hooks("doc_events")["POS Invoice"]["before_submit"]
 		self.assertIn("ffl_core.compliance.payment_mode.require_full_payment", hooks)
+
+
+class SubmitAtTheRegister(ShiftFixtures):
+	"""A real submit, on a profile that allows partial payment as the stores' do: ERPNext's own check steps aside,
+	so only this gate stands between an underpaid ticket and the books."""
+	KIND = "store_a"
+
+	def setUp(self):
+		super().setUp()
+		frappe.db.set_value("POS Profile", self.profile, "allow_partial_payment", 1)
+		self._open_shift()
+
+	def test_an_underpaid_ticket_does_not_submit(self):
+		with self.assertRaises(frappe.ValidationError) as ctx:
+			self._pos_sale(rate=100, tendered=60)
+		self.assertIn("not paid yet", str(ctx.exception))
+
+	def test_a_paid_ticket_submits(self):
+		self.assertEqual(frappe.db.get_value("POS Invoice", self._pos_sale(rate=100, tendered=100), "docstatus"), 1)

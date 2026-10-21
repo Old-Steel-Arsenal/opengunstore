@@ -155,15 +155,16 @@
 		return true;
 	}
 
-	// Fully tendered: the recorded tender covers the order (ERPNext's own
-	// paid-vs-total rule at submit, applied here BEFORE we park the draft).
+	// Fully tendered: the recorded tender, plus any write-off within the profile's
+	// limit, covers the order — the server's payment_mode.require_full_payment
+	// rule, applied here BEFORE we park or submit the draft.
 	// rounded_total wins when the POS Profile rounds; TOLERANCE mirrors
 	// payroc_charges.js — half a cent, never a dependency on that module.
 	var TOLERANCE = 0.005;
 	function isFullyTendered(doc) {
 		doc = doc || {};
 		var due = flt(doc.rounded_total) || flt(doc.grand_total);
-		return flt(doc.paid_amount) + TOLERANCE >= due;
+		return flt(doc.paid_amount) + flt(doc.write_off_amount) + TOLERANCE >= due;
 	}
 
 	// True when this draft's tender has actually been taken IN FULL and the
