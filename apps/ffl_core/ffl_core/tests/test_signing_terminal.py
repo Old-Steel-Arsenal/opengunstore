@@ -42,9 +42,12 @@ class Pairing(FrappeTestCase):
 	def test_the_tablet_is_sent_to_the_short_kiosk_address(self):
 		self.assertTrue(signing_terminal.start_pairing(self.term.name)["page"].endswith("/kiosk"))
 		from frappe.website.path_resolver import resolve_redirect
-		with self.assertRaises(frappe.Redirect):
+		frappe.cache.hdel("website_redirects", "kiosk")   # a miss cached before the rule existed
+		self.addCleanup(frappe.flags.pop, "redirect_location", None)
+		with self.assertRaises(frappe.Redirect) as cm:
 			resolve_redirect("kiosk")
 		self.assertEqual(frappe.flags.redirect_location, "/agreement/terminal")
+		self.assertEqual(cm.exception.http_status_code, 302)
 
 	def test_a_code_works_once_and_gives_a_key_stored_only_as_a_hash(self):
 		code = signing_terminal.start_pairing(self.term.name)["code"]
