@@ -144,7 +144,8 @@ def require_full_payment(doc, method: str | None = None) -> None:
 	(charged on the Virtual Terminal) sat as an unexplained customer balance.
 	The test is ERPNext's own outstanding amount, which its before_submit sets (validate still sees the
 	draft's 0), hence a before_submit hook. Returns and tickets at or below zero are not sales
-	the customer pays for, so they pass."""
+	the customer pays for, so they pass. Paying in parts stays possible: the draft keeps each payment (Recent
+	Orders → Edit to take the next one) and completes once the total is paid."""
 	from ffl_core.compliance.negative_trade_in import invoice_total
 
 	if cint(doc.get("is_return")):
@@ -155,7 +156,8 @@ def require_full_payment(doc, method: str | None = None) -> None:
 		return
 	fmt = lambda v: frappe.format_value(v, {"fieldtype": "Currency"})  # noqa: E731
 	frappe.throw(_(
-		"This sale comes to {0} but {1} of it is not recorded as paid. Enter every payment before completing "
-		"the sale. A card charged outside the register (Virtual Terminal) goes in the Credit Card amount, with a "
-		"manager ticking Manual Card Settlement and entering the approval code."
+		"This sale comes to {0} but {1} of it is not paid yet, so it cannot be completed. If the customer pays the "
+		"rest later, leave it as a draft: what was paid stays on the order, and you collect the rest from Recent "
+		"Orders → Edit. A card charged outside the register (Virtual Terminal) goes in the Credit Card amount, with "
+		"a manager ticking Manual Card Settlement and entering the approval code."
 	).format(fmt(total), fmt(short)))

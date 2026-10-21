@@ -21,6 +21,7 @@ class RequireFullPayment(FrappeTestCase):
 			require_full_payment(_ticket(paid_amount=400, outstanding_amount=81.71))
 		self.assertIn("81.71", str(ctx.exception))
 		self.assertIn("Manual Card Settlement", str(ctx.exception))
+		self.assertIn("Recent Orders", str(ctx.exception))  # how to take the rest later
 
 	def test_paid_in_full_passes(self):
 		require_full_payment(_ticket())
