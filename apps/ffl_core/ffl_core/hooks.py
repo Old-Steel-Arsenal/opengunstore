@@ -90,8 +90,10 @@ add_to_apps_screen = [
 # but old bookmarks and any request in the gap before the cache turns over can
 # still emit the bare "/gun-shop". Redirect it into the desk shell so it never
 # 404s. Cheap and permanent — /gun-shop is not, and never was, a real route.
+# /kiosk: a short address to type on the signing tablet (www/agreement/terminal).
 website_redirects = [
 	{"source": "/gun-shop", "target": "/" + _LANDING},
+	{"source": "/kiosk", "target": "/agreement/terminal"},
 ]
 
 fixtures = [

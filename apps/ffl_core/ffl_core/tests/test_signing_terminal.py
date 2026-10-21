@@ -39,6 +39,13 @@ class Pairing(FrappeTestCase):
 		self.addCleanup(frappe.set_user, "Administrator")
 		self.term = _terminal()
 
+	def test_the_tablet_is_sent_to_the_short_kiosk_address(self):
+		self.assertTrue(signing_terminal.start_pairing(self.term.name)["page"].endswith("/kiosk"))
+		from frappe.website.path_resolver import resolve_redirect
+		with self.assertRaises(frappe.Redirect):
+			resolve_redirect("kiosk")
+		self.assertEqual(frappe.flags.redirect_location, "/agreement/terminal")
+
 	def test_a_code_works_once_and_gives_a_key_stored_only_as_a_hash(self):
 		code = signing_terminal.start_pairing(self.term.name)["code"]
 		self.assertRegex(code, r"^\d{6}$")

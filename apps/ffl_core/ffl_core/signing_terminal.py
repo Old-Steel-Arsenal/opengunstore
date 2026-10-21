@@ -106,7 +106,7 @@ def start_pairing(terminal: str) -> dict:
 	frappe.cache.set_value(_pair_key(code), {"terminal": terminal, "by": frappe.session.user},
 		expires_in_sec=PAIR_MINUTES * 60)
 	return {"code": code, "expires_in_minutes": PAIR_MINUTES,
-		"page": frappe.utils.get_url("/agreement/terminal")}
+		"page": frappe.utils.get_url("/kiosk")}
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])

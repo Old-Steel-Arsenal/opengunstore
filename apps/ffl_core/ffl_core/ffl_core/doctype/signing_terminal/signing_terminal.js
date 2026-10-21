@@ -2,7 +2,7 @@
 frappe.ui.form.on('Signing Terminal', {
 	refresh(frm) {
 		const esc = frappe.utils.escape_html;
-		const page = `${location.origin}/agreement/terminal`;
+		const page = `${location.origin}/kiosk`;
 		const seen = frm.doc.last_seen ? frappe.datetime.prettyDate(frm.doc.last_seen) : '';
 		const state = !frm.doc.active ? __('Switched off: the tablet no longer works.')
 			: frm.doc.paired_on ? __('Paired {0} by {1}. Last seen {2}.', [esc(frappe.datetime.str_to_user(frm.doc.paired_on)),
