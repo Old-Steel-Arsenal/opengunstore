@@ -181,8 +181,8 @@ Breaking any of these is refused at review and painted red on the card.
 | `FFL Acquisition` / `FFL Disposition` (bound book) | Read; mirror or notify after submit | Create, modify, cancel, delete; change any field; block submission |
 | Form 4473 (`Pending 4473`, `start_4473`, manager override) | Read status | Start, skip, override, modify |
 | `Serial No` compliance and custody fields (`is_consignment`, `dealer_transfer`, custody, FastBound id, status) | Read; write your **own** custom fields | Write core fields; set a serial sold or delivered directly |
-| FastBound / ATF EZ Check / Payroc / ShipStation / WooCommerce credentials and clients | Use the core's public API | Read credentials; build your own client; log secrets |
-| Payments (`Sales Invoice` / `POS Invoice` payments, Payroc rows) | Read; add your own rows through the core API | Change core payment rows, tax tables or totals; book money outside the POS flow |
+| FastBound / ATF EZ Check / Payroc / ShipStation / WooCommerce credentials and clients | Use the core's public API | Read credentials; build your own client; log secrets (a card processor extension brings its own gateway client behind `CardProcessor` — never another processor's) |
+| Payments (`Sales Invoice` / `POS Invoice` payments, card charge rows) | Read; add your own rows through the core API; as a card processor, answer the core's gateway calls | Change core payment rows, tax tables or totals; book money outside the POS flow (a card processor never writes a charge row, a terminal payment or a Payment Entry — the core does) |
 | Taxes | Read | Change templates, rates or the tax base |
 | Customer PII (license number, date of birth, address) | Read what you need, masked in the UI | Export to another host (unless declared with `network:` and explained in the README); write to logs |
 
@@ -242,7 +242,7 @@ The manifest's claim is not enough on its own while packages are unsigned. The l
 
 ### 13.1 The stable surface
 
-Extensions may depend on: the hooks in §5.1, the core named hooks, `ffl_core.extensions.*`, `ffl_core.roles.*`, `ffl_core.workspace_shortcuts.ensure_shortcut` / `remove_shortcut`, `ffl_core.setup.sidebar.mirror_gun_shop_sidebar`, `ffl_core.utils.single_flag`, the core endpoints documented in the POS API reference, and `ffl_integrations.distributor.base.DistributorProvider`. Everything else is internal.
+Extensions may depend on: the hooks in §5.1, the core named hooks, `ffl_core.extensions.*`, `ffl_core.roles.*`, `ffl_core.workspace_shortcuts.ensure_shortcut` / `remove_shortcut`, `ffl_core.setup.sidebar.mirror_gun_shop_sidebar`, `ffl_core.utils.single_flag`, the core endpoints documented in the POS API reference, `ffl_integrations.distributor.base.DistributorProvider`, and `ffl_integrations.payments.base` (`CardProcessor`, `CardResult`, `CardProcessorError`, for a card processor registered through `gunshop_card_processors`). Everything else is internal.
 
 ## 14. Quality gates
 

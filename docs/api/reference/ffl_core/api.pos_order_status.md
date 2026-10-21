@@ -16,6 +16,6 @@ Payment and 4473 facts for a page of draft POS Invoices.
 |---|---|---|---|---|
 | `invoices` | array | yes | — | POS Invoice names — a list, a JSON-encoded list, or one name. Duplicates are ignored; at most 100 names are read. |
 
-**Returns:** {name: {"due", "currency", "paid_amount", "charged", "payroc_status", "held", "paid_online", "payments": [{"mode_of_payment", "amount"}], "counter_order": {"name", "total", "outstanding"} | None, "has_firearm", "form_4473_status", "nics_status"}} for each name that is a draft, non-return POS Invoice the caller can read. Any other name is left out. counter_order is the money side of a counter pickup's 4473 ticket — the Sales Invoice it hands over for (the ticket itself carries $0).
+**Returns:** {name: {"due", "currency", "paid_amount", "charged", "card_status", "held", "paid_online", "payments": [{"mode_of_payment", "amount"}], "counter_order": {"name", "total", "outstanding"} | None, "has_firearm", "form_4473_status", "nics_status"}} for each name that is a draft, non-return POS Invoice the caller can read. Any other name is left out. counter_order is the money side of a counter pickup's 4473 ticket — the Sales Invoice it hands over for (the ticket itself carries $0).
 
 <sub>`apps/ffl_core/ffl_core/api/pos_order_status.py:25`</sub>

@@ -644,6 +644,39 @@ A named area of the store (a bank of numbered slots, a display case, a rack, a s
 | `sort_order` | Int | Sort Order |  |  |
 | `disabled` | Check | Disabled |  |  |
 
+## Card Charge
+
+app: `ffl_integrations` · module: FFL Integrations · child table
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `amount` | Currency | Captured Amount |  |  |
+| `status` | Select | Status |  | IN_PROGRESS, CHARGED, DECLINED, CANCELED, VOIDED, REFUNDED |
+| `card_summary` | Data | Card |  |  |
+| `unique_reference` | Data | Gateway Reference |  |  |
+| `refunded_amount` | Currency | Refunded Amount |  |  |
+| `attempt` | Int | Attempt |  |  |
+| `processor` | Data | Processor |  |  |
+| `instruction_id` | Data | Instruction ID |  |  |
+| `response` | Code | Gateway Response |  |  |
+
+## Card Terminal Payment
+
+app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sales User, System Manager
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `sales_invoice` | Link | Sales Invoice | ✓ | Sales Invoice |
+| `amount` | Currency | Amount |  |  |
+| `status` | Select | Status |  | IN_PROGRESS, CHARGED, DECLINED, CANCELED |
+| `unique_reference` | Data | Gateway Reference |  |  |
+| `approval_code` | Data | Approval Code |  |  |
+| `card_summary` | Data | Card |  |  |
+| `payment_entry` | Link | Payment Entry |  | Payment Entry |
+| `processor` | Data | Processor |  |  |
+| `instruction_id` | Data | Instruction ID |  |  |
+| `response` | Code | Gateway Response |  |  |
+
 ## Data Service Settings
 
 app: `ffl_integrations` · module: FFL Integrations · single · roles: System Manager
@@ -1096,21 +1129,6 @@ app: `ffl_integrations` · module: FFL Integrations · single · roles: System M
 | `last_shipping_poll_at` | Datetime | Last shipping poll |  |  |
 | `last_error` | Long Text | Last error |  |  |
 
-## Payroc Charge
-
-app: `ffl_integrations` · module: FFL Integrations · child table
-
-| field | type | label | reqd | options |
-|---|---|---|---|---|
-| `amount` | Currency | Captured Amount |  |  |
-| `status` | Select | Status |  | IN_PROGRESS, CHARGED, DECLINED, CANCELED, VOIDED, REFUNDED |
-| `card_summary` | Data | Card |  |  |
-| `unique_reference` | Data | Payroc Reference |  |  |
-| `refunded_amount` | Currency | Refunded Amount |  |  |
-| `attempt` | Int | Attempt |  |  |
-| `instruction_id` | Data | Instruction ID |  |  |
-| `response` | Code | Gateway Response |  |  |
-
 ## Payroc Settings
 
 app: `ffl_integrations` · module: FFL Integrations · single · roles: System Manager
@@ -1129,22 +1147,6 @@ app: `ffl_integrations` · module: FFL Integrations · single · roles: System M
 | `request_timeout_seconds` | Int | Request Timeout (seconds) |  |  |
 | `last_token_refreshed_at` | Datetime | Last Token Refreshed At |  |  |
 | `last_charge_at` | Datetime | Last Charge At |  |  |
-
-## Payroc Terminal Payment
-
-app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sales User, System Manager
-
-| field | type | label | reqd | options |
-|---|---|---|---|---|
-| `sales_invoice` | Link | Sales Invoice | ✓ | Sales Invoice |
-| `amount` | Currency | Amount |  |  |
-| `status` | Select | Status |  | IN_PROGRESS, CHARGED, DECLINED, CANCELED |
-| `unique_reference` | Data | Payroc Reference |  |  |
-| `approval_code` | Data | Approval Code |  |  |
-| `card_summary` | Data | Card |  |  |
-| `payment_entry` | Link | Payment Entry |  | Payment Entry |
-| `instruction_id` | Data | Instruction ID |  |  |
-| `response` | Code | Gateway Response |  |  |
 
 ## RSR Catalog Item
 
