@@ -60,4 +60,6 @@ h1 { font-size: 28px; line-height: 1.25; margin: 4px 0; }
 .pair-field input { text-align: center; font-size: 32px; letter-spacing: 0.3em; height: 64px; }
 .pair-button { width: min(100%, 320px); }
 .idle-store { font-size: 22px; margin-bottom: 8px; }
+.form4473-button { display: flex; align-items: center; justify-content: center; max-width: 420px; margin-top: 32px; text-decoration: none; }
+.form4473-button[hidden] { display: none; }
 .terminal-name { color: var(--muted); font-size: 14px; margin-top: 32px; }

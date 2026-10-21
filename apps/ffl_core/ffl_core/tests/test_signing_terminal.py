@@ -13,6 +13,7 @@ from frappe.tests.utils import FrappeTestCase
 from ffl_core import agreements, signing_terminal
 from ffl_core.tests.test_agreements import _as, _Base
 from ffl_core.tests.test_customer_profile import _customer, _uniq, _user
+from ffl_core.tests.settings_sandbox import single_value
 
 
 def _terminal(**fields):
@@ -108,7 +109,20 @@ class Pairing(FrappeTestCase):
 
 	def test_idle_poll_says_nothing_about_customers(self):
 		out = _poll(_pair(self.term))
-		self.assertEqual(set(out), {"paired", "idle", "terminal_name", "store_name"})
+		self.assertEqual(set(out), {"paired", "idle", "terminal_name", "store_name", "form_4473_url"})
+
+	def test_idle_poll_offers_fastbound_4473_only_when_the_store_uses_it(self):
+		secret = _pair(self.term)
+		with single_value("FFL Settings", "paper_4473_mode", 0), \
+				single_value("FastBound Settings", "enabled", 1), \
+				single_value("FastBound Settings", "account_num", " 12345 "):
+			self.assertEqual(_poll(secret)["form_4473_url"], "https://4473.io/12345")
+			with single_value("FFL Settings", "paper_4473_mode", 1):
+				self.assertEqual(_poll(secret)["form_4473_url"], "")
+			with single_value("FastBound Settings", "enabled", 0):
+				self.assertEqual(_poll(secret)["form_4473_url"], "")
+		with single_value("FastBound Settings", "account_num", ""):
+			self.assertEqual(_poll(secret)["form_4473_url"], "")
 
 
 class SendToTablet(_Base):
