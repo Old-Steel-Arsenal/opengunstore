@@ -92,6 +92,9 @@ add_to_apps_screen = [
 # 404s. Cheap and permanent — /gun-shop is not, and never was, a real route.
 website_redirects = [
 	{"source": "/gun-shop", "target": "/" + _LANDING},
+	# A short address to type on the signing tablet (www/agreement/terminal).
+	# 302, not the default 301: Safari keeps a 301 forever, so the target stays movable.
+	{"source": "/kiosk", "target": "/agreement/terminal", "redirect_http_status": 302},
 ]
 
 fixtures = [

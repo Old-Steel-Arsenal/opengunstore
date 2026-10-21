@@ -3,8 +3,8 @@
 A static shell like ``/agreement/sign``: pair once with a code from the Signing
 Terminal record, then wait; when the counter sends an agreement the page opens it
 on the signing screen, and comes back here once it is signed. Talks only to
-``ffl_core.signing_terminal.pair_terminal`` / ``terminal_poll``. No desk bundle,
-no links.
+``ffl_core.signing_terminal.pair_terminal`` / ``terminal_poll``. No desk bundle;
+the only link is Start Form 4473 (FastBound's customer page, when the store uses it).
 """
 from __future__ import annotations
 

@@ -26,14 +26,17 @@ import hashlib
 import re
 import secrets
 from datetime import timedelta
+from urllib.parse import quote
 
 import frappe
 from frappe import _
 from frappe.rate_limiter import rate_limit
 from frappe.utils import cint, escape_html, get_datetime, now_datetime
 
+from ffl_core.compliance.mode import paper_4473_mode
 from ffl_core.roles import CUSTOMER_MANAGER_ROLES
 from ffl_core.store_identity import company_brand
+from ffl_core.utils import _flag_from_raw, single_raw_map
 
 DOCTYPE = "Signing Terminal"
 PAIR_MINUTES = 10
@@ -106,7 +109,7 @@ def start_pairing(terminal: str) -> dict:
 	frappe.cache.set_value(_pair_key(code), {"terminal": terminal, "by": frappe.session.user},
 		expires_in_sec=PAIR_MINUTES * 60)
 	return {"code": code, "expires_in_minutes": PAIR_MINUTES,
-		"page": frappe.utils.get_url("/agreement/terminal")}
+		"page": frappe.utils.get_url("/kiosk")}
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
@@ -171,7 +174,8 @@ def terminal_poll(secret: str) -> dict:
 	    {"paired": false} for an unknown or switched-off tablet (the page goes back
 	    to pairing); {"paired": true, "token"} when the counter sent a link (handed
 	    out once); otherwise {"paired": true, "idle": true, "terminal_name",
-	    "store_name"}.
+	    "store_name", "form_4473_url"} — form_4473_url is the store's FastBound
+	    customer 4473 page, or "" when the store has no electronic 4473.
 	"""
 	terminal = terminal_for_secret(secret)
 	if not terminal:
@@ -185,4 +189,18 @@ def terminal_poll(secret: str) -> dict:
 		frappe.cache.delete_value(key)
 		return {"paired": True, "token": token}
 	return {"paired": True, "idle": True, "terminal_name": terminal,
-		"store_name": company_brand(frappe.defaults.get_global_default("company")).get("name") or ""}
+		"store_name": company_brand(frappe.defaults.get_global_default("company")).get("name") or "",
+		"form_4473_url": _form_4473_url()}
+
+
+def _form_4473_url() -> str:
+	"""FastBound's customer-facing 4473 page for this store, for the tablet's
+	Start Form 4473 button; "" in paper mode or with FastBound off or unset.
+	Read raw: ffl_core does not import ffl_integrations (FastBound Settings lives there)."""
+	if paper_4473_mode():
+		return ""
+	fb = single_raw_map("FastBound Settings")   # one query: this runs on every 2 s poll
+	account = (fb.get("account_num") or "").strip()
+	if not account or not _flag_from_raw(fb.get("enabled"), default=1):
+		return ""
+	return "https://4473.io/" + quote(account, safe="")
