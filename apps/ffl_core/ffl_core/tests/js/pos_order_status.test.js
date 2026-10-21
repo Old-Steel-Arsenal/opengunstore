@@ -34,7 +34,7 @@ function fakeEnv(calls, responses, opts = {}) {
 		paperMode: () => !!opts.paper,
 		fastboundOn: () => opts.fastbound !== false,
 		state: guard.form4473State,
-		summary: (facts) => guard.draftPaymentSummary(facts, { cardMop: 'Credit Card', payrocOn: true }),
+		summary: (facts) => guard.draftPaymentSummary(facts, { cardMop: 'Credit Card', cardProcessorOn: true }),
 	};
 }
 

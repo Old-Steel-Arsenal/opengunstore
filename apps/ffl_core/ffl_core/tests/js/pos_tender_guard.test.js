@@ -66,7 +66,7 @@ test('a fresh/empty doc → do NOT preserve', () => {
 });
 
 test('a VOIDED charge (card_charged_amount cleared to 0) → do NOT preserve', () => {
-	// payroc.api void_pos_invoice clears card_charged_amount to 0 (the Currency
+	// payments.api void_pos_invoice clears card_charged_amount to 0 (the Currency
 	// column is NOT NULL — writing None was a past incident), so an
 	// un-voided charge is exactly card_charged_amount > 0. A void with no
 	// remaining payment rows must fall back to the vanilla reset.
@@ -250,7 +250,7 @@ test('draftPaymentSummary: the payment screen pre-fill is entered, never confirm
 	const s = draftPaymentSummary(
 		{ due: 1000, charged: 0, held: 0, paid_amount: 1000,
 		  payments: [{ mode_of_payment: 'Cash', amount: 1000 }] },
-		{ cardMop: 'Credit Card', payrocOn: true });
+		{ cardMop: 'Credit Card', cardProcessorOn: true });
 	assert.deepStrictEqual(s.confirmed, { state: 'none', paid: 0, due: 1000 });
 	assert.deepStrictEqual(s.entered, [{ mode: 'Cash', amount: 1000 }]);
 });
@@ -259,13 +259,13 @@ test('draftPaymentSummary: a card deposit is partial; the card row is not repeat
 	const s = draftPaymentSummary(
 		{ due: 3084.04, charged: 712.25, held: 0, card_status: 'CHARGED',
 		  payments: [{ mode_of_payment: 'Credit Card', amount: 3084.04 }] },
-		{ cardMop: 'Credit Card', payrocOn: true });
+		{ cardMop: 'Credit Card', cardProcessorOn: true });
 	assert.deepStrictEqual(s.confirmed, { state: 'partial', paid: 712.25, due: 3084.04 });
 	assert.deepStrictEqual(s.entered, []);
 });
 
 test('draftPaymentSummary: card captures covering the total read paid (half-cent tolerance)', () => {
-	const s = draftPaymentSummary({ due: 718.78, charged: 718.776 }, { payrocOn: true });
+	const s = draftPaymentSummary({ due: 718.78, charged: 718.776 }, { cardProcessorOn: true });
 	assert.strictEqual(s.confirmed.state, 'paid');
 });
 
@@ -273,7 +273,7 @@ test('draftPaymentSummary: a held order counts its recorded split, cash included
 	const s = draftPaymentSummary(
 		{ due: 1439.72, charged: 855.17, held: 1, paid_amount: 1439.72,
 		  payments: [{ mode_of_payment: 'Credit Card', amount: 855.17 }, { mode_of_payment: 'Zelle', amount: 584.55 }] },
-		{ cardMop: 'Credit Card', payrocOn: true });
+		{ cardMop: 'Credit Card', cardProcessorOn: true });
 	assert.deepStrictEqual(s.confirmed, { state: 'paid', paid: 1439.72, due: 1439.72 });
 	assert.deepStrictEqual(s.entered, [], 'held tender is confirmed, not listed again');
 });
@@ -285,7 +285,7 @@ test('draftPaymentSummary: a web-order pickup ticket paid on WooCommerce reads p
 	const s = draftPaymentSummary(
 		{ due: 962.34, charged: 0, held: 0, paid_online: true, paid_amount: 962.34,
 		  payments: [{ mode_of_payment: 'WooCommerce', amount: 962.34 }] },
-		{ cardMop: 'Credit Card', payrocOn: true });
+		{ cardMop: 'Credit Card', cardProcessorOn: true });
 	assert.deepStrictEqual(s.confirmed, { state: 'paid', paid: 962.34, due: 962.34 });
 	assert.deepStrictEqual(s.entered, [], 'the Woo tender is confirmed, not listed again');
 });
@@ -294,7 +294,7 @@ test('draftPaymentSummary: a counter pickup ticket reads its ORDER\'s money — 
 	// The $0 ticket hands a gun over for a Sales Invoice; the chip must speak
 	// for that invoice (terminal deposit / Record Payment), never the ticket's
 	// zero rows.
-	const opts = { cardMop: 'Credit Card', payrocOn: true };
+	const opts = { cardMop: 'Credit Card', cardProcessorOn: true };
 	const deposit = draftPaymentSummary({ due: 0, charged: 0, held: 0, paid_amount: 0,
 		payments: [{ mode_of_payment: 'Cash', amount: 0 }],
 		counter_order: { name: 'SINV-1', total: 650, outstanding: 450 } }, opts);
@@ -318,10 +318,10 @@ test('draftPaymentSummary: a card instruction still on the terminal is in progre
 	assert.deepStrictEqual(split.confirmed, { state: 'in_progress', paid: 712.25, due: 3084.04 }, 'the first card is carried');
 });
 
-test('draftPaymentSummary: Payroc off → a typed card row is entered like cash', () => {
+test('draftPaymentSummary: card processor off → a typed card row is entered like cash', () => {
 	const s = draftPaymentSummary(
 		{ due: 500, charged: 0, payments: [{ mode_of_payment: 'Credit Card', amount: 200 }, { mode_of_payment: 'Cash', amount: 50 }] },
-		{ cardMop: 'Credit Card', payrocOn: false });
+		{ cardMop: 'Credit Card', cardProcessorOn: false });
 	assert.deepStrictEqual(s.entered, [{ mode: 'Credit Card', amount: 200 }, { mode: 'Cash', amount: 50 }]);
 });
 
@@ -329,7 +329,7 @@ test('draftPaymentSummary: rows of one mode are summed; zero and junk rows ignor
 	const s = draftPaymentSummary(
 		{ due: 0, payments: [{ mode_of_payment: 'Cash', amount: 20 }, { mode_of_payment: 'Cash', amount: '5' },
 		  { mode_of_payment: 'Zelle', amount: 0 }, null, { amount: 9 }] },
-		{ payrocOn: true });
+		{ cardProcessorOn: true });
 	assert.strictEqual(s.confirmed, null);
 	assert.deepStrictEqual(s.entered, [{ mode: 'Cash', amount: 25 }]);
 	assert.deepStrictEqual(draftPaymentSummary(null, null), { confirmed: null, entered: [] });

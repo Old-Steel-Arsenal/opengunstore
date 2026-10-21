@@ -1,7 +1,7 @@
 'use strict';
 // Complete Order on a counter pickup's 4473 ticket (POS Invoice.ffl_counter_order). The money is on the order the
 // ticket hands over; a register copy re-priced to the gun's list price once asked to charge the customer again.
-// The bundle is desk code that does not load under Node: this runs its setupPayrocPosHook block alone against
+// The bundle is desk code that does not load under Node: this runs its setupCardPosHook block alone against
 // stand-in frappe / POS controller objects and checks that a ticket never opens the card dialog or reaches the
 // terminal, is saved back to the server's $0 and repainted, and still submits — while an ordinary card sale on the
 // same harness does reach the card dialog (so the harness exercises the real path).
@@ -12,7 +12,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const kernel = require('../../public/js/pos_tender_guard.js');
-const payrocCharges = require('../../public/js/card_charges.js');
+const cardCharges = require('../../public/js/card_charges.js');
 const BUNDLE = fs.readFileSync(path.join(__dirname, '../../public/js/ffl_core.bundle.js'), 'utf8');
 
 function flt(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
@@ -85,18 +85,18 @@ function harness(doc, opts = {}) {
 		erpnext: { PointOfSale: { Controller: function Controller() {}, ItemCart } },
 		cur_pos: controller,
 		ffl: {
-			payrocCharges,
+			cardCharges,
 			negativeTicketState: kernel.negativeTicketState,
 			installClassHook: kernel.installClassHook,
 		},
 	};
 	if (opts.kernel !== false) sandbox.ffl.pickupTicketState = kernel.pickupTicketState;
 	sandbox.window = sandbox;
-	const start = BUNDLE.indexOf('(function setupPayrocPosHook() {');
-	assert.ok(start > 0, 'Payroc block not found in the bundle');
+	const start = BUNDLE.indexOf('(function setupCardPosHook() {');
+	assert.ok(start > 0, 'card processor block not found in the bundle');
 	const end = BUNDLE.indexOf('\n})();', start) + '\n})();'.length;
 	vm.runInNewContext(BUNDLE.slice(start, end), sandbox);
-	assert.ok(controller.payment.__payrocWrapped, 'the block wrapped Complete Order');
+	assert.ok(controller.payment.__cardWrapped, 'the block wrapped Complete Order');
 	return {
 		seen, submit: () => controller.payment.events.submit_invoice(),
 		// the register loading the ticket into its cart (Recent Orders → Edit, Open counter order)
@@ -116,7 +116,7 @@ test('a re-priced pickup ticket never opens the card dialog or the terminal, and
 	const { seen, submit } = harness(REPRICED_TICKET());
 	await submit();
 	assert.deepStrictEqual(seen.dialogs, [], 'no card dialog');
-	assert.ok(!seen.calls.some((m) => /payroc/.test(m)), `no terminal call: ${seen.calls}`);
+	assert.ok(!seen.calls.some((m) => /payments\.api/.test(m)), `no terminal call: ${seen.calls}`);
 	assert.strictEqual(seen.saves, 1, 'saved so the server pins it back to $0');
 	assert.deepStrictEqual(seen.repaints, ['cart', 'payment'], 'the screen shows the server\'s $0');
 	assert.ok(seen.alerts.some((m) => /pickup ticket for SI-1/.test(m)), 'the cashier is told why');
@@ -129,7 +129,7 @@ test('a $0 pickup ticket submits without a save, a prompt or a terminal call', a
 	const { seen, submit } = harness(doc);
 	await submit();
 	assert.deepStrictEqual([seen.dialogs, seen.saves, seen.alerts], [[], 0, []]);
-	assert.ok(!seen.calls.some((m) => /payroc/.test(m)));
+	assert.ok(!seen.calls.some((m) => /payments\.api/.test(m)));
 	assert.strictEqual(seen.submits, 1);
 });
 
@@ -151,7 +151,7 @@ test('kernel missing: the bundle fallback reads the money off the doc like the k
 	h = harness(REPRICED_TICKET(), { kernel: false });
 	await h.submit();
 	assert.deepStrictEqual([h.seen.saves, h.seen.submits, h.seen.dialogs], [1, 1, []], 'a priced one is saved to $0 first');
-	assert.ok(!h.seen.calls.some((m) => /payroc/.test(m)));
+	assert.ok(!h.seen.calls.some((m) => /payments\.api/.test(m)));
 });
 
 test('a ticket still priced after the save stops Complete Order out loud', async () => {

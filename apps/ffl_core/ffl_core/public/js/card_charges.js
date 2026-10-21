@@ -1,4 +1,4 @@
-// Pure, dependency-free multi-card charge math for the POS Payroc flow.
+// Pure, dependency-free multi-card charge math for the POS card flow.
 // Shared by the POS bundle (multi-card charge loop) and the desk form's
 // per-charge void picker (pos_invoice.js), and unit-tested under Node — same
 // pattern as pos_tender_guard.js: NO DOM, NO Frappe, only stable POS Invoice
@@ -9,7 +9,7 @@
 	if (typeof module !== 'undefined' && module.exports) module.exports = api;   // Node test
 	if (typeof window !== 'undefined') {                                          // desk POS
 		window.ffl = window.ffl || {};
-		window.ffl.payrocCharges = api;
+		window.ffl.cardCharges = api;
 	}
 })(function () {
 	'use strict';
@@ -96,7 +96,7 @@
 
 	// REFUND LOCK sentinels — the two values the server's _lock_and_throw
 	// stamps into card_refund_reference (mirror of ffl_integrations
-	// payroc/api.py REFUND_LOCK_*). Anything else in that field is a real
+	// payments/api.py REFUND_LOCK_*). Anything else in that field is a real
 	// gateway refund reference (or the legacy "UNKNOWN"/"MULTI" success
 	// markers) — a COMPLETED refund, never a lock.
 	var REFUND_LOCK_UNKNOWN = 'UNKNOWN-OUTCOME';

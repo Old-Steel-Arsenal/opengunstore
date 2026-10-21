@@ -1073,24 +1073,25 @@ class PendingDispositionsApp {
 			],
 			primary_action_label: __('Record Payment'),
 			primary_action: async (v) => {
-				// Card + Payroc live: run the terminal instead of typing a record —
+				// Card + processor live: run the terminal instead of typing a record —
 				// the server books the Payment Entry on approval (same booking as
 				// below, reference = the gateway's). The shared helper reports
 				// declines / cancels itself; the queue reloads either way. Already
 				// charged on the Virtual Terminal → typed record below, never the A80.
-				const payrocMop = (frappe.boot && frappe.boot.payroc_mop) || 'Credit Card';
-				if (v.mode === payrocMop && Number(frappe.boot && frappe.boot.ffl_payroc_enabled)
+				const cardMop = (frappe.boot && frappe.boot.card_mop) || 'Credit Card';
+				const card = frappe.boot && frappe.boot.ffl_card_processor;
+				if (v.mode === cardMop && Number(card && card.enabled)
 						&& !v.charged_outside && window.ffl && window.ffl.terminalCharge) {
 					d.hide();
 					const res = await window.ffl.terminalCharge({
 						amount: flt(v.amount),
-						start: { method: 'ffl_integrations.payroc.api.charge_sales_invoice', args: { sales_invoice: row.sales_invoice, amount: v.amount } },
-						poll: { method: 'ffl_integrations.payroc.api.poll_sales_invoice_charge', args: { sales_invoice: row.sales_invoice } },
-						cancel: { method: 'ffl_integrations.payroc.api.cancel_sales_invoice_charge', args: { sales_invoice: row.sales_invoice } },
+						start: { method: 'ffl_integrations.payments.api.charge_sales_invoice', args: { sales_invoice: row.sales_invoice, amount: v.amount } },
+						poll: { method: 'ffl_integrations.payments.api.poll_sales_invoice_charge', args: { sales_invoice: row.sales_invoice } },
+						cancel: { method: 'ffl_integrations.payments.api.cancel_sales_invoice_charge', args: { sales_invoice: row.sales_invoice } },
 					});
 					if (res && res.skip) {
 						frappe.msgprint({ title: __('Terminal not configured'), indicator: 'orange',
-							message: __('The Payroc device is not set up on this store. Take the card on the Virtual Terminal or your standalone terminal first, then tick "Already charged on Virtual Terminal" and enter its approval code.') });
+							message: __('The {0} device is not set up on this store. Take the card on the Virtual Terminal or your standalone terminal first, then tick "Already charged on Virtual Terminal" and enter its approval code.', [(card && card.label) || __('card processor')]) });
 						d.show();
 						return;
 					}

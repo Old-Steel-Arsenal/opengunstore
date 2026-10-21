@@ -460,7 +460,7 @@ class CreateOrderApp {
 				change: () => this._updateTotals(),
 			}),
 			// Payment is collected NOW with the method above unless Pay later is
-			// ticked. Credit Card on a Payroc store adds Charge via Terminal (on by
+			// ticked. Credit Card on a card-processor store adds Charge via Terminal (on by
 			// default): the card runs on the A80 right after the order books;
 			// unticked, the card was taken outside the integration and is only recorded.
 			charge_terminal: this._f('#f-charge-terminal', {
@@ -512,13 +512,13 @@ class CreateOrderApp {
 			};
 		}
 		// Credit Card needs one on a store running the standalone terminal with the
-		// requirement switched on — and with Payroc on but "Charge via Terminal"
+		// requirement switched on — and with a card processor on but "Charge via Terminal"
 		// unticked, where the card was taken on the Virtual Terminal (the terminal
 		// path returned above: its code comes back from the device). frappe.boot is
 		// the same source the POS bundle reads, and an ABSENT key means a server
 		// older than the switch.
 		const need = frappe.boot && frappe.boot.ffl_require_card_reference;
-		if (mode === (frappe.boot && frappe.boot.payroc_mop) && (Number(need) || this._cardOnPayroc())) {
+		if (mode === (frappe.boot && frappe.boot.card_mop) && (Number(need) || this._cardOnTerminal())) {
 			return {
 				label: __('Card Approval Code'),
 				missing: __('Card approval code'),
@@ -531,18 +531,18 @@ class CreateOrderApp {
 		return !!this._tenderReference();
 	}
 
-	// Card + Payroc live: the card is charged on the A80 right after the order
+	// Card + processor live: the card is charged on the terminal right after the order
 	// books (never money without an invoice), so the server sees an on-account
 	// order and the page runs the terminal against the new Sales Invoice. The
 	// amount typed is what goes on the terminal — less than the total is a
-	// deposit. With Payroc off the card stays a standalone-terminal record.
-	_cardOnPayroc() {
-		return this.fields.mode.get_value() === ((frappe.boot && frappe.boot.payroc_mop) || 'Credit Card')
-			&& !!Number(frappe.boot && frappe.boot.ffl_payroc_enabled);
+	// deposit. With no processor on the card stays a standalone-terminal record.
+	_cardOnTerminal() {
+		return this.fields.mode.get_value() === ((frappe.boot && frappe.boot.card_mop) || 'Credit Card')
+			&& !!Number(frappe.boot && frappe.boot.ffl_card_processor && frappe.boot.ffl_card_processor.enabled);
 	}
 
 	_terminalPath() {
-		return !this._payLater() && this._cardOnPayroc() && !!this.fields.charge_terminal.get_value();
+		return !this._payLater() && this._cardOnTerminal() && !!this.fields.charge_terminal.get_value();
 	}
 
 	_syncTerminalNote() {
@@ -564,7 +564,7 @@ class CreateOrderApp {
 		this.$body.find('#f-txn-row').toggle(needTxn);
 		if (!needTxn) this.fields.transaction_number.set_value('');
 		const payLater = this._payLater();
-		this.$body.find('#f-charge-terminal').toggle(!payLater && this._cardOnPayroc());
+		this.$body.find('#f-charge-terminal').toggle(!payLater && this._cardOnTerminal());
 		this.$body.find('#f-amount').toggle(!payLater);
 		this._syncDepositNote();
 		this._syncTerminalNote();
@@ -2690,9 +2690,9 @@ class CreateOrderApp {
 		if (!(window.ffl && window.ffl.terminalCharge)) return outcome({ skip: true });
 		const res = await window.ffl.terminalCharge({
 			amount,
-			start: { method: 'ffl_integrations.payroc.api.charge_sales_invoice', args: { sales_invoice: si, amount } },
-			poll: { method: 'ffl_integrations.payroc.api.poll_sales_invoice_charge', args: { sales_invoice: si } },
-			cancel: { method: 'ffl_integrations.payroc.api.cancel_sales_invoice_charge', args: { sales_invoice: si } },
+			start: { method: 'ffl_integrations.payments.api.charge_sales_invoice', args: { sales_invoice: si, amount } },
+			poll: { method: 'ffl_integrations.payments.api.poll_sales_invoice_charge', args: { sales_invoice: si } },
+			cancel: { method: 'ffl_integrations.payments.api.cancel_sales_invoice_charge', args: { sales_invoice: si } },
 		});
 		return outcome(res || { ok: false });
 	}

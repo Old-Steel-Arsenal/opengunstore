@@ -127,7 +127,7 @@ fixtures = [
 # pos_tender_guard.js exposes window.ffl.hasLiveTender — the pure predicate the
 # bundle's resume paths (loadInvoiceIntoCart + the edit_order monkey-patch) read to
 # preserve a held order's tender.
-# card_charges.js exposes window.ffl.payrocCharges — the pure multi-card
+# card_charges.js exposes window.ffl.cardCharges — the pure multi-card
 # charge math (live rows, remaining balance, slice validation, void picker)
 # shared by the bundle's charge loop and pos_invoice.js, Node-tested.
 # pos_recycle_bin.js adds the "Deleted" filter to the POS Recent Orders list

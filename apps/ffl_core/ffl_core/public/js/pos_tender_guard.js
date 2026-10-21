@@ -236,10 +236,10 @@
 	//   entered — the other tender typed on a draft that was never held (cash,
 	//     Zelle…), shown as NOT confirmed: ERPNext pre-fills the default payment
 	//     method with the grand total when the payment screen opens, so a typed
-	//     amount is not proof of payment. The Payroc card tender is represented by
-	//     `confirmed` and left out, unless Payroc is off (a standalone terminal
+	//     amount is not proof of payment. The integrated card tender is represented by
+	//     `confirmed` and left out, unless no card processor is on (a standalone terminal
 	//     leaves only the typed row).
-	// opts: { cardMop: the Payroc Mode of Payment name, payrocOn: bool }.
+	// opts: { cardMop: the card Mode of Payment name, cardProcessorOn: bool }.
 	function draftPaymentSummary(facts, opts) {
 		facts = facts || {};
 		opts = opts || {};
@@ -272,7 +272,7 @@
 		}
 		var entered = [];
 		if (!held) {
-			var cardMop = opts.payrocOn === false ? null : (opts.cardMop || 'Credit Card');
+			var cardMop = opts.cardProcessorOn === false ? null : (opts.cardMop || 'Credit Card');
 			var byMode = {};
 			(facts.payments || []).forEach(function (p) {
 				var amount = p ? flt(p.amount) : 0;
