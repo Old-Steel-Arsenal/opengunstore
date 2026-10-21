@@ -3931,6 +3931,25 @@ frappe.provide('frappe.ui.form');
 				});
 				return;
 			}
+			// PART PAYMENT: the customer pays the rest another day. Keep what was
+			// paid on the draft (Recent Orders → Edit takes the next payment) and
+			// complete only once the total is paid — the server refuses an underpaid
+			// submit anyway (payment_mode.require_full_payment), and its refusal
+			// would leave this tender unsaved.
+			const doc = controller.frm.doc;
+			if (!doc.is_return && !neg.negative && window.ffl && ffl.isFullyTendered
+				&& !ffl.isFullyTendered(doc)) {
+				controller.frm.dirty();
+				try { await controller.frm.save(); } catch (e) { return; }   // the server said why
+				const due = ffl.balanceDue(doc);
+				frappe.msgprint({
+					title: __('Part payment saved'),
+					indicator: 'orange',
+					message: __('{0} is recorded on this order and {1} is still owed. When the customer pays the rest, open the order from <b>Recent Orders → Draft</b>, take the payment and click Complete Order.',
+						[format_currency(doc.paid_amount, doc.currency), format_currency(due, doc.currency)]),
+				});
+				return;
+			}
 			return originalSubmit();
 		};
 		controller.payment.__payrocWrapped = true;

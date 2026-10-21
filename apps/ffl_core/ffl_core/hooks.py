@@ -508,7 +508,10 @@ doc_events = {
 		# rows and BEFORE on_submit consolidation copies them to the Sales
 		# Invoice (whose gate requires them already booked).
 		"before_submit": [
-			# First, before anything books: units a web order is waiting on are not
+			# The whole total paid, whatever the POS Profile's partial-payment flag says. Reads the
+			# outstanding amount ERPNext's own before_submit has just set — first, before anything books.
+			"ffl_core.compliance.payment_mode.require_full_payment",
+			# Before anything books: units a web order is waiting on are not
 			# the counter's to sell.
 			"ffl_core.compliance.web_hold.refuse_held_units",
 			# The guns' half of the same refusal: the last uniform-price gun a sold
