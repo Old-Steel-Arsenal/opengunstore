@@ -1,8 +1,9 @@
 """Submit-time gate + checkout booking for trade-in credit rows.
 
 A TRADE-IN-CREDIT line is money out the door, so it must be tamper-evident:
-every credit row has to trace to a Trade-in FFL Acquisition, match its cost
-exactly (qty 1, rate = -cost), and an acquisition can be spent once. Without
+every credit row has to trace to a Trade-in FFL Acquisition (a gun) or a
+trade-in Material Receipt (accessories / ammo, trade_in._park_accessories),
+match its value exactly (qty 1, rate = -cost), and either can be spent once. Without
 this, a cashier could type any discount into a "trade-in" line — the exact
 sweethearting hole the credit feature is meant to close.
 
@@ -25,7 +26,35 @@ import frappe
 from frappe import _
 from frappe.utils import flt
 
-from ffl_core.setup.trade_in_credit import TRADE_IN_CREDIT_ITEM
+from ffl_core.setup.trade_in_credit import TRADE_IN_CREDIT_ITEM, TRADE_IN_SELLER_FIELD, TRADE_IN_STOCK_ENTRY_FIELD
+
+
+def accessory_receipt_value(stock_entry: str) -> float | None:
+	"""What a trade-in Material Receipt of accessories / ammo is worth: the sum of its lines at the cost entered
+	in the dialog. None when it is no such receipt (missing, not a Material Receipt, or not marked a trade-in)."""
+	se = frappe.db.get_value("Stock Entry", stock_entry,
+		["stock_entry_type", TRADE_IN_SELLER_FIELD], as_dict=True)
+	if not se or se.stock_entry_type != "Material Receipt" or not se.get(TRADE_IN_SELLER_FIELD):
+		return None
+	rows = frappe.get_all("Stock Entry Detail", filters={"parent": stock_entry, "parenttype": "Stock Entry"},
+		fields=["qty", "basic_rate"])
+	return sum(flt(r.qty) * flt(r.basic_rate) for r in rows)
+
+
+def credit_source(row) -> tuple[str, str] | None:
+	"""(doctype, name) the credit row is locked to: its FFL Acquisition, else its trade-in Stock Entry."""
+	acq = getattr(row, "ffl_trade_in_acquisition", None)
+	if acq:
+		return "FFL Acquisition", acq
+	se = getattr(row, TRADE_IN_STOCK_ENTRY_FIELD, None)
+	return ("Stock Entry", se) if se else None
+
+
+def _source_value(doctype: str, name: str) -> float | None:
+	if doctype == "FFL Acquisition":
+		cost = frappe.db.get_value("FFL Acquisition", name, "cost")
+		return None if cost is None else flt(cost)
+	return accessory_receipt_value(name)
 
 
 def expected_credit_rate(doc, row) -> float | None:
@@ -35,12 +64,12 @@ def expected_credit_rate(doc, row) -> float | None:
 	it mirrors the row it refunds (after consolidation, the booked net rate).
 	None when there is nothing to lock to — the submit gate refuses the row then."""
 	from ffl_core.compliance.locked_lines import locked_rate_on_row, rate_precision
-	acq_name = getattr(row, "ffl_trade_in_acquisition", None)
-	if not acq_name or int(getattr(doc, "is_return", 0) or 0):
+	source = credit_source(row)
+	if not source or int(getattr(doc, "is_return", 0) or 0):
 		return None
 	if int(getattr(doc, "is_consolidated", 0) or 0):
 		return locked_rate_on_row(row)
-	cost = frappe.db.get_value("FFL Acquisition", acq_name, "cost")
+	cost = _source_value(*source)
 	if cost is None:
 		return None
 	return flt(-flt(cost), rate_precision(getattr(doc, "doctype", "POS Invoice")))
@@ -89,23 +118,25 @@ def validate_trade_in_credit_rows(doc, method: str | None = None) -> None:
 
 	seen: set[str] = set()
 	for row in rows:
-		acq_name = getattr(row, "ffl_trade_in_acquisition", None)
-		if not acq_name:
+		source = credit_source(row)
+		if not source or (getattr(row, "ffl_trade_in_acquisition", None)
+				and getattr(row, TRADE_IN_STOCK_ENTRY_FIELD, None)):
 			frappe.throw(_(
 				"Row #{0}: a Trade-in Credit line must be added through the POS "
-				"Trade-in dialog — it has no linked FFL Acquisition."
+				"Trade-in dialog — it has no linked trade-in record."
 			).format(row.idx))
+		doctype, acq_name = source
 		if acq_name in seen:
 			frappe.throw(_(
 				"Row #{0}: trade-in {1} appears more than once on this invoice."
 			).format(row.idx, acq_name))
 		seen.add(acq_name)
 
-		acq = frappe.db.get_value(
-			"FFL Acquisition", acq_name, ["docstatus", "cost", "purchase_receipt"], as_dict=True)
-		if not acq or acq.docstatus not in ((0, 1) if draft_ok else (1,)):
+		docstatus = frappe.db.get_value(doctype, acq_name, "docstatus")
+		value = _source_value(doctype, acq_name)
+		if docstatus not in ((0, 1) if draft_ok else (1,)) or value is None:
 			frappe.throw(_(
-				"Row #{0}: trade-in acquisition {1} is missing or not submitted."
+				"Row #{0}: trade-in {1} is missing or not submitted."
 			).format(row.idx, acq_name))
 		if flt(getattr(row, "qty", 0)) != 1:
 			frappe.throw(_(
@@ -115,13 +146,17 @@ def validate_trade_in_credit_rows(doc, method: str | None = None) -> None:
 		# save, while an API caller may file a sub-cent cost (180.005).
 		from ffl_core.compliance.locked_lines import rate_precision, row_rate
 		p = rate_precision(getattr(doc, "doctype", "POS Invoice"))
-		if flt(row_rate(doc, row), p) != flt(-flt(acq.cost), p):
+		if flt(row_rate(doc, row), p) != flt(-value, p):
 			frappe.throw(_(
 				"Row #{0}: Trade-in Credit must equal the recorded trade-in value: "
-				"expected {1}, found {2}. Edit the trade-in (acquisition {3}) "
+				"expected {1}, found {2}. Edit the trade-in ({3}) "
 				"instead of the invoice line."
-			).format(row.idx, flt(-flt(acq.cost), p), flt(row_rate(doc, row), p), acq_name))
-		_require_unspent(acq_name, doc)
+			).format(row.idx, flt(-value, p), flt(row_rate(doc, row), p), acq_name))
+		_require_unspent(acq_name, doc, "ffl_trade_in_acquisition" if doctype == "FFL Acquisition"
+			else TRADE_IN_STOCK_ENTRY_FIELD)
+		if doctype != "FFL Acquisition":
+			continue  # accessories taken in trade are never paid out: a pay-now buy is a Purchase Receipt
+		acq = frappe.db.get_value("FFL Acquisition", acq_name, ["purchase_receipt"], as_dict=True)
 		# A gun received on a Purchase Receipt (Receive Goods, or the Trade-in dialog's pay-now buy) is a purchase, paid
 		# with the receipt (a Goods Payout keyed to the receipt, not the acquisition); a credit is only ever a dialog
 		# trade-in, which has no receipt.
@@ -156,9 +191,25 @@ def book_trade_ins_on_submit(doc, method: str | None = None) -> None:
 		acq_name = getattr(row, "ffl_trade_in_acquisition", None)
 		if acq_name:
 			complete_intake(acq_name)
+		elif getattr(row, TRADE_IN_STOCK_ENTRY_FIELD, None):
+			_book_accessories(getattr(row, TRADE_IN_STOCK_ENTRY_FIELD))
 
 
-def _require_unspent(acq_name: str, doc) -> None:
+def _book_accessories(stock_entry: str) -> None:
+	"""Submit the parked Material Receipt of accessories / ammo taken in trade: they enter stock at the cost the
+	dialog recorded (Dr Stock / Cr Stock Adjustment, where the credit line books — the same pair as a gun's
+	receipt). Idempotent: an already-submitted receipt is left alone."""
+	se = frappe.get_doc("Stock Entry", stock_entry)
+	if se.docstatus == 1:
+		return
+	if se.docstatus == 2:
+		frappe.throw(_("Trade-in receipt {0} is cancelled — remove the credit line or re-run the Trade-in "
+			"dialog.").format(stock_entry))
+	se.flags.ignore_permissions = True
+	se.submit()
+
+
+def _require_unspent(acq_name: str, doc, field: str = "ffl_trade_in_acquisition") -> None:
 	# POS Invoice only: the consolidated Sales Invoice legitimately carries a
 	# copy of the spent row, so running the reuse lookup there would false-
 	# positive against the very POS invoice being consolidated.
@@ -169,12 +220,12 @@ def _require_unspent(acq_name: str, doc) -> None:
 		SELECT pii.parent
 		FROM `tabPOS Invoice Item` pii
 		INNER JOIN `tabPOS Invoice` pi ON pi.name = pii.parent
-		WHERE pii.ffl_trade_in_acquisition = %(acq)s
+		WHERE pii.`{field}` = %(acq)s
 		  AND pi.docstatus = 1
 		  AND COALESCE(pi.is_return, 0) = 0
 		  AND pi.name != %(self)s
 		LIMIT 1
-		""",
+		""".format(field=field),
 		{"acq": acq_name, "self": getattr(doc, "name", "") or ""},
 	)
 	if used:

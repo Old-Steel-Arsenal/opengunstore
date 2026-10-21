@@ -17,6 +17,12 @@ acquisition (defer_booking) and the bound-book entry / stock receipt /
 FastBound push all happen at POS Invoice submit
 (compliance/trade_in_credit.book_trade_ins_on_submit). A pay-now buy (no
 credit) books immediately: the store paid and took the gun.
+
+Accessories and ammo (non-serialized stock: no bound book, no serial) ride the
+same dialog, alone or with a gun, as `accessories` lines of item + qty + unit
+cost. With credit they are parked as a DRAFT Material Receipt marked as a
+trade-in (_park_accessories) and get a credit line of their own, booked at
+checkout like the gun; a pay-now buy puts them on the gun's Purchase Receipt.
 """
 from __future__ import annotations
 
@@ -30,7 +36,7 @@ from frappe.utils import flt
 from ffl_core.acquisition import TRADE_IN_SOURCE
 from ffl_core.cash_drawer import PAYOUT_METHODS
 from ffl_core.customer_name import split_display_name
-from ffl_core.firearm import is_per_serial_priced
+from ffl_core.firearm import ACCESSORY, AMMUNITION, PARTS, _is_firearm_row, is_per_serial_priced
 from ffl_core.roles import COUNTER_ROLES, STOCK_ROLES, TRADE_IN_ROLES
 from ffl_core.api.firearm_intake import create_intake
 
@@ -121,16 +127,24 @@ def create_trade_in_intake(payload) -> dict:
 	But Not Billed / Cr Cash or the bank) so the cash drawer count includes it
 	(_buy_now).
 
+	Accessories / ammo (payload.accessories, [{item_code, qty, rate}] with
+	rate the per-unit value) come in alone (has_firearm 0) or with the gun:
+	with apply_credit a draft Material Receipt and a credit line of their own
+	(_park_accessories), without it lines on the same paid receipt.
+
 	Args:
 	    payload: Trade-in intake fields (same shape as
-	        firearm_intake.create_intake plus seller identity and
-	        apply_credit) — dict or JSON string.
+	        firearm_intake.create_intake plus seller identity, apply_credit,
+	        has_firearm and accessories) — dict or JSON string.
 
 	Returns:
-	    {ok, item_code, acquisition}: with apply_credit from
-	    firearm_intake.create_intake (or _refresh_pending_draft), plus `credit`;
-	    without it from _buy_now (receive_goods._create_receive), plus
-	    `purchase_receipt` and `payout` ({entry, journal_entry}).
+	    {ok, item_code, acquisition} (None without a gun): with apply_credit
+	    from firearm_intake.create_intake (or _refresh_pending_draft), plus
+	    `credits` (one locked line per trade-in record: the gun's carries
+	    `acquisition`, the accessories' `stock_entry`), `credit` (the gun's)
+	    and `accessory_receipt`; without it from _buy_now
+	    (receive_goods._create_receive), plus `purchase_receipt` and `payout`
+	    ({entry, journal_entry}).
 
 	Raises:
 	    ValidationError: Missing fields / duplicate serial.
@@ -160,7 +174,13 @@ def create_trade_in_intake(payload) -> dict:
 	if not isinstance(payload, dict):
 		frappe.throw(_("Invalid payload"))
 
-	missing = [f for f in _REQUIRED if not str(payload.get(f) or "").strip()]
+	accessories = _accessory_lines(payload.get("accessories"))
+	# The dialog's "Includes a firearm" box; an API caller that never sends it is trading in a gun, as always.
+	has_gun = bool(frappe.utils.cint(payload.get("has_firearm", 1)))
+	if not has_gun and not accessories:
+		frappe.throw(_("Nothing to trade in: add the firearm or at least one accessory / ammo line."))
+	required = _REQUIRED if has_gun else _SELLER_REQUIRED
+	missing = [f for f in required if not str(payload.get(f) or "").strip()]
 	if missing:
 		frappe.throw(_("Missing required fields: {0}").format(", ".join(missing)))
 
@@ -171,6 +191,8 @@ def create_trade_in_intake(payload) -> dict:
 	# name passes through as typed. A pay-now buy pays a Customer (_buy_now).
 	customer = str(payload["source_name"]).strip()
 	customer_name = frappe.db.get_value("Customer", customer, "customer_name")
+	if accessories and not customer_name:
+		frappe.throw(_("Pick the seller from Customers to take accessories or ammo in trade."))
 
 	intake_payload = {
 		"source_type": TRADE_IN_SOURCE,
@@ -187,13 +209,13 @@ def create_trade_in_intake(payload) -> dict:
 		"source_address": resolve_source_address(payload),
 		"source_id_type": payload["id_type"],
 		"source_id_number": payload["id_number"],
-		"serial": payload["serial_no"],
-		"manufacturer": payload["manufacturer"],
-		"model_name": payload["model_name"],
+		"serial": payload.get("serial_no") or "",
+		"manufacturer": payload.get("manufacturer") or "",
+		"model_name": payload.get("model_name") or "",
 		"caliber": payload.get("caliber") or "",
 		"importer": payload.get("importer") or "",
-		"condition_grade": payload["condition_grade"],
-		"acquisition_cost": float(payload["acquisition_cost"]),
+		"condition_grade": payload.get("condition_grade") or "",
+		"acquisition_cost": flt(payload.get("acquisition_cost")),
 		"retail_price": float(payload["retail_price"]) if payload.get("retail_price") else None,
 		"firearm_type": payload.get("firearm_type") or None,
 		"barrel_length": payload.get("barrel_length") or None,
@@ -203,7 +225,8 @@ def create_trade_in_intake(payload) -> dict:
 		# deferred to checkout.
 		"storage_location": (str(payload.get("storage_location") or "").strip()) or None,
 	}
-	_check_counter_item(intake_payload["item_code"])
+	if has_gun:
+		_check_counter_item(intake_payload["item_code"])
 
 	apply_credit = frappe.utils.cint(payload.get("apply_credit"))
 	payout_method = str(payload.get("payout_method") or "").strip()
@@ -211,12 +234,14 @@ def create_trade_in_intake(payload) -> dict:
 		frappe.throw(_("Say how the seller was paid ({0}), or apply the trade-in as a credit to a sale.").format(
 			", ".join(PAYOUT_METHODS)))
 	if apply_credit:
-		result = (
-			_refresh_pending_draft(intake_payload)
-			# Deferred booking: draft acquisition only — the gun enters the
-			# bound book when the POS Invoice carrying the credit row submits.
-			or create_intake(intake_payload, defer_booking=True)
-		)
+		result = {"ok": True, "item_code": None, "acquisition": None}
+		if has_gun:
+			result.update(
+				_refresh_pending_draft(intake_payload)
+				# Deferred booking: draft acquisition only — the gun enters the
+				# bound book when the POS Invoice carrying the credit row submits.
+				or create_intake(intake_payload, defer_booking=True)
+			)
 		# Hand the POS dialog a locked credit payload to inject into the live
 		# cart (POS's own add-item path). The row can't be parked server-side:
 		# a credit-only draft trips POS Invoice's non-negative grand-total
@@ -228,16 +253,27 @@ def create_trade_in_intake(payload) -> dict:
 		# Rounded to the invoice row's rate precision: the server pin and the
 		# submit gate compare at that precision (compliance/locked_lines).
 		from ffl_core.compliance.locked_lines import rate_precision
-		result["credit"] = {
-			"item_code": TRADE_IN_CREDIT_ITEM,
-			"rate": flt(-flt(intake_payload["acquisition_cost"]), rate_precision("POS Invoice")),
-			"acquisition": result["acquisition"],
-		}
+		precision = rate_precision("POS Invoice")
+		result["credits"] = []
+		if has_gun:
+			result["credit"] = {
+				"item_code": TRADE_IN_CREDIT_ITEM,
+				"rate": flt(-flt(intake_payload["acquisition_cost"]), precision),
+				"acquisition": result["acquisition"],
+			}
+			result["credits"].append(result["credit"])
+		if accessories:
+			result["accessory_receipt"] = _park_accessories(accessories, customer)
+			result["credits"].append({
+				"item_code": TRADE_IN_CREDIT_ITEM,
+				"rate": flt(-sum(flt(a["qty"]) * flt(a["rate"]) for a in accessories), precision),
+				"stock_entry": result["accessory_receipt"],
+			})
 		return result
 
 	# A reference typed for a bank payment and left behind when the method went back to Cash is not this payment's.
 	reference = None if payout_method == "Cash" else str(payload.get("payout_reference") or "").strip() or None
-	return _buy_now(intake_payload, payout_method, reference)
+	return _buy_now(intake_payload, has_gun, accessories, payout_method, reference)
 
 
 def _check_counter_item(item_code: str | None) -> None:
@@ -260,28 +296,137 @@ def _check_counter_item(item_code: str | None) -> None:
 			frappe.PermissionError)
 
 
-def _buy_now(intake: dict, method: str, reference: str | None) -> dict:
-	"""The store buys the gun and pays the seller now: a Receive Goods receipt from the seller, paid with it
-	(receive_goods._create_receive, the Receive Goods endpoint's gate-free body) -- the same stock, seller payment
-	and bound-book entry as buying from a private seller on the Receive Goods page, dated today. Its source
-	TRADE_IN_SOURCE keeps the acquisition a trade-in (bound book, Inventory Receipts). The gun's per-unit
-	facts (condition, sell price, description) are stamped as an intake's are."""
+# Seller fields every trade-in needs, gun or not (the gun's own are _REQUIRED's rest).
+_SELLER_REQUIRED = ("id_type", "id_number", "source_name", "source_first_name", "source_last_name")
+
+
+def _accessory_lines(raw) -> list[dict]:
+	"""The dialog's accessory / ammo lines as [{item_code, qty, rate}] (rate = what the store gives per unit), blank
+	rows dropped. Each must be an enabled stock Item that is no firearm and carries no serial: a gun has its own
+	section (bound book), and these lines are counted, not serialized."""
+	if isinstance(raw, str):
+		raw = _json.loads(raw or "[]")
+	lines = []
+	for idx, row in enumerate(raw or [], start=1):
+		item_code = str((row or {}).get("item_code") or "").strip()
+		if not item_code:
+			continue
+		qty, rate = flt(row.get("qty")), flt(row.get("rate"))
+		item = frappe.db.get_value("Item", item_code,
+			["disabled", "is_stock_item", "has_serial_no", "is_firearm", "item_group"], as_dict=True)
+		if not item or item.disabled:
+			frappe.throw(_("Accessory row #{0}: item {1} does not exist.").format(idx, item_code))
+		if _is_firearm_row(item) or item.has_serial_no or not item.is_stock_item:
+			frappe.throw(_("Accessory row #{0}: {1} is not an accessory or ammo item. A firearm goes in the Firearm "
+				"section; serialized items are received on Receive Goods.").format(idx, item_code))
+		if qty <= 0 or rate <= 0:
+			frappe.throw(_("Accessory row #{0}: enter the quantity and what the store gives for each.").format(idx))
+		lines.append({"item_code": item_code, "qty": qty, "rate": rate})
+	return lines
+
+
+def _park_accessories(lines: list[dict], customer: str) -> str:
+	"""A DRAFT Material Receipt of the accessories / ammo a credit trade-in takes in, at the cost given for them,
+	marked as a trade-in from ``customer``. Nothing reaches stock until the sale carrying its credit line submits
+	(compliance/trade_in_credit.book_trade_ins_on_submit), so an abandoned cart leaves only an inert draft."""
+	from ffl_core.api.firearm_intake import _company, _default_warehouse
+	from ffl_core.setup.trade_in_credit import TRADE_IN_SELLER_FIELD
+
+	company = _company()
+	warehouse = _default_warehouse(company)
+	se = frappe.get_doc({
+		"doctype": "Stock Entry",
+		"stock_entry_type": "Material Receipt",
+		"company": company,
+		TRADE_IN_SELLER_FIELD: customer,
+		"remarks": _("Trade-in from {0}").format(customer),
+		"items": [{"item_code": a["item_code"], "qty": a["qty"], "t_warehouse": warehouse,
+			"basic_rate": a["rate"], "set_basic_rate_manually": 1} for a in lines],
+	})
+	se.flags.ignore_permissions = True
+	se.insert()
+	return se.name
+
+
+@frappe.whitelist()
+def create_accessory_item(item_name: str, item_group: str, sell_price: float | None = None) -> dict:
+	"""Make a new accessory / ammo / parts Item from the Trade-in dialog, for something the store has never stocked.
+
+	Args:
+	    item_name: The new Item's name; also its code.
+	    item_group: A leaf group under Ammunition, Accessory or Parts — never a firearm group.
+	    sell_price: Optional selling price (Item.standard_rate).
+
+	Returns:
+	    {item_code, item_name}.
+
+	Permissions:
+	    roles.TRADE_IN_ROLES, like the trade-in itself: the counter takes in what the seller brings. Only a
+	    non-serialized, non-firearm stock Item can be made here; any other Item stays a stock job
+	    (receive_goods.create_item).
+	"""
+	if not set(frappe.get_roles()) & set(TRADE_IN_ROLES):
+		frappe.throw(_("Taking a trade-in needs the Sales User role."), frappe.PermissionError)
+	name = (item_name or "").strip()
+	if not name:
+		frappe.throw(_("Enter the item's name."))
+	if frappe.db.exists("Item", name):
+		frappe.throw(_("Item {0} already exists: pick it from the list.").format(name))
+	group = frappe.db.get_value("Item Group", item_group or "", ["is_group", "parent_item_group"], as_dict=True)
+	if not group or group.is_group or group.parent_item_group not in TRADE_IN_ACCESSORY_PARENTS:
+		frappe.throw(_("Pick an ammo, accessory or parts category for {0}.").format(name))
+	item = frappe.get_doc({
+		"doctype": "Item", "item_code": name, "item_name": name, "item_group": item_group, "stock_uom": "Nos",
+		"is_stock_item": 1, "has_serial_no": 0, "is_firearm": 0,
+	})
+	item.flags.ignore_permissions = True
+	item.insert()
+	# Priced after the insert: given to insert(), ERPNext's Item.after_insert makes the selling Item Price as the
+	# session user, a permission the counter lacks (firearm_intake._create_item, the same reason).
+	if flt(sell_price) > 0:
+		from ffl_core.api.receive_goods import _set_item_selling_price
+		_set_item_selling_price(item.name, flt(sell_price))
+	return {"item_code": item.name, "item_name": item.item_name}
+
+
+# The parents of the categories a counter-made trade-in Item may go in (mirrored by the dialog's category picker).
+TRADE_IN_ACCESSORY_PARENTS = (AMMUNITION, ACCESSORY, PARTS)
+
+
+def _buy_now(intake: dict, has_gun: bool, accessories: list[dict], method: str, reference: str | None) -> dict:
+	"""The store buys the gun (and any accessories / ammo) and pays the seller now: a Receive Goods receipt from
+	the seller, paid with it (receive_goods._create_receive, the Receive Goods endpoint's gate-free body) -- the same
+	stock, seller payment and bound-book entry as buying from a private seller on the Receive Goods page, dated
+	today. Its source TRADE_IN_SOURCE keeps the acquisition a trade-in (bound book, Inventory Receipts). The gun's
+	per-unit facts (condition, sell price, description) are stamped as an intake's are. ``intake`` always carries
+	the seller; its gun half only when ``has_gun``."""
 	from ffl_core.api.firearm_intake import (
 		_company, _default_warehouse, _lookup_serial, _resolve_item, _stamp_serial, _validate_required, _validate_source)
 	from ffl_core.api.receive_goods import _create_receive
 
-	_validate_required(intake)
-	_validate_source(intake)
-	if _lookup_serial(intake["serial"]).get("found"):
-		frappe.throw(_("Serial '{0}' is already on file. Edit the existing item instead.").format(intake["serial"]))
 	if not intake["source_customer"]:
 		frappe.throw(_("Pick the seller from Customers to pay them now."))
-	if flt(intake["acquisition_cost"], 2) <= 0:  # a receipt that pays nobody would still reach the bound book
-		frappe.throw(_("Enter what the store pays the seller."))
-	item_code = _resolve_item(intake)
-	# A shared model SKU keeps its own model fields (_create_receive writes the line's onto the Item); this gun's own
-	# values reach its Serial No through _stamp_serial.
-	model = frappe.db.get_value("Item", item_code, ["model_name", "caliber", "firearm_type"], as_dict=True)
+	items = []
+	item_code = None
+	if has_gun:
+		_validate_required(intake)
+		_validate_source(intake)
+		if _lookup_serial(intake["serial"]).get("found"):
+			frappe.throw(_("Serial '{0}' is already on file. Edit the existing item instead.").format(intake["serial"]))
+		if flt(intake["acquisition_cost"], 2) <= 0:  # a receipt that pays nobody would still reach the bound book
+			frappe.throw(_("Enter what the store pays the seller."))
+		item_code = _resolve_item(intake)
+		# A shared model SKU keeps its own model fields (_create_receive writes the line's onto the Item); this gun's
+		# own values reach its Serial No through _stamp_serial.
+		model = frappe.db.get_value("Item", item_code, ["model_name", "caliber", "firearm_type"], as_dict=True)
+		items.append({
+			"item_code": item_code, "qty": 1, "rate": intake["acquisition_cost"], "serials": [intake["serial"]],
+			"storage_location": intake["storage_location"],
+			**{f: model.get(f) or intake.get(f) or "" for f in ("model_name", "firearm_type", "caliber")},
+			**{f: intake.get(f) or "" for f in ("manufacturer", "importer")},
+			"year_made": intake["year_made"],
+		})
+	items.extend({"item_code": a["item_code"], "qty": a["qty"], "rate": a["rate"]} for a in accessories)
 	received = _create_receive({
 		"acquisition_source": "Individual",
 		"source": TRADE_IN_SOURCE,
@@ -297,15 +442,9 @@ def _buy_now(intake: dict, method: str, reference: str | None) -> dict:
 		"seller_payment_reference": reference,
 		# Where a credit trade-in lands too (the POS Profile's warehouse first), so both kinds sell at the register.
 		"warehouse": _default_warehouse(_company()),
-		"items": [{
-			"item_code": item_code, "qty": 1, "rate": intake["acquisition_cost"], "serials": [intake["serial"]],
-			"storage_location": intake["storage_location"],
-			**{f: model.get(f) or intake.get(f) or "" for f in ("model_name", "firearm_type", "caliber")},
-			**{f: intake.get(f) or "" for f in ("manufacturer", "importer")},
-			"year_made": intake["year_made"],
-		}],
+		"items": items,
 	# The gun's own facts are stamped before the bound-book push: nothing runs after it (_create_receive).
-	}, before_push=lambda: _stamp_serial({**intake, "item_code": item_code}))
+	}, before_push=(lambda: _stamp_serial({**intake, "item_code": item_code})) if has_gun else None)
 	paid = received["seller_payment"]
 	return {
 		"ok": True, "item_code": item_code, "purchase_receipt": received["name"],

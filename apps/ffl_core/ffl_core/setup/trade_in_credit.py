@@ -30,6 +30,8 @@ from ffl_core.cash_drawer import PAYOUT_METHODS as TRADE_IN_PAYOUT_METHODS
 from ffl_core.utils import commit
 
 TRADE_IN_CREDIT_ITEM = "TRADE-IN-CREDIT"
+TRADE_IN_STOCK_ENTRY_FIELD = "ffl_trade_in_stock_entry"
+TRADE_IN_SELLER_FIELD = "ffl_trade_in_customer"
 
 # Taxable leaf group from the canonical taxonomy (setup/item_groups.py) —
 # see module docstring for why this must NOT be "Service".
@@ -48,9 +50,28 @@ _ROW_FIELDS = {
 			"label": "Trade-in Acquisition",
 			"read_only": 1,
 			"insert_after": "item_name",
-		}
+		},
+		# A trade-in of accessories / ammo (no serial, no bound book): the credit line locks to the DRAFT Material
+		# Receipt holding them instead, submitted at checkout like a gun's acquisition (trade_in._park_accessories).
+		{
+			"fieldname": TRADE_IN_STOCK_ENTRY_FIELD,
+			"fieldtype": "Link",
+			"options": "Stock Entry",
+			"label": "Trade-in Receipt",
+			"read_only": 1,
+			"insert_after": "ffl_trade_in_acquisition",
+		},
 	]
 	for dt in ("POS Invoice Item", "Sales Invoice Item")
+}
+
+# Marks a Material Receipt as accessories / ammo taken in trade, and from whom: the credit gate accepts only a
+# Stock Entry carrying it.
+_STOCK_ENTRY_FIELDS = {
+	"Stock Entry": [{
+		"fieldname": TRADE_IN_SELLER_FIELD, "fieldtype": "Link", "options": "Customer",
+		"label": "Trade-in From", "read_only": 1, "no_copy": 1, "insert_after": "stock_entry_type",
+	}],
 }
 
 
@@ -147,6 +168,7 @@ def ensure() -> dict:
 		create_custom_fields(_ROW_FIELDS, ignore_validate=True)
 		create_custom_fields(_HEADER_FIELDS, ignore_validate=True)
 		create_custom_fields(_TAX_ROW_FIELDS, ignore_validate=True)
+		create_custom_fields(_STOCK_ENTRY_FIELDS, ignore_validate=True)
 		created = 0
 		if not frappe.db.exists("Item", TRADE_IN_CREDIT_ITEM):
 			if not frappe.db.exists("Item Group", _CREDIT_ITEM_GROUP):

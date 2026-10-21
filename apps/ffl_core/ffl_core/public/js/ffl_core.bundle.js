@@ -68,6 +68,13 @@ ffl.FIREARM_TYPE_OPTIONS = ['', 'Pistol', 'Revolver', 'Rifle', 'Shotgun',
 	'Short Barreled Shotgun', 'Machine Gun', 'Destructive Device',
 	'Any Other Weapon'].join('\n');
 
+// The Trade-in dialog's firearm fields a picked existing Item fills: its model facts (receive_goods.search_items /
+// lookup_item carry them), as [fieldname, value] pairs, blank facts skipped so a field typed by hand keeps its value.
+ffl.TRADE_IN_MODEL_FIELDS = ['manufacturer', 'model_name', 'caliber', 'firearm_type'];
+ffl.tradeInModelFill = function (item) {
+	return ffl.TRADE_IN_MODEL_FIELDS.filter((f) => item && item[f]).map((f) => [f, item[f]]);
+};
+
 ffl.FirearmItemPicker = class FirearmItemPicker {
 	constructor(opts) {
 		this.$input = opts.$input;
@@ -1013,8 +1020,45 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		}
 	}
 
+	// A gun's credit is locked to its acquisition, an accessories / ammo credit to its draft Material Receipt.
 	function injectTradeInCredit(credit) {
-		return injectLockedLine(credit.item_code, credit.rate, { ffl_trade_in_acquisition: credit.acquisition });
+		const stamp = credit.stock_entry
+			? { ffl_trade_in_stock_entry: credit.stock_entry } : { ffl_trade_in_acquisition: credit.acquisition };
+		return injectLockedLine(credit.item_code, credit.rate, stamp);
+	}
+
+	// Where accessories / ammo taken in trade may be filed (mirror of trade_in.TRADE_IN_ACCESSORY_PARENTS).
+	const TRADE_IN_ACCESSORY_PARENTS = ['Ammunition', 'Accessory', 'Parts'];
+
+	// "New item" under the accessories table: the counter makes an accessory / ammo Item the store has never
+	// stocked (trade_in.create_accessory_item) and it lands as a new row.
+	function newTradeInAccessoryItem(onMade) {
+		const d = new frappe.ui.Dialog({
+			title: __('New accessory / ammo item'),
+			size: 'small',
+			fields: [
+				{ label: __('Item name'), fieldname: 'item_name', fieldtype: 'Data', reqd: 1 },
+				{
+					label: __('Category'), fieldname: 'item_group', fieldtype: 'Link', options: 'Item Group', reqd: 1,
+					get_query: () => ({ filters: { is_group: 0, parent_item_group: ['in', TRADE_IN_ACCESSORY_PARENTS] } }),
+				},
+				{ label: __('Selling price ($)'), fieldname: 'sell_price', fieldtype: 'Currency',
+					description: __('Optional — set later when pricing it.') },
+			],
+			primary_action_label: __('Create'),
+			primary_action(v) {
+				frappe.call({
+					method: 'ffl_core.api.trade_in.create_accessory_item',
+					args: v,
+					callback(r) {
+						if (!r.message) return;
+						d.hide();
+						onMade(r.message);
+					},
+				});
+			},
+		});
+		d.show();
 	}
 
 	async function openTradeInDialog() {
@@ -1034,6 +1078,8 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		// here). The counter picks an existing item or leaves it blank (the
 		// trade-in then makes one for this gun).
 		const stockRole = frappe.user.has_role(['Stock Manager', 'System Manager']);
+		// The firearm's fields show, and are required, only while the trade-in includes one.
+		const GUN = 'eval:doc.has_firearm';
 
 		// Seller prefill: the suffix-aware name split + primary address live
 		// server-side (trade_in.seller_defaults, shared with Receive Goods).
@@ -1122,7 +1168,11 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 				},
 				{ fieldtype: 'Section Break', label: __('Firearm') },
 				{
-					fieldtype: 'HTML', fieldname: 'item_code_picker',
+					label: __('Includes a firearm'), fieldname: 'has_firearm', fieldtype: 'Check', default: 1,
+					description: __('Untick for accessories / ammo only.'),
+				},
+				{
+					fieldtype: 'HTML', fieldname: 'item_code_picker', depends_on: GUN,
 					options: `<label class="control-label" style="padding-right:0">${__('Item')}</label>
 						<div class="ffl-ti-sku" style="position:relative">
 							<input type="text" class="form-control input-sm ffl-ti-sku-input" placeholder="${stockRole ? __('Search item / RSR, or create a new one (e.g. Glock19 USED)') : __('Search an existing item, or leave blank')}">
@@ -1130,61 +1180,85 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 						</div>`,
 				},
 				{
-					label: __('Serial Number'), fieldname: 'serial_no', fieldtype: 'Data', reqd: 1,
+					label: __('Serial Number'), fieldname: 'serial_no', fieldtype: 'Data', depends_on: GUN, mandatory_depends_on: GUN,
 				},
 				{
-					label: __('Manufacturer'), fieldname: 'manufacturer', fieldtype: 'Data', reqd: 1,
+					label: __('Manufacturer'), fieldname: 'manufacturer', fieldtype: 'Data', depends_on: GUN, mandatory_depends_on: GUN,
 				},
 				{
-					label: __('Model'), fieldname: 'model_name', fieldtype: 'Data', reqd: 1,
+					label: __('Model'), fieldname: 'model_name', fieldtype: 'Data', depends_on: GUN, mandatory_depends_on: GUN,
 				},
 				{
-					label: __('Importer'), fieldname: 'importer', fieldtype: 'Data',
+					label: __('Importer'), fieldname: 'importer', fieldtype: 'Data', depends_on: GUN,
 					description: __('Imported guns: the importer marking on the firearm (bound-book field).'),
 				},
 				{ fieldtype: 'Column Break' },
 				{
 					label: __('Caliber'), fieldname: 'caliber', fieldtype: 'Link', options: 'Caliber',
-					reqd: 1,
+					depends_on: GUN, mandatory_depends_on: GUN,
 				},
 				{
-					label: __('Firearm Type'), fieldname: 'firearm_type', fieldtype: 'Select', reqd: 1,
+					label: __('Firearm Type'), fieldname: 'firearm_type', fieldtype: 'Select', depends_on: GUN, mandatory_depends_on: GUN,
 					options: ffl.FIREARM_TYPE_OPTIONS,
 					description: __('Bound-book firearm type (ATF wording).'),
 				},
 				{
 					label: __('Condition Grade'), fieldname: 'condition_grade', fieldtype: 'Select',
-					reqd: 1,
+					depends_on: GUN, mandatory_depends_on: GUN,
 					options: ['New', 'Excellent', 'Very Good', 'Good', 'Fair'].join('\n'),
 					default: 'Very Good',
 				},
 				{
 					label: __('Storage location'), fieldname: 'storage_location', fieldtype: 'Link',
-					options: 'Storage Location',
+					options: 'Storage Location', depends_on: GUN,
 					description: __('Where the gun goes in the store. A slot holds one firearm. '
 						+ 'Leave blank to place it later from Storage Locations.'),
 					get_query: () => ({
 						query: 'ffl_core.api.storage.location_query', filters: { only_free: 1 },
 					}),
 				},
-				{ fieldtype: 'Section Break', label: __('Pricing') },
+				{ fieldtype: 'Section Break', label: __('Pricing'), depends_on: GUN },
 				{
 					label: __('Acquisition Cost ($)'), fieldname: 'acquisition_cost',
-					fieldtype: 'Currency', reqd: 1,
-					description: __('Trade-in credit, or what the store pays the seller.'),
+					fieldtype: 'Currency', depends_on: GUN, mandatory_depends_on: GUN,
+					description: __('Trade-in credit, or what the store pays the seller, for the firearm.'),
 				},
 				{ fieldtype: 'Column Break' },
 				{
 					label: __('Retail Price ($)'), fieldname: 'retail_price',
-					fieldtype: 'Currency',
+					fieldtype: 'Currency', depends_on: GUN,
 					description: __('Optional — set later when pricing the unit.'),
+				},
+				{ fieldtype: 'Section Break', label: __('Accessories & ammo') },
+				{
+					fieldname: 'accessories', fieldtype: 'Table', label: __('Accessories & ammo'),
+					in_place_edit: true, data: [],
+					description: __('Anything else the seller brings, counted by quantity. No serial numbers.'),
+					fields: [
+						{
+							label: __('Item'), fieldname: 'item_code', fieldtype: 'Link', options: 'Item',
+							in_list_view: 1, columns: 6,
+							get_query: () => ({ filters: { disabled: 0, is_stock_item: 1, has_serial_no: 0, is_firearm: 0 } }),
+						},
+						{ label: __('Qty'), fieldname: 'qty', fieldtype: 'Float', default: 1, in_list_view: 1, columns: 2 },
+						{ label: __('Each ($)'), fieldname: 'rate', fieldtype: 'Currency', in_list_view: 1, columns: 2 },
+					],
+				},
+				{
+					fieldtype: 'Button', fieldname: 'new_accessory_item', label: __('New item'),
+					click: () => newTradeInAccessoryItem((item) => {
+						const grid = dialog.fields_dict.accessories;
+						grid.df.data = (grid.df.data || []).filter((r) => r.item_code);
+						grid.df.data.push({ item_code: item.item_code, qty: 1 });
+						grid.grid.refresh();
+					}),
 				},
 				{ fieldtype: 'Section Break' },
 				{
 					label: __('Apply as credit to this sale'), fieldname: 'apply_credit',
 					fieldtype: 'Check', default: 1,
-					description: __('Adds a locked negative Trade-in Credit line (−Acquisition '
-						+ 'Cost) to the current cart, so the allowance reduces the total and '
+					description: __('Adds locked negative Trade-in Credit lines (the firearm\'s cost, and the '
+						+ 'accessories\' total) to the current cart, so the allowance reduces the total and '
 						+ 'the tax base. Uncheck when the store pays the seller now (no sale on this ticket).'),
 				},
 				{
@@ -1213,29 +1287,35 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 					});
 					return;
 				}
+				const accessories = (values.accessories || []).filter((r) => r.item_code)
+					.map((r) => ({ item_code: r.item_code, qty: r.qty, rate: r.rate }));
 				frappe.call({
 					method: 'ffl_core.api.trade_in.create_trade_in_intake',
-					args: { payload: JSON.stringify({ ...values, item_code: selectedItemCode }) },
+					args: { payload: JSON.stringify({
+						...values, accessories, has_firearm: values.has_firearm ? 1 : 0,
+						item_code: values.has_firearm ? selectedItemCode : '',
+					}) },
 					freeze: true,
 					freeze_message: __('Recording trade-in…'),
 					async callback(r) {
 						if (!(r.message && r.message.ok)) return;
 						dialog.hide();
-						const credit = r.message.credit;
-						if (!credit) {
+						const credits = r.message.credits || [];
+						if (!credits.length) {
 							frappe.show_alert({
-								message: __('Trade-in recorded · Item {0} · Receipt {1}. '
+								message: __('Trade-in recorded · Receipt {0}. '
 									+ 'The payment to the seller is booked.',
-									[r.message.item_code, r.message.purchase_receipt || '']),
+									[r.message.purchase_receipt || '']),
 								indicator: 'green',
 							}, 8);
 							return;
 						}
-						const injected = await injectTradeInCredit(credit);
+						let injected = true;
+						for (const credit of credits) injected = (await injectTradeInCredit(credit)) && injected;
 						if (injected) {
 							frappe.show_alert({
 								message: __('Trade-in recorded · {0} credit added to this sale.',
-									[format_currency(credit.rate)]),
+									[format_currency(credits.reduce((sum, c) => sum + c.rate, 0))]),
 								indicator: 'green',
 							}, 8);
 						} else {
@@ -1248,9 +1328,9 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 								indicator: 'red',
 								message: __('The trade-in was recorded, but the credit line could '
 									+ 'NOT be added to this cart. Do not complete checkout yet: '
-									+ 're-open the item cart and run Trade-in again for the same '
-									+ 'serial (it reuses the pending record), so the sale carries '
-									+ 'the credit and the gun books at checkout.'),
+									+ 're-open the item cart and run Trade-in again (a gun\'s serial '
+									+ 'reuses its pending record), so the sale carries '
+									+ 'the credit and the trade-in books at checkout.'),
 							});
 						}
 					},
@@ -1270,6 +1350,8 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 			onSelect: (item) => {
 				selectedItemCode = (item && item.item_code) || '';
 				$skuWrap.find('.ffl-ti-sku-input').val(selectedItemCode);
+				// A model filed before: its maker / model / caliber / type fill the gun's fields (still editable).
+				ffl.tradeInModelFill(item).forEach(([f, v]) => dialog.set_value(f, v));
 			},
 		});
 		// The picker binds a document-level click handler (+ a debounce timer);
