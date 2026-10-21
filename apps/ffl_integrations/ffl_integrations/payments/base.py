@@ -51,7 +51,7 @@ class CardResult:
 	unique_reference  the gateway's id of the transaction (for a refund: of the refund)
 	approval_code     the issuer's approval code, when the gateway sends one
 	card_summary      card brand + last digits, printed on the receipt (never a full number)
-	message           decline / failure text for the operator
+	message           the gateway's result / failure text for the operator
 	gateway_status    the processor's own word for a finished instruction that did not approve
 	                  (Payroc: CANCELED / FAILURE); echoed back to the POS in poll answers
 	raw               the gateway's body as parsed JSON; the core stores ``json.dumps(raw)`` (1 KB)

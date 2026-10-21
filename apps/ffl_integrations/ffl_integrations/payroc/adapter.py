@@ -172,7 +172,8 @@ class PayrocProcessor(CardProcessor):
 			unique_reference=(payment or {}).get("uniqueReference") or "",
 			approval_code=tr.get("approvalCode") or "",
 			card_summary=_gateway_card_summary(payment) if approved else "",
-			message="" if approved else (tr.get("resultMessage") or tr.get("resultCode") or "declined"),
+			# The gateway's result text either way: an approval for 0 is refused with it too.
+			message=tr.get("resultMessage") or tr.get("resultCode") or "declined",
 			gateway_status=st, raw=payment)
 
 	def cancel(self, handle: str) -> CardResult:
