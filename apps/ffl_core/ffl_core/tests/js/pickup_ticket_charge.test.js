@@ -12,7 +12,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const kernel = require('../../public/js/pos_tender_guard.js');
-const payrocCharges = require('../../public/js/payroc_charges.js');
+const payrocCharges = require('../../public/js/card_charges.js');
 const BUNDLE = fs.readFileSync(path.join(__dirname, '../../public/js/ffl_core.bundle.js'), 'utf8');
 
 function flt(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
@@ -109,7 +109,7 @@ const REPRICED_TICKET = () => ({
 	grand_total: 670, rounded_total: 670, paid_amount: 670, change_amount: 0,
 	items: [{ item_code: 'GUN', rate: 670, price_list_rate: 670, amount: 670 }],
 	payments: [{ mode_of_payment: 'Credit Card', amount: 670, base_amount: 670 }],
-	payroc_charges: [],
+	card_charges: [],
 });
 
 test('a re-priced pickup ticket never opens the card dialog or the terminal, and submits at $0', async () => {

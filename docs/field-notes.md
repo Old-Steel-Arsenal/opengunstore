@@ -318,21 +318,21 @@ The price changed locally and GunBroker has not confirmed the new one. The sweep
 
 These fields carried their implementation notes as on-screen help text, where a cashier taking a payment read them. The forms now carry one sentence each; the reasoning is kept here verbatim.
 
-### Payroc Unique Reference
+### Card Unique Reference
 
-Set by ffl_integrations.payroc.api.charge_pos_invoice on a successful charge.
+Set by ffl_integrations.payments.api.charge_pos_invoice on a successful charge.
 
-### Payroc Attempt
+### Card Attempt
 
 Counter for idempotency-key construction. Increments on each charge attempt.
 
-### Payroc Refunded Amount
+### Card Refunded Amount
 
-THIS return's card money already pushed back at the gateway: written only by ffl_integrations.payroc.api money-fact writes; feeds the orphan-refund gate. NOTE: frappe's amend RETAINS no_copy values (see ffl_core test_consignment_out_reinvoice) — an amended successor starts at 0 because restore_charge_rows zeroes money facts on every NEW doc, not because of the field property; no_copy still covers get_mapped_doc copies (returns).
+THIS return's card money already pushed back at the gateway: written only by ffl_integrations.payments.api money-fact writes; feeds the orphan-refund gate. NOTE: frappe's amend RETAINS no_copy values (see ffl_core test_consignment_out_reinvoice) — an amended successor starts at 0 because restore_charge_rows zeroes money facts on every NEW doc, not because of the field property; no_copy still covers get_mapped_doc copies (returns).
 
-### Payroc Charges
+### Card Charges
 
-One row per device payment instruction — a sale split across several cards has one row per card. The single-value payroc_* fields above are aggregates of these rows; written only by ffl_integrations.payroc.api. This Table field deliberately lives in ffl_integrations (not with the sibling payroc fields in ffl_core): its options reference this app's Payroc Charge doctype, and ffl_core installs first on a fresh site.
+One row per device payment instruction — a sale split across several cards has one row per card. The single-value card_* fields above are aggregates of these rows; written only by ffl_integrations.payments.api. This Table field deliberately lives in ffl_integrations (not with the sibling card_* fields in ffl_core): its options reference this app's Card Charge doctype, and ffl_core installs first on a fresh site.
 
 ### NICS Cleared Notified
 
@@ -343,7 +343,7 @@ Set once the customer has been emailed that their delayed NICS check cleared. In
 Set when this counter invoice is the in-store pickup of a web (WooCommerce) order: the buyer chose this store as the receiving FFL and collects here under a retail 4473. It is what makes a second Pickup click return this draft instead of opening another, what retires the web order when this invoice is submitted, and what puts it back in the queue if the invoice is cancelled. Deliberately NOT no_copy: an amended invoice that lost this link would be invisible to all three.
 
 
-## Payroc Charge (description cleaned 2026-09-03)
+## Card Charge (description cleaned 2026-09-03)
 
 ### Status
 

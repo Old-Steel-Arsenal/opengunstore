@@ -315,7 +315,7 @@ CORE_RECORDS = [
 		("Gunsmith work orders", "DocType", "Gunsmith Work Order"),
 		("Sales report", "Report", "Sales Report"),
 		("Cash drawer weekly", "Report", "Cash Drawer Weekly"),
-		("Card payments", "DocType", "Payroc Terminal Payment"),
+		("Card payments", "DocType", "Card Terminal Payment"),
 		("POS opening entries", "DocType", "POS Opening Entry"),
 		("POS closing entries", "DocType", "POS Closing Entry"),
 	]),

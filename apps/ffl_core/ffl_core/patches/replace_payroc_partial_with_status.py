@@ -8,7 +8,13 @@ def execute():
 	The partial flag shipped less than a day before this patch and the
 	integration is inert without credentials, so real data is unlikely —
 	but map defensively. Fixtures sync runs AFTER patches, so the status
-	field is created here first (the later sync is idempotent)."""
+	field is created here first (the later sync is idempotent).
+
+	A site that reaches this patch after ffl_integrations'
+	rename_payroc_storage_to_card (pre_model_sync) already has the status as
+	card_status, and no payroc_* column left to map from."""
+	if frappe.db.has_column("POS Invoice", "card_status"):
+		return
 	if not frappe.db.has_column("POS Invoice", "payroc_status"):
 		create_custom_field("POS Invoice", {
 			"fieldname": "payroc_status",

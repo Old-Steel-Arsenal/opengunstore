@@ -113,14 +113,14 @@ def _pos_by_ref(ref: str) -> frappe._dict | None:
 	"""The POS record of one gateway capture, by its uniqueReference."""
 	if not ref:
 		return None
-	r = frappe.db.get_value("Payroc Charge", {"unique_reference": ref,
+	r = frappe.db.get_value("Card Charge", {"unique_reference": ref,
 		"parenttype": "POS Invoice"}, ["parent as name", "amount", "status"], as_dict=True)
 	doctype = "POS Invoice"
 	if not r:
-		r = frappe.db.get_value("POS Invoice", {"payroc_unique_reference": ref},
-			["name", "payroc_charged_amount as amount", "payroc_status as status"], as_dict=True)
+		r = frappe.db.get_value("POS Invoice", {"card_unique_reference": ref},
+			["name", "card_charged_amount as amount", "card_status as status"], as_dict=True)
 	if not r:
-		r = frappe.db.get_value("Payroc Terminal Payment", {"unique_reference": ref},
+		r = frappe.db.get_value("Card Terminal Payment", {"unique_reference": ref},
 			["sales_invoice as name", "amount", "status"], as_dict=True)
 		doctype = "Sales Invoice"
 	if not r:
@@ -150,7 +150,7 @@ def _pos_by_order(order_id: str) -> frappe._dict | None:
 def _pos_refunded(doctype: str, name: str) -> float:
 	"""Card money the POS recorded as refunded against one document."""
 	if doctype == "POS Invoice":
-		rows = sum(flt(x) for x in frappe.get_all("Payroc Charge",
+		rows = sum(flt(x) for x in frappe.get_all("Card Charge",
 			filters={"parent": name, "parenttype": "POS Invoice"}, pluck="refunded_amount"))
 		return max(rows, reconcile._pos_recorded_refund(name))
 	if doctype == "Sales Invoice":

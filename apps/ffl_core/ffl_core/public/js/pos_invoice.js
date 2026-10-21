@@ -18,12 +18,12 @@ frappe.ui.form.on('POS Invoice', {
 		// Multi-card era: any live CHARGED row is voidable regardless of the
 		// aggregate status (an in-flight sibling instruction must not hide the
 		// button); legacy single-stamp invoices keep the old rule.
-		const status = frm.doc.payroc_status;
+		const status = frm.doc.card_status;
 		const pcMath = window.ffl && window.ffl.payrocCharges;
 		const liveRows = pcMath ? pcMath.liveChargeRows(frm.doc) : [];
 		const canVoid = frm.doc.docstatus === 0            // unsettled draft only
 			&& (liveRows.length
-				|| (frm.doc.payroc_unique_reference
+				|| (frm.doc.card_unique_reference
 					&& (status === 'CHARGED' || status === 'PARTIAL')))
 			&& isManager;
 		if (canVoid) {
@@ -86,7 +86,7 @@ frappe.ui.form.on('POS Invoice', {
 		// normally DRAFTS (the refund runs before submit), so the button shows
 		// on drafts and submitted docs alike. Server re-checks everything.
 		const unlockable = pcMath
-			&& pcMath.isUnlockableLock(frm.doc.payroc_refund_reference);
+			&& pcMath.isUnlockableLock(frm.doc.card_refund_reference);
 		if (frm.doc.is_return && frm.doc.docstatus !== 2 && unlockable && isManager) {
 			frm.add_custom_button(__('Unlock Card Refund'), () => unlockCardRefund(frm))
 				.removeClass('btn-default').addClass('btn-danger');
@@ -102,12 +102,12 @@ frappe.ui.form.on('POS Invoice', {
 		const payrocOff = window.ffl && window.ffl.switches
 			&& !window.ffl.switches.payrocEnabled();
 		if (payrocOff && frm.doc.is_return && frm.doc.docstatus !== 2
-				&& frm.doc.return_against && !frm.doc.payroc_oob_refund_reference
+				&& frm.doc.return_against && !frm.doc.card_oob_refund_reference
 				&& isManager) {
 			frappe.db.get_value('POS Invoice', frm.doc.return_against,
-				['payroc_unique_reference', 'payroc_status']).then((r) => {
+				['card_unique_reference', 'card_status']).then((r) => {
 				const o = (r.message || {});
-				if (!o.payroc_unique_reference && !o.payroc_status) return;
+				if (!o.card_unique_reference && !o.card_status) return;
 				frm.add_custom_button(__('Confirm Portal Refund'),
 					() => confirmPortalRefund(frm))
 					.removeClass('btn-default').addClass('btn-danger');
@@ -124,7 +124,7 @@ function unlockCardRefund(frm) {
 				fieldtype: 'HTML', fieldname: 'warn',
 				options: `<div class="alert alert-danger" style="margin-bottom:10px">${
 					__('This return\'s automatic refund is locked (<b>{0}</b>): a refund attempt ended with an UNKNOWN outcome — it may or may not have landed. <b>First verify in the Payroc portal that NO refund landed for this return.</b> Unlocking re-arms a FULL-amount retry; if the original attempt actually landed, that retry refunds the same money twice. If the portal shows any refund landed, do NOT unlock — send it to the back office instead.',
-						[frappe.utils.escape_html(frm.doc.payroc_refund_reference || '')])
+						[frappe.utils.escape_html(frm.doc.card_refund_reference || '')])
 				}</div>`,
 			},
 			{
@@ -207,10 +207,10 @@ function voidCardCharge(frm) {
 	// values never round-trip through display text.
 	const pcMath = window.ffl && window.ffl.payrocCharges;
 	const live = pcMath ? pcMath.liveChargeRows(frm.doc) : [];
-	const picker = pcMath ? pcMath.buildVoidPicker(frm.doc.payroc_charges) : null;
+	const picker = pcMath ? pcMath.buildVoidPicker(frm.doc.card_charges) : null;
 	const multi = live.length > 1;
 	const amount = live.length === 1 ? flt(live[0].amount)
-		: (flt(frm.doc.payroc_charged_amount) || flt(frm.doc.grand_total));
+		: (flt(frm.doc.card_charged_amount) || flt(frm.doc.grand_total));
 	const fields = [
 		{
 			fieldtype: 'HTML', fieldname: 'warn',

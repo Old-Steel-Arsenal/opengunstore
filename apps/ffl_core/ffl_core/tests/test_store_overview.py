@@ -343,8 +343,8 @@ class TestRecords(ExtensionFixture):
 		self.assertIn("Fake Things", no_web)
 
 	def test_a_switched_off_integration_takes_its_link_with_it(self):
-		links = {i["link_to"] for g in self._titles(off={"Payroc Terminal Payment"}) for i in g["items"]}
-		self.assertNotIn("Payroc Terminal Payment", links)
+		links = {i["link_to"] for g in self._titles(off={"Card Terminal Payment"}) for i in g["items"]}
+		self.assertNotIn("Card Terminal Payment", links)
 
 	def test_only_what_the_user_may_open(self):
 		_user(SALES_USER, "Sales User")

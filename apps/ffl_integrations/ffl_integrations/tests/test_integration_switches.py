@@ -154,7 +154,7 @@ class PayrocSwitchedOff(SettingsSandbox, FrappeTestCase):
 
 		def _get_value(doctype, name, field=None, *a, **k):
 			return {"return_against": "PSINV-ORIG",
-				"payroc_unique_reference": "AUTH-123"}.get(field)
+				"card_unique_reference": "AUTH-123"}.get(field)
 
 		with patch.object(api.frappe.db, "exists", return_value=True), \
 				patch.object(api.frappe.db, "get_value", side_effect=_get_value), \
@@ -175,8 +175,8 @@ class PayrocSwitchedOff(SettingsSandbox, FrappeTestCase):
 
 		def _get_value(doctype, name, field=None, *a, **k):
 			return {"return_against": "PSINV-ORIG",
-				"payroc_unique_reference": "AUTH-123",
-				"payroc_oob_refund_reference": "PORTAL-RF-77"}.get(field)
+				"card_unique_reference": "AUTH-123",
+				"card_oob_refund_reference": "PORTAL-RF-77"}.get(field)
 
 		with patch.object(api.frappe.db, "exists", return_value=True), \
 				patch.object(api.frappe.db, "get_value", side_effect=_get_value), \
@@ -619,8 +619,8 @@ class CardReferenceGate(SettingsSandbox, FrappeTestCase):
 		"""Charged through the gateway BEFORE the switch flipped: the reference is
 		already a money fact on the document and no terminal receipt exists —
 		demanding one would strand every order caught mid-transition."""
-		self._run(self._doc(reference="", payroc_unique_reference="UR-123"))
-		self._run(self._doc(reference="", payroc_charges=[
+		self._run(self._doc(reference="", card_unique_reference="UR-123"))
+		self._run(self._doc(reference="", card_charges=[
 			frappe._dict({"status": "CHARGED", "amount": 100.0})]))
 
 	def test_a_return_of_a_gateway_charged_sale_is_exempt(self):
@@ -702,7 +702,7 @@ class BlockUnconfirmedGatewayRefundHook(SettingsSandbox, FrappeTestCase):
 		from ffl_integrations.payroc import api
 
 		with patch.object(api, "_original_gateway_charged", return_value="AUTH-1"):
-			self._run(self._doc(payroc_oob_refund_reference="PORTAL-RF-9"))
+			self._run(self._doc(card_oob_refund_reference="PORTAL-RF-9"))
 
 	def test_ordinary_returns_and_sales_are_untouched(self):
 		from ffl_integrations.payroc import api
@@ -753,13 +753,13 @@ class OutOfBandRefundConfirmation(SettingsSandbox, FrappeTestCase):
 		from ffl_integrations.payroc import api
 
 		meta = frappe._dict({"is_return": 1, "docstatus": 0,
-			"payroc_oob_refund_reference": ""})
+			"card_oob_refund_reference": ""})
 
 		def _get_value(doctype, name, field=None, *a, **k):
 			if isinstance(field, (list, tuple)):
 				return meta
 			return {"return_against": "PSINV-ORIG",
-				"payroc_unique_reference": "AUTH-123"}.get(field)
+				"card_unique_reference": "AUTH-123"}.get(field)
 
 		with patch.object(api.frappe.db, "exists", return_value=True), \
 				patch.object(api.frappe.db, "get_value", side_effect=_get_value), \
@@ -775,13 +775,13 @@ class OutOfBandRefundConfirmation(SettingsSandbox, FrappeTestCase):
 		self.assertIn("AUTH-123", note)
 		set_value.assert_called_once()
 		self.assertEqual(set_value.call_args.args[:4], ("POS Invoice", "RET-OOB-1",
-			"payroc_oob_refund_reference", "PORTAL-RF-42"))
+			"card_oob_refund_reference", "PORTAL-RF-42"))
 
 	def test_double_confirmation_is_refused(self):
 		from ffl_integrations.payroc import api
 
 		meta = frappe._dict({"is_return": 1, "docstatus": 0,
-			"payroc_oob_refund_reference": "PORTAL-RF-1"})
+			"card_oob_refund_reference": "PORTAL-RF-1"})
 		with patch.object(api.frappe.db, "get_value", return_value=meta):
 			with self.assertRaises(frappe.ValidationError) as ctx:
 				self._confirm()
@@ -791,7 +791,7 @@ class OutOfBandRefundConfirmation(SettingsSandbox, FrappeTestCase):
 		from ffl_integrations.payroc import api
 
 		meta = frappe._dict({"is_return": 1, "docstatus": 0,
-			"payroc_oob_refund_reference": ""})
+			"card_oob_refund_reference": ""})
 
 		def _get_value(doctype, name, field=None, *a, **k):
 			if isinstance(field, (list, tuple)):
@@ -809,7 +809,7 @@ class OutOfBandRefundConfirmation(SettingsSandbox, FrappeTestCase):
 		from ffl_integrations.payroc import api
 
 		meta = frappe._dict({"is_return": 0, "docstatus": 1,
-			"payroc_oob_refund_reference": ""})
+			"card_oob_refund_reference": ""})
 		with patch.object(api.frappe.db, "get_value", return_value=meta):
 			with self.assertRaises(frappe.ValidationError) as ctx:
 				self._confirm()

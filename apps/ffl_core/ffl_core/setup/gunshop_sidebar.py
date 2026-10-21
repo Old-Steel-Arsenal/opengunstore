@@ -49,14 +49,14 @@ def integrations_off() -> set[str]:
 	apps = frappe.get_installed_apps()
 	off: set[str] = set()
 	if "ffl_integrations" not in apps:
-		off |= {"GunBroker Order", "Payroc Terminal Payment"}
+		off |= {"GunBroker Order", "Card Terminal Payment"}
 	else:
 		from ffl_integrations.integration_gate import gunbroker_enabled, payroc_enabled
 
 		if not gunbroker_enabled():
 			off.add("GunBroker Order")
 		if not payroc_enabled():
-			off.add("Payroc Terminal Payment")
+			off.add("Card Terminal Payment")
 	if "ffl_woo_sync" not in apps:
 		off.add("Woo Online Order")
 	else:

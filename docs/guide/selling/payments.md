@@ -136,7 +136,7 @@ never run at once on the same order, and an approval that was interrupted before
 it was recorded is picked up and recorded on the next attempt rather than
 charged twice.
 
-Every attempt is kept as a **Payroc Terminal Payment** record linked to the
+Every attempt is kept as a **Card Terminal Payment** record linked to the
 invoice, with the amount, the status, the card description, the terminal's
 reference and the Payment Entry it booked. Nothing in it is typed by hand. The
 list opens from **Card payments** in the sidebar's **Sales** group, which shows
@@ -151,9 +151,9 @@ A refund of a card payment taken this way is issued in the Payroc portal, and
 the accounting side is reversed with **Cancel Order** or an order edit on
 Pending Order.
 
-## The Payroc Charges table
+## The Card Charges table
 
-Every card capture on an order is a row in the **Payroc Charges** table on the
+Every card capture on an order is a row in the **Card Charges** table on the
 POS Invoice. A sale split across three cards has three rows. The single Payroc
 fields above the table are totals of those rows.
 

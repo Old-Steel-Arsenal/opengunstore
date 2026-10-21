@@ -2937,7 +2937,7 @@ frappe.provide('frappe.ui.form');
 // Save-then-charge ordering: the Payroc API needs an `order_id` (we use
 // the POS Invoice name) for receipt + idempotency. The default ERPNext
 // flow is single-shot savesubmit; we split it into save → charge →
-// (backend stamps payroc_unique_reference) → reload → submit.
+// (backend stamps card_unique_reference) → reload → submit.
 
 (function setupPayrocPosHook() {
 	const POLL_TIMEOUT_MS = 120000;   // overall wait for the terminal
@@ -3002,7 +3002,7 @@ frappe.provide('frappe.ui.form');
 	}
 
 	// Multi-card charge math lives in the pure, Node-tested module
-	// payroc_charges.js (window.ffl.payrocCharges) — single source shared with
+	// card_charges.js (window.ffl.payrocCharges) — single source shared with
 	// the desk form's void picker.
 	function payrocMath() {
 		return (window.ffl && window.ffl.payrocCharges) || null;
@@ -3203,9 +3203,9 @@ frappe.provide('frappe.ui.form');
 		// Legacy single-stamp era: already charged on a prior click? Don't
 		// double-charge. A stamped but PARTIAL capture is recorded for voiding,
 		// NOT fully paid — never let it submit the order as if it were.
-		const hasRows = (frm.doc.payroc_charges || []).length > 0;
-		if (!hasRows && frm.doc.payroc_unique_reference) {
-			if (frm.doc.payroc_status === 'PARTIAL') {
+		const hasRows = (frm.doc.card_charges || []).length > 0;
+		if (!hasRows && frm.doc.card_unique_reference) {
+			if (frm.doc.card_status === 'PARTIAL') {
 				frappe.msgprint({
 					title: __('Partial approval on file'), indicator: 'orange',
 					message: __('A prior attempt captured only part of the amount. Get a manager to void it (back office), then re-tender.'),
@@ -3216,7 +3216,7 @@ frappe.provide('frappe.ui.form');
 			// while the 4473 was pending). If the cart was edited since, the
 			// captured amount no longer matches the card tender — block instead
 			// of submitting a mispriced order.
-			const charged = flt(frm.doc.payroc_charged_amount);
+			const charged = flt(frm.doc.card_charged_amount);
 			if (charged > 0 && flt(target, 2) !== flt(charged, 2)) {
 				frappe.msgprint({
 					title: __('Charged amount mismatch'), indicator: 'red',
@@ -3250,7 +3250,7 @@ frappe.provide('frappe.ui.form');
 			// Pure module missing (asset build problem) — fail safe: no charge
 			// is better than an unvalidated one.
 			frappe.msgprint({ title: __('POS asset error'), indicator: 'red',
-				message: __('payroc_charges.js is not loaded — reload the page; if it persists, rebuild assets.') });
+				message: __('card_charges.js is not loaded — reload the page; if it persists, rebuild assets.') });
 			return { skip: false, ok: false };
 		}
 		while (true) {
@@ -3348,7 +3348,7 @@ frappe.provide('frappe.ui.form');
 				}
 				dlg.hide();
 				if (m.ok) {
-					// Backend stamped payroc_unique_reference — reload so
+					// Backend stamped card_unique_reference — reload so
 					// savesubmit doesn't write the stale doc back.
 					await frm.reload_doc();
 					frappe.show_alert({
@@ -3570,7 +3570,7 @@ frappe.provide('frappe.ui.form');
 		// both controls.
 		const amount = payrocRefundAmount(frm.doc);
 		if (amount <= 0) return { skip: true };                       // no card refund portion
-		const priorRef = frm.doc.payroc_refund_reference;
+		const priorRef = frm.doc.card_refund_reference;
 		if (priorRef) {
 			const pc = payrocMath();
 			if (!pc) {
@@ -3579,7 +3579,7 @@ frappe.provide('frappe.ui.form');
 				// (same as the charge path above), never a sentinel-specific
 				// claim we can't back.
 				frappe.msgprint({ title: __('POS asset error'), indicator: 'red',
-					message: __('payroc_charges.js is not loaded — reload the page; if it persists, rebuild assets.') });
+					message: __('card_charges.js is not loaded — reload the page; if it persists, rebuild assets.') });
 				return { skip: false, ok: false };
 			}
 			// A LOCK sentinel, not a completed refund — treating it as
@@ -3867,7 +3867,7 @@ frappe.provide('frappe.ui.form');
 			// FORWARD SALE: take the payment FIRST (store policy: money may be
 			// collected while the 4473/NICS is still pending), but the ORDER only
 			// completes after the gate — the gun never leaves stock early. The
-			// charge stamps payroc_unique_reference + payroc_charged_amount, so
+			// charge stamps card_unique_reference + card_charged_amount, so
 			// re-clicking Complete Order after the 4473 clears never re-charges.
 			// Counter pickup ticket: collect what the ORDER still owes before the
 			// gun is handed over (the ticket itself is $0 — pinned above and by the

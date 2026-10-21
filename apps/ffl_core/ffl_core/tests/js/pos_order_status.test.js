@@ -74,7 +74,7 @@ function fakeListClass(calls) {
 }
 
 const FACTS = {
-	'PSINV-1': { due: 3084.04, currency: 'USD', charged: 712.25, held: 0, payroc_status: 'CHARGED', paid_amount: 712.25,
+	'PSINV-1': { due: 3084.04, currency: 'USD', charged: 712.25, held: 0, card_status: 'CHARGED', paid_amount: 712.25,
 		payments: [{ mode_of_payment: 'Credit Card', amount: 3084.04 }], has_firearm: true, form_4473_status: 'Pending', nics_status: 'N/A' },
 	'PSINV-2': { due: 50, currency: 'USD', charged: 0, held: 0, payments: [{ mode_of_payment: 'Cash', amount: 50 }],
 		has_firearm: false, form_4473_status: 'N/A', nics_status: 'N/A' },

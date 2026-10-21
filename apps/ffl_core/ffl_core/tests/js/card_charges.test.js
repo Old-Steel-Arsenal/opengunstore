@@ -5,9 +5,9 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const pc = require('../../public/js/payroc_charges.js');
+const pc = require('../../public/js/card_charges.js');
 
-const doc = (rows) => ({ payroc_charges: rows });
+const doc = (rows) => ({ card_charges: rows });
 const charged = (amount, extra) => Object.assign(
 	{ status: 'CHARGED', amount: amount }, extra || {});
 

@@ -23,7 +23,7 @@
 	// Rows that hold live captured money. VOIDED/DECLINED/CANCELED rows never
 	// count; a row-less doc (legacy single-stamp era) yields [].
 	function liveChargeRows(doc) {
-		return ((doc && doc.payroc_charges) || []).filter(function (r) {
+		return ((doc && doc.card_charges) || []).filter(function (r) {
 			return r && r.status === 'CHARGED';
 		});
 	}
@@ -95,7 +95,7 @@
 	}
 
 	// REFUND LOCK sentinels — the two values the server's _lock_and_throw
-	// stamps into payroc_refund_reference (mirror of ffl_integrations
+	// stamps into card_refund_reference (mirror of ffl_integrations
 	// payroc/api.py REFUND_LOCK_*). Anything else in that field is a real
 	// gateway refund reference (or the legacy "UNKNOWN"/"MULTI" success
 	// markers) — a COMPLETED refund, never a lock.

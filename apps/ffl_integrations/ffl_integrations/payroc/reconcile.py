@@ -30,7 +30,7 @@ HELD_STATUSES = {"READY", "COMPLETE"}
 # Charge-row statuses that took money (declined / canceled / in-progress
 # attempts never did, so they don't make a sale "multi-card").
 CAPTURED_ROW_STATUSES = ["CHARGED", "VOIDED", "REFUNDED"]
-# The multi-card aggregate stamp on POS Invoice.payroc_unique_reference.
+# The multi-card aggregate stamp on POS Invoice.card_unique_reference.
 MULTI_STAMP = "MULTI"
 MARKER = "[payroc-reconcile]"
 # Draft-invoice flags carry this after the reference, so a draft flagged while
@@ -52,7 +52,7 @@ def _captured_charges(since, until=None) -> list[frappe._dict]:
 	# DRAFT invoice. Excluding drafts left a draft held longer than the window
 	# unchecked for good (its row is too old by the time it submits).
 	# Cancelled invoices (2) stay out.
-	for r in frappe.get_all("Payroc Charge",
+	for r in frappe.get_all("Card Charge",
 			filters={"status": "CHARGED", "creation": created,
 				"parenttype": "POS Invoice", "docstatus": ("<", 2)},
 			fields=["unique_reference as ref", "amount", "refunded_amount",
@@ -61,16 +61,16 @@ def _captured_charges(since, until=None) -> list[frappe._dict]:
 			out.setdefault(r.ref, frappe._dict(r, doctype="POS Invoice", draft=r.docstatus == 0))
 	# docstatus < 2 as above: a legacy single-stamp sale can sit as a held draft too.
 	for r in frappe.get_all("POS Invoice",
-			filters={"payroc_status": ("in", ["CHARGED", "PARTIAL"]),
+			filters={"card_status": ("in", ["CHARGED", "PARTIAL"]),
 				"posting_date": posted, "docstatus": ("<", 2),
-				"payroc_unique_reference": ("not in", ["", MULTI_STAMP])},
-			fields=["payroc_unique_reference as ref", "payroc_charged_amount as amount",
-				"payroc_refunded_amount as refunded_amount", "name", "docstatus"]):
+				"card_unique_reference": ("not in", ["", MULTI_STAMP])},
+			fields=["card_unique_reference as ref", "card_charged_amount as amount",
+				"card_refunded_amount as refunded_amount", "name", "docstatus"]):
 		# Legacy single-stamp invoices only — charge rows (above) own the rest.
-		if r.ref and not frappe.db.exists("Payroc Charge",
+		if r.ref and not frappe.db.exists("Card Charge",
 				{"parent": r.name, "parenttype": "POS Invoice"}):
 			out.setdefault(r.ref, frappe._dict(r, doctype="POS Invoice", draft=r.docstatus == 0))
-	for r in frappe.get_all("Payroc Terminal Payment",
+	for r in frappe.get_all("Card Terminal Payment",
 			filters={"status": "CHARGED", "creation": created,
 				"unique_reference": ("is", "set")},
 			fields=["unique_reference as ref", "amount", "sales_invoice as name"]):
@@ -81,7 +81,7 @@ def _captured_charges(since, until=None) -> list[frappe._dict]:
 	# Cancel Order refund on the replacement is not seen here (an extra alert);
 	# Follow-up: a structured replaced-by link to read the lineage.
 	for c in out.values():
-		if c.doctype == "Sales Invoice" and frappe.db.count("Payroc Terminal Payment",
+		if c.doctype == "Sales Invoice" and frappe.db.count("Card Terminal Payment",
 				{"sales_invoice": c.name, "status": "CHARGED"}) <= 1:
 			c.refunded_amount = _cancel_order_refund(c.name)
 	# Invoice-level refunds (return invoices) only attribute unambiguously to a
@@ -94,7 +94,7 @@ def _captured_charges(since, until=None) -> list[frappe._dict]:
 			per_invoice[c.name] = per_invoice.get(c.name, 0) + 1
 	for c in out.values():
 		if c.doctype == "POS Invoice" and per_invoice[c.name] == 1 and \
-				frappe.db.count("Payroc Charge", {"parent": c.name,
+				frappe.db.count("Card Charge", {"parent": c.name,
 					"parenttype": "POS Invoice", "status": ("in", CAPTURED_ROW_STATUSES)}) <= 1:
 			c.refunded_amount = max(flt(c.refunded_amount), _pos_recorded_refund(c.name))
 	return list(out.values())
@@ -112,9 +112,9 @@ def _cancel_order_refund(sales_invoice: str) -> float:
 
 def _pos_recorded_refund(invoice: str) -> float:
 	"""Card money the POS has already recorded as refunded against a sale, read
-	from its RETURN invoices: refund_pos_invoice stamps payroc_refunded_amount
+	from its RETURN invoices: refund_pos_invoice stamps card_refunded_amount
 	there (not on the sale), and a manager-confirmed portal refund
-	(confirm_out_of_band_refund) only sets payroc_oob_refund_reference, so its
+	(confirm_out_of_band_refund) only sets card_oob_refund_reference, so its
 	card tender row is the amount.
 	Every sibling return's PUSHED money counts, any docstatus — the same
 	invariant as api._block_orphaned_sibling_refunds: what a cancelled or
@@ -122,8 +122,8 @@ def _pos_recorded_refund(invoice: str) -> float:
 	it on an amended successor.
 	"""
 	rets = _sibling_returns(invoice, "", ["name", "docstatus", "amended_from",
-		"payroc_refunded_amount", "payroc_oob_refund_reference"])
-	pushed = {r.name: flt(r.payroc_refunded_amount) for r in rets}
+		"card_refunded_amount", "card_oob_refund_reference"])
+	pushed = {r.name: flt(r.card_refunded_amount) for r in rets}
 	total, portal = 0.0, {}
 	for r in rets:
 		recorded = pushed[r.name]
@@ -132,7 +132,7 @@ def _pos_recorded_refund(invoice: str) -> float:
 		# second refund of the same amount is then missed — an extra alert only.)
 		if recorded and abs(pushed.get(r.amended_from, -1) - recorded) < 0.005:
 			recorded = 0.0
-		oob = (r.payroc_oob_refund_reference or "").strip()
+		oob = (r.card_oob_refund_reference or "").strip()
 		# A portal confirmation is evidence only on a return that was submitted
 		# (1, or 2 after it): a draft's card tender row is still editable.
 		if oob and int(r.docstatus) != 0:

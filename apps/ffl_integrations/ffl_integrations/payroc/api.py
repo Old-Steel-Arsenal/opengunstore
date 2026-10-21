@@ -4,13 +4,13 @@ Card-present sale is a 3-call cycle so the cashier can Cancel mid-flight and a
 worker isn't pinned:
 
   charge_pos_invoice(invoice)        → create the device payment instruction,
-                                        stamp payroc_instruction_id, return its id.
+                                        stamp card_instruction_id, return its id.
   poll_pos_charge(invoice, id, amt)  → one poll; while IN_PROGRESS returns
                                         {ok:False, status:'IN_PROGRESS'} so the
                                         frontend loops. On COMPLETED, follows the
                                         link to the Payment, reads
                                         transactionResult.resultCode, stamps
-                                        payroc_unique_reference on approval.
+                                        card_unique_reference on approval.
   cancel_pos_charge(invoice, id)     → DELETE an in-flight instruction.
 
 Plus discover_terminals() (admin smoke), void_pos_invoice() (back-office reverse),
@@ -18,7 +18,7 @@ and refund_pos_invoice() (Phase D). All charge paths are gated to Sales User+;
 refund/void to Sales Manager+.
 
 MULTI-CARD (2026-08): a sale may split its Credit Card tender across several
-physical cards — each charge_pos_invoice(amount) call is one Payroc Charge
+physical cards — each charge_pos_invoice(amount) call is one Card Charge
 child row, and the sale is fully collected when the CHARGED rows sum to the
 card tender. The single-value payroc_* fields persist as AGGREGATES of the
 rows (_refresh_charge_stamps is their only writer on the row path); invoices
@@ -46,7 +46,7 @@ from ffl_integrations.payroc.setup import MODE_OF_PAYMENT_NAME
 # What "approved" looks like in a Payroc transactionResult.
 _APPROVED = {"A"}
 
-# payroc_status Select values — ONE explicit, human-readable state label per
+# card_status Select values — ONE explicit, human-readable state label per
 # invoice. The payroc_* reference fields stay the money facts (what the gateway
 # gave us); the status is the single field UI/guards read instead of inferring
 # state from field combinations. Every transition is written in this module.
@@ -155,7 +155,7 @@ def _card_total(doc, absolute: bool = False) -> float:
 
 
 # ------------------------------------------------------------ multi-card rows
-# One Payroc Charge child row per device payment instruction. The single-value
+# One Card Charge child row per device payment instruction. The single-value
 # payroc_* stamps stay on POS Invoice as AGGREGATES of the rows (legacy
 # consumers — tender guard, PARTIAL submit guard, resume — keep reading them).
 # Invoices from before the table exist have stamps but no rows: every lifecycle
@@ -163,8 +163,8 @@ def _card_total(doc, absolute: bool = False) -> float:
 
 
 def _charge_rows(invoice_name: str) -> list:
-    """Payroc Charge rows in entry order. Empty ⇒ legacy single-stamp era."""
-    return frappe.get_all("Payroc Charge",
+    """Card Charge rows in entry order. Empty ⇒ legacy single-stamp era."""
+    return frappe.get_all("Card Charge",
         filters={"parenttype": "POS Invoice", "parent": invoice_name},
         fields=["name", "amount", "refunded_amount", "status", "unique_reference",
                 "instruction_id", "attempt", "card_summary"],
@@ -199,11 +199,11 @@ def _append_charge_row(invoice_name: str, *, instruction_id: str, attempt: int) 
     """Row-level insert (db_insert, hash name — how Frappe names child rows):
     charge stamps must not run the parent's validate/save cycle mid-charge,
     exactly like every set_value(update_modified=False) in this module."""
-    row = frappe.new_doc("Payroc Charge")
+    row = frappe.new_doc("Card Charge")
     row.update({
         "parenttype": "POS Invoice", "parent": invoice_name,
-        "parentfield": "payroc_charges",
-        "idx": (frappe.db.count("Payroc Charge",
+        "parentfield": "card_charges",
+        "idx": (frappe.db.count("Card Charge",
             {"parenttype": "POS Invoice", "parent": invoice_name}) or 0) + 1,
         "status": "IN_PROGRESS", "instruction_id": instruction_id,
         "attempt": attempt,
@@ -245,11 +245,11 @@ def _refresh_charge_stamps(invoice_name: str) -> None:
         status = ("VOIDED" if any(r.status == "VOIDED" for r in rows)
             else rows[-1].status)
     frappe.db.set_value("POS Invoice", invoice_name, {
-        "payroc_charged_amount": total,
-        "payroc_status": status,
-        "payroc_unique_reference": (live[0].unique_reference if len(live) == 1
+        "card_charged_amount": total,
+        "card_status": status,
+        "card_unique_reference": (live[0].unique_reference if len(live) == 1
             else "MULTI" if live else None),
-        "payroc_instruction_id": in_flight[0].instruction_id if in_flight else None,
+        "card_instruction_id": in_flight[0].instruction_id if in_flight else None,
     }, update_modified=False)
 
 
@@ -261,28 +261,28 @@ def _settle_instruction_row(client, inst: dict, invoice_name: str, row) -> dict:
     single-charge model. Returns the poll shape the frontend loops on."""
     st = inst.get("status") or "IN_PROGRESS"
     if st in ("CANCELED", "FAILURE"):
-        frappe.db.set_value("Payroc Charge", row.name, {
+        frappe.db.set_value("Card Charge", row.name, {
             "status": "CANCELED", "amount": 0, "response": _resp_json(inst),
         }, update_modified=False)
         frappe.db.set_value("POS Invoice", invoice_name,
-            "payroc_response", _resp_json(inst), update_modified=False)
+            "card_response", _resp_json(inst), update_modified=False)
         _refresh_charge_stamps(invoice_name)
         return {"ok": False, "status": st,
                 "error": inst.get("errorMessage") or st}
     payment, tr, ref, authorized = _read_payment(client, inst)
-    # The invoice-level payroc_response audit stamp stays live in the row era —
+    # The invoice-level card_response audit stamp stays live in the row era —
     # it is what an incident postmortem reads first (r1 F5).
     frappe.db.set_value("POS Invoice", invoice_name,
-        "payroc_response", _resp_json(payment), update_modified=False)
+        "card_response", _resp_json(payment), update_modified=False)
     if (tr.get("resultCode") or "") not in _APPROVED or authorized <= 0:
-        frappe.db.set_value("Payroc Charge", row.name, {
+        frappe.db.set_value("Card Charge", row.name, {
             "status": "DECLINED", "amount": 0, "unique_reference": ref,
             "response": _resp_json(payment),
         }, update_modified=False)
         _refresh_charge_stamps(invoice_name)
         return {"ok": False, "status": "COMPLETED", "unique_reference": ref,
                 "error": tr.get("resultMessage") or tr.get("resultCode") or "declined"}
-    frappe.db.set_value("Payroc Charge", row.name, {
+    frappe.db.set_value("Card Charge", row.name, {
         "status": "CHARGED", "amount": authorized, "unique_reference": ref,
         "card_summary": _gateway_card_summary(payment),
         "response": _resp_json(payment),
@@ -302,7 +302,7 @@ def _settle_instruction_row(client, inst: dict, invoice_name: str, row) -> dict:
 
 
 def _resp_json(resp) -> str:
-    """The payroc_response audit stamp, truncated to a sane field size."""
+    """The card_response audit stamp, truncated to a sane field size."""
     return _json.dumps(resp or {})[:1000]
 
 
@@ -314,9 +314,9 @@ def _throw_if_declined(resp: dict, invoice_name: str, message_template: str,
     declined = _declined(resp)
     if declined:
         frappe.db.set_value("POS Invoice", invoice_name,
-            "payroc_response", _resp_json(resp), update_modified=False)
+            "card_response", _resp_json(resp), update_modified=False)
         if row_name:
-            frappe.db.set_value("Payroc Charge", row_name,
+            frappe.db.set_value("Card Charge", row_name,
                 "response", _resp_json(resp), update_modified=False)
         frappe.throw(message_template.format(declined))
 
@@ -351,10 +351,10 @@ def _commit_money_point() -> None:
 
 
 # The two REFUND LOCK sentinels _lock_and_throw stamps into
-# payroc_refund_reference. Everything else in that field is a real gateway
+# card_refund_reference. Everything else in that field is a real gateway
 # refund reference (or the legacy "UNKNOWN"/"MULTI" success markers) — a
 # completed refund, which must never be "unlocked" back to retryable.
-# Mirrored in ffl_core/public/js/payroc_charges.js (isRefundLock /
+# Mirrored in ffl_core/public/js/card_charges.js (isRefundLock /
 # isUnlockableLock) — change BOTH sides together.
 REFUND_LOCK_UNKNOWN = "UNKNOWN-OUTCOME"
 REFUND_LOCK_PARTIAL_PREFIX = "PARTIAL:"
@@ -393,17 +393,17 @@ _MONEY_EPSILON = 0.005
 # ffl_core.compliance.webhook_fields). A cashier's browser that loaded the
 # doc BEFORE a refund attempt still holds the pre-lock values — its next
 # full-doc save would null the re-refund lock and the booked fact.
-# payroc_manual_settlement(_reason) are deliberately absent: those are
+# card_manual_settlement(_reason) are deliberately absent: those are
 # USER-declared via the form.
 _SERVER_OWNED_SCALARS = (
-    "payroc_unique_reference",
-    "payroc_instruction_id",
-    "payroc_refund_reference",
-    "payroc_refunded_amount",
-    "payroc_attempt",
-    "payroc_status",
-    "payroc_charged_amount",
-    "payroc_response",
+    "card_unique_reference",
+    "card_instruction_id",
+    "card_refund_reference",
+    "card_refunded_amount",
+    "card_attempt",
+    "card_status",
+    "card_charged_amount",
+    "card_response",
 )
 
 
@@ -530,17 +530,17 @@ def _persist_money_fact(write_fn, *, action: str, invoice: str, facts: dict,
 
 def _resolve_completed(client, inst: dict, invoice_name: str, expected_amount) -> dict:
     """A COMPLETED instruction → follow the HATEOAS link to the Payment, read the
-    outcome, and stamp payroc_unique_reference exactly once. Shared by
+    outcome, and stamp card_unique_reference exactly once. Shared by
     poll_pos_charge / charge_pos_invoice(resume) / cancel_pos_charge so a captured
     charge is reconciled once and never double-created. Returns the poll shape."""
     payment, tr, ref, authorized = _read_payment(client, inst)
     frappe.db.set_value("POS Invoice", invoice_name,
-        "payroc_response", _resp_json(payment), update_modified=False)
+        "card_response", _resp_json(payment), update_modified=False)
 
     approved = (tr.get("resultCode") or "") in _APPROVED
     if not approved:
         frappe.db.set_value("POS Invoice", invoice_name,
-            "payroc_status", "DECLINED", update_modified=False)
+            "card_status", "DECLINED", update_modified=False)
         return {"ok": False, "status": "COMPLETED", "unique_reference": ref,
                 "error": tr.get("resultMessage") or tr.get("resultCode") or "declined"}
 
@@ -555,19 +555,19 @@ def _resolve_completed(client, inst: dict, invoice_name: str, expected_amount) -
             # PARTIAL marks the stamp as NOT fully paid — the frontend
             # short-circuit and the before_submit hook both refuse to submit.
             frappe.db.set_value("POS Invoice", invoice_name, {
-                "payroc_unique_reference": ref,
-                "payroc_status": "PARTIAL",
-                "payroc_charged_amount": authorized,
+                "card_unique_reference": ref,
+                "card_status": "PARTIAL",
+                "card_charged_amount": authorized,
             }, update_modified=False)
         return {"ok": False, "partial": True, "status": "COMPLETED",
                 "unique_reference": ref, "authorized_amount": authorized}
 
     frappe.db.set_value("POS Invoice", invoice_name, {
-        "payroc_unique_reference": ref,
-        "payroc_status": "CHARGED",
+        "card_unique_reference": ref,
+        "card_status": "CHARGED",
         # The captured amount — held orders (charged before the 4473 cleared)
         # re-verify the cart against it at submit time.
-        "payroc_charged_amount": authorized,
+        "card_charged_amount": authorized,
     }, update_modified=False)
     _note_last_charge()
     return {"ok": True, "status": "COMPLETED", "unique_reference": ref,
@@ -618,10 +618,10 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
 
     if not rows:
         # ---- legacy single-stamp era (invoice pre-dates the child table) ----
-        if inv.get("payroc_unique_reference"):
+        if inv.get("card_unique_reference"):
             frappe.throw(_("POS Invoice {0} is already charged ({1})."
-                ).format(invoice_name, inv.payroc_unique_reference))
-        prev = inv.get("payroc_instruction_id")
+                ).format(invoice_name, inv.card_unique_reference))
+        prev = inv.get("card_instruction_id")
         if prev:
             # Idempotency: resume/reconcile the legacy in-flight instruction
             # rather than ever creating a second one.
@@ -688,7 +688,7 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
     # swipe. Fail closed — a blocked terminal that a manager clears with the
     # portal + Manual Card Settlement beats minting a fresh id and charging a
     # customer who may have already paid.
-    attempt = int(inv.get("payroc_attempt") or 0) + 1
+    attempt = int(inv.get("card_attempt") or 0) + 1
     created = client.create_payment_instruction(
         amount=amt, order_id=_order_id(invoice_name, attempt), terminal=terminal,
         operator=frappe.session.user,
@@ -698,13 +698,13 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
         frappe.throw(_("Payroc returned no paymentInstructionId."))
     try:
         _append_charge_row(invoice_name, instruction_id=iid, attempt=attempt)
-        stamps = {"payroc_attempt": attempt}
-        if inv.get("payroc_manual_settlement"):
+        stamps = {"card_attempt": attempt}
+        if inv.get("card_manual_settlement"):
             # New money through the integration invalidates a prior
             # manual-settlement declaration — the manager re-declares if it
             # still holds (r1 F3).
-            stamps.update({"payroc_manual_settlement": 0,
-                "payroc_manual_settlement_reason": None})
+            stamps.update({"card_manual_settlement": 0,
+                "card_manual_settlement_reason": None})
         frappe.db.set_value("POS Invoice", invoice_name, stamps,
             update_modified=False)
         _refresh_charge_stamps(invoice_name)
@@ -762,8 +762,8 @@ def poll_pos_charge(invoice_name: str, instruction_id: str, expected_amount=None
     # ---- legacy single-stamp era ----
     if status in ("CANCELED", "FAILURE"):
         frappe.db.set_value("POS Invoice", invoice_name, {
-            "payroc_response": _resp_json(inst),
-            "payroc_status": "CANCELED",
+            "card_response": _resp_json(inst),
+            "card_status": "CANCELED",
         }, update_modified=False)
         return {"ok": False, "status": status,
                 "error": inst.get("errorMessage") or status}
@@ -815,14 +815,14 @@ def cancel_pos_charge(invoice_name: str, instruction_id: str) -> dict:
         return res
     resp = client.cancel_payment_instruction(instruction_id)
     if row is not None:
-        frappe.db.set_value("Payroc Charge", row.name, {
+        frappe.db.set_value("Card Charge", row.name, {
             "status": "CANCELED", "amount": 0, "response": _resp_json(resp),
         }, update_modified=False)
         _refresh_charge_stamps(invoice_name)
         return {"ok": True, "status": "CANCELED"}
     frappe.db.set_value("POS Invoice", invoice_name, {
-        "payroc_response": _resp_json(resp),
-        "payroc_status": "CANCELED",
+        "card_response": _resp_json(resp),
+        "card_status": "CANCELED",
     }, update_modified=False)
     return {"ok": True, "status": "CANCELED"}
 
@@ -831,14 +831,14 @@ def cancel_pos_charge(invoice_name: str, instruction_id: str) -> dict:
 # Terminal payment against a counter Sales Invoice (Create Order / Pending
 # Order → Record Payment). The POS charge model above is tied to the
 # register's Credit Card tender rows; a counter order is on account, so a card
-# taken on the terminal for it is its own record (Payroc Terminal Payment) and
+# taken on the terminal for it is its own record (Card Terminal Payment) and
 # books as a Payment Entry through the counter's ONE collection path
 # (ffl_core.api.manual_order.record_payment) once the gateway confirms it.
 # Order of events is create-order-first: the invoice exists before any money
 # moves, so a decline or a walk-away leaves an on-account order the counter
 # can retry or settle another way — never money without an invoice.
 # --------------------------------------------------------------------------
-TERMINAL_PAYMENT = "Payroc Terminal Payment"
+TERMINAL_PAYMENT = "Card Terminal Payment"
 _TP_FIELDS = ["name", "sales_invoice", "amount", "status", "instruction_id",
     "unique_reference", "approval_code", "card_summary", "payment_entry"]
 
@@ -1013,7 +1013,7 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
             frappe.format_value(outstanding, {"fieldtype": "Currency"})))
 
     # Same per-attempt orderId rule as the POS path — a counter order can take a
-    # second card too (each attempt is one Payroc Terminal Payment row).
+    # second card too (each attempt is one Card Terminal Payment row).
     attempt = len(_terminal_payments(sales_invoice)) + 1
     created = client.create_payment_instruction(
         amount=amt, order_id=_order_id(sales_invoice, attempt), terminal=terminal,
@@ -1179,12 +1179,12 @@ def void_pos_invoice(invoice_name: str, reason: str | None = None,
             _("Void refused by the gateway ({0}) — the charge is still valid and the references "
                 "have not been cleared."), row_name=target.name)
         def _write_void_row():
-            frappe.db.set_value("Payroc Charge", target.name, {
+            frappe.db.set_value("Card Charge", target.name, {
                 # amount stays for the audit trail; the aggregates only sum CHARGED.
                 "status": "VOIDED", "response": _resp_json(resp),
             }, update_modified=False)
             frappe.db.set_value("POS Invoice", invoice_name,
-                "payroc_response", _resp_json(resp), update_modified=False)
+                "card_response", _resp_json(resp), update_modified=False)
             _refresh_charge_stamps(invoice_name)
         # Money reversed at the gateway — the row flip must land durably, or
         # fail with a durable trace + a DO-NOT-RETRY stop.
@@ -1194,7 +1194,7 @@ def void_pos_invoice(invoice_name: str, reason: str | None = None,
         return {"ok": True, "unique_reference": target.unique_reference, "response": resp}
 
     # ---- legacy single-stamp era ----
-    ref = frappe.db.get_value("POS Invoice", invoice_name, "payroc_unique_reference")
+    ref = frappe.db.get_value("POS Invoice", invoice_name, "card_unique_reference")
     if not ref:
         frappe.throw(_("POS Invoice {0} has no Payroc payment to void.").format(invoice_name))
     try:
@@ -1212,18 +1212,18 @@ def void_pos_invoice(invoice_name: str, reason: str | None = None,
         "still valid and the references have not been cleared."))
     # Clear the stamps so a reversed invoice (e.g. a partial-approval recovery)
     # can be charged again from POS instead of dead-locking on "already charged".
-    # payroc_charged_amount must be 0, never None: Currency columns are NOT NULL,
+    # card_charged_amount must be 0, never None: Currency columns are NOT NULL,
     # and this UPDATE runs AFTER the gateway reversal — a 1048 here rolls back the
     # stamp clear while the money is already reversed.
     # _persist_money_fact is that incident's structural answer: retry the
     # write, and if it still fails leave a durable trace + stop the operator.
     # It also gives this legacy path the money-point commit it never had.
     _persist_money_fact(lambda: frappe.db.set_value("POS Invoice", invoice_name, {
-            "payroc_response": _resp_json(resp),
-            "payroc_unique_reference": None,
-            "payroc_instruction_id": None,
-            "payroc_status": "VOIDED",
-            "payroc_charged_amount": 0,
+            "card_response": _resp_json(resp),
+            "card_unique_reference": None,
+            "card_instruction_id": None,
+            "card_status": "VOIDED",
+            "card_charged_amount": 0,
         }, update_modified=False),
         action="void-legacy", invoice=invoice_name,
         facts={"unique_reference": ref, "response": resp})
@@ -1263,7 +1263,7 @@ def _original_gateway_charged(return_invoice_name: str) -> str:
     if not original:
         return ""
     live = [r for r in _charge_rows(original) if r.status == "CHARGED"]
-    ref = frappe.db.get_value("POS Invoice", original, "payroc_unique_reference")
+    ref = frappe.db.get_value("POS Invoice", original, "card_unique_reference")
     if not live and not ref:
         return ""
     return ref or (live[0].unique_reference if live else "?")
@@ -1297,7 +1297,7 @@ def _refuse_unconfirmed_gateway_refund(return_invoice_name: str) -> None:
     it: a control that clears itself is not a control. The exit is
     :func:`confirm_out_of_band_refund`: manager role, mandatory reason, the
     portal reference on its own field, and a timeline entry — the shape
-    ``payroc_manual_settlement`` and ``unlock_refund_lock`` already use.
+    ``card_manual_settlement`` and ``unlock_refund_lock`` already use.
 
     The ops alert stays (throttled): a refused refund at the counter must also
     reach whoever actually holds the portal login, or the customer waits on a
@@ -1307,7 +1307,7 @@ def _refuse_unconfirmed_gateway_refund(return_invoice_name: str) -> None:
     if not reference:
         return
     if (frappe.db.get_value("POS Invoice", return_invoice_name,
-            "payroc_oob_refund_reference") or "").strip():
+            "card_oob_refund_reference") or "").strip():
         return  # a manager has confirmed the portal refund — evidenced, proceed
     message = _oob_refund_instruction(reference)
     notify_admins(
@@ -1342,7 +1342,7 @@ def _cc_tender_total(parents: list) -> float:
 def _block_orphaned_sibling_refunds(original: str, exclude: str) -> None:
     """Money may only follow SUBMITTED return documents.
 
-    ``payroc_refunded_amount`` records what each return actually pushed back
+    ``card_refunded_amount`` records what each return actually pushed back
     at the gateway. The per-original-card caps bound HOW MUCH can ever go
     back per card, but not WHICH document the money belongs to: abandon a
     locked draft whose slices partly landed, open a fresh return for the
@@ -1366,8 +1366,8 @@ def _block_orphaned_sibling_refunds(original: str, exclude: str) -> None:
     only bound that is money-true (Σ pushed ≤ Σ documented) and the
     per-card caps bound the totals."""
     sibs = _sibling_returns(original, exclude,
-        ["name", "docstatus", "payroc_refunded_amount"])
-    booked = flt(sum(flt(s.payroc_refunded_amount) for s in sibs), 2)
+        ["name", "docstatus", "card_refunded_amount"])
+    booked = flt(sum(flt(s.card_refunded_amount) for s in sibs), 2)
     if booked <= 0:
         return
     submitted = [s.name for s in sibs if int(s.docstatus) == 1]
@@ -1375,12 +1375,12 @@ def _block_orphaned_sibling_refunds(original: str, exclude: str) -> None:
     if booked - entitled > _MONEY_EPSILON:
         from frappe.utils import fmt_money
         orphans = [s.name for s in sibs
-            if int(s.docstatus) != 1 and flt(s.payroc_refunded_amount) > 0]
+            if int(s.docstatus) != 1 and flt(s.card_refunded_amount) > 0]
         if not orphans:
             # The imbalance can also sit on SUBMITTED siblings (booked more
             # than their own tender rows now say — e.g. CC rows edited after
             # the refund): name those instead of an unhelpful "?".
-            own_booked = {s.name: flt(s.payroc_refunded_amount) for s in sibs}
+            own_booked = {s.name: flt(s.card_refunded_amount) for s in sibs}
             orphans = [n for n in submitted
                 if own_booked.get(n, 0) - _cc_tender_total([n]) > _MONEY_EPSILON]
         frappe.throw(_("Card refunds already booked against original invoice {0} ({1}) exceed "
@@ -1437,7 +1437,7 @@ def refund_pos_invoice(return_invoice_name: str, reason: str | None = None) -> d
         frappe.throw(_("Return invoice {0} has no original invoice in return_against."
             ).format(return_invoice_name))
     orig_rows = [r for r in _charge_rows(original) if r.status == "CHARGED"]
-    ref = frappe.db.get_value("POS Invoice", original, "payroc_unique_reference")
+    ref = frappe.db.get_value("POS Invoice", original, "card_unique_reference")
     if not orig_rows and not ref:
         # Original wasn't charged through Payroc (cash / manual-terminal sale) —
         # nothing to refund via the gateway; the return proceeds normally.
@@ -1456,7 +1456,7 @@ def refund_pos_invoice(return_invoice_name: str, reason: str | None = None) -> d
     # no snapshot-isolation error as a backstop). Serializes double-clicks /
     # two tills against the pre-arm below.
     prior_ref = frappe.db.get_value("POS Invoice", return_invoice_name,
-        "payroc_refund_reference", for_update=True)
+        "card_refund_reference", for_update=True)
     if _is_refund_lock(prior_ref):
         if prior_ref == REFUND_LOCK_UNKNOWN:
             frappe.throw(_("The automatic refund for return invoice {0} is locked ({1}): the "
@@ -1504,7 +1504,7 @@ def refund_pos_invoice(return_invoice_name: str, reason: str | None = None) -> d
     # original) count against what's left — N partial returns must not sum past
     # the original capture.
     prior = [p for p in _sibling_returns(original, return_invoice_name,
-        ["name", "payroc_refund_reference"]) if p.payroc_refund_reference]
+        ["name", "card_refund_reference"]) if p.card_refund_reference]
     prior_refunded = _cc_tender_total([p.name for p in prior])
     remaining = flt(orig_cc, 2) - flt(prior_refunded, 2)
     if flt(cc_amt, 2) > remaining:
@@ -1512,7 +1512,7 @@ def refund_pos_invoice(return_invoice_name: str, reason: str | None = None) -> d
         # deliberately (its refund may have landed; under-counting could
         # over-refund). But then the rejection must say WHICH sibling and
         # that a manager can resolve it, or the operator dead-ends.
-        locked = [p.name for p in prior if _is_refund_lock(p.payroc_refund_reference)]
+        locked = [p.name for p in prior if _is_refund_lock(p.card_refund_reference)]
         hint = (_("Of these, {0} are in a refund lock (outcome undecided, counted as fully "
             "refunded); a manager should check in the Payroc back office and then deal with "
             "it: an UNKNOWN-OUTCOME lock can be released with Unlock Card Refund to retry, and "
@@ -1545,7 +1545,7 @@ def refund_pos_invoice(return_invoice_name: str, reason: str | None = None) -> d
     # A failure WRITING the pre-arm aborts before any money moves — plain
     # throw, freely retryable.
     frappe.db.set_value("POS Invoice", return_invoice_name,
-        "payroc_refund_reference", REFUND_LOCK_UNKNOWN, update_modified=False)
+        "card_refund_reference", REFUND_LOCK_UNKNOWN, update_modified=False)
     _commit_money_point()
     _money_logger().info(
         f"refund-legacy pre-arm {return_invoice_name}: {REFUND_LOCK_UNKNOWN} "
@@ -1556,7 +1556,7 @@ def refund_pos_invoice(return_invoice_name: str, reason: str | None = None) -> d
         # If the clear itself fails, the lock stays — safe direction — but
         # the operator must hear the LOCKED story with its manager exit AND
         # the original gateway cause, not a raw 500.
-        stamps = {"payroc_refund_reference": None}
+        stamps = {"card_refund_reference": None}
         stamps.update(extra or {})
         try:
             frappe.db.set_value("POS Invoice", return_invoice_name, stamps,
@@ -1593,7 +1593,7 @@ def refund_pos_invoice(return_invoice_name: str, reason: str | None = None) -> d
         # Declined inside a 200 — a definite non-refund. Deliberately NOT
         # _throw_if_declined: that helper only records; this
         # path must also CLEAR the pre-armed lock in the same durable write.
-        _disarm({"payroc_response": _resp_json(resp)}, cause=f"declined: {declined}")
+        _disarm({"card_response": _resp_json(resp)}, cause=f"declined: {declined}")
         frappe.throw(_("Refund refused by the gateway ({0}).").format(declined))
     # Money moved — overwrite the pre-armed lock with the real facts.
     # On a DB double failure the overwrite never lands and the committed
@@ -1601,12 +1601,12 @@ def refund_pos_invoice(return_invoice_name: str, reason: str | None = None) -> d
     _persist_money_fact(lambda: frappe.db.set_value("POS Invoice", return_invoice_name, {
             # Never stamp "" — both the re-refund guard above and the cumulative cap
             # key off this field being set.
-            "payroc_refund_reference": (resp or {}).get("refundReference")
+            "card_refund_reference": (resp or {}).get("refundReference")
                 or (resp or {}).get("uniqueReference") or "UNKNOWN",
-            "payroc_response": _resp_json(resp),
-            "payroc_status": "REFUNDED",
+            "card_response": _resp_json(resp),
+            "card_status": "REFUNDED",
             # THIS return's booked fact — legacy is one full-amount shot.
-            "payroc_refunded_amount": cc_amt,
+            "card_refunded_amount": cc_amt,
         }, update_modified=False),
         action="refund-legacy", invoice=return_invoice_name,
         facts={"original": original, "amount": cc_amt,
@@ -1641,7 +1641,7 @@ def _refund_across_rows(ret, original: str, orig_rows: list, cc_amt: float,
     # THIS return's booked fact: accumulated per slice inside the
     # same durable write as the row ledger — feeds the orphan-refund gate.
     booked = flt(frappe.db.get_value("POS Invoice", ret.name,
-        "payroc_refunded_amount") or 0, 2)
+        "card_refunded_amount") or 0, 2)
 
     def _lock_and_throw(resp, message, arm=False):
         # A failed slice AFTER successful ones: the successes are already
@@ -1652,9 +1652,9 @@ def _refund_across_rows(ret, original: str, orig_rows: list, cc_amt: float,
         # with zero successes — for outcome-UNKNOWN failures (r2-B2).
         stamps = {}
         if resp is not None:
-            stamps["payroc_response"] = _resp_json(resp)
+            stamps["card_response"] = _resp_json(resp)
         if refs or arm:
-            stamps["payroc_refund_reference"] = (
+            stamps["card_refund_reference"] = (
                 (REFUND_LOCK_PARTIAL_PREFIX + ",".join(refs)) if refs
                 else REFUND_LOCK_UNKNOWN)[:140]
         if stamps:
@@ -1726,10 +1726,10 @@ def _refund_across_rows(ret, original: str, orig_rows: list, cc_amt: float,
         booked_after = flt(booked + take, 2)
 
         def _write_slice(row_name=row.name, nr=new_refunded, ba=booked_after):
-            frappe.db.set_value("Payroc Charge", row_name, "refunded_amount",
+            frappe.db.set_value("Card Charge", row_name, "refunded_amount",
                 nr, update_modified=False)
             frappe.db.set_value("POS Invoice", ret.name,
-                "payroc_refunded_amount", ba, update_modified=False)
+                "card_refunded_amount", ba, update_modified=False)
 
         _persist_money_fact(_write_slice,
             action="refund-slice", invoice=ret.name,
@@ -1741,13 +1741,13 @@ def _refund_across_rows(ret, original: str, orig_rows: list, cc_amt: float,
         refs.append((resp or {}).get("refundReference")
             or (resp or {}).get("uniqueReference") or "UNKNOWN")
         rest = flt(rest - take, 2)
-    # payroc_refunded_amount is deliberately absent here: the row era books
+    # card_refunded_amount is deliberately absent here: the row era books
     # it per-slice inside each slice's durable write; the legacy success
     # stamp writes it whole because legacy has no slices.
     _persist_money_fact(lambda: frappe.db.set_value("POS Invoice", ret.name, {
-            "payroc_refund_reference": refs[0] if len(refs) == 1 else "MULTI",
-            "payroc_response": _json.dumps({"refund_references": refs})[:1000],
-            "payroc_status": "REFUNDED",
+            "card_refund_reference": refs[0] if len(refs) == 1 else "MULTI",
+            "card_response": _json.dumps({"refund_references": refs})[:1000],
+            "card_status": "REFUNDED",
         }, update_modified=False),
         action="refund-final", invoice=ret.name,
         facts={"refund_references": refs})
@@ -1810,7 +1810,7 @@ def unlock_refund_lock(return_invoice_name: str, reason: str) -> dict:
             ).format(return_invoice_name))
     # Serialize against a refund attempt arming the lock mid-flight.
     current = frappe.db.get_value("POS Invoice", return_invoice_name,
-        "payroc_refund_reference", for_update=True)
+        "card_refund_reference", for_update=True)
     if not _is_unlockable_lock(current):
         # POSITIVE gate first (whitelist, mirroring the JS button) — the
         # branches below only pick the right refusal message.
@@ -1835,7 +1835,7 @@ def unlock_refund_lock(return_invoice_name: str, reason: str) -> dict:
         "invoice's full amount again."
         ).format(frappe.session.user, current, reason))
     frappe.db.set_value("POS Invoice", return_invoice_name,
-        "payroc_refund_reference", None, update_modified=False)
+        "card_refund_reference", None, update_modified=False)
     _commit_money_point()
     _money_logger().info(
         f"refund-unlock {return_invoice_name}: cleared {current!r} "
@@ -1854,8 +1854,8 @@ def block_locked_return_trash(doc, method=None):
     skip the unlock's portal-verification attestation. bench console
     (delete_doc ignore_on_trash / raw SQL) stays the documented last-resort
     escape for a reconciled-and-documented case."""
-    ref = doc.get("payroc_refund_reference")
-    booked = flt(doc.get("payroc_refunded_amount"))
+    ref = doc.get("card_refund_reference")
+    booked = flt(doc.get("card_refunded_amount"))
     if not ref and booked <= 0:
         return
     if ref == REFUND_LOCK_UNKNOWN:
@@ -1904,7 +1904,7 @@ def restore_charge_rows(doc, method=None):
         # A BRAND-NEW doc can own no charge rows AND no booked money — the
         # lifecycle writers only touch persisted invoices. Any payload rows
         # here are foreign: copied in by make_return_doc/amend/duplicate
-        # before the payroc_charges field carried no_copy, or hand-built
+        # before the card_charges field carried no_copy, or hand-built
         # through the API. Skipping (the earlier behavior) let a return of
         # a row-era sale INSERT the original's rows under its own name —
         # phantom Σcaptured that jammed block_partial_submit on every such
@@ -1912,27 +1912,27 @@ def restore_charge_rows(doc, method=None):
         # (in-container proof + regression tests in
         # ffl_core test_consignment_out_reinvoice), so
         # an amended return would inherit its predecessor's
-        # payroc_refunded_amount and the orphan gate would double-count the
+        # card_refunded_amount and the orphan gate would double-count the
         # same pushed money — zero it here BY HOOK, not by field property.
         # The refund LOCK is deliberately NOT cleared: an inherited lock on
         # an amend copy is fail-safe (guarded until a manager acts).
-        if doc.get("payroc_charges"):
+        if doc.get("card_charges"):
             _money_logger().info(
                 f"POS Invoice (new, {doc.name or 'unnamed'}): stripped "
-                f"{len(doc.get('payroc_charges'))} foreign charge row(s) from "
+                f"{len(doc.get('card_charges'))} foreign charge row(s) from "
                 "insert payload — a new invoice owns none.")
-            doc.set("payroc_charges", [])
-        if flt(doc.get("payroc_refunded_amount")):
+            doc.set("card_charges", [])
+        if flt(doc.get("card_refunded_amount")):
             _money_logger().info(
                 f"POS Invoice (new, {doc.name or 'unnamed'}, amended_from="
                 f"{doc.get('amended_from') or '-'}): zeroed inherited "
-                f"payroc_refunded_amount {flt(doc.get('payroc_refunded_amount'))}")
-            doc.set("payroc_refunded_amount", 0)
+                f"card_refunded_amount {flt(doc.get('card_refunded_amount'))}")
+            doc.set("card_refunded_amount", 0)
         return
-    db_rows = frappe.get_all("Payroc Charge",
+    db_rows = frappe.get_all("Card Charge",
         filters={"parenttype": "POS Invoice", "parent": doc.name},
         fields=["*"], order_by="idx asc")
-    if not db_rows and not (doc.get("payroc_charges") or []):
+    if not db_rows and not (doc.get("card_charges") or []):
         return
 
     def _row_shape(r):
@@ -1943,7 +1943,7 @@ def restore_charge_rows(doc, method=None):
             r.get("instruction_id") or "", int(r.get("attempt") or 0),
             r.get("card_summary") or "", r.get("response") or "")
 
-    payload = [_row_shape(r) for r in (doc.get("payroc_charges") or [])]
+    payload = [_row_shape(r) for r in (doc.get("card_charges") or [])]
     truth = [_row_shape(r) for r in db_rows]
     if payload != truth:
         # Audited restore — the same shape as the 4473 webhook-field
@@ -1954,10 +1954,10 @@ def restore_charge_rows(doc, method=None):
             f"DB truth {truth} was restored.")
     # Restore UNCONDITIONALLY — the comparison only decides the audit trace,
     # never whether the DB truth is applied.
-    doc.set("payroc_charges", [])
+    doc.set("card_charges", [])
     for r in db_rows:
         r.pop("doctype", None)
-        doc.append("payroc_charges", r)
+        doc.append("card_charges", r)
 
 
 def block_partial_submit(doc, method=None):
@@ -1977,12 +1977,12 @@ def block_partial_submit(doc, method=None):
     if any(r.status == "IN_PROGRESS" for r in rows):
         frappe.throw(_("A card instruction is still in progress on the terminal; wait for it to "
             "finish or cancel it, then submit."))
-    if doc.get("payroc_manual_settlement"):
+    if doc.get("card_manual_settlement"):
         # The decision is that a MANAGER may override — enforced hard on the server,
         # not left to the UI.
         _check_manager(_("Submitting over a Manual Card Settlement requires manager permission "
             "(Sales Manager)."))
-        if not (doc.get("payroc_manual_settlement_reason") or "").strip():
+        if not (doc.get("card_manual_settlement_reason") or "").strip():
             frappe.throw(_("A reason is required when Manual Card Settlement is ticked (who "
                 "collected the payment, where, the amount and the receipt)."))
         return
@@ -2002,7 +2002,7 @@ def block_partial_submit(doc, method=None):
                 "Manual Card Settlement and give a reason, then submit."
                 ).format(live, expected))
         return
-    if doc.get("payroc_status") == "PARTIAL":
+    if doc.get("card_status") == "PARTIAL":
         frappe.throw(_("Only part of the amount was approved on this invoice's card (PARTIAL), "
             "so it cannot be submitted as paid in full; a manager must void it in the back "
             "office and collect again."))
@@ -2043,9 +2043,9 @@ def require_card_reference_on_manual_tender(doc, method=None):
     """
     if not card_reference_required():
         return
-    if (getattr(doc, "payroc_unique_reference", "") or "").strip() or any(
+    if (getattr(doc, "card_unique_reference", "") or "").strip() or any(
             (getattr(r, "status", "") or "") == "CHARGED"
-            for r in (doc.get("payroc_charges") or [])):
+            for r in (doc.get("card_charges") or [])):
         return
     include_refunds = True
     if int(getattr(doc, "is_return", 0) or 0) and _original_gateway_charged(
@@ -2091,7 +2091,7 @@ def block_unconfirmed_gateway_refund(doc, method=None):
         return
     if payroc_enabled():
         return  # live gateway: refund_pos_invoice owns this path end to end
-    if (getattr(doc, "payroc_oob_refund_reference", "") or "").strip():
+    if (getattr(doc, "card_oob_refund_reference", "") or "").strip():
         return
     reference = _original_gateway_charged(getattr(doc, "name", "") or "")
     if not reference:
@@ -2143,7 +2143,7 @@ def confirm_out_of_band_refund(return_invoice_name: str, portal_reference: str,
             "Payroc is switched on — refunds go through the gateway, so there is "
             "nothing to confirm out of band."))
     meta = frappe.db.get_value("POS Invoice", return_invoice_name,
-        ["is_return", "docstatus", "payroc_oob_refund_reference"], as_dict=True)
+        ["is_return", "docstatus", "card_oob_refund_reference"], as_dict=True)
     if not meta:
         frappe.throw(_("Unknown POS Invoice {0}.").format(return_invoice_name))
     if not int(meta.is_return or 0):
@@ -2152,10 +2152,10 @@ def confirm_out_of_band_refund(return_invoice_name: str, portal_reference: str,
     if int(meta.docstatus) == 2:
         frappe.throw(_("{0} is cancelled; there is nothing to confirm on it."
             ).format(return_invoice_name))
-    if (meta.payroc_oob_refund_reference or "").strip():
+    if (meta.card_oob_refund_reference or "").strip():
         frappe.throw(_("{0} already carries portal-refund confirmation {1} — a "
             "second confirmation would hide the first.").format(
-            return_invoice_name, meta.payroc_oob_refund_reference))
+            return_invoice_name, meta.card_oob_refund_reference))
     reference = _original_gateway_charged(return_invoice_name)
     if not reference:
         frappe.throw(_(
@@ -2170,7 +2170,7 @@ def confirm_out_of_band_refund(return_invoice_name: str, portal_reference: str,
         "Original gateway charge: {3}."
     ).format(frappe.session.user, portal_reference, reason, reference))
     frappe.db.set_value("POS Invoice", return_invoice_name,
-        "payroc_oob_refund_reference", portal_reference, update_modified=False)
+        "card_oob_refund_reference", portal_reference, update_modified=False)
     _money_logger().info(
         f"oob-refund-confirm {return_invoice_name}: {portal_reference!r} "
         f"by {frappe.session.user}: {reason[:500]}")
