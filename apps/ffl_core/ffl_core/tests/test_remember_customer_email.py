@@ -73,7 +73,18 @@ class RememberCustomerEmailTest(FrappeTestCase):
 		with self.subTest("store inbox"), mock.patch.object(frappe.db, "exists", exists):
 			manual_order._remember_customer_email(cust, "info@store.example")
 			self.assertFalse(self._email(cust))
+		with self.subTest("several addresses"):
+			manual_order._remember_customer_email(cust, "a@example.com, b@example.com")
+			self.assertFalse(self._email(cust))
 		with self.subTest("another buyer's address"):
 			self._customer("filler@example.com")
 			manual_order._remember_customer_email(cust, "filler@example.com")
 			self.assertFalse(self._email(cust))
+
+	def test_a_failed_save_never_blocks_the_order(self):
+		cust = self._customer()
+		with mock.patch("frappe.model.document.Document.save", side_effect=frappe.ValidationError("boom")), \
+				mock.patch.object(frappe, "log_error") as log:
+			manual_order._remember_customer_email(cust, "blocked@example.com")
+		log.assert_called_once()
+		self.assertFalse(self._email(cust))

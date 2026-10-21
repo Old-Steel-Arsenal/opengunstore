@@ -4747,33 +4747,45 @@ def _remember_customer_email(customer: str, email: str) -> None:
 	file, so the next order fills it in. Never overwrites an email the buyer
 	already has (a one-off receipt address stays on that order), and never
 	saves a placeholder: one of the store's own inboxes, or an address already
-	used for another buyer (staff type a filler when the buyer has no email)."""
+	used for another buyer (staff type a filler when the buyer has no email).
+	Best effort: a failure here is logged and never blocks the order."""
 	from frappe.utils import validate_email_address
 
 	email = validate_email_address(email)
-	if not email or frappe.db.get_value("Customer", customer, "email_id"):
+	if not email or "," in email:   # one address only; a list stays on the order
 		return
+	cust = frappe.db.get_value("Customer", customer,
+		["email_id", "customer_primary_contact", "customer_name"], as_dict=True)
+	if not cust or cust.email_id:
+		return
+	# lazy: contact_email is unindexed, so this scans every invoice; add an index if orders reach ~100k.
 	if frappe.db.exists("Email Account", {"email_id": email}) \
 			or frappe.db.exists("Customer", {"email_id": email, "name": ["!=", customer]}) \
-			or frappe.db.exists("Sales Invoice", {"contact_email": email, "customer": ["!=", customer]}):
+			or frappe.db.exists("Sales Invoice", {"contact_email": email,
+				"customer": ["!=", customer], "docstatus": ["!=", 2]}):
 		return
-	contact_name = frappe.db.get_value("Customer", customer, "customer_primary_contact")
-	if contact_name:
-		contact = frappe.get_doc("Contact", contact_name)
-		if not any((r.email_id or "").lower() == email.lower() for r in contact.email_ids):
-			contact.append("email_ids", {"email_id": email})
-		# Contact allows one primary; the buyer has no email on file, so this one is it.
-		for r in contact.email_ids:
-			r.is_primary = 1 if (r.email_id or "").lower() == email.lower() else 0
-	else:
-		contact = frappe.new_doc("Contact")
-		contact.first_name = frappe.db.get_value("Customer", customer, "customer_name") or customer
-		contact.append("email_ids", {"email_id": email, "is_primary": 1})
-		contact.append("links", {"link_doctype": "Customer", "link_name": customer})
-	contact.flags.ignore_permissions = True
-	contact.save()
-	frappe.db.set_value("Customer", customer, {
-		"email_id": email, "customer_primary_contact": contact.name})
+	savepoint = "remember_customer_email"
+	frappe.db.savepoint(savepoint)
+	try:
+		if cust.customer_primary_contact:
+			contact = frappe.get_doc("Contact", cust.customer_primary_contact)
+			if not any((r.email_id or "").lower() == email.lower() for r in contact.email_ids):
+				contact.append("email_ids", {"email_id": email})
+			# Contact allows one primary; the buyer has no email on file, so this one is it.
+			for r in contact.email_ids:
+				r.is_primary = 1 if (r.email_id or "").lower() == email.lower() else 0
+		else:
+			contact = frappe.new_doc("Contact")
+			contact.first_name = cust.customer_name or customer
+			contact.append("email_ids", {"email_id": email, "is_primary": 1})
+			contact.append("links", {"link_doctype": "Customer", "link_name": customer})
+		contact.flags.ignore_permissions = True
+		contact.save()
+		frappe.db.set_value("Customer", customer, {
+			"email_id": email, "customer_primary_contact": contact.name})
+	except Exception:
+		frappe.db.rollback(save_point=savepoint)
+		frappe.log_error(title=f"Could not save the receipt email onto Customer {customer}")
 
 
 def _customer_email_hint(si) -> str | None:
