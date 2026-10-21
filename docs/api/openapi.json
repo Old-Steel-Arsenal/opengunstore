@@ -11885,7 +11885,7 @@
           "ffl_core"
         ],
         "summary": "Make a new accessory / ammo / parts Item from the Trade-in dialog, for something the store has never stocked.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Stock Manager / System Manager\n\n**Permissions:** roles.TRADE_IN_ROLES, like the trade-in itself: the counter takes in what the seller brings. Only a non-serialized, non-firearm stock Item can be made here; any other Item stays a stock job (receive_goods.create_item).\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:356`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Stock Manager / System Manager\n\n**Permissions:** roles.TRADE_IN_ROLES, like the trade-in itself: the counter takes in what the seller brings. Only a non-serialized, non-firearm stock Item can be made here; any other Item stays a stock job (receive_goods.create_item).\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:359`",
         "operationId": "ffl_core.api.trade_in.create_accessory_item",
         "responses": {
           "200": {
@@ -11992,7 +11992,7 @@
           "ffl_core"
         ],
         "summary": "Prefill for the POS Trade-in dialog's seller section.",
-        "description": "A best-effort structured-name split of the Customer (generational\nsuffix pulled out even mid-name — 'pat lee IV Sampleton' →\nfirst pat, middle lee, last Sampleton, suffix IV) plus their\nprimary address as a single line ('addr1, City ST zip' — the shape the\nFastBound push parses). Everything is editable in the dialog; this only\nsaves retyping.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:498`",
+        "description": "A best-effort structured-name split of the Customer (generational\nsuffix pulled out even mid-name — 'pat lee IV Sampleton' →\nfirst pat, middle lee, last Sampleton, suffix IV) plus their\nprimary address as a single line ('addr1, City ST zip' — the shape the\nFastBound push parses). Everything is editable in the dialog; this only\nsaves retyping.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:501`",
         "operationId": "ffl_core.api.trade_in.seller_defaults",
         "responses": {
           "200": {

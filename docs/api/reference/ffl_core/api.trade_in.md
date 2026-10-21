@@ -22,7 +22,7 @@ Make a new accessory / ammo / parts Item from the Trade-in dialog, for something
 
 **Permissions:** roles.TRADE_IN_ROLES, like the trade-in itself: the counter takes in what the seller brings. Only a non-serialized, non-firearm stock Item can be made here; any other Item stays a stock job (receive_goods.create_item).
 
-<sub>`apps/ffl_core/ffl_core/api/trade_in.py:356`</sub>
+<sub>`apps/ffl_core/ffl_core/api/trade_in.py:359`</sub>
 
 ## `create_trade_in_intake`
 
@@ -83,4 +83,4 @@ saves retyping.
 
 **Returns:** {source_first_name, source_middle_name, source_last_name, source_suffix, source_address_line1, ...} or {} when unknown.
 
-<sub>`apps/ffl_core/ffl_core/api/trade_in.py:498`</sub>
+<sub>`apps/ffl_core/ffl_core/api/trade_in.py:501`</sub>
