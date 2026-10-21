@@ -16,7 +16,7 @@ import re
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from ffl_integrations.payroc import api as payroc_api
+from ffl_integrations.payments import api as payroc_api
 
 CJK = re.compile(r"[一-鿿　-〿＀-￯]")
 

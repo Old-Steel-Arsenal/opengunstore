@@ -8,21 +8,20 @@ from ffl_integrations.integration_gate import (
     card_reference_required,
     fastbound_enabled,
     gunbroker_enabled,
-    payroc_enabled,
 )
-from ffl_integrations.payroc.setup import MODE_OF_PAYMENT_NAME
+from ffl_integrations.payments.registry import active_processor
+from ffl_integrations.payments.setup import MODE_OF_PAYMENT_NAME
 
 
 def extend_bootinfo(bootinfo):
-    # Single source of truth for the Payroc tender name: the POS bundle reads
-    # frappe.boot.payroc_mop instead of hard-coding "Credit Card" a second time.
-    bootinfo.payroc_mop = MODE_OF_PAYMENT_NAME
+    # Single source of truth for the card tender name: the POS bundle reads
+    # frappe.boot.card_mop instead of hard-coding "Credit Card" a second time.
+    bootinfo.card_mop = MODE_OF_PAYMENT_NAME
     # Integration switches, so the POS bundle can decide BEFORE it saves a draft and
     # round-trips to a server that would only answer {"skip": true}. The server
     # gates stay authoritative — these spare the counter a dead round-trip and let
     # the UI hide buttons that would do nothing.
     try:
-        bootinfo.ffl_payroc_enabled = 1 if payroc_enabled() else 0
         bootinfo.ffl_fastbound_enabled = 1 if fastbound_enabled() else 0
         bootinfo.ffl_paper_4473_mode = 1 if paper_4473_mode() else 0
         bootinfo.ffl_require_card_reference = 1 if card_reference_required() else 0
@@ -47,6 +46,24 @@ def extend_bootinfo(bootinfo):
         try:
             frappe.log_error(
                 title="ffl_integrations: boot switches unavailable",
+                message=frappe.get_traceback(with_context=True))
+        except Exception:
+            pass
+
+    # The card processor that takes new money: {code, label, enabled}; no processor
+    # on = enabled 0 (cards are plain tender on a standalone terminal). Its own try:
+    # two processors switched on make active_processor() refuse, and that must not
+    # take the FastBound / 4473 keys above down with it. An absent key makes the
+    # bundle fall back to driving the terminal, where the charge call then says
+    # what is wrong.
+    try:
+        card = active_processor()
+        bootinfo.ffl_card_processor = {"code": card.code if card else "",
+            "label": card.label if card else "", "enabled": 1 if card else 0}
+    except Exception:
+        try:
+            frappe.log_error(
+                title="ffl_integrations: card processor unavailable at boot",
                 message=frappe.get_traceback(with_context=True))
         except Exception:
             pass

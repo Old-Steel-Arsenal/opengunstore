@@ -121,9 +121,9 @@ class PayrocSwitchedOff(SettingsSandbox, FrappeTestCase):
 	def test_charge_is_inert(self):
 		"""The pre-existing go-live gate now also answers to the switch: POS gets
 		{"skip": True} and submits the invoice with the card row as plain tender."""
-		from ffl_integrations.payroc.api import charge_pos_invoice
+		from ffl_integrations.payments.api import charge_pos_invoice
 
-		with patch("ffl_integrations.payroc.api.PayrocClient") as client_cls:
+		with patch("ffl_integrations.payroc.adapter.PayrocClient") as client_cls:
 			self.assertEqual(charge_pos_invoice("PSINV-DOES-NOT-EXIST"), {"skip": True})
 			client_cls.from_settings.assert_not_called()
 
@@ -132,9 +132,9 @@ class PayrocSwitchedOff(SettingsSandbox, FrappeTestCase):
 		does not exist. An earlier cut of the gateway-charge check reordered this
 		into a get_doc() and turned the skip into DoesNotExistError; CI caught it on
 		this test and its twin in test_payroc."""
-		from ffl_integrations.payroc.api import refund_pos_invoice
+		from ffl_integrations.payments.api import refund_pos_invoice
 
-		with patch("ffl_integrations.payroc.api.PayrocClient") as client_cls:
+		with patch("ffl_integrations.payroc.adapter.PayrocClient") as client_cls:
 			self.assertEqual(refund_pos_invoice("PSINV-DOES-NOT-EXIST"), {"skip": True})
 			client_cls.from_settings.assert_not_called()
 
@@ -150,7 +150,7 @@ class PayrocSwitchedOff(SettingsSandbox, FrappeTestCase):
 		standalone-terminal rule force-collects that very field, so the guard
 		cleared itself in the default configuration.
 		"""
-		from ffl_integrations.payroc import api
+		from ffl_integrations.payments import api
 
 		def _get_value(doctype, name, field=None, *a, **k):
 			return {"return_against": "PSINV-ORIG",
@@ -171,7 +171,7 @@ class PayrocSwitchedOff(SettingsSandbox, FrappeTestCase):
 		"""After the manager records the portal refund, the same call answers
 		{"skip": True} — the return may submit, and the money story is on the
 		document (its own field + timeline), not implied by silence."""
-		from ffl_integrations.payroc import api
+		from ffl_integrations.payments import api
 
 		def _get_value(doctype, name, field=None, *a, **k):
 			return {"return_against": "PSINV-ORIG",
@@ -189,7 +189,7 @@ class PayrocSwitchedOff(SettingsSandbox, FrappeTestCase):
 	def test_refund_of_a_never_charged_sale_still_skips(self):
 		"""A cash / standalone-terminal original has no gateway money to send back,
 		so the return proceeds exactly as before."""
-		from ffl_integrations.payroc import api
+		from ffl_integrations.payments import api
 
 		def _get_value(doctype, name, field=None, *a, **k):
 			return {"return_against": "PSINV-ORIG2"}.get(field)
@@ -202,7 +202,7 @@ class PayrocSwitchedOff(SettingsSandbox, FrappeTestCase):
 	def test_terminal_discovery_is_inert(self):
 		from ffl_integrations.payroc.api import discover_terminals
 
-		with patch("ffl_integrations.payroc.api.PayrocClient") as client_cls:
+		with patch("ffl_integrations.payroc.adapter.PayrocClient") as client_cls:
 			self.assertEqual(discover_terminals(), {"skip": True})
 			client_cls.from_settings.assert_not_called()
 
@@ -213,8 +213,8 @@ class PayrocSwitchedOff(SettingsSandbox, FrappeTestCase):
 
 		boot = frappe._dict()
 		extend_bootinfo(boot)
-		self.assertEqual(boot.ffl_payroc_enabled, 0)
-		self.assertEqual(boot.payroc_mop, "Credit Card")
+		self.assertEqual(boot.ffl_card_processor, {"code": "", "label": "", "enabled": 0})
+		self.assertEqual(boot.card_mop, "Credit Card")
 
 
 class FastBoundSwitchedOff(SettingsSandbox, FrappeTestCase):
@@ -560,7 +560,7 @@ class CardReferenceGate(SettingsSandbox, FrappeTestCase):
 		})
 
 	def _run(self, doc):
-		from ffl_integrations.payroc.api import require_card_reference_on_manual_tender
+		from ffl_integrations.payments.api import require_card_reference_on_manual_tender
 
 		require_card_reference_on_manual_tender(doc)
 
@@ -627,7 +627,7 @@ class CardReferenceGate(SettingsSandbox, FrappeTestCase):
 		"""Its money goes back through the Payroc portal, evidenced by the
 		manager's confirmation — there is no terminal refund receipt to type. An
 		ordinary standalone return (original never gateway-charged) stays gated."""
-		from ffl_integrations.payroc import api
+		from ffl_integrations.payments import api
 
 		doc = self._doc(amount=-100.0, reference="", is_return=1, name="RET-GW-1")
 		with patch.object(api, "_original_gateway_charged", return_value="AUTH-9"):
@@ -649,7 +649,7 @@ class CardReferenceGate(SettingsSandbox, FrappeTestCase):
 		The POS *client* half (does the counter actually get asked?) is browser
 		behaviour and belongs to QA.
 		"""
-		from ffl_integrations.payroc.api import require_card_reference_on_manual_tender
+		from ffl_integrations.payments.api import require_card_reference_on_manual_tender
 
 		doc = frappe.new_doc("POS Invoice")
 		doc.is_return = 1
@@ -686,12 +686,12 @@ class BlockUnconfirmedGatewayRefundHook(SettingsSandbox, FrappeTestCase):
 			"is_return": 1, "name": "RET-HOOK-1", **extra})
 
 	def _run(self, doc):
-		from ffl_integrations.payroc.api import block_unconfirmed_gateway_refund
+		from ffl_integrations.payments.api import block_unconfirmed_gateway_refund
 
 		block_unconfirmed_gateway_refund(doc)
 
 	def test_blocks_an_unconfirmed_gateway_return_at_submit(self):
-		from ffl_integrations.payroc import api
+		from ffl_integrations.payments import api
 
 		with patch.object(api, "_original_gateway_charged", return_value="AUTH-1"):
 			with self.assertRaises(frappe.ValidationError) as ctx:
@@ -699,13 +699,13 @@ class BlockUnconfirmedGatewayRefundHook(SettingsSandbox, FrappeTestCase):
 		self.assertIn("Confirm Portal Refund", str(ctx.exception))
 
 	def test_a_confirmed_return_submits(self):
-		from ffl_integrations.payroc import api
+		from ffl_integrations.payments import api
 
 		with patch.object(api, "_original_gateway_charged", return_value="AUTH-1"):
 			self._run(self._doc(card_oob_refund_reference="PORTAL-RF-9"))
 
 	def test_ordinary_returns_and_sales_are_untouched(self):
-		from ffl_integrations.payroc import api
+		from ffl_integrations.payments import api
 
 		with patch.object(api, "_original_gateway_charged", return_value=""):
 			self._run(self._doc())                       # never gateway-charged
@@ -725,7 +725,7 @@ class OutOfBandRefundConfirmation(SettingsSandbox, FrappeTestCase):
 		self.set_single(PAYROC_SETTINGS, "enabled", 0)
 
 	def _confirm(self, **kw):
-		from ffl_integrations.payroc.api import confirm_out_of_band_refund
+		from ffl_integrations.payments.api import confirm_out_of_band_refund
 
 		args = {"return_invoice_name": "RET-OOB-1",
 			"portal_reference": "PORTAL-RF-42", "reason": "customer refunded 8/18"}
@@ -750,7 +750,7 @@ class OutOfBandRefundConfirmation(SettingsSandbox, FrappeTestCase):
 		self.assertIn("switched on", str(ctx.exception))
 
 	def test_happy_path_writes_field_and_timeline(self):
-		from ffl_integrations.payroc import api
+		from ffl_integrations.payments import api
 
 		meta = frappe._dict({"is_return": 1, "docstatus": 0,
 			"card_oob_refund_reference": ""})
@@ -778,7 +778,7 @@ class OutOfBandRefundConfirmation(SettingsSandbox, FrappeTestCase):
 			"card_oob_refund_reference", "PORTAL-RF-42"))
 
 	def test_double_confirmation_is_refused(self):
-		from ffl_integrations.payroc import api
+		from ffl_integrations.payments import api
 
 		meta = frappe._dict({"is_return": 1, "docstatus": 0,
 			"card_oob_refund_reference": "PORTAL-RF-1"})
@@ -788,7 +788,7 @@ class OutOfBandRefundConfirmation(SettingsSandbox, FrappeTestCase):
 		self.assertIn("already", str(ctx.exception))
 
 	def test_never_charged_original_is_refused(self):
-		from ffl_integrations.payroc import api
+		from ffl_integrations.payments import api
 
 		meta = frappe._dict({"is_return": 1, "docstatus": 0,
 			"card_oob_refund_reference": ""})
@@ -806,7 +806,7 @@ class OutOfBandRefundConfirmation(SettingsSandbox, FrappeTestCase):
 		self.assertIn("never charged", str(ctx.exception))
 
 	def test_not_a_return_is_refused(self):
-		from ffl_integrations.payroc import api
+		from ffl_integrations.payments import api
 
 		meta = frappe._dict({"is_return": 0, "docstatus": 1,
 			"card_oob_refund_reference": ""})

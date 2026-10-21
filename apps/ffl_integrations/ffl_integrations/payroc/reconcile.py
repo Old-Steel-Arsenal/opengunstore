@@ -19,9 +19,10 @@ from frappe.utils import add_days, flt, now_datetime
 
 from ffl_integrations.integration_gate import payroc_ready
 from ffl_integrations.notifications import notify_admins, safe_log_error
-from ffl_integrations.payroc.api import _sibling_returns
+from ffl_integrations.payments.api import _sibling_returns
+from ffl_integrations.payments.registry import LEGACY_PROCESSOR
 from ffl_integrations.payroc.client import PayrocClient
-from ffl_integrations.payroc.setup import MODE_OF_PAYMENT_NAME
+from ffl_integrations.payments.setup import MODE_OF_PAYMENT_NAME
 
 # Gateway statuses of a capture the store still holds: READY = captured, in the
 # open batch; COMPLETE = settled. PENDING is NOT held — it needs another
@@ -33,6 +34,7 @@ CAPTURED_ROW_STATUSES = ["CHARGED", "VOIDED", "REFUNDED"]
 # The multi-card aggregate stamp on POS Invoice.card_unique_reference.
 MULTI_STAMP = "MULTI"
 MARKER = "[payroc-reconcile]"
+PROCESSOR = "payroc"
 # Draft-invoice flags carry this after the reference, so a draft flagged while
 # held is flagged again (books wording) once it is submitted.
 DRAFT_TAG = "(draft)"
@@ -56,8 +58,10 @@ def _captured_charges(since, until=None) -> list[frappe._dict]:
 			filters={"status": "CHARGED", "creation": created,
 				"parenttype": "POS Invoice", "docstatus": ("<", 2)},
 			fields=["unique_reference as ref", "amount", "refunded_amount",
-				"parent as name", "docstatus"]):
-		if r.ref:
+				"parent as name", "docstatus", "processor"]):
+		# Only Payroc's own captures: another card processor's references mean nothing
+		# to this gateway (blank = recorded before charges named their processor).
+		if r.ref and (r.pop("processor", None) or LEGACY_PROCESSOR) == PROCESSOR:
 			out.setdefault(r.ref, frappe._dict(r, doctype="POS Invoice", draft=r.docstatus == 0))
 	# docstatus < 2 as above: a legacy single-stamp sale can sit as a held draft too.
 	for r in frappe.get_all("POS Invoice",
@@ -73,7 +77,9 @@ def _captured_charges(since, until=None) -> list[frappe._dict]:
 	for r in frappe.get_all("Card Terminal Payment",
 			filters={"status": "CHARGED", "creation": created,
 				"unique_reference": ("is", "set")},
-			fields=["unique_reference as ref", "amount", "sales_invoice as name"]):
+			fields=["unique_reference as ref", "amount", "sales_invoice as name", "processor"]):
+		if (r.pop("processor", None) or LEGACY_PROCESSOR) != PROCESSOR:
+			continue
 		out.setdefault(r.ref, frappe._dict(r, refunded_amount=0, doctype="Sales Invoice", draft=False))
 	# A counter order refunded through Cancel Order books a Pay PE ("Refund for
 	# cancelled <SI>") — attributable only when the SI took ONE card capture.

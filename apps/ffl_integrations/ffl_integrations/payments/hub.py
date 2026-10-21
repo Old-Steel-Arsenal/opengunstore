@@ -4,13 +4,13 @@ One custom page (``/app/payment-hub``) replaces the per-processor Settings
 shortcut, the same shape ``distributor-hub`` gave the wholesale houses: one
 card per processor with its enable switch, charge-side health and a
 connection probe. Credentials stay in each processor's own Single doctype
-(``entry.settings_doctype``) — the hub only links to it, so the next
-processor is a registry entry here plus its own Single, and the workspace
+(``settings_doctype``) — the hub only links to it, so the next processor is
+one ``gunshop_card_processors`` entry plus its own Single, and the workspace
 card never changes again.
 
-Today the registry holds one processor (Payroc). The page exists anyway
-because the workspace card is the thing being future-proofed: "Payments"
-stays the door when the second processor arrives.
+The cards come from the card processor registry (``payments.registry``, hook
+``gunshop_card_processors``): Payroc from this app, and any processor an
+extension adds. At most one is switched on — ``toggle`` refuses a second.
 
 Permission model mirrors Payroc Settings: System Manager only — the enable
 switch arms live money movement, so it answers to the same audience as the
@@ -22,46 +22,35 @@ from __future__ import annotations
 import frappe
 from frappe import _
 
-from ffl_core.utils import single_flag
-from ffl_integrations.integration_gate import payroc_enabled, payroc_ready
-from ffl_integrations.payroc.setup import MODE_OF_PAYMENT_NAME
+from ffl_integrations.payments import registry
+from ffl_integrations.payments.setup import MODE_OF_PAYMENT_NAME
 
 ROLES = ("System Manager",)
 
-# Static facts only, so overview() can ship rows to the client as-is.
-# Callables live in _READY / _PROBE below, keyed by the same code.
-# `health_fields` are (label, fieldname) pairs read off the Single — the
-# card's "is money actually flowing" line.
-PROCESSORS = (
-	frappe._dict(
-		code="payroc",
-		label="Payroc",
-		kind="Credit Card",
-		settings_doctype="Payroc Settings",
-		mode_of_payment=MODE_OF_PAYMENT_NAME,
-		enabled_default=1,
-		health_fields=(
-			("Token refreshed", "last_token_refreshed_at"),
-			("Last charge", "last_charge_at"),
-		),
-	),
-)
+
+SIDEBAR_SYNC = "ffl_core.setup.gunshop_sidebar.on_settings_update"
 
 
-def _entry(code: str) -> frappe._dict:
-	for p in PROCESSORS:
-		if p.code == code:
-			return p
-	frappe.throw(_("Unknown payment processor '{0}'.").format(code))
+def _hooked_on_update(doctype: str) -> list:
+	handlers = (frappe.get_hooks("doc_events") or {}).get(doctype, {}).get("on_update") or []
+	return [handlers] if isinstance(handlers, str) else list(handlers)
+
+
+def _entry(code: str):
+	p = registry.get_processor(code)
+	if p is None:
+		frappe.throw(_("Unknown payment processor '{0}'.").format(code))
+	return p
 
 
 @frappe.whitelist()
 def overview() -> dict:
 	"""Everything the payment-hub page renders, in one round trip.
 
-	``enabled`` is read through ``single_flag`` (raw ``tabSingles`` row,
-	docfield default when absent) — the same defence the integration gate
-	uses, so a site that never saved the settings form reads ON, not OFF.
+	``enabled`` is each processor's own ``enabled()`` (Payroc: ``single_flag``,
+	raw ``tabSingles`` row, docfield default when absent) — the same defence the
+	integration gate uses, so a site that never saved the settings form reads ON,
+	not OFF.
 
 	Returns:
 	    {processors: [{code, label, kind, settings_doctype, mode_of_payment,
@@ -75,17 +64,16 @@ def overview() -> dict:
 	"""
 	frappe.only_for(ROLES)
 	rows = []
-	for p in PROCESSORS:
+	for p in registry.processors():
 		can_write = bool(frappe.has_permission(p.settings_doctype, ptype="write"))
 		rows.append({
 			"code": p.code,
 			"label": p.label,
 			"kind": p.kind,
 			"settings_doctype": p.settings_doctype,
-			"mode_of_payment": p.mode_of_payment,
-			"enabled": 1 if single_flag(
-				p.settings_doctype, "enabled", default=p.enabled_default) else 0,
-			"ready": bool(_READY[p.code]()),
+			"mode_of_payment": MODE_OF_PAYMENT_NAME,
+			"enabled": 1 if p.enabled() else 0,
+			"ready": bool(p.ready()),
 			"can_write": can_write,
 			"health": [{
 				"label": label,
@@ -103,7 +91,9 @@ def toggle(processor: str, value) -> dict:
 	credential fields mandatory while the switch is on (a store cannot arm a
 	processor it holds no key for), and a hub that wrote the flag straight to
 	the table would be a side door around exactly that rule. Disabling never
-	trips it — credentials are only demanded while ``enabled`` stays 1.
+	trips it — credentials are only demanded while ``enabled`` stays 1. Only one
+	processor takes cards at a time: switching one on while another is on is
+	refused (switch the other off first).
 
 	Args:
 	    processor: Registry code (e.g. ``"payroc"``).
@@ -117,9 +107,17 @@ def toggle(processor: str, value) -> dict:
 	"""
 	frappe.only_for(ROLES)
 	p = _entry(processor)
+	on = 1 if frappe.utils.cint(value) else 0
+	if on:
+		registry.refuse_second_active(p.code)
 	doc = frappe.get_doc(p.settings_doctype)
-	doc.enabled = 1 if frappe.utils.cint(value) else 0
+	doc.enabled = on
 	doc.save()
+	# The Gun Shop sidebar's Card payments link follows whether a card processor is on.
+	# A settings Single hooked to the re-shape (Payroc Settings, ffl_core hooks) did it in
+	# its own on_update; an extension's Single is not, so the switch asks for it here.
+	if SIDEBAR_SYNC not in _hooked_on_update(p.settings_doctype):
+		frappe.get_attr(SIDEBAR_SYNC)(doc)
 	return {"code": p.code, "enabled": int(doc.enabled)}
 
 
@@ -141,43 +139,4 @@ def test_connection(processor: str) -> dict:
 	"""
 	frappe.only_for(ROLES)
 	p = _entry(processor)
-	return {"checks": _PROBE[p.code]()}
-
-
-def _probe_payroc() -> list[dict]:
-	"""Payroc's probe rides :func:`payroc.api.discover_terminals` — the
-	authenticate call that lists the key's allowed terminals — rather than a
-	second HTTP path that could drift from the one the charge flow trusts.
-	Its three answers map onto checks: ``{"skip": True}`` after the switch
-	said ON can only mean credentials (that is the one other thing the inert
-	gate tests), an ``{"error": ...}`` body is the gateway refusing, and a
-	normal body proves auth end to end."""
-	from ffl_integrations.payroc.api import discover_terminals
-
-	if not payroc_enabled():
-		return [{"label": _("Switch"), "ok": None, "detail": _(
-			"Payroc is switched off — nothing was probed. The POS records "
-			"Credit Card as a plain tender; the swipe happens on the "
-			"standalone terminal.")}]
-	checks = [{"label": _("Switch"), "ok": True, "detail": _("enabled")}]
-	resp = discover_terminals() or {}
-	if resp.get("skip"):
-		checks.append({"label": _("Credentials"), "ok": False, "detail": _(
-			"Merchant API Key is missing — open Credentials and set it.")})
-		return checks
-	if resp.get("error"):
-		checks.append({"label": _("Gateway"), "ok": False,
-			"detail": str(resp["error"])[:300]})
-		return checks
-	terminals = resp.get("allowedTerminals") or []
-	checks.append({"label": _("Gateway"), "ok": True, "detail": _(
-		"authenticated — {0} terminal(s) allowed on this key").format(len(terminals))})
-	default_terminal = frappe.db.get_single_value("Payroc Settings", "default_terminal")
-	checks.append({"label": _("Default terminal"),
-		"ok": True if default_terminal else None,
-		"detail": default_terminal or _("not set")})
-	return checks
-
-
-_READY = {"payroc": payroc_ready}
-_PROBE = {"payroc": _probe_payroc}
+	return {"checks": p.probe()}

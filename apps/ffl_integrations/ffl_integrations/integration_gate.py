@@ -67,6 +67,24 @@ def gunbroker_enabled() -> bool:
 	return single_flag(GUNBROKER_SETTINGS, "enabled", default=0)
 
 
+def card_processor_enabled() -> bool:
+	"""True while any card processor (payments.registry) is switched on — "is the
+	gateway live", asked without naming a vendor. Never raises."""
+	from ffl_integrations.payments.registry import any_enabled
+
+	return any_enabled()
+
+
+def card_processor_ready(require_device: bool = False) -> bool:
+	"""The active card processor's go-live gate (``CardProcessor.ready``): switched on
+	AND holding usable credentials — and, with ``require_device``, a card device. No
+	processor on = False."""
+	from ffl_integrations.payments.registry import active_processor
+
+	p = active_processor()
+	return bool(p and p.ready(require_device=require_device))
+
+
 def card_reference_required() -> bool:
 	"""True when a manual-terminal card tender must carry an approval code.
 
@@ -74,14 +92,16 @@ def card_reference_required() -> bool:
 	in these two apps is a ``(doc, method)`` doc_event validator that throws
 	(``compliance.firearm.require_serial_for_firearm``,
 	``compliance.payment_mode.require_zelle_transaction_no``, …), and one of them
-	— ``payroc.api.require_card_reference_on_manual_tender`` — is this flag's own
+	— ``payments.api.require_card_reference_on_manual_tender`` — is this flag's own
 	consumer.
 
-	Only meaningful with Payroc switched OFF: with the gateway live the approval
-	code comes back from the terminal and there is nothing for staff to type. The
-	docfield hides the checkbox accordingly; this mirrors that, so a value left
-	checked from a spell on the standalone terminal cannot start demanding a
-	hand-typed reference the moment Payroc is switched back on.
+	Only meaningful with every card processor switched OFF: with a gateway live the
+	approval code comes back from the terminal and there is nothing for staff to
+	type. The docfield hides the checkbox accordingly; this mirrors that, so a value
+	left checked from a spell on the standalone terminal cannot start demanding a
+	hand-typed reference the moment the processor is switched back on. The switch
+	itself still lives on Payroc Settings (where it shipped) whichever processor
+	the store uses.
 
 	Defaults ON (on accountant review): because it is inert
 	while the gateway is live, defaulting it on costs stores using Payroc exactly
@@ -90,7 +110,7 @@ def card_reference_required() -> bool:
 	against the terminal's batch. A store that wants the counter faster can still
 	uncheck it.
 	"""
-	if payroc_enabled():
+	if card_processor_enabled():
 		return False
 	return single_flag(PAYROC_SETTINGS, "require_card_reference", default=1)
 

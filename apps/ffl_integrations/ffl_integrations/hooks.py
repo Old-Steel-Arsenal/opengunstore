@@ -37,6 +37,13 @@ gunshop_extension_updates = [
 	"ffl_integrations.data_service.extension_updates.get_source",
 ]
 
+# Card processors (core hook, docs/extensions/hooks.md): payments.api keeps the card money
+# bookkeeping and talks to a processor only through its CardProcessor adapter. Payroc
+# registers here exactly as an extension's processor would.
+gunshop_card_processors = [
+	"ffl_integrations.payroc.adapter.processor",
+]
+
 # An extension switched on or off can change what the site can do (the ``ai``
 # capability answers through an extension's gunshop_ai_connected hook).
 gunshop_extension_toggled = [
@@ -165,7 +172,7 @@ extend_bootinfo = "ffl_integrations.boot.extend_bootinfo"
 
 # before_install = "ffl_integrations.install.before_install"
 after_install = [
-	"ffl_integrations.payroc.setup.ensure_mode_of_payment",
+	"ffl_integrations.payments.setup.ensure_mode_of_payment",
 	"ffl_integrations.setup.rsr_seed.run",
 	# GunBroker category map + fee tiers. Both seeds fill an EMPTY table only, so
 	# neither install nor migrate can overturn an operator's edits.
@@ -180,7 +187,7 @@ after_install = [
 	"ffl_integrations.catalog_local.schema.ensure",
 ]
 after_migrate = [
-	"ffl_integrations.payroc.setup.ensure_mode_of_payment",
+	"ffl_integrations.payments.setup.ensure_mode_of_payment",
 	"ffl_integrations.setup.rsr_seed.run",
 	# Sports South Distributor row (disabled) + the Overview's manufacturer
 	# restrictions as To-Store brand policies. Create-once, Brand-tolerant.
@@ -310,7 +317,7 @@ doc_events = {
 	# A house naming its own catalog service turns the catalog on (or off).
 	"Distributor": {"on_update": "ffl_integrations.data_service.on_settings_change",
 		"on_trash": "ffl_integrations.data_service.on_settings_change"},
-	# Server-side enforcement of the Payroc PARTIAL rule: a partially-captured
+	# Server-side enforcement of the card PARTIAL rule: a partially-captured
 	# invoice must never submit as fully paid, no matter where the submit
 	# comes from (POS, desk form, direct API).
 	"POS Invoice": {
@@ -322,55 +329,55 @@ doc_events = {
 		# events, for the same reason its docstring gives: frappe dispatches
 		# per _action — save/submit run validate, cancel runs only
 		# before_cancel, update-after-submit its own event; before_save runs
-		# on NONE of submit/cancel. The payroc money-fact fields are written
+		# on NONE of submit/cancel. The card money-fact fields are written
 		# via db.set_value(update_modified=False), so a stale client
 		# save/SUBMIT/CANCEL would silently revert them — the
 		# case, probe-proven to re-open a double
 		# refund through a stale Desk submit.
-		"validate": ["ffl_integrations.payroc.api.restore_charge_rows",
-			"ffl_integrations.payroc.api.protect_money_scalars",
+		"validate": ["ffl_integrations.payments.api.restore_charge_rows",
+			"ffl_integrations.payments.api.protect_money_scalars",
 			# Standalone-terminal mode: no gateway record of the swipe exists, so a
 			# reference typed by the cashier is the only link between this sale and
-			# the terminal's own batch report. Inert unless Payroc is switched OFF
+			# the terminal's own batch report. Inert unless every card processor is switched OFF
 			# and the operator asked for it — sibling of ffl_core's Zelle
 			# Transaction Number gate, and gated at submit for the same reasons.
-			"ffl_integrations.payroc.api.require_card_reference_on_manual_tender",
+			"ffl_integrations.payments.api.require_card_reference_on_manual_tender",
 			# A return of a gateway-charged sale needs the manager's portal-refund
-			# confirmation while Payroc is off. The POS client meets this rule in
+			# confirmation while its processor is off. The POS client meets this rule in
 			# refund_pos_invoice; a straight desk submit meets it here — submit is
 			# the one door everyone walks through.
-			"ffl_integrations.payroc.api.block_unconfirmed_gateway_refund"],
-		"before_cancel": ["ffl_integrations.payroc.api.restore_charge_rows",
-			"ffl_integrations.payroc.api.protect_money_scalars"],
-		"before_update_after_submit": ["ffl_integrations.payroc.api.restore_charge_rows",
-			"ffl_integrations.payroc.api.protect_money_scalars"],
+			"ffl_integrations.payments.api.block_unconfirmed_gateway_refund"],
+		"before_cancel": ["ffl_integrations.payments.api.restore_charge_rows",
+			"ffl_integrations.payments.api.protect_money_scalars"],
+		"before_update_after_submit": ["ffl_integrations.payments.api.restore_charge_rows",
+			"ffl_integrations.payments.api.protect_money_scalars"],
 		# ORDER IS LOAD-BEARING, in two ways.
 		#
 		# It must be a LIST. It was a bare string, and appending a second handler
-		# by rewriting that string would have silently deleted Payroc's
+		# by rewriting that string would have silently deleted the card
 		# partial-capture guard — three rounds of hardening
 		# gone, with nothing failing to say so. A test asserts this key is a list
 		# whose first entry is still that guard.
 		#
-		# Payroc must stay FIRST. It is pure arithmetic on the invoice in hand;
+		# The card guard must stay FIRST. It is pure arithmetic on the invoice in hand;
 		# the GunBroker gate sends an HTTP request. Local checks before network
 		# ones, so a partially-captured invoice is refused instantly rather than
 		# after a marketplace round trip.
 		"before_submit": [
-			"ffl_integrations.payroc.api.block_partial_submit",
+			"ffl_integrations.payments.api.block_partial_submit",
 			"ffl_integrations.gunbroker.doc_events.block_sale_of_sold_gb_listing",
 		],
 		"on_submit": "ffl_integrations.gunbroker.doc_events.on_invoice_change",
 		"on_cancel": "ffl_integrations.gunbroker.doc_events.on_invoice_change",
 		# A parked (draft) ticket holds its guns from the first save, and a model
 		# listing that goes on offering a held gun is an oversell: the draft's
-		# save and delete re-decide the quantity. Lists, with the Payroc guard
+		# save and delete re-decide the quantity. Lists, with the card guard
 		# first on on_trash, for the reason given on before_submit above.
 		"on_update": ["ffl_integrations.gunbroker.doc_events.on_invoice_draft_change"],
 		# A return carrying ANY refund money fact (lock, completed reference,
 		# or booked amount) is the record the refund gates count — deleting
 		# it re-arms a clean full-amount refund.
-		"on_trash": ["ffl_integrations.payroc.api.block_locked_return_trash",
+		"on_trash": ["ffl_integrations.payments.api.block_locked_return_trash",
 			"ffl_integrations.gunbroker.doc_events.on_invoice_draft_change"],
 	},
 	# A uniform-price gun's MODEL listing follows its Item: a price or promotion
@@ -462,7 +469,7 @@ doc_events = {
 			# Same standalone-terminal gate as POS Invoice above: a counter sale
 			# written straight to a Sales Invoice (manual order, desk) tenders cards
 			# too, and must not be a way around it.
-			"ffl_integrations.payroc.api.require_card_reference_on_manual_tender",
+			"ffl_integrations.payments.api.require_card_reference_on_manual_tender",
 			# A GunBroker invoice never carries a negative marketplace liability.
 			# The booking path checks immediately before its own submit, which
 			# the Desk does not go through — and the Draft that case produces is

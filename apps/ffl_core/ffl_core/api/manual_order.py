@@ -1278,7 +1278,7 @@ def _received_on_posting_date(received_on, si) -> str | None:
 def _card_reference_required_for(mode_of_payment: str, *, off_terminal: bool = False) -> bool:
 	"""True when this mode is the card tender AND its approval code must be typed:
 	the store is on a standalone terminal with references required, or — for a
-	payment booked off the terminal (off_terminal) — the Payroc terminal is live,
+	payment booked off the terminal (off_terminal) — the card processor's terminal is live,
 	so this card was run on the Virtual Terminal and its code is the only link to
 	that batch (the terminal's own booking always passes the gateway reference).
 
@@ -1287,8 +1287,8 @@ def _card_reference_required_for(mode_of_payment: str, *, off_terminal: bool = F
 	from recording money that was genuinely collected.
 	"""
 	try:
-		from ffl_integrations.integration_gate import card_reference_required, payroc_ready
-		from ffl_integrations.payroc.setup import MODE_OF_PAYMENT_NAME
+		from ffl_integrations.integration_gate import card_processor_ready, card_reference_required
+		from ffl_integrations.payments.setup import MODE_OF_PAYMENT_NAME
 	except ImportError:
 		return False
 	if mode_of_payment != MODE_OF_PAYMENT_NAME:
@@ -1298,9 +1298,9 @@ def _card_reference_required_for(mode_of_payment: str, *, off_terminal: bool = F
 	if not off_terminal:
 		return False
 	try:
-		return payroc_ready(require_device=True)
+		return card_processor_ready(require_device=True)
 	except Exception:
-		# An unreadable Payroc config (e.g. a password that no longer decrypts)
+		# An unreadable processor config (e.g. a password that no longer decrypts)
 		# must not stop a cashier recording money — fail open, like the import.
 		return False
 

@@ -34,7 +34,7 @@ MAX_DAYS = 31
 # gunicorn kills a request at 120s (deploy/prod/Dockerfile); stop paging well
 # before that and report truncated rather than lose the whole answer.
 GATEWAY_TIME_BUDGET = 75
-# _order_id suffixes attempt 2+ as "-A2", "-A3" … (payroc/api.py).
+# _order_id suffixes attempt 2+ as "-A2", "-A3" … (payroc/adapter.py).
 # lazy: a name trimmed to fit Payroc's 24-char orderId (long amended names plus
 # a suffix) no longer names its document; such a row reads as "no POS record".
 ATTEMPT_SUFFIX = re.compile(r"-A\d+$")

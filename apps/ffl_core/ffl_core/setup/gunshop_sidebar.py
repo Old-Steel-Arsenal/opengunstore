@@ -3,7 +3,7 @@
 The Gun Shop `Sidebar` (setup/sidebar.py) is app content, the same on every store. Three things
 differ per store, and none of them may touch that content or the next migrate undoes it:
 
-* an integration the store has switched off (Woo, GunBroker, Payroc) hides its sidebar link
+* an integration the store has switched off (Woo, GunBroker, card processing) hides its sidebar link
   (and its section when nothing is left in it) and, for Woo, the Web Orders card on the home page;
 * an extension the store has switched on contributes its sidebar section, declared as data in the
   extension's hooks.py (``gunshop_sidebar_items``, docs/extensions/hooks.md).
@@ -51,11 +51,11 @@ def integrations_off() -> set[str]:
 	if "ffl_integrations" not in apps:
 		off |= {"GunBroker Order", "Card Terminal Payment"}
 	else:
-		from ffl_integrations.integration_gate import gunbroker_enabled, payroc_enabled
+		from ffl_integrations.integration_gate import card_processor_enabled, gunbroker_enabled
 
 		if not gunbroker_enabled():
 			off.add("GunBroker Order")
-		if not payroc_enabled():
+		if not card_processor_enabled():
 			off.add("Card Terminal Payment")
 	if "ffl_woo_sync" not in apps:
 		off.add("Woo Online Order")
