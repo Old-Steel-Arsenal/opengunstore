@@ -2312,7 +2312,7 @@ class CreateOrderApp {
 		if (!buyerOk) missing.push(__('Buyer'));
 		// Recommended, not required: no email just means no receipt is sent.
 		this.fields.email.set_description(this.fields.email.get_value() ? '' : __(
-			'Recommended — without an email no receipt is sent. It is saved to the customer for next time.'));
+			'Recommended — without an email no receipt is sent.'));
 		if (!this.lines.length) missing.push(__('At least one item'));
 		if (this._hasRegulated() && !this.destinationFfl && !this._isPickup()) {
 			// Typing the C&R block is not choosing a destination — the license
