@@ -364,7 +364,7 @@ test('applyHeldTenderCheckoutGuard tolerates a missing frm/doc', () => {
 // Under charge-before-4473 the same button charges-and-holds (4473 pending) or
 // submits (4473 cleared). The label must follow; once the money is in IN FULL
 // the button goes quiet (never dead) until the 4473 lands.
-const { isFullyTendered, hasHeldPayment, submitButtonState } = require('../../public/js/pos_tender_guard.js');
+const { isFullyTendered, balanceDue, hasHeldPayment, submitButtonState } = require('../../public/js/pos_tender_guard.js');
 
 test('isFullyTendered: paid covers rounded_total (else grand_total), half-cent tolerance', () => {
 	assert.strictEqual(isFullyTendered({ grand_total: 535.84, paid_amount: 535.84 }), true);
@@ -375,6 +375,7 @@ test('isFullyTendered: paid covers rounded_total (else grand_total), half-cent t
 	assert.strictEqual(isFullyTendered({}), true);   // nothing due
 	assert.strictEqual(isFullyTendered({ grand_total: 100.4, paid_amount: 100, write_off_amount: 0.4 }), true);
 	assert.strictEqual(isFullyTendered({ grand_total: 100.4, paid_amount: 100, write_off_amount: 0.2 }), false);
+	assert.strictEqual(balanceDue({ grand_total: 400, rounded_total: 400, paid_amount: 200 }), 200);
 });
 
 test('hasHeldPayment: only the held stamp counts', () => {

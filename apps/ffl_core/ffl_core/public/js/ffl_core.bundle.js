@@ -3851,8 +3851,7 @@ frappe.provide('frappe.ui.form');
 				&& !ffl.isFullyTendered(doc)) {
 				controller.frm.dirty();
 				try { await controller.frm.save(); } catch (e) { return; }   // the server said why
-				const due = (flt(doc.rounded_total) || flt(doc.grand_total)) - flt(doc.paid_amount)
-					- flt(doc.write_off_amount);
+				const due = ffl.balanceDue(doc);
 				frappe.msgprint({
 					title: __('Part payment saved'),
 					indicator: 'orange',

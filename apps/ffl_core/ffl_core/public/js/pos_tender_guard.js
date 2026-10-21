@@ -22,6 +22,7 @@
 		window.ffl.installClassHook = api.installClassHook;
 		window.ffl.applyHeldTenderCheckoutGuard = api.applyHeldTenderCheckoutGuard;
 		window.ffl.isFullyTendered = api.isFullyTendered;
+		window.ffl.balanceDue = api.balanceDue;
 		window.ffl.hasHeldPayment = api.hasHeldPayment;
 		window.ffl.submitButtonState = api.submitButtonState;
 		window.ffl.form4473State = api.form4473State;
@@ -161,10 +162,13 @@
 	// rounded_total wins when the POS Profile rounds; TOLERANCE mirrors
 	// payroc_charges.js — half a cent, never a dependency on that module.
 	var TOLERANCE = 0.005;
-	function isFullyTendered(doc) {
+	function balanceDue(doc) {
 		doc = doc || {};
 		var due = flt(doc.rounded_total) || flt(doc.grand_total);
-		return flt(doc.paid_amount) + flt(doc.write_off_amount) + TOLERANCE >= due;
+		return due - flt(doc.paid_amount) - flt(doc.write_off_amount);
+	}
+	function isFullyTendered(doc) {
+		return balanceDue(doc) <= TOLERANCE;
 	}
 
 	// True when this draft's tender has actually been taken IN FULL and the
@@ -486,6 +490,7 @@
 		isLockedLine: isLockedLine,
 		lockedRowFix: lockedRowFix,
 		isFullyTendered: isFullyTendered,
+		balanceDue: balanceDue,
 		hasHeldPayment: hasHeldPayment,
 		submitButtonState: submitButtonState,
 		hasLiveTender: hasLiveTender,
