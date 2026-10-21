@@ -15559,7 +15559,7 @@
           "ffl_integrations"
         ],
         "summary": "Receive units of an outside-POS store invoice into stock and the A&D book —",
-        "description": "``receive_lines`` for a parcel that has no Distributor Order.\n\nThe Receive Goods page submits one call per staged invoice. Each item names the\ninvoice line, the units and (for a firearm) the serial(s) read off the gun. Cost\nis the invoiced unit cost unless the receiver changed it; a $0 line must say why,\nexactly as on the page. A line cannot be received beyond its invoiced quantity\nless what earlier receives booked, and the invoice is marked received when every\nline is in. Booked against the Distributor's Supplier, Purchase, source = the\nhouse; the receipt's remarks name the invoice. Refused for an invoice that\nalready shipped elsewhere, was received, that a POS order now claims, or that\nlooks like the parcel of an open POS order.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\n**Permissions:** Receive roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:944`",
+        "description": "``receive_lines`` for a parcel that has no Distributor Order.\n\nThe Receive Goods page submits one call per staged invoice. Each item names the\ninvoice line, the units and (for a firearm) the serial(s) read off the gun. Cost\nis the invoiced unit cost unless the receiver changed it; a $0 line must say why,\nexactly as on the page. A line cannot be received beyond its invoiced quantity\nless what earlier receives booked, and the invoice is marked received when every\nline is in. Booked against the Distributor's Supplier, Purchase, source = the\nhouse; the receipt's remarks name the invoice. Refused for an invoice that\nalready shipped elsewhere, was received, that a POS order now claims, or that\nlooks like the parcel of an open POS order.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\n**Permissions:** Receive roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:958`",
         "operationId": "ffl_integrations.distributor.receive_bridge.receive_invoice_lines",
         "responses": {
           "200": {
@@ -15677,11 +15677,11 @@
           "ffl_integrations"
         ],
         "summary": "Lay an outside-POS store invoice out for the Receive Goods page: each line's",
-        "description": "local Item (found in the house's catalog by SKU, else UPC, and created through the\ncatalog promoter when the shop has none; an existing local Item when the catalog\nhas no row), the units still to book, the invoiced unit cost and — for a\nfirearm — the serials the distributor sent that are not in the books yet.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\n**Permissions:** Receive roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:883`",
+        "description": "local Item (found in the house's catalog by SKU, else UPC, and created through the\ncatalog promoter when the shop has none; an existing local Item when the catalog\nhas no row), the units still to book, the invoiced unit cost and — for a\nfirearm — the serials the distributor sent that are not in the books yet.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\n**Permissions:** Receive roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:890`",
         "operationId": "ffl_integrations.distributor.receive_bridge.stage_invoice",
         "responses": {
           "200": {
-            "description": "{invoice_name, invoice_number, distributor, unmatched: [{sku, reason}], lines: [{line_name, item_code, item_name, sku, is_firearm, has_serial_no, outstanding, unit_cost, serials, manufacturer, model_name, firearm_type, caliber}]} — ``unmatched`` lists lines no Item could be found or made for (left off ``lines``; receive those as plain stock).",
+            "description": "{invoice_name, invoice_number, distributor, unmatched: [{sku, reason}], lines: [{line_name, item_code, item_name, sku, is_firearm, has_serial_no, outstanding, unit_cost, serials, manufacturer, model_name, firearm_type, caliber}], received} — ``unmatched`` lists lines no Item could be found or made for (left off ``lines``; receive those as plain stock). ``received``: true when the only units left were $0 unmatched lines (a promo freebie), so the invoice was closed here.",
             "content": {
               "application/json": {
                 "schema": {

@@ -1152,6 +1152,10 @@ class ReceiveGoodsApp {
 						message: `<p>${__('No item could be found or made for these lines. Scan them as plain stock:')}</p>`
 							+ `<ul>${m.unmatched.map((u) => `<li>${esc(u.sku)} — ${esc(u.reason)}</li>`).join('')}</ul>` });
 				}
+				if (m.received) {
+					frappe.show_alert({ indicator: 'green', message: __('Invoice {0} closed — only $0 lines no item matches were left.', [inv.invoice_number]) }, 8);
+					this._loadIncoming();
+				}
 				if (!(m.lines || []).length) return;
 				this._loadOrderLines({ ...inv, invoice_name: m.invoice_name }, m.lines);
 			},

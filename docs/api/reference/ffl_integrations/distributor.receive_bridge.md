@@ -132,7 +132,7 @@ looks like the parcel of an open POS order.
 
 **Permissions:** Receive roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:944`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:958`</sub>
 
 ## `receive_lines`
 
@@ -180,8 +180,8 @@ firearm — the serials the distributor sent that are not in the books yet.
 |---|---|---|---|---|
 | `invoice_name` | string | yes | — | Distributor Invoice name. |
 
-**Returns:** {invoice_name, invoice_number, distributor, unmatched: [{sku, reason}], lines: [{line_name, item_code, item_name, sku, is_firearm, has_serial_no, outstanding, unit_cost, serials, manufacturer, model_name, firearm_type, caliber}]} — ``unmatched`` lists lines no Item could be found or made for (left off ``lines``; receive those as plain stock).
+**Returns:** {invoice_name, invoice_number, distributor, unmatched: [{sku, reason}], lines: [{line_name, item_code, item_name, sku, is_firearm, has_serial_no, outstanding, unit_cost, serials, manufacturer, model_name, firearm_type, caliber}], received} — ``unmatched`` lists lines no Item could be found or made for (left off ``lines``; receive those as plain stock). ``received``: true when the only units left were $0 unmatched lines (a promo freebie), so the invoice was closed here.
 
 **Permissions:** Receive roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:883`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:890`</sub>

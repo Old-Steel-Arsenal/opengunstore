@@ -491,6 +491,33 @@ class TestReceiveInvoice(_InvoiceBase):
 		self.assertEqual(frappe.db.get_value("Distributor Invoice Line", inv.lines[0].name, "received_qty"), 0)
 		self.assertEqual(frappe.db.get_value("Distributor Invoice", inv.name, "received"), 0)
 
+	def test_a_free_line_no_item_matches_does_not_hold_the_invoice_open(self):
+		inv = self._invoice("F-1", lines=[{"sku": "DC-ACC", "qty": 1, "unit_cost": 2, "amount": 2},
+			{"sku": "NOT-IN-CATALOG", "qty": 3, "unit_cost": 0, "amount": 0}])
+		res = self._receive(inv, [{"line_name": inv.lines[0].name, "qty": 1}])
+		self.assertTrue(res["received"])
+		self.assertEqual(frappe.db.get_value("Distributor Invoice", inv.name, "received"), 1)
+		self.assertNotIn(inv.name, [o.get("invoice_name") for g in rb.list_incoming()["groups"]
+			for o in g["orders"]])
+
+	def test_a_free_line_that_matches_an_item_still_waits_to_be_received(self):
+		inv = self._invoice("F-2", lines=[{"sku": "DC-ACC", "qty": 1, "unit_cost": 2, "amount": 2},
+			{"sku": "DC-ACC", "qty": 1, "unit_cost": 0, "amount": 0}])
+		res = self._receive(inv, [{"line_name": inv.lines[0].name, "qty": 1}])
+		self.assertFalse(res["received"])
+		self.assertEqual(frappe.db.get_value("Distributor Invoice", inv.name, "received"), 0)
+
+	def test_staging_closes_an_invoice_with_only_unmatched_free_lines_left(self):
+		inv = self._invoice("F-3", lines=[{"sku": "DC-ACC", "qty": 1, "unit_cost": 2, "amount": 2,
+			"received_qty": 1}, {"sku": "NOT-IN-CATALOG", "qty": 3, "unit_cost": 0, "amount": 0}])
+		got = rb.stage_invoice(inv.name)
+		self.assertEqual((got["lines"], got["received"]), ([], True))
+		self.assertEqual(frappe.db.get_value("Distributor Invoice", inv.name, "received"), 1)
+		# A paid line nobody can match is not a freebie: the invoice stays open.
+		paid = self._invoice("F-4", lines=[{"sku": "NOT-IN-CATALOG", "qty": 1, "unit_cost": 5, "amount": 5}])
+		self.assertFalse(rb.stage_invoice(paid.name)["received"])
+		self.assertEqual(frappe.db.get_value("Distributor Invoice", paid.name, "received"), 0)
+
 	def test_staff_only(self):
 		inv = self._invoice("X-7")
 		frappe.set_user("Guest")
