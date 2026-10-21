@@ -230,12 +230,22 @@ class FBPosWebhook(SettingsSandbox, FrappeTestCase):
 		# handler doesn't short-circuit before the coverage block.
 		# Patch fetch to return the authoritative list (simulates the server call).
 		# Patch _ensure_disposition_coverage to avoid real DB writes in this unit test.
+		# The stub answers the fake invoice's reads only (docs/testing.md rule 4): a blanket
+		# return_value also answered frappe's own Workflow lookup for Error Log, and the "N/A"
+		# it cached in redis broke every later log_error in the process.
+		real_get_value = frappe.db.get_value
+
+		def _get_value(doctype, *args, **kwargs):
+			if doctype == "POS Invoice":
+				return "N/A"
+			return real_get_value(doctype, *args, **kwargs)
+
 		with patch.object(fb_webhook, "_find_draft_invoices_for_serials",
 				return_value={"FAKE-INV-1": ["SER-1"]}), \
 		     patch.object(fb_webhook, "_fetch_disposition_serials",
 				return_value=["SER-1", "SER-2"]) as fetch, \
 		     patch.object(fb_webhook, "_ensure_disposition_coverage"), \
-		     patch.object(fb_webhook.frappe.db, "get_value", return_value="N/A"), \
+		     patch.object(fb_webhook.frappe.db, "get_value", side_effect=_get_value), \
 		     patch.object(fb_webhook.frappe.db, "set_value"), \
 		     patch.object(fb_webhook.frappe, "publish_realtime"):
 			with self._patch_header(f"t={ts},v1={sig}"):

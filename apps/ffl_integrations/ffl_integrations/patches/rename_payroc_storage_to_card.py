@@ -14,8 +14,8 @@ the populated ``payroc_*`` ones. So, before both:
    the DocType (Table / Link options in DocField, Custom Field and Property Setter, Custom
    DocPerm, Link-to-DocType values such as Version / Comment / File / ToDo, dynamic links).
    Saved list views of the old DocType move to the new name.
-2. Each POS Invoice column is renamed in place (``ALTER TABLE … CHANGE COLUMN``), so the values
-   never pass through Python. Its Custom Field record takes the new name and fieldname (its own
+2. Each POS Invoice column is renamed in place (``ALTER TABLE … RENAME COLUMN``, which keeps its
+   type, NOT NULL and default), so the values never pass through Python. Its Custom Field record takes the new name and fieldname (its own
    ``depends_on`` expressions too); Property Setters are re-pointed; Custom Fields placed after
    an old field follow it; Report Builder reports, report-view columns and user settings that
    name an old value field follow it (frappe's ``rename_field`` helpers). Should a site already
@@ -131,7 +131,7 @@ def _rename_field(old: str, new: str, has_value: bool) -> bool:
 		if frappe.db.has_column(INVOICE, new):
 			_merge_columns(old, new)
 		else:
-			frappe.db.rename_column(INVOICE, old, new)
+			rename_column(INVOICE, old, new)
 	if frappe.db.exists("Custom Field", old_cf):
 		if frappe.db.exists("Custom Field", new_cf):
 			frappe.db.delete("Custom Field", {"name": old_cf})
@@ -148,6 +148,13 @@ def _rename_field(old: str, new: str, has_value: bool) -> bool:
 		update_users_report_view_settings(INVOICE, old, new)
 		update_user_settings(INVOICE, old, new)
 	return True
+
+
+def rename_column(doctype: str, old: str, new: str) -> None:
+	"""``RENAME COLUMN`` keeps the column exactly as it is — type, NOT NULL, default, indexes.
+	(frappe's ``db.rename_column`` re-states only the type, so a Currency column's
+	``NOT NULL DEFAULT 0`` was silently dropped.) MariaDB 10.5+."""
+	frappe.db.sql_ddl(f"alter table `tab{doctype}` rename column `{old}` to `{new}`")
 
 
 def _rename_own_expressions(custom_field: str) -> None:

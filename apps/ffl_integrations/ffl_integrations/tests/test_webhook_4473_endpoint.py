@@ -88,11 +88,21 @@ class Form4473CompletedUsesPayload(FrappeTestCase):
 			"items": [{"serial": "P3-A"}],
 			"response": 2,  # Proceed
 		}
+		# The stub answers the fake invoice's reads only (docs/testing.md rule 4): a blanket
+		# return_value also answered frappe's own Workflow lookup for Error Log (the handler
+		# logs here), and the "N/A" it cached in redis broke every later log_error.
+		real_get_value = fb.frappe.db.get_value
+
+		def _get_value(doctype, *args, **kwargs):
+			if doctype == "POS Invoice":
+				return "N/A"
+			return real_get_value(doctype, *args, **kwargs)
+
 		with patch.object(fb, "_find_draft_invoices_for_serials",
 				return_value={"INV-1": ["P3-A"]}), \
 		     patch.object(fb, "_ensure_disposition_coverage"), \
 		     patch.object(fb, "_fetch_disposition_serials", return_value=[]) as fetch, \
-		     patch.object(fb.frappe.db, "get_value", return_value="N/A"), \
+		     patch.object(fb.frappe.db, "get_value", side_effect=_get_value), \
 		     patch.object(fb.frappe.db, "set_value"), \
 		     patch.object(fb.frappe, "publish_realtime"):
 			fb._handle_form4473_completed(data)

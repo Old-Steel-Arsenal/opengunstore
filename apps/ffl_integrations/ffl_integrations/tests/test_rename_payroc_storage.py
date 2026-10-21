@@ -87,7 +87,7 @@ class RenamePayrocStorage(FrappeTestCase):
 			frappe.rename_doc("DocType", new, old, force=True)
 		for old, new, has_value in patch.FIELDS:
 			if has_value:
-				frappe.db.rename_column(INVOICE, new, old)
+				patch.rename_column(INVOICE, new, old)
 			frappe.db.sql("update `tabCustom Field` set name = %s, fieldname = %s where name = %s",
 				(f"{INVOICE}-{old}", old, f"{INVOICE}-{new}"))
 			update_property_setters(INVOICE, new, old)
@@ -120,7 +120,14 @@ class RenamePayrocStorage(FrappeTestCase):
 		return {k: (float(got[f"card_{k}"]) if isinstance(v, float) else got[f"card_{k}"])
 			for k, v in scalars.items()}
 
+	def _column_definitions(self, prefix):
+		return {c: rest for c, *rest in frappe.db.sql("""select column_name, column_type, is_nullable,
+			column_default from information_schema.columns where table_schema = database()
+			and table_name = %s and column_name like %s""", (f"tab{INVOICE}", f"{prefix}%"))}
+
 	def test_every_money_fact_survives_and_a_second_run_changes_nothing(self):
+		before = self._column_definitions("card_")
+		self.assertEqual(before["card_charged_amount"][1:], ["NO", "0.000000000"])
 		self._to_old_shape()
 		self._seed()
 		self.assertTrue(frappe.db.table_exists("Payroc Charge") and not frappe.db.table_exists("Card Charge"))
@@ -135,6 +142,8 @@ class RenamePayrocStorage(FrappeTestCase):
 			self.assertFalse(frappe.db.table_exists(old))
 			self.assertTrue(frappe.db.table_exists(new))
 		self.assertEqual([c for c in frappe.db.get_table_columns(INVOICE) if "payroc" in c], [])
+		# Type, NOT NULL and default come through the renames untouched (Currency stays NOT NULL 0).
+		self.assertEqual(self._column_definitions("card_"), before)
 		self.assertEqual(frappe.get_all("Custom Field", filters={"dt": INVOICE, "fieldname": ("like", "%payroc%")},
 			pluck="name"), [])
 		self.assertEqual(frappe.db.get_value("Custom Field", f"{INVOICE}-card_charges", "options"), "Card Charge")

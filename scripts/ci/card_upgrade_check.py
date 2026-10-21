@@ -15,8 +15,8 @@ already has the new shape there is nothing to rename: it says so and writes no f
 
 ``verify`` runs AFTER the migrate and checks every seeded value under the new names (scalars,
 charge rows loaded through the ORM — which proves ``parentfield`` moved —, terminal payments, the
-recycle-bin JSON, the Property Setter), that ``processor`` was backfilled, and that no old table,
-column or Custom Field is left. Then it deletes what ``seed`` wrote. No file: nothing to verify.
+recycle-bin JSON, the Property Setter), that ``processor`` was backfilled, that the numeric money
+columns are still NOT NULL, and that no old table, column or Custom Field is left. Then it deletes what ``seed`` wrote. No file: nothing to verify.
 
 lazy: self-retiring — once main carries the new shape every upgrade run seeds nothing; delete
 this script and its two workflow steps one release after the rename ships.
@@ -139,6 +139,11 @@ def verify(site: str) -> None:
 		expect(f"table {table}", frappe.db.table_exists(table), False)
 		expect(f"DocType {table}", bool(frappe.db.exists("DocType", table)), False)
 	expect("payroc_* columns", [c for c in frappe.db.get_table_columns("POS Invoice") if "payroc" in c], [])
+	# The rename keeps each column's definition: numeric money columns stay NOT NULL DEFAULT 0.
+	expect("NOT NULL money columns", frappe.db.sql_list("""select column_name from information_schema.columns
+		where table_schema = database() and table_name = 'tabPOS Invoice' and is_nullable = 'YES'
+		and column_name in ('card_charged_amount', 'card_refunded_amount', 'card_attempt',
+			'card_manual_settlement')"""), [])
 	expect("payroc_* Custom Fields", frappe.get_all("Custom Field",
 		filters={"dt": "POS Invoice", "fieldname": ("like", "%payroc%")}, pluck="name"), [])
 
