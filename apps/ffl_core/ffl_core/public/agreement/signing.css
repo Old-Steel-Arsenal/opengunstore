@@ -1,8 +1,16 @@
-/* Agreement signing page — tablet first (iPad Safari, Android Chrome), works on phones. */
-:root { --ink: #111827; --muted: #6b7280; --line: #d1d5db; --bg: #f3f4f6; --accent: #1d4ed8; --bad: #b91c1c; --ok: #15803d; }
+/* Agreement signing page — tablet first (iPad Safari, Android Chrome), works on phones.
+   Colours, type and controls follow the Frappe v16 desk (espresso tokens in
+   desk.bundle.css) so the tablet looks like the POS; values copied, not linked,
+   because the desk bundle's resets would fight this page. */
+@font-face { font-family: InterVariable; font-style: normal; font-weight: 100 900; font-display: swap;
+	src: url(/assets/frappe/css/fonts/inter/InterVariable.woff2) format("woff2"); }
+:root { --ink: #171717; --muted: #525252; --light: #7c7c7c; --line: #ededed; --line-strong: #c7c7c7;
+	--bg: #f8f8f8; --control: #f3f3f3; --accent: #171717; --bad: #ce2c2c; --ok: #268c5c; --radius: 8px;
+	--shadow: 0 0 1px 0 #00000033, 0 1px 3px 0 #00000024; }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
-	font: 18px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+	font: 18px/1.5 InterVariable, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+	font-feature-settings: "cv11", "ss01"; -webkit-font-smoothing: antialiased;
 	-webkit-text-size-adjust: 100%; overscroll-behavior: none; }
 [hidden] { display: none !important; }
 .app { height: 100%; height: 100dvh; max-width: 1100px; margin: 0 auto; padding: env(safe-area-inset-top) 0 0; }
@@ -10,7 +18,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
 .screen-message, .screen-done { display: flex; flex-direction: column; align-items: center; justify-content: center;
 	text-align: center; padding: 32px; }
 .lead { font-size: 22px; color: var(--muted); max-width: 36em; }
-h1 { font-size: 28px; line-height: 1.25; margin: 4px 0; }
+h1 { font-size: 28px; line-height: 1.25; margin: 4px 0; font-weight: 600; letter-spacing: -0.01em; }
 .done-mark { width: 96px; height: 96px; border-radius: 50%; background: var(--ok); color: #fff; font-size: 56px;
 	display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
 .screen-sign { display: flex; flex-direction: column; background: #fff; }
@@ -21,7 +29,7 @@ h1 { font-size: 28px; line-height: 1.25; margin: 4px 0; }
 	overscroll-behavior: contain; }
 .text p { margin: 0 0 0.8em; }
 .panel { flex: 0 0 auto; border-top: 1px solid var(--line); padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
-	background: #fafafa; overflow-y: auto; max-height: 75vh; }
+	background: var(--bg); overflow-y: auto; max-height: 75vh; }
 .minor { border: 0; margin: 0 0 8px; padding: 0; }
 .row { display: flex; align-items: center; gap: 12px; min-height: 48px; }
 .check { cursor: pointer; }
@@ -30,20 +38,22 @@ h1 { font-size: 28px; line-height: 1.25; margin: 4px 0; }
 .note { color: var(--bad); margin: 0 0 4px; }
 .field { display: block; margin: 4px 0 8px; }
 .field span { display: block; font-size: 16px; color: var(--muted); }
-.field input { width: 100%; height: 52px; font-size: 20px; padding: 0 12px; border: 1px solid var(--line);
-	border-radius: 8px; background: #fff; }
+.field input { width: 100%; height: 52px; font: inherit; font-size: 20px; padding: 0 12px; color: var(--ink);
+	border: 1px solid transparent; border-radius: var(--radius); background: var(--control); }
+.field input:focus { outline: none; background: #fff; border-color: var(--line-strong); box-shadow: 0 0 0 2px var(--line); }
 .pad-wrap { margin: 8px 0; }
 .pad-head { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 16px; }
 /* 3:1 like the exported image; never taller than a third of the screen. */
 .pad { display: block; width: min(100%, 90vh); width: min(100%, 90dvh); aspect-ratio: 3 / 1; margin: 4px auto 0;
-	background: #fff; border: 2px dashed #9ca3af; border-radius: 10px; touch-action: none;
+	background: #fff; border: 2px dashed var(--line-strong); border-radius: var(--radius); touch-action: none;
 	-webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .problem { color: var(--bad); font-weight: 600; margin: 8px 0 0; }
-.btn { min-height: 48px; font-size: 18px; border-radius: 10px; border: 1px solid var(--line); background: #fff;
-	padding: 0 20px; cursor: pointer; }
-.btn-ghost { min-height: 44px; border-color: transparent; color: var(--accent); font-weight: 600; }
-.btn-primary { width: 100%; min-height: 60px; margin-top: 12px; font-size: 22px; font-weight: 700;
-	background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn { min-height: 48px; font: inherit; font-size: 18px; font-weight: 500; border-radius: var(--radius);
+	border: 1px solid transparent; background: var(--control); color: var(--ink); padding: 0 20px; cursor: pointer; }
+.btn-ghost { min-height: 44px; background: transparent; color: var(--ink); font-weight: 600; }
+.btn-primary { width: 100%; min-height: 60px; margin-top: 12px; font-size: 20px; font-weight: 600;
+	background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: var(--shadow); }
+.btn-primary:active { background: #383838; }
 .btn-primary:disabled { opacity: 0.6; }
 @media (max-width: 600px) { html, body { font-size: 17px; } h1 { font-size: 23px; } .top, .text, .panel { padding-left: 14px; padding-right: 14px; } }
 /* Tablet on its side: text on the left, signing on the right, both full height. */
@@ -59,7 +69,7 @@ h1 { font-size: 28px; line-height: 1.25; margin: 4px 0; }
 .pair-field { width: min(100%, 320px); text-align: left; }
 .pair-field input { text-align: center; font-size: 32px; letter-spacing: 0.3em; height: 64px; }
 .pair-button { width: min(100%, 320px); }
-.idle-store { font-size: 22px; margin-bottom: 8px; }
+.idle-store { font-size: 16px; font-weight: 500; color: var(--light); margin-bottom: 8px; }
 .form4473-button { display: flex; align-items: center; justify-content: center; max-width: 420px; margin-top: 32px; text-decoration: none; }
 .form4473-button[hidden] { display: none; }
-.terminal-name { color: var(--muted); font-size: 14px; margin-top: 32px; }
+.terminal-name { color: var(--light); font-size: 14px; margin-top: 32px; }
