@@ -8,7 +8,7 @@ Three tenders need this, for the same reason:
   reconciled against the sale.
 * **Check/Money Order** — the paper goes to the bank later; its number is what
   ties the deposit back to the sale.
-* **Credit Card with the Payroc integration switched off** — the card is swiped on
+* **Credit Card with no card processor switched on** — the card is swiped on
   a standalone terminal, so nothing comes back from a gateway and the only link
   between the sale and that terminal's batch report is what the cashier types.
 

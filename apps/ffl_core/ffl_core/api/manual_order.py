@@ -1351,8 +1351,8 @@ def record_payment(sales_invoice: str, mode_of_payment: str, amount=None,
 	        number for Check/Money Order. Required for Zelle, ACH and
 	        Check/Money Order, and for the card tender on a store running the
 	        standalone terminal with approval codes required — or with the
-	        Payroc terminal live (a card typed in here was run on the Virtual
-	        Terminal).
+	        card processor's terminal live (a card typed in here was run on the
+	        Virtual Terminal).
 	    received_on: The day the money arrived (blank → today): it dates
 	        the Payment Entry, so a collection typed in late still books in
 	        the period the deposit really landed in. See

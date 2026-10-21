@@ -134,8 +134,22 @@
 		};
 	}
 
+	// Confirm Portal Refund applies when the processor that charged the original
+	// sale cannot send its refund: no processor is switched on, or the one that is
+	// on is another (the store has moved on). chargedBy: the charge row's processor
+	// code ('' = recorded before rows named one, which was Payroc); active:
+	// frappe.boot.ffl_card_processor. An absent boot key reads as "on" — the
+	// behaviour before the switch existed — so no button; the server re-checks.
+	var LEGACY_PROCESSOR = 'payroc';
+	function chargingProcessorOff(chargedBy, active) {
+		if (!active) return false;
+		if (!Number(active.enabled)) return true;
+		return (chargedBy || LEGACY_PROCESSOR) !== active.code;
+	}
+
 	return {
 		TOLERANCE: TOLERANCE,
+		chargingProcessorOff: chargingProcessorOff,
 		REFUND_LOCK_UNKNOWN: REFUND_LOCK_UNKNOWN,
 		REFUND_LOCK_PARTIAL_PREFIX: REFUND_LOCK_PARTIAL_PREFIX,
 		isRefundLock: isRefundLock,

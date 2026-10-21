@@ -93,24 +93,36 @@ frappe.ui.form.on('POS Invoice', {
 		}
 
 		// Confirm Portal Refund — the manager exit for the switched-off refund
-		// guard: a return of a GATEWAY-charged sale cannot submit while no card
-		// processor is on until the portal refund is recorded here (its own field + timeline,
+		// guard: a return of a GATEWAY-charged sale cannot submit while the card
+		// processor that charged it is off until the portal refund is recorded here (its own field + timeline,
 		// never the tender row's reference_no — that field is force-collected by
 		// the standalone-terminal rule and cannot double as this guard's
-		// evidence). Shown when the original carries gateway money facts; the
-		// server re-checks everything.
-		const cardProcessorOff = window.ffl && window.ffl.switches
-			&& !window.ffl.switches.cardProcessorEnabled();
-		if (cardProcessorOff && frm.doc.is_return && frm.doc.docstatus !== 2
+		// evidence). Shown when the original carries gateway money facts and its
+		// processor is not the one switched on now (none on, or the store has moved
+		// to another processor); the server re-checks everything.
+		const active = frappe.boot && frappe.boot.ffl_card_processor;
+		if (window.ffl && window.ffl.switches && pcMath && pcMath.chargingProcessorOff
+				&& active && frm.doc.is_return && frm.doc.docstatus !== 2
 				&& frm.doc.return_against && !frm.doc.card_oob_refund_reference
 				&& isManager) {
-			frappe.db.get_value('POS Invoice', frm.doc.return_against,
-				['card_unique_reference', 'card_status']).then((r) => {
-				const o = (r.message || {});
-				if (!o.card_unique_reference && !o.card_status) return;
-				frm.add_custom_button(__('Confirm Portal Refund'),
-					() => confirmPortalRefund(frm))
-					.removeClass('btn-default').addClass('btn-danger');
+			// Which processor took the original's card money (its first live row;
+			// none = a stamp-only sale from before rows, which was Payroc). Only
+			// asked while a processor is on: with none on, any one is off.
+			const chargedBy = Number(active.enabled)
+				? frappe.db.get_value('Card Charge', { parent: frm.doc.return_against,
+					parenttype: 'POS Invoice', status: 'CHARGED' }, 'processor', null, 'POS Invoice')
+					.then((r) => (r.message || {}).processor || '')
+				: Promise.resolve('');
+			chargedBy.then((code) => {
+				if (!pcMath.chargingProcessorOff(code, active)) return;
+				return frappe.db.get_value('POS Invoice', frm.doc.return_against,
+					['card_unique_reference', 'card_status']).then((r) => {
+					const o = (r.message || {});
+					if (!o.card_unique_reference && !o.card_status) return;
+					frm.add_custom_button(__('Confirm Portal Refund'),
+						() => confirmPortalRefund(frm))
+						.removeClass('btn-default').addClass('btn-danger');
+				});
 			});
 		}
 	},
