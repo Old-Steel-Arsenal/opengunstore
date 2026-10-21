@@ -29,7 +29,7 @@ from collections.abc import Callable
 
 import frappe
 from frappe import _
-from frappe.utils import flt
+from frappe.utils import cint, flt
 
 from ffl_core.setup.payments import CHECK_MONEY_ORDER, ZELLE
 
@@ -132,3 +132,35 @@ def require_check_money_order_number(doc, method: str | None = None) -> None:
 			"payment of {0} before completing the sale."
 		).format(frappe.format_value(amount, {"fieldtype": "Currency"})),
 	)
+
+
+def require_full_payment(doc, method: str | None = None) -> None:
+	"""A POS sale is submitted only once its whole total is recorded as paid.
+
+	ERPNext makes the same check (validate_full_payment) but skips it when the POS
+	Profile allows partial payment — and the store's profiles must, because the
+	register refuses a $0 counter pickup ticket otherwise. Without this gate a
+	ticket half-paid in cash went through, consolidated at once, and the rest
+	(charged on the Virtual Terminal) sat as an unexplained customer balance.
+	The test is ERPNext's own outstanding amount, which its before_submit sets (validate still sees the
+	draft's 0), hence a before_submit hook. Returns and tickets at or below zero are not sales
+	the customer pays for, so they pass. Paying in parts stays possible: the draft keeps each payment (Recent
+	Orders → Edit to take the next one) and completes once the total is paid."""
+	from ffl_core.compliance.negative_trade_in import invoice_total
+
+	if cint(doc.get("is_return")):
+		return
+	total = invoice_total(doc)
+	# POS Invoice.set_outstanding_amount is total - paid; a write-off within the profile's limit covers the rest.
+	short = flt(doc.get("outstanding_amount")) - flt(doc.get("write_off_amount"))
+	if total <= 0 or short <= 0.01:
+		return
+	fmt = lambda v: frappe.format_value(v, {"fieldtype": "Currency"})  # noqa: E731
+	message = _(
+		"This sale comes to {0} but {1} of it is not paid yet, so it cannot be completed. If the customer pays the "
+		"rest later, leave it as a draft: what was paid stays on the order, and you collect the rest from Recent "
+		"Orders → Edit.").format(fmt(total), fmt(short))
+	if "ffl_integrations" in frappe.get_installed_apps():  # the card integration, and its manual-settlement box
+		message += " " + _("A card charged outside the register (Virtual Terminal) goes in the Credit Card amount, "
+			"with a manager ticking Manual Card Settlement and entering the approval code.")
+	frappe.throw(message)

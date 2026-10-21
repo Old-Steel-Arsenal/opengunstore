@@ -92,6 +92,9 @@ add_to_apps_screen = [
 # 404s. Cheap and permanent — /gun-shop is not, and never was, a real route.
 website_redirects = [
 	{"source": "/gun-shop", "target": "/" + _LANDING},
+	# A short address to type on the signing tablet (www/agreement/terminal).
+	# 302, not the default 301: Safari keeps a 301 forever, so the target stays movable.
+	{"source": "/kiosk", "target": "/agreement/terminal", "redirect_http_status": 302},
 ]
 
 fixtures = [
@@ -182,6 +185,9 @@ app_include_js = [
 	_hashed("js/pos_charge_exactly.js"),
 	# Recent Orders draft chips (paid / entered / 4473); needs pos_tender_guard.js above.
 	_hashed("js/pos_order_status.js"),
+	# Desk password fields: autocomplete="new-password", so the browser never fills
+	# the store's saved login into a key/secret pair on some form.
+	_hashed("js/password_no_autofill.js"),
 	# aamva.js parses a driver-licence PDF417 payload (pure); customer_quick_entry.js
 	# subclasses ERPNext's CustomerQuickEntryForm (name parts once + Scan ID).
 	_hashed("js/aamva.js"),
@@ -502,7 +508,10 @@ doc_events = {
 		# rows and BEFORE on_submit consolidation copies them to the Sales
 		# Invoice (whose gate requires them already booked).
 		"before_submit": [
-			# First, before anything books: units a web order is waiting on are not
+			# The whole total paid, whatever the POS Profile's partial-payment flag says. Reads the
+			# outstanding amount ERPNext's own before_submit has just set — first, before anything books.
+			"ffl_core.compliance.payment_mode.require_full_payment",
+			# Before anything books: units a web order is waiting on are not
 			# the counter's to sell.
 			"ffl_core.compliance.web_hold.refuse_held_units",
 			# The guns' half of the same refusal: the last uniform-price gun a sold

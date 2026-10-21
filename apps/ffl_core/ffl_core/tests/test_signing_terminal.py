@@ -13,6 +13,7 @@ from frappe.tests.utils import FrappeTestCase
 from ffl_core import agreements, signing_terminal
 from ffl_core.tests.test_agreements import _as, _Base
 from ffl_core.tests.test_customer_profile import _customer, _uniq, _user
+from ffl_core.tests.settings_sandbox import single_value
 
 
 def _terminal(**fields):
@@ -38,6 +39,16 @@ class Pairing(FrappeTestCase):
 		frappe.set_user("Administrator")
 		self.addCleanup(frappe.set_user, "Administrator")
 		self.term = _terminal()
+
+	def test_the_tablet_is_sent_to_the_short_kiosk_address(self):
+		self.assertTrue(signing_terminal.start_pairing(self.term.name)["page"].endswith("/kiosk"))
+		from frappe.website.path_resolver import resolve_redirect
+		frappe.cache.hdel("website_redirects", "kiosk")   # a miss cached before the rule existed
+		self.addCleanup(frappe.flags.pop, "redirect_location", None)
+		with self.assertRaises(frappe.Redirect) as cm:
+			resolve_redirect("kiosk")
+		self.assertEqual(frappe.flags.redirect_location, "/agreement/terminal")
+		self.assertEqual(cm.exception.http_status_code, 302)
 
 	def test_a_code_works_once_and_gives_a_key_stored_only_as_a_hash(self):
 		code = signing_terminal.start_pairing(self.term.name)["code"]
@@ -98,7 +109,22 @@ class Pairing(FrappeTestCase):
 
 	def test_idle_poll_says_nothing_about_customers(self):
 		out = _poll(_pair(self.term))
-		self.assertEqual(set(out), {"paired", "idle", "terminal_name", "store_name"})
+		self.assertEqual(set(out), {"paired", "idle", "terminal_name", "store_name", "form_4473_url"})
+
+	def test_idle_poll_offers_fastbound_4473_only_when_the_store_uses_it(self):
+		secret = _pair(self.term)
+		with single_value("FFL Settings", "paper_4473_mode", 0), \
+				single_value("FastBound Settings", "enabled", 1), \
+				single_value("FastBound Settings", "account_num", " 12345 "):
+			self.assertEqual(_poll(secret)["form_4473_url"], "https://4473.io/12345")
+			with single_value("FFL Settings", "paper_4473_mode", 1):
+				self.assertEqual(_poll(secret)["form_4473_url"], "")
+			with single_value("FastBound Settings", "enabled", 0):
+				self.assertEqual(_poll(secret)["form_4473_url"], "")
+			with single_value("FastBound Settings", "account_num", "12/3 4"):
+				self.assertEqual(_poll(secret)["form_4473_url"], "https://4473.io/12%2F3%204")
+		with single_value("FastBound Settings", "account_num", ""):
+			self.assertEqual(_poll(secret)["form_4473_url"], "")
 
 
 class SendToTablet(_Base):
