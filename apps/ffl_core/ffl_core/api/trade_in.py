@@ -307,7 +307,11 @@ def _accessory_lines(raw) -> list[dict]:
 	if isinstance(raw, str):
 		raw = _json.loads(raw or "[]")
 	lines = []
+	if not isinstance(raw or [], list):
+		frappe.throw(_("Accessories must be a list of item lines."))
 	for idx, row in enumerate(raw or [], start=1):
+		if not isinstance(row or {}, dict):
+			frappe.throw(_("Accessory row #{0} is not an item line.").format(idx))
 		item_code = str((row or {}).get("item_code") or "").strip()
 		if not item_code:
 			continue

@@ -148,6 +148,19 @@ class TradeInAccessories(FrappeTestCase):
 		credit_rows = [r for r in inv.items if r.item_code == TRADE_IN_CREDIT_ITEM]
 		self.assertEqual({r.income_account for r in credit_rows}, {credit_income_account(self.company)})
 
+	def test_cashier_books_the_accessories_at_checkout(self):
+		"""The parked receipt is submitted inside the POS Invoice submit, under the cashier's session."""
+		from ffl_core.compliance.trade_in_credit import _book_accessories
+		ammo = self._qty(AMMO)
+		res = self._as_counter(self._payload("cashier-books", gun=False, apply_credit=1))
+		frappe.set_user(SALES_USER)
+		try:
+			_book_accessories(res["accessory_receipt"])
+		finally:
+			frappe.set_user("Administrator")
+		self.assertEqual(frappe.db.get_value("Stock Entry", res["accessory_receipt"], "docstatus"), 1)
+		self.assertEqual(self._qty(AMMO), ammo + 3)
+
 	def test_accessory_credit_is_spent_once(self):
 		res = self._as_counter(self._payload("spent-once", gun=False, apply_credit=1))
 		self._credit_invoice(res["credits"]).submit()
@@ -216,6 +229,7 @@ class TradeInAccessories(FrappeTestCase):
 			"no qty": ([{"item_code": AMMO, "qty": 0, "rate": 10}], "enter the quantity"),
 			"no value": ([{"item_code": AMMO, "qty": 1, "rate": 0}], "enter the quantity"),
 			"unknown": ([{"item_code": "TIA-NO-SUCH-ITEM", "qty": 1, "rate": 10}], "does not exist"),
+			"not a line": ([AMMO], "not an item line"),
 		}
 		for case, (lines, msg) in cases.items():
 			with self.subTest(case=case), self.assertRaisesRegex(frappe.ValidationError, msg):

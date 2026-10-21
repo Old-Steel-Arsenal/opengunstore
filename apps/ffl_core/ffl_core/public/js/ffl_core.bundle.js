@@ -1248,8 +1248,11 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 					fieldtype: 'Button', fieldname: 'new_accessory_item', label: __('New item'),
 					click: () => newTradeInAccessoryItem((item) => {
 						const grid = dialog.fields_dict.accessories;
-						grid.df.data = (grid.df.data || []).filter((r) => r.item_code);
-						grid.df.data.push({ item_code: item.item_code, qty: 1 });
+						const rows = (grid.df.data || []).filter((r) => r.item_code);
+						rows.push({ item_code: item.item_code, qty: 1 });
+						// The dialog grid finds (and deletes) rows by idx.
+						rows.forEach((r, i) => { r.idx = i + 1; });
+						grid.df.data = rows;
 						grid.grid.refresh();
 					}),
 				},
@@ -1310,8 +1313,13 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 							}, 8);
 							return;
 						}
+						// In order, stopping at the first failure: the gun's line goes first, so a re-run (which reuses
+						// the gun's pending record) never finds an accessories line from this run already in the cart
+						// and adds it a second time.
 						let injected = true;
-						for (const credit of credits) injected = (await injectTradeInCredit(credit)) && injected;
+						for (const credit of credits) {
+							if (!(injected = await injectTradeInCredit(credit))) break;
+						}
 						if (injected) {
 							frappe.show_alert({
 								message: __('Trade-in recorded · {0} credit added to this sale.',
