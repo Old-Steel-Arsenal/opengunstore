@@ -1313,9 +1313,9 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 							}, 8);
 							return;
 						}
-						// In order, stopping at the first failure: the gun's line goes first, so a re-run (which reuses
-						// the gun's pending record) never finds an accessories line from this run already in the cart
-						// and adds it a second time.
+						// In order, stopping at the first failure: the gun's line goes first, so the re-run the modal
+						// below asks for (it reuses the gun's pending record) finds no accessories line from this run
+						// in the cart. Accessories re-entered on any other re-run get a line of their own.
 						let injected = true;
 						for (const credit of credits) {
 							if (!(injected = await injectTradeInCredit(credit))) break;

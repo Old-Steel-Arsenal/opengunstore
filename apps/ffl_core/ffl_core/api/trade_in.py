@@ -305,7 +305,10 @@ def _accessory_lines(raw) -> list[dict]:
 	rows dropped. Each must be an enabled stock Item that is no firearm and carries no serial: a gun has its own
 	section (bound book), and these lines are counted, not serialized."""
 	if isinstance(raw, str):
-		raw = _json.loads(raw or "[]")
+		try:
+			raw = _json.loads(raw or "[]")
+		except _json.JSONDecodeError:
+			frappe.throw(_("Accessories must be a list of item lines."))
 	lines = []
 	if not isinstance(raw or [], list):
 		frappe.throw(_("Accessories must be a list of item lines."))

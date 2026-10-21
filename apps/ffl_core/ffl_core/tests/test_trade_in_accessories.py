@@ -230,6 +230,7 @@ class TradeInAccessories(FrappeTestCase):
 			"no value": ([{"item_code": AMMO, "qty": 1, "rate": 0}], "enter the quantity"),
 			"unknown": ([{"item_code": "TIA-NO-SUCH-ITEM", "qty": 1, "rate": 10}], "does not exist"),
 			"not a line": ([AMMO], "not an item line"),
+			"not json": ("[{bad", "must be a list"),
 		}
 		for case, (lines, msg) in cases.items():
 			with self.subTest(case=case), self.assertRaisesRegex(frappe.ValidationError, msg):
