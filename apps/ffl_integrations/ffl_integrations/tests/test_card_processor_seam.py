@@ -231,6 +231,19 @@ class OneProcessorAtATime(_Seam):
         self.assertEqual(boot.card_mop, "Credit Card")
 
 
+class UnreadableConfig(_Seam):
+    def test_unreadable_config_counts_as_off_and_is_logged_once(self):
+        frappe.cache().delete_value("ffl_card_processor_unreadable:fakepay")
+        with card_hooks(FAKE), patch.object(FakeProcessor, "ready",
+                side_effect=frappe.ValidationError("cannot decrypt")), \
+                patch("ffl_integrations.notifications.safe_log_error") as logged:
+            self.assertIsNone(registry.active_processor())
+            self.assertFalse(registry.any_on())
+        self.assertEqual(logged.call_count, 1)                   # throttled: two asks, one row
+        self.assertIn("fakepay", logged.call_args.args[0])
+        frappe.cache().delete_value("ffl_card_processor_unreadable:fakepay")
+
+
 class FakeProcessorDrivesTheOrchestrator(_Seam):
     """The seam proven: nothing Payroc runs, every money fact is the orchestrator's."""
 

@@ -63,11 +63,27 @@ def _app_running(app: str) -> bool:
 def _is_on(p: CardProcessor) -> bool:
 	"""Switched on and configured. A configuration that cannot be read (a password that no
 	longer decrypts) is not configured: it breaks that processor's terminal, never the
-	counter's other work."""
+	counter's other work — but the Error Log says why the terminal went quiet."""
 	try:
 		return bool(p.ready())
-	except Exception:
+	except Exception:  # noqa: BLE001 — unreadable config reads as not configured
+		_warn_unreadable(p.code)
 		return False
+
+
+def _warn_unreadable(code: str) -> None:
+	"""Logged at most once an hour per processor: the gates ask on every invoice save."""
+	try:
+		key = f"ffl_card_processor_unreadable:{code}"
+		if frappe.cache().get_value(key):
+			return
+		frappe.cache().set_value(key, 1, expires_in_sec=3600)
+		from ffl_integrations.notifications import safe_log_error
+
+		safe_log_error(f"Card processor {code}: settings cannot be read, treated as off",
+			frappe.get_traceback())
+	except Exception:  # noqa: BLE001
+		pass
 
 
 def get_processor(code: str | None) -> CardProcessor | None:
