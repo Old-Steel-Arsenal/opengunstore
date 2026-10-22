@@ -85,7 +85,7 @@ RETIRED_ALLOWED: list[tuple[str, str, str]] = [
 
 # Every osa_/osa- token under apps/ must be one of these, exactly (case-insensitive).
 KEEP: dict[str, str] = {
-	**dict.fromkeys(("osa_consignment", "osa_dropship", "osa_ai", "osa_ca_compliant"),
+	**dict.fromkeys(("osa_consignment", "osa_dropship", "osa_ai", "osa_ca_compliant", "osa_range"),
 		"first-party extension ids (their rename waits until after the launch)"),
 	**dict.fromkeys(("osa_restricted_states", "osa_serial", "osa_sold_price", "osa_sold_at", "osa_fulfillment_mode",
 		"osa_lead_days", "osa_map_price", "osa_map_mode"),

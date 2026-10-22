@@ -60,7 +60,7 @@ GUNSHOP_HOOKS = {
 # The ids first_party may be declared by, shipped with the core: the manifest's
 # own claim is not enough while packages are unsigned (lazy: an id allowlist, not a
 # signature; upgrade path = package signing).
-FIRST_PARTY_IDS = frozenset({"osa_consignment", "osa_ai", "osa_ca_compliant", "osa_dropship"})
+FIRST_PARTY_IDS = frozenset({"osa_consignment", "osa_ai", "osa_ca_compliant", "osa_dropship", "osa_range"})
 # Hooks only a first-party extension may register (manifest permission "first_party"):
 # auth_hooks lets an app authenticate a request as any user, which a marketplace
 # extension must never be able to do.
