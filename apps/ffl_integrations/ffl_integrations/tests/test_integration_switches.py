@@ -22,6 +22,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from ffl_core.tests.settings_sandbox import SettingsSandbox
+from ffl_integrations.tests.site_fixtures import payroc_configured
 from ffl_integrations.integration_gate import (
 	card_reference_required,
 	FASTBOUND_SETTINGS,
@@ -84,7 +85,16 @@ class IntegrationSwitchDefaults(SettingsSandbox, FrappeTestCase):
 		demanding a hand-typed reference the moment Payroc is switched back on."""
 		self.set_single(PAYROC_SETTINGS, "require_card_reference", 1)
 		self.set_single(PAYROC_SETTINGS, "enabled", 1)
-		self.assertFalse(card_reference_required())
+		with payroc_configured():
+			self.assertFalse(card_reference_required())
+
+	def test_card_reference_requirement_applies_while_payroc_has_no_key(self):
+		"""Switched on without credentials, Payroc takes no cards: the counter is on a
+		standalone terminal, so its approval code is still what ties the sale to it."""
+		self.set_single(PAYROC_SETTINGS, "require_card_reference", 1)
+		self.set_single(PAYROC_SETTINGS, "enabled", 1)
+		with patch("ffl_integrations.integration_gate.payroc_ready", return_value=False):
+			self.assertTrue(card_reference_required())
 
 		self.set_single(PAYROC_SETTINGS, "enabled", 0)
 		self.assertTrue(card_reference_required())
@@ -670,7 +680,8 @@ class CardReferenceGate(SettingsSandbox, FrappeTestCase):
 		"""The gateway supplies the approval code; asking staff to type one would be
 		busywork with a worse source of truth."""
 		self.set_single(PAYROC_SETTINGS, "enabled", 1)
-		self._run(self._doc(reference=""))
+		with payroc_configured():
+			self._run(self._doc(reference=""))
 
 
 class BlockUnconfirmedGatewayRefundHook(SettingsSandbox, FrappeTestCase):
@@ -693,7 +704,7 @@ class BlockUnconfirmedGatewayRefundHook(SettingsSandbox, FrappeTestCase):
 	def test_blocks_an_unconfirmed_gateway_return_at_submit(self):
 		from ffl_integrations.payments import api
 
-		with patch.object(api, "_original_gateway_charged", return_value="AUTH-1"):
+		with patch.object(api, "_gateway_reference", return_value="AUTH-1"):
 			with self.assertRaises(frappe.ValidationError) as ctx:
 				self._run(self._doc())
 		self.assertIn("Confirm Portal Refund", str(ctx.exception))
@@ -701,20 +712,32 @@ class BlockUnconfirmedGatewayRefundHook(SettingsSandbox, FrappeTestCase):
 	def test_a_confirmed_return_submits(self):
 		from ffl_integrations.payments import api
 
-		with patch.object(api, "_original_gateway_charged", return_value="AUTH-1"):
+		with patch.object(api, "_gateway_reference", return_value="AUTH-1"):
 			self._run(self._doc(card_oob_refund_reference="PORTAL-RF-9"))
 
 	def test_ordinary_returns_and_sales_are_untouched(self):
 		from ffl_integrations.payments import api
 
-		with patch.object(api, "_original_gateway_charged", return_value=""):
+		with patch.object(api, "_gateway_reference", return_value=""):
 			self._run(self._doc())                       # never gateway-charged
 		self._run(self._doc(is_return=0))                # forward sale
 		self._run(self._doc(docstatus=0))                # draft
 
 	def test_inert_while_payroc_is_live(self):
 		self.set_single(PAYROC_SETTINGS, "enabled", 1)
-		self._run(self._doc())
+		with payroc_configured():
+			self._run(self._doc())
+
+	def test_a_return_not_yet_saved_is_judged_by_its_own_original(self):
+		"""On insert the return is not in the DB yet: the gate reads return_against off
+		the document in hand, not by looking the return up."""
+		from ffl_integrations.payments import api
+
+		doc = self._doc(name="new-pos-invoice-1", return_against="ORIG-HOOK-1")
+		with patch.object(api, "_gateway_reference", return_value="AUTH-1") as ref:
+			with self.assertRaises(frappe.ValidationError):
+				self._run(doc)
+		ref.assert_called_once_with("ORIG-HOOK-1")
 
 
 class OutOfBandRefundConfirmation(SettingsSandbox, FrappeTestCase):
@@ -745,7 +768,7 @@ class OutOfBandRefundConfirmation(SettingsSandbox, FrappeTestCase):
 
 	def test_refused_while_payroc_is_live(self):
 		self.set_single(PAYROC_SETTINGS, "enabled", 1)
-		with self.assertRaises(frappe.ValidationError) as ctx:
+		with payroc_configured(), self.assertRaises(frappe.ValidationError) as ctx:
 			self._confirm()
 		self.assertIn("switched on", str(ctx.exception))
 

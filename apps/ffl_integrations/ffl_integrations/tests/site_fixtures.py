@@ -125,3 +125,17 @@ def ensure_credit_card_mop_account() -> None:
 	if changed:
 		mop.flags.ignore_permissions = True
 		mop.save()
+
+
+def payroc_configured():
+	"""A patch under which Payroc counts as configured whenever it is switched on.
+
+	A card processor is ON only when switched on AND configured (payments.registry); the test
+	site holds no Payroc key, so tests that stand in for a store running Payroc start this.
+	"""
+	from unittest.mock import patch
+
+	from ffl_integrations import integration_gate
+
+	return patch("ffl_integrations.integration_gate.payroc_ready",
+		side_effect=lambda require_device=False: integration_gate.payroc_enabled())

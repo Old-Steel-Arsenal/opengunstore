@@ -22,6 +22,7 @@ from frappe.tests.utils import FrappeTestCase
 from ffl_core.tests.settings_sandbox import SettingsSandbox
 from ffl_integrations.payments import api, hub, registry
 from ffl_integrations.payments.base import APPROVED, PENDING, CardProcessor, CardResult
+from ffl_integrations.tests.site_fixtures import payroc_configured
 from ffl_integrations.tests.test_payroc import (
     _approved_payment,
     _cc_return_against,
@@ -33,6 +34,18 @@ HERE = "ffl_integrations.tests.test_card_processor_seam"
 PAYROC = "ffl_integrations.payroc.adapter.processor"
 FAKE = f"{HERE}.fake_processor"
 PAYROC_SETTINGS = "Payroc Settings"
+
+
+# These tests stand in for a store whose Payroc is configured (the test site holds no key).
+_PAYROC_CONFIGURED = payroc_configured()
+
+
+def setUpModule():
+    _PAYROC_CONFIGURED.start()
+
+
+def tearDownModule():
+    _PAYROC_CONFIGURED.stop()
 
 
 class FakeGateway:
@@ -172,7 +185,7 @@ class OneProcessorAtATime(_Seam):
             with self.assertRaises(frappe.ValidationError) as ctx:
                 registry.active_processor()
             self.assertIn("More than one card processor", str(ctx.exception))
-            self.assertTrue(registry.any_enabled())     # the validate-time question never throws
+            self.assertTrue(registry.any_on())     # the validate-time question never throws
 
     def test_the_hub_refuses_a_second_switch(self):
         self.set_single(PAYROC_SETTINGS, "enabled", 0)
@@ -190,8 +203,22 @@ class OneProcessorAtATime(_Seam):
         self.set_single(PAYROC_SETTINGS, "enabled", 0)
         doc = frappe.get_doc(PAYROC_SETTINGS)
         doc.enabled = 1
+        doc.api_key = "test-key"
         with card_hooks(PAYROC, FAKE), self.assertRaises(frappe.ValidationError):
             doc.validate()
+
+    def test_payroc_switched_on_without_a_key_does_not_count(self):
+        """A site that never saved Payroc Settings reads Payroc as switched on. Without
+        credentials it takes no cards, so it must not stand in the way of the store's
+        real processor."""
+        self.set_single(PAYROC_SETTINGS, "enabled", 1)
+        with card_hooks(PAYROC, FAKE), \
+                patch("ffl_integrations.integration_gate.payroc_ready", return_value=False):
+            self.assertEqual(registry.active_processor().code, "fakepay")
+            registry.refuse_second_active("fakepay")             # must not raise
+            doc = frappe.get_doc(PAYROC_SETTINGS)
+            doc.enabled = 1
+            doc.validate()                                       # no key: not arming Payroc
 
     def test_boot_names_the_active_processor(self):
         from ffl_integrations.boot import extend_bootinfo

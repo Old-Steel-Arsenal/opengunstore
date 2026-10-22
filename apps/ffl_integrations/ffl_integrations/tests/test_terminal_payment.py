@@ -13,7 +13,19 @@ from frappe.utils import flt
 from ffl_core.api import manual_order
 from ffl_core.tests.test_build_order import BuildOrderMixin
 from ffl_integrations.payments import api
-from ffl_integrations.tests.site_fixtures import ensure_credit_card_mop_account
+from ffl_integrations.tests.site_fixtures import ensure_credit_card_mop_account, payroc_configured
+
+
+# These tests stand in for a store whose Payroc is configured (the test site holds no key).
+_PAYROC_CONFIGURED = payroc_configured()
+
+
+def setUpModule():
+	_PAYROC_CONFIGURED.start()
+
+
+def tearDownModule():
+	_PAYROC_CONFIGURED.stop()
 
 PAYMENT_HREF = "https://x/merchant/api/v1/transaction/payments/REF-TP-1"
 

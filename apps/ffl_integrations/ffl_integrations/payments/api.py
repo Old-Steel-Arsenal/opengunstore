@@ -595,7 +595,7 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
             # rather than ever creating a second one.
             legacy = gateway(LEGACY_PROCESSOR)
             polled = legacy.poll(prev)
-            if polled.status == PENDING:
+            if _still_on_device(polled):
                 return {"ok": True, "instruction_id": prev,
                         "status": "IN_PROGRESS", "amount": flt(amount) or _card_target(inv)}
             if polled.status in (APPROVED, DECLINED):
@@ -1240,7 +1240,12 @@ def _original_gateway_charged(return_invoice_name: str) -> str:
     switched-off path is "unconfigured => skip, touching nothing"."""
     if not return_invoice_name or not frappe.db.exists("POS Invoice", return_invoice_name):
         return ""
-    original = frappe.db.get_value("POS Invoice", return_invoice_name, "return_against")
+    return _gateway_reference(
+        frappe.db.get_value("POS Invoice", return_invoice_name, "return_against"))
+
+
+def _gateway_reference(original: str | None) -> str:
+    """:func:`_original_gateway_charged` for the original sale's name in hand."""
     if not original:
         return ""
     live = [r for r in _charge_rows(original) if r.status == "CHARGED"]
@@ -2118,32 +2123,30 @@ def block_unconfirmed_gateway_refund(doc, method=None):
         return
     if not int(getattr(doc, "is_return", 0) or 0):
         return
-    name = getattr(doc, "name", "") or ""
-    if _charging_processor_on(name):
+    # The original from the document in hand, not the DB: a return being inserted
+    # is not in the DB yet.
+    original = getattr(doc, "return_against", None)
+    if _charging_processor_on(original):
         return  # live gateway: refund_pos_invoice owns this path end to end
     if (getattr(doc, "card_oob_refund_reference", "") or "").strip():
         return
-    reference = _original_gateway_charged(name)
+    reference = _gateway_reference(original)
     if not reference:
         return
-    frappe.throw(_oob_refund_instruction(reference, _return_label(name)),
+    frappe.throw(_oob_refund_instruction(reference, _original_label(doc)),
         title=_("Card refund cannot be sent"))
 
 
-def _charging_processor_on(return_invoice_name: str) -> bool:
-    """Is the processor that charged this return's original switched on? With no
-    gateway charge to go by: is any processor on (the question was always
-    "is the gateway live", and a store with none on has none to refund through)."""
-    try:
-        original = frappe.db.get_value("POS Invoice", return_invoice_name, "return_against") \
-            if return_invoice_name else None
-    except Exception:
-        original = None
+def _charging_processor_on(original: str | None) -> bool:
+    """Is the processor that charged the ``original`` sale ON (switched on and
+    configured — the same test the refund itself makes)? With no gateway charge to go
+    by: is any processor on (the question was always "is the gateway live", and a
+    store with none on has none to refund through)."""
     code = _charged_by(original)
     if not code:
-        return registry.any_enabled()
+        return registry.any_on()
     p = registry.get_processor(code)
-    return bool(p and p.enabled())
+    return bool(p and p.ready())
 
 
 @frappe.whitelist(methods=["POST"])
@@ -2184,7 +2187,8 @@ def confirm_out_of_band_refund(return_invoice_name: str, portal_reference: str,
         frappe.throw(_(
             "That looks like a full card number. Enter the portal refund's "
             "reference — never the card number."))
-    if _charging_processor_on(return_invoice_name):
+    if _charging_processor_on(frappe.db.get_value("POS Invoice", return_invoice_name,
+            "return_against") if return_invoice_name else None):
         frappe.throw(_(
             "{0} is switched on — refunds go through the gateway, so there is "
             "nothing to confirm out of band.").format(_return_label(return_invoice_name)))

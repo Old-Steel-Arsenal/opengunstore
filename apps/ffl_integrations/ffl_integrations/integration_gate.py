@@ -68,11 +68,11 @@ def gunbroker_enabled() -> bool:
 
 
 def card_processor_enabled() -> bool:
-	"""True while any card processor (payments.registry) is switched on — "is the
-	gateway live", asked without naming a vendor. Never raises."""
-	from ffl_integrations.payments.registry import any_enabled
+	"""True while any card processor (payments.registry) is ON — switched on and
+	configured: "is the gateway live", asked without naming a vendor. Never raises."""
+	from ffl_integrations.payments.registry import any_on
 
-	return any_enabled()
+	return any_on()
 
 
 def card_processor_ready(require_device: bool = False) -> bool:

@@ -126,7 +126,7 @@ evidence another rule force-collects clears itself).
 
 **Permissions:** Manager role (_check_manager).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:2150`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:2153`</sub>
 
 ## `list_terminals`
 
@@ -215,7 +215,7 @@ originals refund across rows within per-original-card caps.
 
 **Permissions:** Manager-gated refund roles (gate at entry).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1412`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1417`</sub>
 
 ## `unlock_refund_lock`
 
@@ -252,7 +252,7 @@ mirroring manager_override_4473's audit posture.
 
 **Permissions:** Manager gate (roles per the derived Auth line) + required reason — the reason must record what was verified in the processor's portal.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1787`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1792`</sub>
 
 ## `void_pos_invoice`
 

@@ -6,9 +6,12 @@ a zero-arg factory returning a :class:`~ffl_integrations.payments.base.CardProce
 special-cases no processor. A factory that raises is logged and its processor counts as not
 installed; so does one from a POS Extension the store has switched off.
 
-At most one processor is switched on: the single "Credit Card" Mode of Payment is what they
-share, and nothing could say which gateway a swipe should go to. The Payments page refuses to
-switch a second one on (and Payroc Settings does too); should a site end up with two anyway,
+At most one processor is ON — switched on AND configured (``CardProcessor.ready``): the single
+"Credit Card" Mode of Payment is what they share, and nothing could say which gateway a swipe
+should go to. A switch that is on without credentials does not count: Payroc's switch reads ON on
+a site that never saved Payroc Settings, and a store running another processor must not have to
+find and untick it first. The Payments page refuses to switch a second one on (and Payroc
+Settings refuses to arm Payroc beside another); should a site end up with two anyway,
 ``active_processor`` refuses to pick one.
 """
 from __future__ import annotations
@@ -57,26 +60,36 @@ def _app_running(app: str) -> bool:
 	return is_enabled(app)
 
 
+def _is_on(p: CardProcessor) -> bool:
+	"""Switched on and configured. A configuration that cannot be read (a password that no
+	longer decrypts) is not configured: it breaks that processor's terminal, never the
+	counter's other work."""
+	try:
+		return bool(p.ready())
+	except Exception:
+		return False
+
+
 def get_processor(code: str | None) -> CardProcessor | None:
 	"""The installed processor with this code, or None."""
 	return next((p for p in processors() if p.code == code), None) if code else None
 
 
 def active_processor() -> CardProcessor | None:
-	"""The processor switched on for new money, or None (cards are then plain tender on a
-	standalone terminal). Two switched on raises: guessing which gateway a swipe belongs to is
-	not something to do quietly."""
-	on = [p for p in processors() if p.enabled()]
+	"""The processor that is ON (switched on and configured) for new money, or None (cards are
+	then plain tender on a standalone terminal). Two ON raises: guessing which gateway a swipe
+	belongs to is not something to do quietly."""
+	on = [p for p in processors() if _is_on(p)]
 	if len(on) > 1:
 		frappe.throw(_("More than one card processor is switched on ({0}). Switch all but one off "
 			"in Settings → Payments.").format(", ".join(p.label for p in on)))
 	return on[0] if on else None
 
 
-def any_enabled() -> bool:
-	"""Whether any card processor is switched on — the question the validate-time gates ask,
-	which must never throw."""
-	return any(p.enabled() for p in processors())
+def any_on() -> bool:
+	"""Whether any card processor is ON (switched on and configured) — the question the
+	validate-time gates ask, which must never throw."""
+	return any(_is_on(p) for p in processors())
 
 
 def label_for(code: str | None) -> str:
@@ -90,10 +103,10 @@ def label_for(code: str | None) -> str:
 
 
 def refuse_second_active(code: str) -> None:
-	"""Throw when switching ``code`` on would make two processors active. A processor's
-	settings form calls it from validate while its switch is on; the Payments page calls it
-	before it flips one."""
-	others = [p.label for p in processors() if p.code != code and p.enabled()]
+	"""Throw when switching ``code`` on would make two processors ON. A processor's settings
+	form calls it from validate while it is switched on and configured; the Payments page calls
+	it before it flips one. Only processors that are ON count against it."""
+	others = [p.label for p in processors() if p.code != code and _is_on(p)]
 	if others:
 		frappe.throw(_("{0} is switched on. Only one card processor can take cards at a time — "
 			"switch it off first.").format(", ".join(others)))

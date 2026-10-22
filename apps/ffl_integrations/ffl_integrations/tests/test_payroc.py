@@ -39,6 +39,19 @@ from ffl_integrations.payments.api import (
 )
 from ffl_integrations.payroc.adapter import _order_id
 from ffl_integrations.payments.setup import MODE_OF_PAYMENT_NAME
+from ffl_integrations.tests.site_fixtures import payroc_configured
+
+
+# These tests stand in for a store whose Payroc is configured (the test site holds no key).
+_PAYROC_CONFIGURED = payroc_configured()
+
+
+def setUpModule():
+    _PAYROC_CONFIGURED.start()
+
+
+def tearDownModule():
+    _PAYROC_CONFIGURED.stop()
 
 
 def _mock_response(status_code: int = 200, json_body=None, content_set=True):
@@ -291,6 +304,23 @@ class PayrocApiUnit(FrappeTestCase):
         self.assertEqual(out["instruction_id"], "PI-OLD")
         self.assertEqual(out["status"], "IN_PROGRESS")
         c.create_payment_instruction.assert_not_called()     # no second device charge
+
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api.frappe.get_doc")
+    @patch("ffl_integrations.payments.api.frappe.db.exists", return_value=True)
+    @patch("ffl_integrations.payments.api._check_perm")
+    def test_charge_resume_keeps_an_unknown_state_in_flight(self, _p, _e, gd, cc, sv, _ir):
+        """An instruction in a state Payroc does not document may still capture: the
+        legacy resume hands it back for polling instead of starting a second charge."""
+        gd.return_value = self._inv(card_instruction_id="PI-ODD")
+        c = cc.from_settings.return_value
+        c.poll_payment_instruction.return_value = {"status": "SETTLING"}
+        out = charge_pos_invoice("POS-7")
+        self.assertEqual(out["instruction_id"], "PI-ODD")
+        self.assertEqual(out["status"], "IN_PROGRESS")
+        c.create_payment_instruction.assert_not_called()
 
     @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
     @patch("ffl_integrations.payments.api.frappe.db.set_value")
