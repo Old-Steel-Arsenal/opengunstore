@@ -1146,11 +1146,15 @@ class ReceiveGoodsApp {
 			freeze_message: __('Matching {0} to items…', [inv.invoice_number]),
 			callback: (r) => {
 				const m = r.message || {};
-				if ((m.unmatched || []).length) {
+				if ((m.unmatched || []).length && !m.received) {
 					const esc = frappe.utils.escape_html;
 					frappe.msgprint({ title: __('Some lines could not be matched'), indicator: 'orange',
 						message: `<p>${__('No item could be found or made for these lines. Scan them as plain stock:')}</p>`
 							+ `<ul>${m.unmatched.map((u) => `<li>${esc(u.sku)} — ${esc(u.reason)}</li>`).join('')}</ul>` });
+				}
+				if (m.received) {
+					frappe.show_alert({ indicator: 'green', message: __('Invoice {0} closed — only $0 lines no item matches were left.', [inv.invoice_number]) }, 8);
+					this._loadIncoming();
 				}
 				if (!(m.lines || []).length) return;
 				this._loadOrderLines({ ...inv, invoice_name: m.invoice_name }, m.lines);
