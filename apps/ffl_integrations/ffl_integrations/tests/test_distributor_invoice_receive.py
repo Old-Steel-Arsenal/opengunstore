@@ -507,6 +507,21 @@ class TestReceiveInvoice(_InvoiceBase):
 		self.assertFalse(res["received"])
 		self.assertEqual(frappe.db.get_value("Distributor Invoice", inv.name, "received"), 0)
 
+	def test_a_free_line_whose_lookup_failed_still_waits(self):
+		inv = self._invoice("F-5", lines=[{"sku": "DC-ACC", "qty": 1, "unit_cost": 2, "amount": 2},
+			{"sku": "DOWN", "qty": 1, "unit_cost": 0, "amount": 0}])
+		real = rb._resolve_line_item
+
+		def flaky(provider, line):
+			if line.sku == "DOWN":
+				raise ConnectionError("data service down")
+			return real(provider, line)
+		with mock.patch.object(rb, "_resolve_line_item", side_effect=flaky):
+			res = self._receive(inv, [{"line_name": inv.lines[0].name, "qty": 1}])
+			self.assertFalse(res["received"])
+			self.assertFalse(rb.stage_invoice(inv.name)["received"])
+		self.assertEqual(frappe.db.get_value("Distributor Invoice", inv.name, "received"), 0)
+
 	def test_staging_closes_an_invoice_with_only_unmatched_free_lines_left(self):
 		inv = self._invoice("F-3", lines=[{"sku": "DC-ACC", "qty": 1, "unit_cost": 2, "amount": 2,
 			"received_qty": 1}, {"sku": "NOT-IN-CATALOG", "qty": 3, "unit_cost": 0, "amount": 0}])

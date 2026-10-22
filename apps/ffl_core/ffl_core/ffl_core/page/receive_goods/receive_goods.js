@@ -1146,7 +1146,7 @@ class ReceiveGoodsApp {
 			freeze_message: __('Matching {0} to items…', [inv.invoice_number]),
 			callback: (r) => {
 				const m = r.message || {};
-				if ((m.unmatched || []).length) {
+				if ((m.unmatched || []).length && !m.received) {
 					const esc = frappe.utils.escape_html;
 					frappe.msgprint({ title: __('Some lines could not be matched'), indicator: 'orange',
 						message: `<p>${__('No item could be found or made for these lines. Scan them as plain stock:')}</p>`

@@ -132,7 +132,7 @@ looks like the parcel of an open POS order.
 
 **Permissions:** Receive roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:958`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:965`</sub>
 
 ## `receive_lines`
 
@@ -184,4 +184,4 @@ firearm — the serials the distributor sent that are not in the books yet.
 
 **Permissions:** Receive roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:890`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:897`</sub>
