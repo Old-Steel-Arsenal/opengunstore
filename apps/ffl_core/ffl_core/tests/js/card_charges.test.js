@@ -5,9 +5,9 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const pc = require('../../public/js/payroc_charges.js');
+const pc = require('../../public/js/card_charges.js');
 
-const doc = (rows) => ({ payroc_charges: rows });
+const doc = (rows) => ({ card_charges: rows });
 const charged = (amount, extra) => Object.assign(
 	{ status: 'CHARGED', amount: amount }, extra || {});
 
@@ -153,4 +153,19 @@ test('isUnlockableLock: UNKNOWN-OUTCOME only — PARTIAL:* must never unlock', (
 	assert.equal(pc.isUnlockableLock('RF-REAL-123'), false);
 	assert.equal(pc.isUnlockableLock(''), false);
 	assert.equal(pc.isUnlockableLock(null), false);
+});
+
+test('chargingProcessorOff: the portal-refund exit follows the processor that charged the sale', () => {
+	const payroc = { code: 'payroc', label: 'Payroc', enabled: 1 };
+	// Nothing switched on: any gateway-charged sale needs the portal refund.
+	assert.equal(pc.chargingProcessorOff('payroc', { code: '', label: '', enabled: 0 }), true);
+	assert.equal(pc.chargingProcessorOff('', { code: '', label: '', enabled: 0 }), true);
+	// Its own processor is on: the live refund path owns it.
+	assert.equal(pc.chargingProcessorOff('payroc', payroc), false);
+	assert.equal(pc.chargingProcessorOff('', payroc), false);            // stamp-only sale = Payroc
+	// The store moved to another processor: the sale's processor is off.
+	assert.equal(pc.chargingProcessorOff('payroc', { code: 'other', enabled: 1 }), true);
+	assert.equal(pc.chargingProcessorOff('', { code: 'other', enabled: '1' }), true);
+	// No boot key (older server): read as on, as before — no button.
+	assert.equal(pc.chargingProcessorOff('payroc', undefined), false);
 });

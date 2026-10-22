@@ -1,7 +1,7 @@
 // POS Invoice desk form — manager "Void Card Charge" button.
 //
-// Reverses an UNSETTLED Payroc card capture (Payroc has no discrete /void;
-// the backend PATCHes …/reverse). The primary case is a held order: under the
+// Reverses an UNSETTLED card capture on the processor that took it (Payroc
+// has no discrete /void; its adapter PATCHes …/reverse). The primary case is a held order: under the
 // charge-before-4473 flow a firearm sale takes payment then waits as a DRAFT
 // for the 4473/NICS — if the buyer is denied, the manager voids the card here
 // and deletes the draft. Settled/submitted sales must refund via POS Return
@@ -14,16 +14,16 @@ frappe.ui.form.on('POS Invoice', {
 		const isManager = frappe.user.has_role('Sales Manager')
 			|| frappe.user.has_role('System Manager');
 
-		// Void Card Charge — reverse an unsettled Payroc capture on a held draft.
+		// Void Card Charge — reverse an unsettled card capture on a held draft.
 		// Multi-card era: any live CHARGED row is voidable regardless of the
 		// aggregate status (an in-flight sibling instruction must not hide the
 		// button); legacy single-stamp invoices keep the old rule.
-		const status = frm.doc.payroc_status;
-		const pcMath = window.ffl && window.ffl.payrocCharges;
+		const status = frm.doc.card_status;
+		const pcMath = window.ffl && window.ffl.cardCharges;
 		const liveRows = pcMath ? pcMath.liveChargeRows(frm.doc) : [];
 		const canVoid = frm.doc.docstatus === 0            // unsettled draft only
 			&& (liveRows.length
-				|| (frm.doc.payroc_unique_reference
+				|| (frm.doc.card_unique_reference
 					&& (status === 'CHARGED' || status === 'PARTIAL')))
 			&& isManager;
 		if (canVoid) {
@@ -78,7 +78,7 @@ frappe.ui.form.on('POS Invoice', {
 		}
 
 		// Unlock Card Refund — clear a return's UNKNOWN-OUTCOME re-refund lock
-		// after the manager verified in the Payroc portal that the refund did
+		// after the manager verified in the processor's portal that the refund did
 		// NOT land. PARTIAL:* locks never unlock (the sentinel
 		// is the one record of what this return already pushed back — its
 		// residue goes to back-office manual processing), and real refund
@@ -86,35 +86,53 @@ frappe.ui.form.on('POS Invoice', {
 		// normally DRAFTS (the refund runs before submit), so the button shows
 		// on drafts and submitted docs alike. Server re-checks everything.
 		const unlockable = pcMath
-			&& pcMath.isUnlockableLock(frm.doc.payroc_refund_reference);
+			&& pcMath.isUnlockableLock(frm.doc.card_refund_reference);
 		if (frm.doc.is_return && frm.doc.docstatus !== 2 && unlockable && isManager) {
 			frm.add_custom_button(__('Unlock Card Refund'), () => unlockCardRefund(frm))
 				.removeClass('btn-default').addClass('btn-danger');
 		}
 
 		// Confirm Portal Refund — the manager exit for the switched-off refund
-		// guard: a return of a GATEWAY-charged sale cannot submit while Payroc is
-		// off until the portal refund is recorded here (its own field + timeline,
+		// guard: a return of a GATEWAY-charged sale cannot submit while the card
+		// processor that charged it is off until the portal refund is recorded here (its own field + timeline,
 		// never the tender row's reference_no — that field is force-collected by
 		// the standalone-terminal rule and cannot double as this guard's
-		// evidence). Shown when the original carries gateway money facts; the
-		// server re-checks everything.
-		const payrocOff = window.ffl && window.ffl.switches
-			&& !window.ffl.switches.payrocEnabled();
-		if (payrocOff && frm.doc.is_return && frm.doc.docstatus !== 2
-				&& frm.doc.return_against && !frm.doc.payroc_oob_refund_reference
+		// evidence). Shown when the original carries gateway money facts and its
+		// processor is not the one switched on now (none on, or the store has moved
+		// to another processor); the server re-checks everything.
+		const active = frappe.boot && frappe.boot.ffl_card_processor;
+		if (window.ffl && window.ffl.switches && pcMath && pcMath.chargingProcessorOff
+				&& active && frm.doc.is_return && frm.doc.docstatus !== 2
+				&& frm.doc.return_against && !frm.doc.card_oob_refund_reference
 				&& isManager) {
-			frappe.db.get_value('POS Invoice', frm.doc.return_against,
-				['payroc_unique_reference', 'payroc_status']).then((r) => {
-				const o = (r.message || {});
-				if (!o.payroc_unique_reference && !o.payroc_status) return;
-				frm.add_custom_button(__('Confirm Portal Refund'),
-					() => confirmPortalRefund(frm))
-					.removeClass('btn-default').addClass('btn-danger');
+			// Which processor took the original's card money (its first live row;
+			// none = a stamp-only sale from before rows, which was Payroc). Only
+			// asked while a processor is on: with none on, any one is off.
+			const chargedBy = Number(active.enabled)
+				? frappe.db.get_value('Card Charge', { parent: frm.doc.return_against,
+					parenttype: 'POS Invoice', status: 'CHARGED' }, 'processor', null, 'POS Invoice')
+					.then((r) => (r.message || {}).processor || '')
+				: Promise.resolve('');
+			chargedBy.then((code) => {
+				if (!pcMath.chargingProcessorOff(code, active)) return;
+				return frappe.db.get_value('POS Invoice', frm.doc.return_against,
+					['card_unique_reference', 'card_status']).then((r) => {
+					const o = (r.message || {});
+					if (!o.card_unique_reference && !o.card_status) return;
+					frm.add_custom_button(__('Confirm Portal Refund'),
+						() => confirmPortalRefund(frm))
+						.removeClass('btn-default').addClass('btn-danger');
+				});
 			});
 		}
 	},
 });
+
+// The active card processor's name for messages ("Payroc" on a Payroc store).
+function cardLabel() {
+	const s = window.ffl && window.ffl.switches;
+	return (s && s.cardProcessorLabel) ? s.cardProcessorLabel() : __('card processor');
+}
 
 function unlockCardRefund(frm) {
 	const d = new frappe.ui.Dialog({
@@ -123,22 +141,22 @@ function unlockCardRefund(frm) {
 			{
 				fieldtype: 'HTML', fieldname: 'warn',
 				options: `<div class="alert alert-danger" style="margin-bottom:10px">${
-					__('This return\'s automatic refund is locked (<b>{0}</b>): a refund attempt ended with an UNKNOWN outcome — it may or may not have landed. <b>First verify in the Payroc portal that NO refund landed for this return.</b> Unlocking re-arms a FULL-amount retry; if the original attempt actually landed, that retry refunds the same money twice. If the portal shows any refund landed, do NOT unlock — send it to the back office instead.',
-						[frappe.utils.escape_html(frm.doc.payroc_refund_reference || '')])
+					__('This return\'s automatic refund is locked (<b>{0}</b>): a refund attempt ended with an UNKNOWN outcome — it may or may not have landed. <b>First verify in the {1} portal that NO refund landed for this return.</b> Unlocking re-arms a FULL-amount retry; if the original attempt actually landed, that retry refunds the same money twice. If the portal shows any refund landed, do NOT unlock — send it to the back office instead.',
+						[frappe.utils.escape_html(frm.doc.card_refund_reference || ''), cardLabel()])
 				}</div>`,
 			},
 			{
 				fieldtype: 'Small Text', fieldname: 'reason', reqd: 1,
-				label: __('Reason (include what you verified in Payroc)'),
-				description: __('e.g. Payroc portal shows no refund landed for the timed-out slice; credentials fixed, safe to retry.'),
+				label: __('Reason (include what you verified in {0})', [cardLabel()]),
+				description: __('e.g. {0} portal shows no refund landed for the timed-out slice; credentials fixed, safe to retry.', [cardLabel()]),
 			},
 		],
-		primary_action_label: __('I verified in Payroc — unlock'),
+		primary_action_label: __('I verified in {0} — unlock', [cardLabel()]),
 		primary_action(values) {
 			d.hide();
 			frappe.dom.freeze(__('Unlocking…'));
 			frappe.call({
-				method: 'ffl_integrations.payroc.api.unlock_refund_lock',
+				method: 'ffl_integrations.payments.api.unlock_refund_lock',
 				args: { return_invoice_name: frm.doc.name, reason: values.reason },
 				callback(r) {
 					frappe.dom.unfreeze();
@@ -205,12 +223,12 @@ function voidCardCharge(frm) {
 	// picks which. Single charge (row or legacy stamp) → no picker. Picker
 	// labels are index-mapped back to unique_reference by the pure module —
 	// values never round-trip through display text.
-	const pcMath = window.ffl && window.ffl.payrocCharges;
+	const pcMath = window.ffl && window.ffl.cardCharges;
 	const live = pcMath ? pcMath.liveChargeRows(frm.doc) : [];
-	const picker = pcMath ? pcMath.buildVoidPicker(frm.doc.payroc_charges) : null;
+	const picker = pcMath ? pcMath.buildVoidPicker(frm.doc.card_charges) : null;
 	const multi = live.length > 1;
 	const amount = live.length === 1 ? flt(live[0].amount)
-		: (flt(frm.doc.payroc_charged_amount) || flt(frm.doc.grand_total));
+		: (flt(frm.doc.card_charged_amount) || flt(frm.doc.grand_total));
 	const fields = [
 		{
 			fieldtype: 'HTML', fieldname: 'warn',
@@ -218,7 +236,7 @@ function voidCardCharge(frm) {
 				multi
 					? __('This sale was split across {0} cards. Voiding reverses <b>one charge at a time</b> — pick which one below; the money goes back to that card. Only works on an <b>unsettled</b> charge (same business day). After voiding, delete this draft or re-tender.',
 						[live.length])
-					: __('This reverses the card payment of <b>{0}</b> on the Payroc terminal — the money goes back to the customer\'s card. It only works on an <b>unsettled</b> charge (same business day, before the batch closes). After voiding, delete this draft or re-tender.',
+					: __('This reverses the card payment of <b>{0}</b> on the card terminal — the money goes back to the customer\'s card. It only works on an <b>unsettled</b> charge (same business day, before the batch closes). After voiding, delete this draft or re-tender.',
 						[format_currency(amount)])
 			}</div>`,
 		},
@@ -243,7 +261,7 @@ function voidCardCharge(frm) {
 			d.hide();
 			frappe.dom.freeze(__('Reversing on the terminal…'));
 			frappe.call({
-				method: 'ffl_integrations.payroc.api.void_pos_invoice',
+				method: 'ffl_integrations.payments.api.void_pos_invoice',
 				args: {
 					invoice_name: frm.doc.name, reason: values.reason,
 					unique_reference: multi ? picker.resolve(values.charge) : undefined,
@@ -277,25 +295,25 @@ function confirmPortalRefund(frm) {
 			{
 				fieldtype: 'HTML', fieldname: 'warn',
 				options: `<div class="alert alert-danger" style="margin-bottom:10px">${
-					__('The original sale was charged on the integrated terminal, and Payroc is switched off — POS cannot send this refund. <b>First issue the refund in the Payroc portal.</b> Recording it here lets the return submit; it does not move any money.')
+					__('The original sale was charged on the integrated terminal, and its card processor is switched off — POS cannot send this refund. <b>First issue the refund in that processor\'s portal.</b> Recording it here lets the return submit; it does not move any money.')
 				}</div>`,
 			},
 			{
 				fieldtype: 'Data', fieldname: 'portal_reference', reqd: 1,
 				label: __('Portal refund reference'),
-				description: __('From the Payroc portal — the refund\'s own reference, never the card number.'),
+				description: __('From the processor\'s portal — the refund\'s own reference, never the card number.'),
 			},
 			{
 				fieldtype: 'Small Text', fieldname: 'reason', reqd: 1,
-				label: __('Reason (include what you verified in Payroc)'),
+				label: __('Reason (include what you verified in the portal)'),
 			},
 		],
-		primary_action_label: __('I refunded it in Payroc — record'),
+		primary_action_label: __('I refunded it in the portal — record'),
 		primary_action(values) {
 			d.hide();
 			frappe.dom.freeze(__('Recording…'));
 			frappe.call({
-				method: 'ffl_integrations.payroc.api.confirm_out_of_band_refund',
+				method: 'ffl_integrations.payments.api.confirm_out_of_band_refund',
 				args: {
 					return_invoice_name: frm.doc.name,
 					portal_reference: values.portal_reference,

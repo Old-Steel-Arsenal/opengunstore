@@ -12,8 +12,20 @@ from frappe.utils import flt
 
 from ffl_core.api import manual_order
 from ffl_core.tests.test_build_order import BuildOrderMixin
-from ffl_integrations.payroc import api
-from ffl_integrations.tests.site_fixtures import ensure_credit_card_mop_account
+from ffl_integrations.payments import api
+from ffl_integrations.tests.site_fixtures import ensure_credit_card_mop_account, payroc_configured
+
+
+# These tests stand in for a store whose Payroc is configured (the test site holds no key).
+_PAYROC_CONFIGURED = payroc_configured()
+
+
+def setUpModule():
+	_PAYROC_CONFIGURED.start()
+
+
+def tearDownModule():
+	_PAYROC_CONFIGURED.stop()
 
 PAYMENT_HREF = "https://x/merchant/api/v1/transaction/payments/REF-TP-1"
 
@@ -36,9 +48,9 @@ def _declined(client):
 		"transactionResult": {"resultCode": "D", "resultMessage": "Declined"}}
 
 
-@patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-@patch("ffl_integrations.payroc.api._check_perm")
-@patch("ffl_integrations.payroc.api.PayrocClient")
+@patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+@patch("ffl_integrations.payments.api._check_perm")
+@patch("ffl_integrations.payroc.adapter.PayrocClient")
 class TerminalPaymentTest(BuildOrderMixin, FrappeTestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
@@ -240,7 +252,7 @@ class TerminalPaymentTest(BuildOrderMixin, FrappeTestCase):
 		self.assertEqual(frappe.db.count("Payment Entry Reference",
 			{"reference_doctype": "Sales Invoice", "reference_name": si, "docstatus": 1}), 1)
 
-	@patch("ffl_integrations.payroc.api.notify_admins")
+	@patch("ffl_integrations.payments.api.notify_admins")
 	@patch("ffl_core.api.manual_order.record_payment", side_effect=RuntimeError("ledger down"))
 	def test_booking_failure_keeps_the_money_fact_and_stops_a_reswipe(self, _rp, alert, cc, _p, _r):
 		client = cc.from_settings.return_value

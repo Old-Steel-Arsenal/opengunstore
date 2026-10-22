@@ -59,12 +59,12 @@ def _fixture_rows(app: str = "ffl_core") -> dict[tuple[str, str], dict]:
 # Each entry is (app, doctype, fieldname). The reasoning that used to sit in
 # these descriptions is in docs/field-notes.md, verbatim.
 _CLEANED = (
-	("ffl_core", "POS Invoice", "payroc_unique_reference"),
-	("ffl_core", "POS Invoice", "payroc_refunded_amount"),
-	("ffl_core", "POS Invoice", "payroc_attempt"),
+	("ffl_core", "POS Invoice", "card_unique_reference"),
+	("ffl_core", "POS Invoice", "card_refunded_amount"),
+	("ffl_core", "POS Invoice", "card_attempt"),
 	("ffl_core", "POS Invoice", "custom_nics_cleared_notified"),
 	("ffl_woo_sync", "POS Invoice", "woo_online_order"),
-	("ffl_integrations", "POS Invoice", "payroc_charges"),
+	("ffl_integrations", "POS Invoice", "card_charges"),
 )
 
 
@@ -111,8 +111,8 @@ class CleanedFieldDescriptions(FrappeTestCase):
 		if notes is None:
 			self.skipTest("docs/field-notes.md is not on disk (app without repo)")
 		text = notes.read_text(encoding="utf-8")
-		for heading in ("Payroc Unique Reference", "Payroc Attempt",
-				"Payroc Refunded Amount", "Payroc Charges",
+		for heading in ("Card Unique Reference", "Card Attempt",
+				"Card Refunded Amount", "Card Charges",
 				"NICS Cleared Notified", "Woo Online Order"):
 			self.assertIn(f"### {heading}", text,
 				f"docs/field-notes.md has no entry for {heading}")

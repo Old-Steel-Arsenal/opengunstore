@@ -90,14 +90,17 @@ class RecordPaymentReferenceGates(SettingsSandbox, FrappeTestCase):
 		"""Switch on, no credentials / device: cards are plain standalone tender
 		and the store's own reference switch decides — no Virtual Terminal code."""
 		self.set_single(PAYROC_SETTINGS, "enabled", 1)
+		self.set_single(PAYROC_SETTINGS, "require_card_reference", 0)
 		with patch("ffl_integrations.integration_gate.payroc_ready", return_value=False):
 			with self.assertRaises(frappe.DoesNotExistError):
 				manual_order.record_payment("SINV-DOES-NOT-EXIST", "Credit Card")
 
 	def test_card_gate_fails_open_when_payroc_config_is_unreadable(self):
 		"""A Payroc password that no longer decrypts breaks the terminal, not the
-		counter's ability to record money it genuinely collected."""
+		counter's ability to record money it genuinely collected. (Unreadable counts
+		as not configured, so the store's own reference switch decides — off here.)"""
 		self.set_single(PAYROC_SETTINGS, "enabled", 1)
+		self.set_single(PAYROC_SETTINGS, "require_card_reference", 0)
 		with patch("ffl_integrations.integration_gate.payroc_ready",
 				side_effect=frappe.ValidationError("cannot decrypt")):
 			with self.assertRaises(frappe.DoesNotExistError):

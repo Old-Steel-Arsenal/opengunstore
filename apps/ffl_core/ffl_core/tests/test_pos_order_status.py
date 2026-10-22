@@ -53,10 +53,10 @@ class DraftOrderStatus(Pending4473Fixtures, FrappeTestCase):
 
 	def test_card_capture_and_hold_stamps_come_through(self):
 		name = self._draft_invoice("P4473-GUN", serial="POS-ST-S2")
-		self._stamp(name, payroc_charged_amount=100, payroc_status="PARTIAL",
+		self._stamp(name, card_charged_amount=100, card_status="PARTIAL",
 			ffl_payment_held=1, paid_amount=600)
 		facts = draft_order_status([name])[name]
-		self.assertEqual((facts["charged"], facts["payroc_status"], facts["held"], facts["paid_amount"]),
+		self.assertEqual((facts["charged"], facts["card_status"], facts["held"], facts["paid_amount"]),
 			(100, "PARTIAL", 1, 600))
 
 	def test_a_web_order_pickup_ticket_is_flagged_paid_online(self):

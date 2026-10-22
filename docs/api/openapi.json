@@ -2183,6 +2183,111 @@
           "kind"
         ]
       },
+      "Card_Charge": {
+        "type": "object",
+        "description": "Custom DocType (ffl_integrations); CRUD via /api/resource/Card%20Charge — see docs/api/frappe-rest.md.",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "description": "Captured Amount"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "IN_PROGRESS",
+              "CHARGED",
+              "DECLINED",
+              "CANCELED",
+              "VOIDED",
+              "REFUNDED"
+            ],
+            "description": "Status"
+          },
+          "card_summary": {
+            "type": "string",
+            "description": "Card"
+          },
+          "unique_reference": {
+            "type": "string",
+            "description": "Gateway Reference"
+          },
+          "refunded_amount": {
+            "type": "number",
+            "description": "Refunded Amount"
+          },
+          "attempt": {
+            "type": "integer",
+            "description": "Attempt"
+          },
+          "processor": {
+            "type": "string",
+            "description": "Processor"
+          },
+          "instruction_id": {
+            "type": "string",
+            "description": "Instruction ID"
+          },
+          "response": {
+            "type": "string",
+            "description": "Gateway Response"
+          }
+        }
+      },
+      "Card_Terminal_Payment": {
+        "type": "object",
+        "description": "Custom DocType (ffl_integrations); CRUD via /api/resource/Card%20Terminal%20Payment — see docs/api/frappe-rest.md.",
+        "properties": {
+          "sales_invoice": {
+            "type": "string",
+            "description": "Sales Invoice (Link: Sales Invoice)"
+          },
+          "amount": {
+            "type": "number",
+            "description": "Amount"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "IN_PROGRESS",
+              "CHARGED",
+              "DECLINED",
+              "CANCELED"
+            ],
+            "description": "Status"
+          },
+          "unique_reference": {
+            "type": "string",
+            "description": "Gateway Reference"
+          },
+          "approval_code": {
+            "type": "string",
+            "description": "Approval Code"
+          },
+          "card_summary": {
+            "type": "string",
+            "description": "Card"
+          },
+          "payment_entry": {
+            "type": "string",
+            "description": "Payment Entry (Link: Payment Entry)"
+          },
+          "processor": {
+            "type": "string",
+            "description": "Processor"
+          },
+          "instruction_id": {
+            "type": "string",
+            "description": "Instruction ID"
+          },
+          "response": {
+            "type": "string",
+            "description": "Gateway Response"
+          }
+        },
+        "required": [
+          "sales_invoice"
+        ]
+      },
       "Data_Service_Settings": {
         "type": "object",
         "description": "Custom DocType (ffl_integrations); CRUD via /api/resource/Data%20Service%20Settings — see docs/api/frappe-rest.md.",
@@ -4032,52 +4137,6 @@
           }
         }
       },
-      "Payroc_Charge": {
-        "type": "object",
-        "description": "Custom DocType (ffl_integrations); CRUD via /api/resource/Payroc%20Charge — see docs/api/frappe-rest.md.",
-        "properties": {
-          "amount": {
-            "type": "number",
-            "description": "Captured Amount"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "IN_PROGRESS",
-              "CHARGED",
-              "DECLINED",
-              "CANCELED",
-              "VOIDED",
-              "REFUNDED"
-            ],
-            "description": "Status"
-          },
-          "card_summary": {
-            "type": "string",
-            "description": "Card"
-          },
-          "unique_reference": {
-            "type": "string",
-            "description": "Payroc Reference"
-          },
-          "refunded_amount": {
-            "type": "number",
-            "description": "Refunded Amount"
-          },
-          "attempt": {
-            "type": "integer",
-            "description": "Attempt"
-          },
-          "instruction_id": {
-            "type": "string",
-            "description": "Instruction ID"
-          },
-          "response": {
-            "type": "string",
-            "description": "Gateway Response"
-          }
-        }
-      },
       "Payroc_Settings": {
         "type": "object",
         "description": "Custom DocType (ffl_integrations); CRUD via /api/resource/Payroc%20Settings — see docs/api/frappe-rest.md.",
@@ -4143,57 +4202,6 @@
             "description": "Last Charge At"
           }
         }
-      },
-      "Payroc_Terminal_Payment": {
-        "type": "object",
-        "description": "Custom DocType (ffl_integrations); CRUD via /api/resource/Payroc%20Terminal%20Payment — see docs/api/frappe-rest.md.",
-        "properties": {
-          "sales_invoice": {
-            "type": "string",
-            "description": "Sales Invoice (Link: Sales Invoice)"
-          },
-          "amount": {
-            "type": "number",
-            "description": "Amount"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "IN_PROGRESS",
-              "CHARGED",
-              "DECLINED",
-              "CANCELED"
-            ],
-            "description": "Status"
-          },
-          "unique_reference": {
-            "type": "string",
-            "description": "Payroc Reference"
-          },
-          "approval_code": {
-            "type": "string",
-            "description": "Approval Code"
-          },
-          "card_summary": {
-            "type": "string",
-            "description": "Card"
-          },
-          "payment_entry": {
-            "type": "string",
-            "description": "Payment Entry (Link: Payment Entry)"
-          },
-          "instruction_id": {
-            "type": "string",
-            "description": "Instruction ID"
-          },
-          "response": {
-            "type": "string",
-            "description": "Gateway Response"
-          }
-        },
-        "required": [
-          "sales_invoice"
-        ]
       },
       "RSR_Catalog_Item": {
         "type": "object",
@@ -9195,7 +9203,7 @@
                     "description": "Optional partial amount (> 0, at most the outstanding balance); blank pays the full outstanding."
                   },
                   "transaction_number": {
-                    "description": "Processor reference — the check or money order number for Check/Money Order. Required for Zelle, ACH and Check/Money Order, and for the card tender on a store running the standalone terminal with approval codes required — or with the Payroc terminal live (a card typed in here was run on the Virtual Terminal)."
+                    "description": "Processor reference — the check or money order number for Check/Money Order. Required for Zelle, ACH and Check/Money Order, and for the card tender on a store running the standalone terminal with approval codes required — or with the card processor's terminal live (a card typed in here was run on the Virtual Terminal)."
                   },
                   "received_on": {
                     "description": "The day the money arrived (blank → today): it dates the Payment Entry, so a collection typed in late still books in the period the deposit really landed in. See _received_on_posting_date for the window."
@@ -10214,7 +10222,7 @@
         "operationId": "ffl_core.api.pos_order_status.draft_order_status",
         "responses": {
           "200": {
-            "description": "{name: {\"due\", \"currency\", \"paid_amount\", \"charged\", \"payroc_status\", \"held\", \"paid_online\", \"payments\": [{\"mode_of_payment\", \"amount\"}], \"counter_order\": {\"name\", \"total\", \"outstanding\"} | None, \"has_firearm\", \"form_4473_status\", \"nics_status\"}} for each name that is a draft, non-return POS Invoice the caller can read. Any other name is left out. counter_order is the money side of a counter pickup's 4473 ticket — the Sales Invoice it hands over for (the ticket itself carries $0).",
+            "description": "{name: {\"due\", \"currency\", \"paid_amount\", \"charged\", \"card_status\", \"held\", \"paid_online\", \"payments\": [{\"mode_of_payment\", \"amount\"}], \"counter_order\": {\"name\", \"total\", \"outstanding\"} | None, \"has_firearm\", \"form_4473_status\", \"nics_status\"}} for each name that is a draft, non-return POS Invoice the caller can read. Any other name is left out. counter_order is the money side of a counter pickup's 4473 ticket — the Sales Invoice it hands over for (the ticket itself carries $0).",
             "content": {
               "application/json": {
                 "schema": {
@@ -10294,7 +10302,7 @@
           "ffl_core"
         ],
         "summary": "Put a deleted POS Invoice draft back, keeping its original number when free.",
-        "description": "Re-inserts the logged JSON with `flags.from_restore` (so the Payroc charge\nprotector keeps the invoice's own card rows — see\nffl_integrations.payroc.api.restore_charge_rows), retains the original\nowner / timestamps like frappe's own restore, and marks the log row\nrestored. Validation runs as on any insert: a serial sold in the meantime\nmakes the restore fail loudly instead of creating a double sale.\n\n**Auth (derived from code):** Requires delete permission on POS Invoice (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/api/pos_recycle_bin.py:161`",
+        "description": "Re-inserts the logged JSON with `flags.from_restore` (so the card charge\nprotector keeps the invoice's own card rows — see\nffl_integrations.payments.api.restore_charge_rows), retains the original\nowner / timestamps like frappe's own restore, and marks the log row\nrestored. Validation runs as on any insert: a serial sold in the meantime\nmakes the restore fail loudly instead of creating a double sale.\n\n**Auth (derived from code):** Requires delete permission on POS Invoice (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/api/pos_recycle_bin.py:161`",
         "operationId": "ffl_core.api.pos_recycle_bin.restore_deleted_invoice",
         "responses": {
           "200": {
@@ -18701,13 +18709,609 @@
         "security": []
       }
     },
+    "/api/method/ffl_integrations.payments.api.cancel_pos_charge": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Cancel an in-flight card charge (race-safe).",
+        "description": "If the cancel RACES an approval (card just captured), the capture is\nreconciled instead of stranding it / letting a retry double-charge.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:749`",
+        "operationId": "ffl_integrations.payments.api.cancel_pos_charge",
+        "responses": {
+          "200": {
+            "description": "{ok: True, status: \"CANCELED\"} — or the reconciled settle result when the approval won the race.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "invoice_name": {
+                    "type": "string",
+                    "description": "POS Invoice being tendered."
+                  },
+                  "instruction_id": {
+                    "type": "string",
+                    "description": "The charge handle to cancel."
+                  }
+                },
+                "required": [
+                  "invoice_name",
+                  "instruction_id"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.payments.api.cancel_sales_invoice_charge": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Cancel an in-flight terminal charge on a Sales Invoice (race-safe).",
+        "description": "A cancel that races an approval settles the approval instead — the card\nwas charged, so it is recorded and booked, never stranded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1047`",
+        "operationId": "ffl_integrations.payments.api.cancel_sales_invoice_charge",
+        "responses": {
+          "200": {
+            "description": "{ok: True, status: \"CANCELED\"} — or the settled approval with reconciled=True when the approval won the race.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sales_invoice": {
+                    "type": "string",
+                    "description": "The Sales Invoice being charged."
+                  },
+                  "instruction_id": {
+                    "type": "string",
+                    "description": "The instruction to cancel."
+                  }
+                },
+                "required": [
+                  "sales_invoice",
+                  "instruction_id"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.payments.api.charge_pos_invoice": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Start a card charge on the card processor's terminal for a POS invoice.",
+        "description": "Starts the charge on the active processor's card device; the frontend then\npolls poll_pos_charge() until the terminal returns. Reuses an in-flight\ncharge rather than double-charging.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:545`",
+        "operationId": "ffl_integrations.payments.api.charge_pos_invoice",
+        "responses": {
+          "200": {
+            "description": "{ok, instruction_id, status, amount} — or {\"skip\": True} when no card processor is switched on and configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "invoice_name": {
+                    "type": "string",
+                    "description": "POS Invoice being tendered."
+                  },
+                  "terminal": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Optional terminal id; defaults to the configured one."
+                  },
+                  "amount": {
+                    "description": "Optional charge amount; defaults to the card-tender target."
+                  },
+                  "description": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Optional statement descriptor."
+                  }
+                },
+                "required": [
+                  "invoice_name"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.payments.api.charge_sales_invoice": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Start a card charge on the card processor's terminal against a counter Sales Invoice.",
+        "description": "The counter's card tender for an on-account order (Create Order right\nafter the order books; Pending Order → Record Payment for a balance).\nStarts a charge on the active processor's card device; the frontend polls it with\npoll_sales_invoice_charge(); the approval books a Payment Entry. Reuses\nan in-flight instruction rather than double-charging, and never starts\none while an earlier approval on this invoice is unrecorded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:916`",
+        "operationId": "ffl_integrations.payments.api.charge_sales_invoice",
+        "responses": {
+          "200": {
+            "description": "{ok, instruction_id, status, amount} — {\"skip\": True} when no card processor is switched on and configured; an earlier approval found unrecorded comes back settled with already=True.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sales_invoice": {
+                    "type": "string",
+                    "description": "Submitted Sales Invoice with an outstanding balance."
+                  },
+                  "amount": {
+                    "description": "Charge amount, at most the outstanding balance (blank = the whole balance; less = a deposit)."
+                  },
+                  "terminal": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Optional terminal id; defaults to the configured one."
+                  }
+                },
+                "required": [
+                  "sales_invoice"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.payments.api.confirm_out_of_band_refund": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Record that a gateway-charged sale's refund was issued in the card processor's portal.",
+        "description": "The manager-level exit for the switched-off refund guard. Deliberately its\nown field plus a timeline entry — never the tender row's ``reference_no``,\nwhich the standalone-terminal flow collects for a different purpose and\nwhich therefore cannot double as this guard's evidence (a guard whose\nevidence another rule force-collects clears itself).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role (_check_manager).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:2153`",
+        "operationId": "ffl_integrations.payments.api.confirm_out_of_band_refund",
+        "responses": {
+          "200": {
+            "description": "{ok: True, invoice, portal_reference}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "return_invoice_name": {
+                    "type": "string",
+                    "description": "The POS RETURN invoice being confirmed."
+                  },
+                  "portal_reference": {
+                    "type": "string",
+                    "description": "The refund's reference from the processor's portal."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Why the refund went out of band (audited, mandatory)."
+                  }
+                },
+                "required": [
+                  "return_invoice_name",
+                  "portal_reference",
+                  "reason"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.payments.api.list_terminals": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "List the terminals the active card processor's credentials may use (connectivity smoke test).",
+        "description": "A zero-risk connectivity + pairing check (Payroc: the authenticate\nresponse's allowedTerminals).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1080`",
+        "operationId": "ffl_integrations.payments.api.list_terminals",
+        "responses": {
+          "200": {
+            "description": "The processor's own answer, {\"error\": <body>} on a refusal, or {\"skip\": True} when no card processor is switched on and configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.payments.api.poll_pos_charge": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Poll a card charge once, on the processor that started it.",
+        "description": "In progress → {ok: False} (frontend loops). Finished → verify full\napproval, stamp the reference on the invoice.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:699`",
+        "operationId": "ffl_integrations.payments.api.poll_pos_charge",
+        "responses": {
+          "200": {
+            "description": "{ok: True, ...settled details} on completion; {ok: False, status: \"IN_PROGRESS\"} while pending; {ok: False, status, error} on terminal failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "invoice_name": {
+                    "type": "string",
+                    "description": "POS Invoice being tendered."
+                  },
+                  "instruction_id": {
+                    "type": "string",
+                    "description": "The charge handle returned by charge_pos_invoice."
+                  },
+                  "expected_amount": {
+                    "description": "Optional approval-amount check."
+                  }
+                },
+                "required": [
+                  "invoice_name",
+                  "instruction_id"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.payments.api.poll_sales_invoice_charge": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Poll a terminal charge started by charge_sales_invoice once.",
+        "description": "IN_PROGRESS → {ok: False} (frontend loops). On approval the record goes\nCHARGED and a Payment Entry books against the invoice; the answer carries\nthe new balance.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1016`",
+        "operationId": "ffl_integrations.payments.api.poll_sales_invoice_charge",
+        "responses": {
+          "200": {
+            "description": "{ok: True, unique_reference, approval_code, amount, payment_entry, outstanding, paid} on approval; {ok: False, status: \"IN_PROGRESS\"} while pending; {ok: False, status, error} on decline / cancel.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sales_invoice": {
+                    "type": "string",
+                    "description": "The Sales Invoice being charged."
+                  },
+                  "instruction_id": {
+                    "type": "string",
+                    "description": "The instruction returned by charge_sales_invoice."
+                  }
+                },
+                "required": [
+                  "sales_invoice",
+                  "instruction_id"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.payments.api.refund_pos_invoice": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Refund a POS return's card portion to the original card(s).",
+        "description": "Referenced refund of the Credit Card portion of a POS RETURN invoice,\nsent to the processor that took each original charge. Firearm returns\nare blocked (bound-book reversal is a separate project). Multi-card\noriginals refund across rows within per-original-card caps.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager-gated refund roles (gate at entry).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1417`",
+        "operationId": "ffl_integrations.payments.api.refund_pos_invoice",
+        "responses": {
+          "200": {
+            "description": "{ok: True, refund_reference, amount, original}; {\"skip\": True} when no card processor is switched on and configured, or the original never took gateway money.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "return_invoice_name": {
+                    "type": "string",
+                    "description": "The POS RETURN invoice."
+                  },
+                  "reason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Optional audit reason."
+                  }
+                },
+                "required": [
+                  "return_invoice_name"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.payments.api.unlock_refund_lock": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Manager unlock for a return whose automatic card refund armed the",
+        "description": "UNKNOWN-OUTCOME re-refund lock (the amplifier: the\nlock had no product-side unlock, so a locked return died in bench\nconsole).\n\nONLY ``UNKNOWN-OUTCOME`` unlocks — zero slices booked, so a full-amount\nretry is exactly the original entitlement. A ``PARTIAL:*`` sentinel is\nthe ONE record of how much this return already pushed back; clearing it\nre-arms a full-amount retry that the per-ORIGINAL-card caps cannot bound\n(an original with headroom would refund the booked slices again).\nIts residue goes to back-office manual processing.\nA real refund reference means the refund COMPLETED and never unlocks.\n\nThe unlock is an attestation, not a reconciliation: the gateway may\nactually have refunded (rows still show headroom), so the manager must\nverify in the processor's portal FIRST — the reason is required and the whole\naction lands in the document timeline (who/when/why/previous lock),\nmirroring manager_override_4473's audit posture.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager gate (roles per the derived Auth line) + required reason — the reason must record what was verified in the processor's portal.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1792`",
+        "operationId": "ffl_integrations.payments.api.unlock_refund_lock",
+        "responses": {
+          "200": {
+            "description": "{ok: True, cleared: <previous lock value>, invoice}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "return_invoice_name": {
+                    "type": "string",
+                    "description": "The locked POS RETURN invoice."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Required attestation — what the manager verified in the card processor's portal."
+                  }
+                },
+                "required": [
+                  "return_invoice_name",
+                  "reason"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.payments.api.void_pos_invoice": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Reverse an unsettled card charge (back-office; per-card on multi-card).",
+        "description": "Books the gateway reversal on the processor that took the charge (Payroc\nhas no /void: it reverses). Multi-card invoices void PER CARD: pass the\ncharge row's unique_reference when more than one live capture exists.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Refund/void roles (_check_refund_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1104`",
+        "operationId": "ffl_integrations.payments.api.void_pos_invoice",
+        "responses": {
+          "200": {
+            "description": "{ok: True, unique_reference, response}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "invoice_name": {
+                    "type": "string",
+                    "description": "POS Invoice carrying the charge."
+                  },
+                  "reason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Optional audit reason."
+                  },
+                  "unique_reference": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The specific charge row to void (required when several live captures exist)."
+                  }
+                },
+                "required": [
+                  "invoice_name"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_integrations.payments.hub.overview": {
       "post": {
         "tags": [
           "ffl_integrations"
         ],
         "summary": "Everything the payment-hub page renders, in one round trip.",
-        "description": "``enabled`` is read through ``single_flag`` (raw ``tabSingles`` row,\ndocfield default when absent) — the same defence the integration gate\nuses, so a site that never saved the settings form reads ON, not OFF.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager (mirrors Payroc Settings).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/hub.py:59`",
+        "description": "``enabled`` is each processor's own ``enabled()`` (Payroc: ``single_flag``,\nraw ``tabSingles`` row, docfield default when absent) — the same defence the\nintegration gate uses, so a site that never saved the settings form reads ON,\nnot OFF.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager (mirrors Payroc Settings).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/hub.py:47`",
         "operationId": "ffl_integrations.payments.hub.overview",
         "responses": {
           "200": {
@@ -18737,7 +19341,7 @@
           "ffl_integrations"
         ],
         "summary": "Run the processor's read-only connection probe.",
-        "description": "**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/hub.py:127`",
+        "description": "**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/hub.py:125`",
         "operationId": "ffl_integrations.payments.hub.test_connection",
         "responses": {
           "200": {
@@ -18785,7 +19389,7 @@
           "ffl_integrations"
         ],
         "summary": "Flip one processor's enable switch, through the real settings save.",
-        "description": "Deliberately ``doc.save()``, not ``db_set``: the settings form makes the\ncredential fields mandatory while the switch is on (a store cannot arm a\nprocessor it holds no key for), and a hub that wrote the flag straight to\nthe table would be a side door around exactly that rule. Disabling never\ntrips it — credentials are only demanded while ``enabled`` stays 1.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager, plus the doc-level write check ``doc.save()`` runs.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/hub.py:99`",
+        "description": "Deliberately ``doc.save()``, not ``db_set``: the settings form makes the\ncredential fields mandatory while the switch is on (a store cannot arm a\nprocessor it holds no key for), and a hub that wrote the flag straight to\nthe table would be a side door around exactly that rule. Disabling never\ntrips it — credentials are only demanded while ``enabled`` stays 1. Only one\nprocessor takes cards at a time: switching one on while another is on is\nrefused (switch the other off first).\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager, plus the doc-level write check ``doc.save()`` runs.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/hub.py:87`",
         "operationId": "ffl_integrations.payments.hub.toggle",
         "responses": {
           "200": {
@@ -18836,12 +19440,12 @@
         "tags": [
           "ffl_integrations"
         ],
-        "summary": "Cancel an in-flight Payroc instruction (race-safe).",
-        "description": "If the cancel RACES an approval (card just captured), the capture is\nreconciled instead of stranding it / letting a retry double-charge.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:775`",
+        "summary": "Old path of ffl_integrations.payments.api.cancel_pos_charge (cancel an in-flight charge).",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:55`",
         "operationId": "ffl_integrations.payroc.api.cancel_pos_charge",
         "responses": {
           "200": {
-            "description": "{ok: True, status: \"CANCELED\"} — or the reconciled settle result when the approval won the race.",
+            "description": "The new endpoint's answer.",
             "content": {
               "application/json": {
                 "schema": {
@@ -18871,7 +19475,7 @@
                   },
                   "instruction_id": {
                     "type": "string",
-                    "description": "The instruction to cancel."
+                    "description": "The charge handle to cancel."
                   }
                 },
                 "required": [
@@ -18889,12 +19493,12 @@
         "tags": [
           "ffl_integrations"
         ],
-        "summary": "Cancel an in-flight terminal charge on a Sales Invoice (race-safe).",
-        "description": "A cancel that races an approval settles the approval instead — the card\nwas charged, so it is recorded and booked, never stranded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:1072`",
+        "summary": "Old path of ffl_integrations.payments.api.cancel_sales_invoice_charge.",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:101`",
         "operationId": "ffl_integrations.payroc.api.cancel_sales_invoice_charge",
         "responses": {
           "200": {
-            "description": "{ok: True, status: \"CANCELED\"} — or the settled approval with reconciled=True when the approval won the race.",
+            "description": "The new endpoint's answer.",
             "content": {
               "application/json": {
                 "schema": {
@@ -18924,7 +19528,7 @@
                   },
                   "instruction_id": {
                     "type": "string",
-                    "description": "The instruction to cancel."
+                    "description": "The charge handle to cancel."
                   }
                 },
                 "required": [
@@ -18942,12 +19546,12 @@
         "tags": [
           "ffl_integrations"
         ],
-        "summary": "Start a card charge on the Payroc A80 terminal for a POS invoice.",
-        "description": "Creates a device payment instruction; the frontend then polls\npoll_pos_charge() until the terminal returns. Reuses an in-flight\ninstruction rather than double-charging.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:578`",
+        "summary": "Old path of ffl_integrations.payments.api.charge_pos_invoice (start a card charge).",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:20`",
         "operationId": "ffl_integrations.payroc.api.charge_pos_invoice",
         "responses": {
           "200": {
-            "description": "{ok, instruction_id, status, amount} — or {\"skip\": True} when the integration is unconfigured.",
+            "description": "The new endpoint's answer: {ok, instruction_id, status, amount} or {\"skip\": True}.",
             "content": {
               "application/json": {
                 "schema": {
@@ -19007,12 +19611,12 @@
         "tags": [
           "ffl_integrations"
         ],
-        "summary": "Start a card charge on the Payroc terminal against a counter Sales Invoice.",
-        "description": "The counter's card tender for an on-account order (Create Order right\nafter the order books; Pending Order → Record Payment for a balance).\nCreates a device payment instruction the frontend then polls with\npoll_sales_invoice_charge(); the approval books a Payment Entry. Reuses\nan in-flight instruction rather than double-charging, and never starts\none while an earlier approval on this invoice is unrecorded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:942`",
+        "summary": "Old path of ffl_integrations.payments.api.charge_sales_invoice (card charge on a counter order).",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:70`",
         "operationId": "ffl_integrations.payroc.api.charge_sales_invoice",
         "responses": {
           "200": {
-            "description": "{ok, instruction_id, status, amount} — {\"skip\": True} when the integration is unconfigured; an earlier approval found unrecorded comes back settled with already=True.",
+            "description": "The new endpoint's answer.",
             "content": {
               "application/json": {
                 "schema": {
@@ -19041,7 +19645,7 @@
                     "description": "Submitted Sales Invoice with an outstanding balance."
                   },
                   "amount": {
-                    "description": "Charge amount, at most the outstanding balance (blank = the whole balance; less = a deposit)."
+                    "description": "Charge amount, at most the outstanding balance (blank = the whole balance)."
                   },
                   "terminal": {
                     "type": [
@@ -19065,12 +19669,12 @@
         "tags": [
           "ffl_integrations"
         ],
-        "summary": "Record that a gateway-charged sale's refund was issued in the Payroc portal.",
-        "description": "The manager-level exit for the switched-off refund guard. Deliberately its\nown field plus a timeline entry — never the tender row's ``reference_no``,\nwhich the standalone-terminal flow collects for a different purpose and\nwhich therefore cannot double as this guard's evidence (a guard whose\nevidence another rule force-collects clears itself).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role (_check_manager).\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:2104`",
+        "summary": "Old path of ffl_integrations.payments.api.confirm_out_of_band_refund.",
+        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:174`",
         "operationId": "ffl_integrations.payroc.api.confirm_out_of_band_refund",
         "responses": {
           "200": {
-            "description": "{ok: True, invoice, portal_reference}.",
+            "description": "The new endpoint's answer.",
             "content": {
               "application/json": {
                 "schema": {
@@ -19100,7 +19704,7 @@
                   },
                   "portal_reference": {
                     "type": "string",
-                    "description": "The refund's reference from the Payroc portal."
+                    "description": "The refund's reference from the processor's portal."
                   },
                   "reason": {
                     "type": "string",
@@ -19123,12 +19727,12 @@
         "tags": [
           "ffl_integrations"
         ],
-        "summary": "List the API key's allowed Payroc terminals (connectivity smoke test).",
-        "description": "The authenticate response lists the key's allowedTerminals — a\nzero-risk connectivity + pairing check.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role.\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:1105`",
+        "summary": "Old path of ffl_integrations.payments.api.list_terminals (connectivity smoke test).",
+        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:116`",
         "operationId": "ffl_integrations.payroc.api.discover_terminals",
         "responses": {
           "200": {
-            "description": "The raw authenticate response JSON, {\"error\": <body>} on a non-OK response, or {\"skip\": True} when the integration is switched off / unconfigured.",
+            "description": "The new endpoint's answer: the processor's terminal list, {\"error\": ...} or {\"skip\": True}.",
             "content": {
               "application/json": {
                 "schema": {
@@ -19153,12 +19757,12 @@
         "tags": [
           "ffl_integrations"
         ],
-        "summary": "Poll a Payroc payment instruction once.",
-        "description": "IN_PROGRESS → {ok: False} (frontend loops). COMPLETED → fetch the\nPayment, verify full approval, stamp the reference on the invoice.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:724`",
+        "summary": "Old path of ffl_integrations.payments.api.poll_pos_charge (poll a card charge once).",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:39`",
         "operationId": "ffl_integrations.payroc.api.poll_pos_charge",
         "responses": {
           "200": {
-            "description": "{ok: True, ...settled details} on completion; {ok: False, status: \"IN_PROGRESS\"} while pending; {ok: False, status, error} on terminal failure.",
+            "description": "The new endpoint's answer.",
             "content": {
               "application/json": {
                 "schema": {
@@ -19188,7 +19792,7 @@
                   },
                   "instruction_id": {
                     "type": "string",
-                    "description": "The instruction returned by charge_pos_invoice."
+                    "description": "The charge handle returned by charge_pos_invoice."
                   },
                   "expected_amount": {
                     "description": "Optional approval-amount check."
@@ -19209,12 +19813,12 @@
         "tags": [
           "ffl_integrations"
         ],
-        "summary": "Poll a terminal charge started by charge_sales_invoice once.",
-        "description": "IN_PROGRESS → {ok: False} (frontend loops). On approval the record goes\nCHARGED and a Payment Entry books against the invoice; the answer carries\nthe new balance.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:1043`",
+        "summary": "Old path of ffl_integrations.payments.api.poll_sales_invoice_charge.",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:86`",
         "operationId": "ffl_integrations.payroc.api.poll_sales_invoice_charge",
         "responses": {
           "200": {
-            "description": "{ok: True, unique_reference, approval_code, amount, payment_entry, outstanding, paid} on approval; {ok: False, status: \"IN_PROGRESS\"} while pending; {ok: False, status, error} on decline / cancel.",
+            "description": "The new endpoint's answer.",
             "content": {
               "application/json": {
                 "schema": {
@@ -19244,7 +19848,7 @@
                   },
                   "instruction_id": {
                     "type": "string",
-                    "description": "The instruction returned by charge_sales_invoice."
+                    "description": "The charge handle returned by charge_sales_invoice."
                   }
                 },
                 "required": [
@@ -19262,12 +19866,12 @@
         "tags": [
           "ffl_integrations"
         ],
-        "summary": "Refund a POS return's card portion to the original card(s).",
-        "description": "Payroc referenced refund of the Credit Card portion of a POS RETURN\ninvoice. Firearm returns are blocked (bound-book reversal is a\nseparate project). Multi-card originals refund across rows within\nper-original-card caps.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager-gated refund roles (gate at entry).\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:1396`",
+        "summary": "Old path of ffl_integrations.payments.api.refund_pos_invoice (refund a POS return's card portion).",
+        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:144`",
         "operationId": "ffl_integrations.payroc.api.refund_pos_invoice",
         "responses": {
           "200": {
-            "description": "{ok: True, refund_reference, amount, original}; {\"skip\": True} when the integration is switched off / unconfigured, or the original never took gateway money.",
+            "description": "The new endpoint's answer.",
             "content": {
               "application/json": {
                 "schema": {
@@ -19317,12 +19921,12 @@
         "tags": [
           "ffl_integrations"
         ],
-        "summary": "Manager unlock for a return whose automatic card refund armed the",
-        "description": "UNKNOWN-OUTCOME re-refund lock (the amplifier: the\nlock had no product-side unlock, so a locked return died in bench\nconsole).\n\nONLY ``UNKNOWN-OUTCOME`` unlocks — zero slices booked, so a full-amount\nretry is exactly the original entitlement. A ``PARTIAL:*`` sentinel is\nthe ONE record of how much this return already pushed back; clearing it\nre-arms a full-amount retry that the per-ORIGINAL-card caps cannot bound\n(an original with headroom would refund the booked slices again).\nIts residue goes to back-office manual processing.\nA real refund reference means the refund COMPLETED and never unlocks.\n\nThe unlock is an attestation, not a reconciliation: the gateway may\nactually have refunded (rows still show headroom), so the manager must\nverify in the Payroc portal FIRST — the reason is required and the whole\naction lands in the document timeline (who/when/why/previous lock),\nmirroring manager_override_4473's audit posture.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager gate (roles per the derived Auth line) + required reason — the reason must record what was verified in the Payroc portal.\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:1760`",
+        "summary": "Old path of ffl_integrations.payments.api.unlock_refund_lock (manager unlock of a refund lock).",
+        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:159`",
         "operationId": "ffl_integrations.payroc.api.unlock_refund_lock",
         "responses": {
           "200": {
-            "description": "{ok: True, cleared: <previous lock value>, invoice}.",
+            "description": "The new endpoint's answer.",
             "content": {
               "application/json": {
                 "schema": {
@@ -19352,7 +19956,7 @@
                   },
                   "reason": {
                     "type": "string",
-                    "description": "Required attestation — what the manager verified in the Payroc portal."
+                    "description": "Required attestation — what the manager verified in the processor's portal."
                   }
                 },
                 "required": [
@@ -19370,12 +19974,12 @@
         "tags": [
           "ffl_integrations"
         ],
-        "summary": "Reverse an unsettled Payroc charge (back-office; per-card on multi-card).",
-        "description": "Payroc has no /void — this books the gateway reversal. Multi-card\ninvoices void PER CARD: pass the charge row's unique_reference when\nmore than one live capture exists.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Refund/void roles (_check_refund_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:1129`",
+        "summary": "Old path of ffl_integrations.payments.api.void_pos_invoice (reverse an unsettled charge).",
+        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:127`",
         "operationId": "ffl_integrations.payroc.api.void_pos_invoice",
         "responses": {
           "200": {
-            "description": "{ok: True, unique_reference, response}.",
+            "description": "The new endpoint's answer.",
             "content": {
               "application/json": {
                 "schema": {

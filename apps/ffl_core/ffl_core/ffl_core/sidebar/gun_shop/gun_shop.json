@@ -140,7 +140,7 @@
    "type": "Link",
    "label": "Card payments",
    "link_type": "DocType",
-   "link_to": "Payroc Terminal Payment"
+   "link_to": "Card Terminal Payment"
   },
   {
    "added": 0,

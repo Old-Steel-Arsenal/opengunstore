@@ -12,6 +12,7 @@
   "column_break_charge",
   "refunded_amount",
   "attempt",
+  "processor",
   "instruction_id",
   "response"
  ],
@@ -44,7 +45,7 @@
    "fieldname": "unique_reference",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Payroc Reference",
+   "label": "Gateway Reference",
    "read_only": 1
   },
   {
@@ -65,6 +66,13 @@
    "read_only": 1
   },
   {
+   "description": "The card processor that took this charge (its registry code). Void, refund and poll go back to it.",
+   "fieldname": "processor",
+   "fieldtype": "Data",
+   "label": "Processor",
+   "read_only": 1
+  },
+  {
    "fieldname": "instruction_id",
    "fieldtype": "Data",
    "label": "Instruction ID",
@@ -80,10 +88,10 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-08-01 15:00:00.000000",
+ "modified": "2026-10-21 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
- "name": "Payroc Charge",
+ "name": "Card Charge",
  "owner": "Administrator",
  "permissions": [],
  "sort_field": "modified",

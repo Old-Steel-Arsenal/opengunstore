@@ -152,7 +152,7 @@ test('negative ticket: a card already charged blocks Complete', () => {
 	const { api, sandbox } = loadBlock();
 	const doc = NEG();
 	doc.ffl_trade_in_payout_method = 'Cash';
-	doc.payroc_charged_amount = 40;
+	doc.card_charged_amount = 40;
 	const { p, state } = makePayment(sandbox, doc);
 	api.renderNegativeTicket(p);
 	assert.ok(state.submitClasses.has('ffl-submit-blocked'));
@@ -283,7 +283,7 @@ test('a card captured on the draft stays on its row and blocks (not zeroed away)
 	const { api, sandbox, writes } = loadBlock();
 	const doc = NEG();
 	doc.ffl_trade_in_payout_method = 'Cash';
-	doc.payroc_charged_amount = 40;
+	doc.card_charged_amount = 40;
 	doc.payments[0].amount = 40;
 	const { p, state } = makePayment(sandbox, doc);
 	api.renderNegativeTicket(p);

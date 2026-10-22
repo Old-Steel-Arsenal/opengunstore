@@ -87,7 +87,7 @@ Reads are safe and should be your default. The reports are the store's own quest
 | What came into stock in a period, and how | Inventory Receipts |
 | What sold, across every channel, and at what margin | Sales Report |
 | Cash in and out of the drawer, day by day | Cash Drawer Weekly, and the Log tab on the cash drawer page |
-| Card payments taken on the terminal | The Card payments list (Payroc Terminal Payment) |
+| Card payments taken on the terminal | The Card payments list (Card Terminal Payment) |
 | What a distributor has invoiced, including orders placed outside the POS | Distributor Orders → Track Orders → Invoices |
 | Which sales a human vouched for rather than the system | Hand-Asserted 4473 Dispositions |
 

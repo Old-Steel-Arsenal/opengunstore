@@ -475,7 +475,7 @@ account, and returns the updated balance.
 | `sales_invoice` | string | yes | — | Submitted, not-fully-paid Sales Invoice name. |
 | `mode_of_payment` | string | yes | — | Cash, Credit Card, Zelle, ACH or Check/Money Order; Zelle, ACH and Check/Money Order also require transaction_number. |
 | `amount` | — | no | `None` | Optional partial amount (> 0, at most the outstanding balance); blank pays the full outstanding. |
-| `transaction_number` | — | no | `None` | Processor reference — the check or money order number for Check/Money Order. Required for Zelle, ACH and Check/Money Order, and for the card tender on a store running the standalone terminal with approval codes required — or with the Payroc terminal live (a card typed in here was run on the Virtual Terminal). |
+| `transaction_number` | — | no | `None` | Processor reference — the check or money order number for Check/Money Order. Required for Zelle, ACH and Check/Money Order, and for the card tender on a store running the standalone terminal with approval codes required — or with the card processor's terminal live (a card typed in here was run on the Virtual Terminal). |
 | `received_on` | — | no | `None` | The day the money arrived (blank → today): it dates the Payment Entry, so a collection typed in late still books in the period the deposit really landed in. See _received_on_posting_date for the window. |
 
 **Returns:** {ok, payment_entry, paid_amount, outstanding, paid}.

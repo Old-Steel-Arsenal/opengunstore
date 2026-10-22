@@ -3,7 +3,7 @@
 Mirrors test_distributor_hub in spirit: overview shape, mutation rules,
 probe shapes. Settings flips ride SettingsSandbox so a run leaves the site's
 switches exactly as it found them; the probe tests patch the one gateway
-call (`payroc.api.discover_terminals`), never the network.
+call (the Payroc adapter's `list_terminals`), never the network.
 """
 from __future__ import annotations
 
@@ -93,7 +93,7 @@ class PaymentHubToggle(SettingsSandbox, FrappeTestCase):
 class PaymentHubProbe(SettingsSandbox, FrappeTestCase):
 	def test_switched_off_probes_nothing(self):
 		self.set_single(PAYROC_SETTINGS, "enabled", 0)
-		with patch("ffl_integrations.payroc.api.discover_terminals") as disco:
+		with patch("ffl_integrations.payroc.adapter.PayrocProcessor.list_terminals") as disco:
 			checks = hub.test_connection("payroc")["checks"]
 			disco.assert_not_called()
 		self.assertEqual(len(checks), 1)
@@ -102,16 +102,16 @@ class PaymentHubProbe(SettingsSandbox, FrappeTestCase):
 
 	def test_on_but_unconfigured_names_the_credentials(self):
 		self.set_single(PAYROC_SETTINGS, "enabled", 1)
-		with patch("ffl_integrations.payroc.api.discover_terminals",
-				return_value={"skip": True}):
+		with patch("ffl_integrations.payroc.adapter.PayrocProcessor.ready", return_value=False), patch("ffl_integrations.payroc.adapter.PayrocProcessor.list_terminals") as disco:
 			checks = hub.test_connection("payroc")["checks"]
+			disco.assert_not_called()
 		self.assertTrue(checks[0]["ok"])  # switch
 		self.assertFalse(checks[1]["ok"])  # credentials
 		self.assertIn("API Key", checks[1]["detail"])
 
 	def test_gateway_error_is_a_failed_check_not_a_crash(self):
 		self.set_single(PAYROC_SETTINGS, "enabled", 1)
-		with patch("ffl_integrations.payroc.api.discover_terminals",
+		with patch("ffl_integrations.payroc.adapter.PayrocProcessor.ready", return_value=True), patch("ffl_integrations.payroc.adapter.PayrocProcessor.list_terminals",
 				return_value={"error": "401 nope"}):
 			checks = hub.test_connection("payroc")["checks"]
 		self.assertFalse(checks[1]["ok"])
@@ -119,7 +119,7 @@ class PaymentHubProbe(SettingsSandbox, FrappeTestCase):
 
 	def test_gateway_success_counts_terminals(self):
 		self.set_single(PAYROC_SETTINGS, "enabled", 1)
-		with patch("ffl_integrations.payroc.api.discover_terminals",
+		with patch("ffl_integrations.payroc.adapter.PayrocProcessor.ready", return_value=True), patch("ffl_integrations.payroc.adapter.PayrocProcessor.list_terminals",
 				return_value={"allowedTerminals": [{"id": 1}, {"id": 2}]}):
 			checks = hub.test_connection("payroc")["checks"]
 		gateway = checks[1]

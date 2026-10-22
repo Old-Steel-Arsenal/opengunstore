@@ -125,7 +125,7 @@ class TestShippedSidebar(FrappeTestCase):
 		a row for that: the Overview opens them, and the counter must stay in the Gun Shop shell."""
 		items = _app_json("ffl_core", "sidebar", "gun_shop", "gun_shop.json")["items"]
 		claimed = {i["link_to"] for i in items if i.get("is_default_module")}
-		self.assertTrue({"Customer", "Item", "store-overview", "POS Invoice", "Serial No", "Payroc Terminal Payment"} <= claimed)
+		self.assertTrue({"Customer", "Item", "store-overview", "POS Invoice", "Serial No", "Card Terminal Payment"} <= claimed)
 		self.assertFalse(claimed & {"Stock Balance", "Supplier", "point-of-sale"})
 		self.assertFalse(claimed & {"Customer Group", "Territory", "Sales Person", "Item Group"})
 
@@ -167,7 +167,7 @@ class TestStoreSwitches(FrappeTestCase):
 		"""Card payments sits in Sales after Cash drawer; a store with Payroc off hides only that row."""
 		full = _rendered()
 		self.assertEqual(full[full.index("Cash drawer") + 1], "Card payments")
-		with _switches({"Payroc Terminal Payment"}):
+		with _switches({"Card Terminal Payment"}):
 			self.assertTrue(gs.sync_site_layer())
 			self.assertFalse(gs.sync_site_layer())
 		shown = _rendered()
@@ -176,7 +176,7 @@ class TestStoreSwitches(FrappeTestCase):
 
 	def test_off_then_on_leaves_no_layer_and_the_full_sidebar(self):
 		full = _rendered()
-		with _switches({"Woo Online Order", "GunBroker Order", "Payroc Terminal Payment"}):
+		with _switches({"Woo Online Order", "GunBroker Order", "Card Terminal Payment"}):
 			gs.sync_site_layer()
 			self.assertFalse(gs.sync_site_layer())          # idempotent
 		self.assertEqual(len(_layer_names()), 1)
@@ -328,7 +328,7 @@ class TestExtensionSections(ExtensionFixture):
 			self.assertTrue(mirror_gun_shop_sidebar("Mirror Nav Test", module=mirror_module, extra_items=FAKE_ROWS))
 		mirror_base = item_dicts(frappe.get_doc("Sidebar", "Mirror Nav Test"))
 
-		with _fake_sidebar_hook(FAKE_ROWS), _switches({"GunBroker Order", "Payroc Terminal Payment"}):
+		with _fake_sidebar_hook(FAKE_ROWS), _switches({"GunBroker Order", "Card Terminal Payment"}):
 			self.assertTrue(gs.sync_site_layer())
 			self.assertFalse(gs.sync_site_layer())
 		shell = _rendered()

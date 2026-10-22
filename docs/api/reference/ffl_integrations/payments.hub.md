@@ -12,15 +12,16 @@ Source: `apps/ffl_integrations/ffl_integrations/payments/hub.py` · 3 endpoint(s
 
 Everything the payment-hub page renders, in one round trip.
 
-``enabled`` is read through ``single_flag`` (raw ``tabSingles`` row,
-docfield default when absent) — the same defence the integration gate
-uses, so a site that never saved the settings form reads ON, not OFF.
+``enabled`` is each processor's own ``enabled()`` (Payroc: ``single_flag``,
+raw ``tabSingles`` row, docfield default when absent) — the same defence the
+integration gate uses, so a site that never saved the settings form reads ON,
+not OFF.
 
 **Returns:** {processors: [{code, label, kind, settings_doctype, mode_of_payment, enabled, ready, can_write, health: [{label, at}]}], can_write}. ``ready`` is enabled AND credentials present — the switch can be on while the key is missing, and the card has to show that as its own state, not as "working".
 
 **Permissions:** System Manager (mirrors Payroc Settings).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/hub.py:59`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/hub.py:47`</sub>
 
 ## `test_connection`
 
@@ -38,7 +39,7 @@ Run the processor's read-only connection probe.
 
 **Permissions:** System Manager.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/hub.py:127`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/hub.py:125`</sub>
 
 ## `toggle`
 
@@ -52,7 +53,9 @@ Deliberately ``doc.save()``, not ``db_set``: the settings form makes the
 credential fields mandatory while the switch is on (a store cannot arm a
 processor it holds no key for), and a hub that wrote the flag straight to
 the table would be a side door around exactly that rule. Disabling never
-trips it — credentials are only demanded while ``enabled`` stays 1.
+trips it — credentials are only demanded while ``enabled`` stays 1. Only one
+processor takes cards at a time: switching one on while another is on is
+refused (switch the other off first).
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
@@ -63,4 +66,4 @@ trips it — credentials are only demanded while ``enabled`` stays 1.
 
 **Permissions:** System Manager, plus the doc-level write check ``doc.save()`` runs.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/hub.py:99`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/hub.py:87`</sub>

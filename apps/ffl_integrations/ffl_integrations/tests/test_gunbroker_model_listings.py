@@ -509,7 +509,7 @@ class TheModelListingIsWiredIn(FrappeTestCase):
 		pos = hooks.doc_events["POS Invoice"]
 		self.assertIn("ffl_integrations.gunbroker.doc_events.on_invoice_draft_change",
 			pos["on_update"])
-		self.assertEqual(pos["on_trash"][0], "ffl_integrations.payroc.api.block_locked_return_trash",
+		self.assertEqual(pos["on_trash"][0], "ffl_integrations.payments.api.block_locked_return_trash",
 			"the Payroc guard stays first on a delete")
 		self.assertIn("ffl_integrations.gunbroker.doc_events.on_invoice_draft_change",
 			pos["on_trash"])

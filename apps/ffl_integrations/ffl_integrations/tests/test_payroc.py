@@ -24,7 +24,7 @@ from ffl_integrations.payroc.client import (
     PayrocConfig,
     PayrocError,
 )
-from ffl_integrations.payroc.api import (
+from ffl_integrations.payments.api import (
     block_partial_submit,
     charge_pos_invoice,
     poll_pos_charge,
@@ -34,11 +34,24 @@ from ffl_integrations.payroc.api import (
     unlock_refund_lock,
     void_pos_invoice,
     _charge_rows,
-    _order_id,
     _persist_money_fact,
     _refund_across_rows,
 )
-from ffl_integrations.payroc.setup import MODE_OF_PAYMENT_NAME
+from ffl_integrations.payroc.adapter import _order_id
+from ffl_integrations.payments.setup import MODE_OF_PAYMENT_NAME
+from ffl_integrations.tests.site_fixtures import payroc_configured
+
+
+# These tests stand in for a store whose Payroc is configured (the test site holds no key).
+_PAYROC_CONFIGURED = payroc_configured()
+
+
+def setUpModule():
+    _PAYROC_CONFIGURED.start()
+
+
+def tearDownModule():
+    _PAYROC_CONFIGURED.stop()
 
 
 def _mock_response(status_code: int = 200, json_body=None, content_set=True):
@@ -215,21 +228,21 @@ class PayrocClientUnit(FrappeTestCase):
 class PayrocApiUnit(FrappeTestCase):
     def _inv(self, **o):
         d = {"name": "POS-7", "grand_total": 42.50, "rounded_total": 42.50,
-             "payroc_unique_reference": None, "payroc_instruction_id": None,
-             "payroc_attempt": 0}
+             "card_unique_reference": None, "card_instruction_id": None,
+             "card_attempt": 0}
         d.update(o)
         return frappe._dict(d)
 
     # _append_charge_row is patched by NAME (docs/testing.md stub discipline):
     # the blanket get_doc patch would otherwise hijack frappe.new_doc's
     # internal get_doc call and hand db_insert a fake.
-    @patch("ffl_integrations.payroc.api._append_charge_row", return_value="ROW1")
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api.frappe.get_doc")
-    @patch("ffl_integrations.payroc.api.frappe.db.exists", return_value=True)
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._append_charge_row", return_value="ROW1")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api.frappe.get_doc")
+    @patch("ffl_integrations.payments.api.frappe.db.exists", return_value=True)
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_charge_creates_instruction_decimal_amount(self, _p, _e, gd, cc, sv, _ir, _ar):
         gd.return_value = self._inv()
         cc.from_settings.return_value.create_payment_instruction.return_value = {
@@ -239,9 +252,9 @@ class PayrocApiUnit(FrappeTestCase):
         kw = cc.from_settings.return_value.create_payment_instruction.call_args.kwargs
         self.assertEqual(kw["amount"], 42.50)        # decimal, NOT 4250
 
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_poll_completed_approved(self, _p, cc, sv):
         c = cc.from_settings.return_value
         c.poll_payment_instruction.return_value = {"status": "COMPLETED",
@@ -255,9 +268,9 @@ class PayrocApiUnit(FrappeTestCase):
         self.assertTrue(out["ok"])
         self.assertEqual(out["unique_reference"], "REF1234567")
 
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_poll_declined(self, _p, cc, sv):
         c = cc.from_settings.return_value
         c.poll_payment_instruction.return_value = {"status": "COMPLETED",
@@ -267,9 +280,9 @@ class PayrocApiUnit(FrappeTestCase):
             "transactionResult": {"resultCode": "D"}}
         self.assertFalse(poll_pos_charge("POS-7", "PI9", expected_amount=42.50)["ok"])
 
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_poll_inprogress_passthrough(self, _p, cc, sv):
         cc.from_settings.return_value.poll_payment_instruction.return_value = {
             "status": "IN_PROGRESS"}
@@ -277,14 +290,14 @@ class PayrocApiUnit(FrappeTestCase):
         self.assertEqual(out["status"], "IN_PROGRESS")
         self.assertFalse(out["ok"])
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api.frappe.get_doc")
-    @patch("ffl_integrations.payroc.api.frappe.db.exists", return_value=True)
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api.frappe.get_doc")
+    @patch("ffl_integrations.payments.api.frappe.db.exists", return_value=True)
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_charge_resumes_inflight_no_double_create(self, _p, _e, gd, cc, sv, _ir):
-        gd.return_value = self._inv(payroc_instruction_id="PI-OLD")
+        gd.return_value = self._inv(card_instruction_id="PI-OLD")
         c = cc.from_settings.return_value
         c.poll_payment_instruction.return_value = {"status": "IN_PROGRESS"}
         out = charge_pos_invoice("POS-7")
@@ -292,14 +305,31 @@ class PayrocApiUnit(FrappeTestCase):
         self.assertEqual(out["status"], "IN_PROGRESS")
         c.create_payment_instruction.assert_not_called()     # no second device charge
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api.frappe.get_doc")
-    @patch("ffl_integrations.payroc.api.frappe.db.exists", return_value=True)
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api.frappe.get_doc")
+    @patch("ffl_integrations.payments.api.frappe.db.exists", return_value=True)
+    @patch("ffl_integrations.payments.api._check_perm")
+    def test_charge_resume_keeps_an_unknown_state_in_flight(self, _p, _e, gd, cc, sv, _ir):
+        """An instruction in a state Payroc does not document may still capture: the
+        legacy resume hands it back for polling instead of starting a second charge."""
+        gd.return_value = self._inv(card_instruction_id="PI-ODD")
+        c = cc.from_settings.return_value
+        c.poll_payment_instruction.return_value = {"status": "SETTLING"}
+        out = charge_pos_invoice("POS-7")
+        self.assertEqual(out["instruction_id"], "PI-ODD")
+        self.assertEqual(out["status"], "IN_PROGRESS")
+        c.create_payment_instruction.assert_not_called()
+
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api.frappe.get_doc")
+    @patch("ffl_integrations.payments.api.frappe.db.exists", return_value=True)
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_charge_reconciles_completed_prior_no_double_charge(self, _p, _e, gd, cc, sv, _ir):
-        gd.return_value = self._inv(payroc_instruction_id="PI-DONE", grand_total=42.50)
+        gd.return_value = self._inv(card_instruction_id="PI-DONE", grand_total=42.50)
         c = cc.from_settings.return_value
         c.poll_payment_instruction.return_value = {"status": "COMPLETED",
             "links": [{"rel": "payment", "href": "https://x/payments/REF"}]}
@@ -310,9 +340,9 @@ class PayrocApiUnit(FrappeTestCase):
             charge_pos_invoice("POS-7")
         c.create_payment_instruction.assert_not_called()
 
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_poll_zero_authorized_is_not_full(self, _p, cc, sv):
         c = cc.from_settings.return_value
         c.poll_payment_instruction.return_value = {"status": "COMPLETED",
@@ -324,9 +354,9 @@ class PayrocApiUnit(FrappeTestCase):
         self.assertFalse(out["ok"])
         self.assertTrue(out.get("partial"))
 
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_poll_without_expected_is_not_auto_full(self, _p, cc, sv):
         c = cc.from_settings.return_value
         c.poll_payment_instruction.return_value = {"status": "COMPLETED",
@@ -338,10 +368,10 @@ class PayrocApiUnit(FrappeTestCase):
         self.assertFalse(out["ok"])
         self.assertTrue(out.get("partial"))
 
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.frappe.get_doc")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payments.api.frappe.get_doc")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_cancel_reconciles_completed_not_blind_cancel(self, _p, cc, gd, sv):
         gd.return_value = self._inv(payments=[
             frappe._dict(mode_of_payment="Credit Card", amount=42.50)])
@@ -356,10 +386,10 @@ class PayrocApiUnit(FrappeTestCase):
         self.assertEqual(out.get("unique_reference"), "R")
         c.cancel_payment_instruction.assert_not_called()     # didn't strand a capture
 
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.frappe.get_doc")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payments.api.frappe.get_doc")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_cancel_split_tender_reconciles_card_portion(self, _p, cc, gd, sv):
         # $100 sale = $40 cash + $60 card. The device charged $60; a cancel
         # racing the approval must reconcile against 60 (full), NOT grand_total.
@@ -377,9 +407,9 @@ class PayrocApiUnit(FrappeTestCase):
         self.assertFalse(out.get("partial"))
         self.assertTrue(out.get("reconciled"))
 
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_partial_capture_sets_partial_flag(self, _p, cc, sv):
         # A stamped partial capture must be marked payroc_partial=1 so the POS
         # short-circuit never treats it as fully paid after a reload.
@@ -392,13 +422,13 @@ class PayrocApiUnit(FrappeTestCase):
         out = poll_pos_charge("POS-7", "PI9", expected_amount=42.50)
         self.assertTrue(out.get("partial"))
         stamps = [c_.args[2] for c_ in sv.call_args_list if isinstance(c_.args[2], dict)]
-        self.assertTrue(any(s.get("payroc_status") == "PARTIAL"
-            and s.get("payroc_unique_reference") == "R"
-            and s.get("payroc_charged_amount") == 30.00 for s in stamps))
+        self.assertTrue(any(s.get("card_status") == "PARTIAL"
+            and s.get("card_unique_reference") == "R"
+            and s.get("card_charged_amount") == 30.00 for s in stamps))
 
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_full_capture_clears_partial_flag(self, _p, cc, sv):
         c = cc.from_settings.return_value
         c.poll_payment_instruction.return_value = {"status": "COMPLETED",
@@ -409,14 +439,14 @@ class PayrocApiUnit(FrappeTestCase):
         out = poll_pos_charge("POS-7", "PI9", expected_amount=42.50)
         self.assertTrue(out["ok"])
         stamps = [c_.args[2] for c_ in sv.call_args_list if isinstance(c_.args[2], dict)]
-        self.assertTrue(any(s.get("payroc_status") == "CHARGED"
-            and s.get("payroc_unique_reference") == "R"
-            and s.get("payroc_charged_amount") == 42.50 for s in stamps))
+        self.assertTrue(any(s.get("card_status") == "CHARGED"
+            and s.get("card_unique_reference") == "R"
+            and s.get("card_charged_amount") == 42.50 for s in stamps))
 
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.frappe.db.get_value", side_effect=_gv_legacy("REF1"))
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payments.api.frappe.db.get_value", side_effect=_gv_legacy("REF1"))
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
     def test_void_clears_stamps_for_recharge(self, _p, cc, gv, sv):
         cc.from_settings.return_value.reverse.return_value = {"ok": True}
         out = void_pos_invoice("POS-7")
@@ -425,20 +455,20 @@ class PayrocApiUnit(FrappeTestCase):
         # release that follows it is a separate scalar write (see
         # _clear_payment_hold) and must not be mistaken for the stamps.
         stamped = next(c.args[2] for c in sv.call_args_list if isinstance(c.args[2], dict))
-        self.assertIsNone(stamped.get("payroc_unique_reference"))
-        self.assertIsNone(stamped.get("payroc_instruction_id"))
-        self.assertEqual(stamped.get("payroc_status"), "VOIDED")
+        self.assertIsNone(stamped.get("card_unique_reference"))
+        self.assertIsNone(stamped.get("card_instruction_id"))
+        self.assertEqual(stamped.get("card_status"), "VOIDED")
         # 0, never None: the Currency column is NOT NULL, and a None here crashed
         # the stamp clear AFTER the gateway reversal succeeded (money reversed,
         # DB still CHARGED — a past incident). The subscript (not
         # .get) also distinguishes a missing key from an explicit 0. The real
         # schema-level guard is VoidPosInvoiceRealWrite below.
-        self.assertEqual(stamped["payroc_charged_amount"], 0)
+        self.assertEqual(stamped["card_charged_amount"], 0)
 
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.frappe.db.get_value", side_effect=_gv_legacy("REF1"))
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payments.api.frappe.db.get_value", side_effect=_gv_legacy("REF1"))
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
     def test_void_declined_reverse_keeps_stamps(self, _p, cc, gv, sv):
         # HTTP 200 but the reversal is DECLINED in the body — the card is still
         # captured, so the re-charge guard must stay armed (stamps NOT cleared).
@@ -451,10 +481,10 @@ class PayrocApiUnit(FrappeTestCase):
             if isinstance(call.args[2], dict):
                 self.fail("stamps were cleared on a declined reversal")
 
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.frappe.db.get_value", side_effect=_gv_legacy("REF1"))
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payments.api.frappe.db.get_value", side_effect=_gv_legacy("REF1"))
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
     def test_void_gateway_error_friendly_throw(self, _p, cc, gv, sv):
         # A gateway HTTP error (already settled / not reversible) surfaces as a
         # clean frappe throw, not a raw traceback — and stamps stay armed.
@@ -477,43 +507,43 @@ class PayrocApiUnit(FrappeTestCase):
         return frappe._dict(payments=[
             frappe._dict(mode_of_payment="Credit Card", amount=cc_amount)])
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.frappe.get_all", return_value=[])
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api.firearm_items_in", return_value=[])
-    @patch("ffl_integrations.payroc.api.frappe.db.get_value", side_effect=_gv_legacy("REF1234567"))
-    @patch("ffl_integrations.payroc.api.frappe.get_doc")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payments.api.frappe.get_all", return_value=[])
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api.firearm_items_in", return_value=[])
+    @patch("ffl_integrations.payments.api.frappe.db.get_value", side_effect=_gv_legacy("REF1234567"))
+    @patch("ffl_integrations.payments.api.frappe.get_doc")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
     def test_refund_non_firearm(self, _p, gd, _gv, _f, cc, ga, sv, _ir):
         gd.side_effect = [self._ret(), self._orig()]   # get_doc(return), get_doc(original)
         cc.from_settings.return_value.refund.return_value = {"refundReference": "RR1"}
         out = refund_pos_invoice("RET-1")
         self.assertTrue(out["ok"])
         call = cc.from_settings.return_value.refund.call_args
-        self.assertEqual(call.args[0], "REF1234567")          # original's payroc_unique_reference
+        self.assertEqual(call.args[0], "REF1234567")          # original's card_unique_reference
         self.assertEqual(call.kwargs["refund_amount"], 25.00)  # |−25.00|
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api.firearm_items_in", return_value=["GLOCK19"])
-    @patch("ffl_integrations.payroc.api.frappe.db.get_value", side_effect=_gv_legacy("REF1"))
-    @patch("ffl_integrations.payroc.api.frappe.get_doc")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api.firearm_items_in", return_value=["GLOCK19"])
+    @patch("ffl_integrations.payments.api.frappe.db.get_value", side_effect=_gv_legacy("REF1"))
+    @patch("ffl_integrations.payments.api.frappe.get_doc")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
     def test_refund_firearm_blocked(self, _p, gd, _gv, _f, cc, _ir):
         gd.return_value = self._ret(items=[frappe._dict(item_code="GLOCK19")])
         with self.assertRaises(frappe.ValidationError):
             refund_pos_invoice("RET-1")
         cc.from_settings.return_value.refund.assert_not_called()
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.frappe.get_all", return_value=[])
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api.firearm_items_in", return_value=[])
-    @patch("ffl_integrations.payroc.api.frappe.db.get_value", side_effect=_gv_legacy("REF1"))
-    @patch("ffl_integrations.payroc.api.frappe.get_doc")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payments.api.frappe.get_all", return_value=[])
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api.firearm_items_in", return_value=[])
+    @patch("ffl_integrations.payments.api.frappe.db.get_value", side_effect=_gv_legacy("REF1"))
+    @patch("ffl_integrations.payments.api.frappe.get_doc")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
     def test_refund_over_original_blocked(self, _p, gd, _gv, _f, cc, ga, sv, _ir):
         # return card row -100 but original only captured 40 → over-refund blocked.
         ret = self._ret(payments=[frappe._dict(mode_of_payment="Credit Card", amount=-100.00)])
@@ -522,49 +552,49 @@ class PayrocApiUnit(FrappeTestCase):
             refund_pos_invoice("RET-1")
         cc.from_settings.return_value.refund.assert_not_called()
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api.frappe.db.get_value", side_effect=_gv_legacy("REF1", guard="RR-PRIOR"))
-    @patch("ffl_integrations.payroc.api.frappe.get_doc")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api.frappe.db.get_value", side_effect=_gv_legacy("REF1", guard="RR-PRIOR"))
+    @patch("ffl_integrations.payments.api.frappe.get_doc")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
     def test_refund_double_refund_blocked(self, _p, gd, _gv, cc, _ir):
         # The return already carries a refund reference → a second server call
         # must throw, not push a second refund (Worldnet has no idempotency header).
-        gd.return_value = self._ret(payroc_refund_reference="RR-PRIOR")
+        gd.return_value = self._ret(card_refund_reference="RR-PRIOR")
         with self.assertRaises(frappe.ValidationError):
             refund_pos_invoice("RET-1")
         cc.from_settings.return_value.refund.assert_not_called()
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.frappe.get_all")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payments.api.frappe.get_all")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
     # _charge_rows patched by name: the wrapper's row-era fork would otherwise
     # eat this blanket get_all side_effect queue.
-    @patch("ffl_integrations.payroc.api._charge_rows", return_value=[])
-    @patch("ffl_integrations.payroc.api.firearm_items_in", return_value=[])
-    @patch("ffl_integrations.payroc.api.frappe.db.get_value", side_effect=_gv_legacy("REF1"))
-    @patch("ffl_integrations.payroc.api.frappe.get_doc")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api._charge_rows", return_value=[])
+    @patch("ffl_integrations.payments.api.firearm_items_in", return_value=[])
+    @patch("ffl_integrations.payments.api.frappe.db.get_value", side_effect=_gv_legacy("REF1"))
+    @patch("ffl_integrations.payments.api.frappe.get_doc")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
     def test_refund_cumulative_cap_blocked(self, _p, gd, _gv, _f, _cr, cc, ga, sv, _ir):
         # Original captured 40; a prior return already refunded 25 → only 15
         # remains, so a second 25 must be blocked (cumulative cap, not per-call).
         gd.side_effect = [self._ret(), self._orig(40.00)]
         ga.side_effect = [   # orphan-gate sibling scan (clean), cap sibling rows, CC amounts
             [],
-            [frappe._dict(name="RET-0", payroc_refund_reference="RR-DONE")],
+            [frappe._dict(name="RET-0", card_refund_reference="RR-DONE")],
             [-25.00]]
         with self.assertRaises(frappe.ValidationError):
             refund_pos_invoice("RET-1")
         cc.from_settings.return_value.refund.assert_not_called()
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api.firearm_items_in", return_value=[])
-    @patch("ffl_integrations.payroc.api.frappe.db.get_value", side_effect=_gv_legacy("REF1"))
-    @patch("ffl_integrations.payroc.api.frappe.get_doc")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api.firearm_items_in", return_value=[])
+    @patch("ffl_integrations.payments.api.frappe.db.get_value", side_effect=_gv_legacy("REF1"))
+    @patch("ffl_integrations.payments.api.frappe.get_doc")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
     def test_refund_blocked_when_orig_card_unreadable(self, _p, gd, _gv, _f, cc, sv, _ir):
         # Original carries a capture ref but its Credit Card rows sum to 0 →
         # the cap can't be computed; fail safe (block) instead of skipping it.
@@ -574,17 +604,17 @@ class PayrocApiUnit(FrappeTestCase):
             refund_pos_invoice("RET-1")
         cc.from_settings.return_value.refund.assert_not_called()
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=False)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=False)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_charge_skips_when_unconfigured(self, _p, cc, _ir):
         # Go-live gate: no key / no serial → POS records plain tender, no gateway.
         out = charge_pos_invoice("POS-7")
         self.assertTrue(out["skip"])
         cc.from_settings.assert_not_called()
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=False)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=False)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
     def test_refund_skips_when_unconfigured(self, cc, _ir):
         # Inert integration must not even hit the manager gate — a cashier's
         # card-row return submits normally (manual refund on the terminal).
@@ -595,12 +625,12 @@ class PayrocApiUnit(FrappeTestCase):
     # The manager gate is stubbed like every sibling refund test: with
     # frappe.db.get_value patched to None, the real gate's role lookup only
     # worked while the Role meta happened to be cached by an earlier test.
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api.frappe.db.get_value", return_value=None)
-    @patch("ffl_integrations.payroc.api.frappe.get_doc")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api.frappe.db.get_value", return_value=None)
+    @patch("ffl_integrations.payments.api.frappe.get_doc")
     def test_refund_skips_original_not_payroc_charged(self, gd, _gv, cc, sv, _ir, _perm):
         # Original was cash / manual-terminal — nothing to refund via gateway;
         # the return proceeds normally instead of being blocked.
@@ -612,14 +642,14 @@ class PayrocApiUnit(FrappeTestCase):
     def test_block_partial_submit_throws_on_partial(self):
         # Server-side enforcement (before_submit doc_event): a PARTIAL capture
         # must never submit as fully paid — POS, desk form, or direct API.
-        from ffl_integrations.payroc.api import block_partial_submit
+        from ffl_integrations.payments.api import block_partial_submit
         with self.assertRaises(frappe.ValidationError):
-            block_partial_submit(frappe._dict(payroc_status="PARTIAL"))
+            block_partial_submit(frappe._dict(card_status="PARTIAL"))
 
     def test_block_partial_submit_passes_other_states(self):
-        from ffl_integrations.payroc.api import block_partial_submit
+        from ffl_integrations.payments.api import block_partial_submit
         for status in (None, "", "CHARGED", "VOIDED", "REFUNDED"):
-            block_partial_submit(frappe._dict(payroc_status=status))   # no throw
+            block_partial_submit(frappe._dict(card_status=status))   # no throw
 
 
 class PayrocSetup(FrappeTestCase):
@@ -635,14 +665,14 @@ class PayrocSetup(FrappeTestCase):
         ensure_credit_card_mop_account()
 
     def test_ensure_mode_of_payment_idempotent(self):
-        from ffl_integrations.payroc.setup import ensure_mode_of_payment, MODE_OF_PAYMENT_NAME
+        from ffl_integrations.payments.setup import ensure_mode_of_payment, MODE_OF_PAYMENT_NAME
         ensure_mode_of_payment()
         self.assertTrue(frappe.db.exists("Mode of Payment", MODE_OF_PAYMENT_NAME))
         ensure_mode_of_payment()
         self.assertTrue(frappe.db.exists("Mode of Payment", MODE_OF_PAYMENT_NAME))
 
     def test_ensure_mode_of_payment_adds_to_pos_profile(self):
-        from ffl_integrations.payroc.setup import ensure_mode_of_payment, MODE_OF_PAYMENT_NAME
+        from ffl_integrations.payments.setup import ensure_mode_of_payment, MODE_OF_PAYMENT_NAME
         # Pick (or create) a disposable POS Profile without "Credit Card".
         profile_name = "_PayrocSetupTest"
         if frappe.db.exists("POS Profile", profile_name):
@@ -770,9 +800,9 @@ def _marked_return_draft(reference=None, booked: float = 0) -> str:
     name = _pos_draft_invoice(rate=10)
     stamps = {"is_return": 1}
     if reference is not None:
-        stamps["payroc_refund_reference"] = reference
+        stamps["card_refund_reference"] = reference
     if booked:
-        stamps["payroc_refunded_amount"] = booked
+        stamps["card_refunded_amount"] = booked
     frappe.db.set_value("POS Invoice", name, stamps, update_modified=False)
     return name
 
@@ -782,7 +812,7 @@ class VoidPosInvoiceRealWrite(FrappeTestCase):
 
     Every other void test in this module mocks frappe.db.set_value, which is
     exactly how the original bug shipped: the cleanup dict carried a None for
-    payroc_charged_amount (a Currency column — NOT NULL DEFAULT 0 by Frappe
+    card_charged_amount (a Currency column — NOT NULL DEFAULT 0 by Frappe
     convention) and no mock ever objected, while the gateway reversal had
     already gone through. Here the stamp UPDATE runs against the real schema,
     so a None in any numeric stamp field is an IntegrityError and this test
@@ -798,16 +828,16 @@ class VoidPosInvoiceRealWrite(FrappeTestCase):
     def _stamped_draft_invoice(self) -> str:
         name = _pos_draft_invoice(rate=50)
         frappe.db.set_value("POS Invoice", name, {
-            "payroc_unique_reference": "REF-REAL",
-            "payroc_instruction_id": "PI-REAL",
-            "payroc_status": "CHARGED",
-            "payroc_charged_amount": 50.0,
+            "card_unique_reference": "REF-REAL",
+            "card_instruction_id": "PI-REAL",
+            "card_status": "CHARGED",
+            "card_charged_amount": 50.0,
             "ffl_payment_held": 1,          # parked for the 4473 (charge-before-4473)
         }, update_modified=False)
         return name
 
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
     def test_void_stamp_clear_survives_the_real_schema(self, _p, cc):
         cc.from_settings.return_value.reverse.return_value = {"ok": True}
         name = self._stamped_draft_invoice()
@@ -816,29 +846,29 @@ class VoidPosInvoiceRealWrite(FrappeTestCase):
 
         self.assertTrue(out["ok"])
         row = frappe.db.get_value("POS Invoice", name,
-            ["payroc_status", "payroc_charged_amount",
-             "payroc_unique_reference", "payroc_instruction_id",
+            ["card_status", "card_charged_amount",
+             "card_unique_reference", "card_instruction_id",
              "ffl_payment_held"], as_dict=True)
-        self.assertEqual(row.payroc_status, "VOIDED")
-        self.assertEqual(float(row.payroc_charged_amount), 0.0)
-        self.assertFalse(row.payroc_unique_reference)
-        self.assertFalse(row.payroc_instruction_id)
+        self.assertEqual(row.card_status, "VOIDED")
+        self.assertEqual(float(row.card_charged_amount), 0.0)
+        self.assertFalse(row.card_unique_reference)
+        self.assertFalse(row.card_instruction_id)
         # Legacy void path: the 4473 hold is released with the money.
         self.assertEqual(int(row.ffl_payment_held), 0)
 
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
     def test_void_survives_an_unmigrated_hold_column(self, _p, cc):
         # A site whose ffl_core fixture has not landed yet: the gateway reversal
         # must still stamp durably; the hold flag is UI state and is skipped.
         cc.from_settings.return_value.reverse.return_value = {"ok": True}
         name = self._stamped_draft_invoice()
-        with patch("ffl_integrations.payroc.api.frappe.db.has_column", return_value=False):
+        with patch("ffl_integrations.payments.api.frappe.db.has_column", return_value=False):
             out = void_pos_invoice(name)
         self.assertTrue(out["ok"])
         row = frappe.db.get_value("POS Invoice", name,
-            ["payroc_status", "ffl_payment_held"], as_dict=True)
-        self.assertEqual(row.payroc_status, "VOIDED")
+            ["card_status", "ffl_payment_held"], as_dict=True)
+        self.assertEqual(row.card_status, "VOIDED")
         self.assertEqual(int(row.ffl_payment_held), 1)   # untouched, not crashed
 
 
@@ -883,14 +913,14 @@ class MultiCardLifecycle(FrappeTestCase):
 
     def _stamps(self, inv: str):
         return frappe.db.get_value("POS Invoice", inv,
-            ["payroc_status", "payroc_charged_amount", "payroc_unique_reference",
-             "payroc_instruction_id", "payroc_attempt"], as_dict=True)
+            ["card_status", "card_charged_amount", "card_unique_reference",
+             "card_instruction_id", "card_attempt"], as_dict=True)
 
     # --------------------------------------------------------------- tests
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_two_card_split_charges_to_full(self, _p, cc, _r):
         inv = _pos_draft_invoice(rate=100)
 
@@ -898,19 +928,19 @@ class MultiCardLifecycle(FrappeTestCase):
         self.assertTrue(first["ok"])
         self.assertEqual(flt(first["remaining"], 2), 40)
         s = self._stamps(inv)
-        self.assertEqual(s.payroc_status, "PARTIAL")       # Σ 60 < tender 100
-        self.assertEqual(flt(s.payroc_charged_amount), 60)
-        self.assertEqual(s.payroc_unique_reference, "REF-A")
+        self.assertEqual(s.card_status, "PARTIAL")       # Σ 60 < tender 100
+        self.assertEqual(flt(s.card_charged_amount), 60)
+        self.assertEqual(s.card_unique_reference, "REF-A")
 
         second = self._charge_and_settle(cc, inv, ask=None, ref="REF-B",
             authorized=40, card="Amex", pan="****2222")
         self.assertTrue(second["ok"])
         self.assertEqual(flt(second["remaining"], 2), 0)
         s = self._stamps(inv)
-        self.assertEqual(s.payroc_status, "CHARGED")
-        self.assertEqual(flt(s.payroc_charged_amount), 100)
-        self.assertEqual(s.payroc_unique_reference, "MULTI")
-        self.assertEqual(s.payroc_attempt, 2)
+        self.assertEqual(s.card_status, "CHARGED")
+        self.assertEqual(flt(s.card_charged_amount), 100)
+        self.assertEqual(s.card_unique_reference, "MULTI")
+        self.assertEqual(s.card_attempt, 2)
 
         rows = _charge_rows(inv)
         self.assertEqual([(r.status, flt(r.amount)) for r in rows],
@@ -921,9 +951,9 @@ class MultiCardLifecycle(FrappeTestCase):
         with self.assertRaises(frappe.ValidationError):
             charge_pos_invoice(inv, amount=1)
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_each_card_gets_its_own_order_id(self, _p, cc, _r):
         """Payroc ties an order to its first approved sale: a second instruction
         on the same orderId comes back "Order has already been processed" and the
@@ -940,17 +970,17 @@ class MultiCardLifecycle(FrappeTestCase):
         self.assertEqual(
             c.create_payment_instruction.call_args.kwargs["order_id"], f"{inv}-A2")
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_slice_over_remaining_refuses(self, _p, cc, _r):
         inv = _pos_draft_invoice(rate=100)
         with self.assertRaises(frappe.ValidationError):
             charge_pos_invoice(inv, amount=120)
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_partial_approval_is_real_money_not_a_dead_end(self, _p, cc, _r):
         """Ask 100, card only approves 30 → the row is CHARGED at 30 and the
         sale simply has 70 left to collect on another card (the single-charge
@@ -960,14 +990,14 @@ class MultiCardLifecycle(FrappeTestCase):
         self.assertTrue(out["ok"])
         self.assertEqual(flt(out["remaining"], 2), 70)
         s = self._stamps(inv)
-        self.assertEqual(s.payroc_status, "PARTIAL")
-        self.assertEqual(flt(s.payroc_charged_amount), 30)
+        self.assertEqual(s.card_status, "PARTIAL")
+        self.assertEqual(flt(s.card_charged_amount), 30)
         rows = _charge_rows(inv)
         self.assertEqual((rows[0].status, flt(rows[0].amount)), ("CHARGED", 30))
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_submit_guard_mismatch_inflight_and_override(self, _p, cc, _r):
         inv = _pos_draft_invoice(rate=100)
         self._charge_and_settle(cc, inv, ask=60, ref="REF-A")
@@ -978,21 +1008,21 @@ class MultiCardLifecycle(FrappeTestCase):
             block_partial_submit(doc)
 
         # Manager override: checkbox without a reason refuses; with one, passes.
-        doc.payroc_manual_settlement = 1
-        doc.payroc_manual_settlement_reason = ""
+        doc.card_manual_settlement = 1
+        doc.card_manual_settlement_reason = ""
         with self.assertRaises(frappe.ValidationError):
             block_partial_submit(doc)
-        doc.payroc_manual_settlement_reason = "rest collected on Virtual Terminal, batch #12"
+        doc.card_manual_settlement_reason = "rest collected on Virtual Terminal, batch #12"
         block_partial_submit(doc)   # no throw
 
         # Fully collected → passes without any override.
-        doc.payroc_manual_settlement = 0
+        doc.card_manual_settlement = 0
         self._charge_and_settle(cc, inv, ask=40, ref="REF-B")
         block_partial_submit(frappe.get_doc("POS Invoice", inv))   # no throw
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_submit_guard_blocks_inflight_instruction(self, _p, cc, _r):
         inv = _pos_draft_invoice(rate=100)
         cc.from_settings.return_value.create_payment_instruction.return_value = {
@@ -1001,10 +1031,10 @@ class MultiCardLifecycle(FrappeTestCase):
         with self.assertRaises(frappe.ValidationError):
             block_partial_submit(frappe.get_doc("POS Invoice", inv))
 
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_void_per_card(self, _p, cc, _r, _rp):
         inv = _pos_draft_invoice(rate=100)
         self._charge_and_settle(cc, inv, ask=60, ref="REF-A")
@@ -1027,20 +1057,20 @@ class MultiCardLifecycle(FrappeTestCase):
         self.assertEqual([(r.unique_reference, r.status) for r in rows],
             [("REF-A", "CHARGED"), ("REF-B", "VOIDED")])
         s = self._stamps(inv)
-        self.assertEqual(s.payroc_status, "PARTIAL")       # 60 live of 100
-        self.assertEqual(flt(s.payroc_charged_amount), 60)
-        self.assertEqual(s.payroc_unique_reference, "REF-A")
+        self.assertEqual(s.card_status, "PARTIAL")       # 60 live of 100
+        self.assertEqual(flt(s.card_charged_amount), 60)
+        self.assertEqual(s.card_unique_reference, "REF-A")
         # Row void path: 40 is owed again, so the hold is released and the
         # payment screen offers Take Payment for the balance.
         self.assertEqual(int(frappe.db.get_value("POS Invoice", inv, "ffl_payment_held")), 0)
 
-    @patch("ffl_integrations.payroc.api.PayrocClient")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
     def test_refund_allocates_newest_charge_first(self, cc):
         """Reverse-order refund: a 70 refund against [60 REF-A, 40 REF-B] takes all of
         REF-B (newest) then 30 of REF-A, stamping per-row refunded_amount."""
         inv = _pos_draft_invoice(rate=100)
-        with patch("ffl_integrations.payroc.api._check_perm"), \
-                patch("ffl_integrations.payroc.api._integration_ready", return_value=True):
+        with patch("ffl_integrations.payments.api._check_perm"), \
+                patch("ffl_integrations.payments.api._integration_ready", return_value=True):
             self._charge_and_settle(cc, inv, ask=60, ref="REF-A")
             self._charge_and_settle(cc, inv, ask=40, ref="REF-B")
         ret_shell = _pos_draft_invoice(rate=1)
@@ -1058,22 +1088,22 @@ class MultiCardLifecycle(FrappeTestCase):
         self.assertEqual([(r.unique_reference, flt(r.refunded_amount)) for r in rows],
             [("REF-A", 30), ("REF-B", 40)])
         st = frappe.db.get_value("POS Invoice", ret_shell,
-            ["payroc_refund_reference", "payroc_status"], as_dict=True)
-        self.assertEqual(st.payroc_refund_reference, "MULTI")
-        self.assertEqual(st.payroc_status, "REFUNDED")
+            ["card_refund_reference", "card_status"], as_dict=True)
+        self.assertEqual(st.card_refund_reference, "MULTI")
+        self.assertEqual(st.card_status, "REFUNDED")
 
         # The per-row counters ARE the cumulative cap: only 30 is left.
         with self.assertRaises(frappe.ValidationError):
             _refund_across_rows(frappe._dict(name=ret_shell), inv,
                 [r for r in _charge_rows(inv) if r.status == "CHARGED"], 40.0, None)
 
-    @patch("ffl_integrations.payroc.api.PayrocClient")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
     def test_refund_decline_mid_allocation_locks_the_return(self, cc):
         """A decline after a successful slice must stamp what went through and
         arm the re-refund guard — a wholesale retry would double-refund."""
         inv = _pos_draft_invoice(rate=100)
-        with patch("ffl_integrations.payroc.api._check_perm"), \
-                patch("ffl_integrations.payroc.api._integration_ready", return_value=True):
+        with patch("ffl_integrations.payments.api._check_perm"), \
+                patch("ffl_integrations.payments.api._integration_ready", return_value=True):
             self._charge_and_settle(cc, inv, ask=60, ref="REF-A")
             self._charge_and_settle(cc, inv, ask=40, ref="REF-B")
         ret_shell = _pos_draft_invoice(rate=1)
@@ -1091,7 +1121,7 @@ class MultiCardLifecycle(FrappeTestCase):
         rows = _charge_rows(inv)
         self.assertEqual([(r.unique_reference, flt(r.refunded_amount)) for r in rows],
             [("REF-A", 0), ("REF-B", 40)])     # the successful slice IS booked
-        locked = frappe.db.get_value("POS Invoice", ret_shell, "payroc_refund_reference")
+        locked = frappe.db.get_value("POS Invoice", ret_shell, "card_refund_reference")
         self.assertTrue((locked or "").startswith("PARTIAL:"))
 
 
@@ -1109,9 +1139,9 @@ class MultiCardR1Closures(FrappeTestCase):
     _charge_and_settle = MultiCardLifecycle._charge_and_settle
     _stamps = MultiCardLifecycle._stamps
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_cancel_row_path_and_raced_approval(self, _p, cc, _r):
         inv = _pos_draft_invoice(rate=100)
         c = cc.from_settings.return_value
@@ -1126,8 +1156,8 @@ class MultiCardR1Closures(FrappeTestCase):
         self.assertEqual(out["status"], "CANCELED")
         rows = _charge_rows(inv)
         self.assertEqual(rows[0].status, "CANCELED")
-        self.assertEqual(self._stamps(inv).payroc_status, "CANCELED")
-        self.assertFalse(self._stamps(inv).payroc_instruction_id)
+        self.assertEqual(self._stamps(inv).card_status, "CANCELED")
+        self.assertFalse(self._stamps(inv).card_instruction_id)
 
         # Raced approval: cancel arrives after the card captured → reconcile
         # into the row, never strand the money.
@@ -1142,24 +1172,24 @@ class MultiCardR1Closures(FrappeTestCase):
         self.assertTrue(out["ok"])
         self.assertTrue(out.get("reconciled"))
         s = self._stamps(inv)
-        self.assertEqual(s.payroc_status, "CHARGED")
-        self.assertEqual(flt(s.payroc_charged_amount), 100)
+        self.assertEqual(s.card_status, "CHARGED")
+        self.assertEqual(flt(s.card_charged_amount), 100)
 
         # Row-era invoice + unknown instruction id must never fall into the
         # legacy resolver.
         with self.assertRaises(frappe.ValidationError):
             cancel_pos_charge(inv, "PI-UNKNOWN")
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_submit_guard_reads_db_not_payload(self, _p, cc, _r):
         """A stale/hand-built payload with no (or doctored) child rows
         must not disarm the mismatch gate — the guard reads _charge_rows."""
         inv = _pos_draft_invoice(rate=100)
         self._charge_and_settle(cc, inv, ask=60, ref="REF-A")
         doc = frappe.get_doc("POS Invoice", inv)
-        doc.set("payroc_charges", [])          # what a stale client would send
+        doc.set("card_charges", [])          # what a stale client would send
         with self.assertRaises(frappe.ValidationError):
             block_partial_submit(doc)
 
@@ -1168,17 +1198,17 @@ class MultiCardR1Closures(FrappeTestCase):
         role check, not trust the checkbox."""
         inv = _pos_draft_invoice(rate=100)
         doc = frappe.get_doc("POS Invoice", inv)
-        doc.payroc_manual_settlement = 1
-        doc.payroc_manual_settlement_reason = "VT batch #9"
-        with patch("ffl_integrations.payroc.api._check_manager",
+        doc.card_manual_settlement = 1
+        doc.card_manual_settlement_reason = "VT batch #9"
+        with patch("ffl_integrations.payments.api._check_manager",
                 side_effect=frappe.PermissionError) as cm:
             with self.assertRaises(frappe.PermissionError):
                 block_partial_submit(doc)
             cm.assert_called_once()
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_client_save_cannot_wipe_or_mutate_rows(self, _p, cc, _r):
         """A client save with missing/mutated child rows — Frappe's
         child sync would delete/overwrite; the validate hook restores DB
@@ -1186,7 +1216,7 @@ class MultiCardR1Closures(FrappeTestCase):
         inv = _pos_draft_invoice(rate=100)
         self._charge_and_settle(cc, inv, ask=60, ref="REF-A")
         doc = frappe.get_doc("POS Invoice", inv)
-        doc.set("payroc_charges", [])          # stale page: rows not loaded
+        doc.set("card_charges", [])          # stale page: rows not loaded
         doc.flags.ignore_permissions = True
         doc.save()
         rows = _charge_rows(inv)
@@ -1194,18 +1224,18 @@ class MultiCardR1Closures(FrappeTestCase):
             [("REF-A", "CHARGED", 60)])
 
         # Mutation attempt: client resurrects a VOIDED row as CHARGED.
-        with patch("ffl_integrations.payroc.api._check_refund_perm"):
+        with patch("ffl_integrations.payments.api._check_refund_perm"):
             cc.from_settings.return_value.reverse.return_value = {"ok": True}
             void_pos_invoice(inv, reason="test", unique_reference="REF-A")
         doc = frappe.get_doc("POS Invoice", inv)
-        doc.payroc_charges[0].status = "CHARGED"
+        doc.card_charges[0].status = "CHARGED"
         doc.flags.ignore_permissions = True
         doc.save()
         self.assertEqual(_charge_rows(inv)[0].status, "VOIDED")
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_mixed_tender_default_amount_is_card_portion(self, _p, cc, _r):
         """Declared behavior change: with no explicit amount the
         charge asks the terminal for the CARD tender portion, not grand_total
@@ -1219,10 +1249,10 @@ class MultiCardR1Closures(FrappeTestCase):
         self.assertEqual(
             flt(c.create_payment_instruction.call_args.kwargs["amount"], 2), 60)
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_refund_wrapper_end_to_end_on_rows(self, _p, _rp, cc, _r):
         """The whole row path through refund_pos_invoice's wrapper —
         real submit (exercising the before_submit hook chain), a real return
@@ -1257,10 +1287,10 @@ class MultiCardR1Closures(FrappeTestCase):
         with self.assertRaises(frappe.ValidationError):
             refund_pos_invoice(ret.name)
 
-    @patch("ffl_integrations.payroc.api._commit_money_point")
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._commit_money_point")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_refund_commit_points_and_unknown_outcome_lock(self, _p, cc, _r, cp):
         """Every successful slice hits the durable commit point
         AFTER its row ledger write, and a non-PayrocError network failure
@@ -1284,18 +1314,18 @@ class MultiCardR1Closures(FrappeTestCase):
         rows = _charge_rows(inv)
         self.assertEqual([(r.unique_reference, flt(r.refunded_amount)) for r in rows],
             [("REF-A", 0), ("REF-B", 40)])
-        locked = frappe.db.get_value("POS Invoice", ret_shell, "payroc_refund_reference")
+        locked = frappe.db.get_value("POS Invoice", ret_shell, "card_refund_reference")
         self.assertTrue((locked or "").startswith("PARTIAL:"))
 
-    @patch("ffl_integrations.payroc.api._commit_money_point")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
+    @patch("ffl_integrations.payments.api._commit_money_point")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
     def test_first_slice_network_error_still_arms_the_lock(self, cc, cp):
         """An outcome-unknown failure on the FIRST slice (nothing booked
         yet) must still lock the return — the timeout may have landed."""
         from requests.exceptions import ConnectionError as ReqConnectionError
         inv = _pos_draft_invoice(rate=100)
-        with patch("ffl_integrations.payroc.api._check_perm"), \
-                patch("ffl_integrations.payroc.api._integration_ready", return_value=True):
+        with patch("ffl_integrations.payments.api._check_perm"), \
+                patch("ffl_integrations.payments.api._integration_ready", return_value=True):
             self._charge_and_settle(cc, inv, ask=100, ref="REF-A")
         ret_shell = _pos_draft_invoice(rate=1)
         cc.from_settings.return_value.refund.side_effect = ReqConnectionError("net")
@@ -1305,19 +1335,19 @@ class MultiCardR1Closures(FrappeTestCase):
                 [r for r in _charge_rows(inv) if r.status == "CHARGED"], 50.0, None)
         self.assertEqual(cp.call_count, 1)   # the lock's durable point
         self.assertEqual(
-            frappe.db.get_value("POS Invoice", ret_shell, "payroc_refund_reference"),
+            frappe.db.get_value("POS Invoice", ret_shell, "card_refund_reference"),
             "UNKNOWN-OUTCOME")
         self.assertEqual(flt(_charge_rows(inv)[0].refunded_amount), 0)
 
-    @patch("ffl_integrations.payroc.api._commit_money_point")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
+    @patch("ffl_integrations.payments.api._commit_money_point")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
     def test_first_slice_gateway_reject_stays_retryable(self, cc, cp):
         """A PayrocError is a DEFINITE non-refund — with zero
         slices booked the return must stay retryable (no UNKNOWN-OUTCOME
         lock), or a credential expiry would mass-lock every return."""
         inv = _pos_draft_invoice(rate=100)
-        with patch("ffl_integrations.payroc.api._check_perm"), \
-                patch("ffl_integrations.payroc.api._integration_ready", return_value=True):
+        with patch("ffl_integrations.payments.api._check_perm"), \
+                patch("ffl_integrations.payments.api._integration_ready", return_value=True):
             self._charge_and_settle(cc, inv, ask=100, ref="REF-A")
         ret_shell = _pos_draft_invoice(rate=1)
         cc.from_settings.return_value.refund.side_effect = PayrocError("401 auth")
@@ -1326,12 +1356,12 @@ class MultiCardR1Closures(FrappeTestCase):
             _refund_across_rows(frappe._dict(name=ret_shell), inv,
                 [r for r in _charge_rows(inv) if r.status == "CHARGED"], 50.0, None)
         self.assertFalse(frappe.db.get_value(
-            "POS Invoice", ret_shell, "payroc_refund_reference"))
+            "POS Invoice", ret_shell, "card_refund_reference"))
         self.assertEqual(flt(_charge_rows(inv)[0].refunded_amount), 0)
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_client_save_cannot_tamper_gateway_handles(self, _p, cc, _r):
         """A payload that matches on the coarse shape but swaps a
         server-owned field (the void/refund gateway handle) must be restored
@@ -1339,7 +1369,7 @@ class MultiCardR1Closures(FrappeTestCase):
         inv = _pos_draft_invoice(rate=100)
         self._charge_and_settle(cc, inv, ask=100, ref="REF-A")
         doc = frappe.get_doc("POS Invoice", inv)
-        doc.payroc_charges[0].unique_reference = "EVIL-REF"
+        doc.card_charges[0].unique_reference = "EVIL-REF"
         doc.flags.ignore_permissions = True
         doc.save()
         self.assertEqual(_charge_rows(inv)[0].unique_reference, "REF-A")
@@ -1411,12 +1441,12 @@ class RefundUnknownPayrocErrorLock(FrappeTestCase):
 
     _charge_and_settle = MultiCardLifecycle._charge_and_settle
 
-    @patch("ffl_integrations.payroc.api._commit_money_point")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
+    @patch("ffl_integrations.payments.api._commit_money_point")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
     def test_first_slice_unknown_payroc_error_arms_the_lock(self, cc, cp):
         inv = _pos_draft_invoice(rate=100)
-        with patch("ffl_integrations.payroc.api._check_perm"), \
-                patch("ffl_integrations.payroc.api._integration_ready", return_value=True):
+        with patch("ffl_integrations.payments.api._check_perm"), \
+                patch("ffl_integrations.payments.api._integration_ready", return_value=True):
             self._charge_and_settle(cc, inv, ask=100, ref="REF-A")
         ret_shell = _pos_draft_invoice(rate=1)
         cc.from_settings.return_value.refund.side_effect = PayrocError(
@@ -1427,7 +1457,7 @@ class RefundUnknownPayrocErrorLock(FrappeTestCase):
                 [r for r in _charge_rows(inv) if r.status == "CHARGED"], 50.0, None)
         self.assertEqual(cp.call_count, 1)   # the lock's durable point
         self.assertEqual(
-            frappe.db.get_value("POS Invoice", ret_shell, "payroc_refund_reference"),
+            frappe.db.get_value("POS Invoice", ret_shell, "card_refund_reference"),
             "UNKNOWN-OUTCOME")
         self.assertEqual(flt(_charge_rows(inv)[0].refunded_amount), 0)
 
@@ -1441,7 +1471,7 @@ class PersistMoneyFact(FrappeTestCase):
         super().setUpClass()
         cls.company = _ensure_pos_fixtures()
 
-    @patch("ffl_integrations.payroc.api._commit_money_point")
+    @patch("ffl_integrations.payments.api._commit_money_point")
     def test_success_writes_once_and_commits_once(self, cp):
         calls = []
         _persist_money_fact(lambda: calls.append(1),
@@ -1449,7 +1479,7 @@ class PersistMoneyFact(FrappeTestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(cp.call_count, 1)
 
-    @patch("ffl_integrations.payroc.api._commit_money_point")
+    @patch("ffl_integrations.payments.api._commit_money_point")
     def test_transient_failure_retries_under_savepoint(self, cp):
         inv = _pos_draft_invoice(rate=10)
         attempts = []
@@ -1458,7 +1488,7 @@ class PersistMoneyFact(FrappeTestCase):
             # A real write BEFORE the failure: the savepoint rollback must
             # undo it (clean slate for the retry) WITHOUT rolling back the
             # uncommitted test fixtures created before the helper ran.
-            frappe.db.set_value("POS Invoice", inv, "payroc_status",
+            frappe.db.set_value("POS Invoice", inv, "card_status",
                 "VOIDED", update_modified=False)
             attempts.append(1)
             if len(attempts) == 1:
@@ -1468,11 +1498,11 @@ class PersistMoneyFact(FrappeTestCase):
         self.assertEqual(len(attempts), 2)
         self.assertEqual(cp.call_count, 1)
         self.assertEqual(
-            frappe.db.get_value("POS Invoice", inv, "payroc_status"), "VOIDED")
+            frappe.db.get_value("POS Invoice", inv, "card_status"), "VOIDED")
         self.assertTrue(frappe.db.exists("POS Invoice", inv))   # fixtures survived
 
-    @patch("ffl_integrations.payroc.api.notify_admins")
-    @patch("ffl_integrations.payroc.api._commit_money_point")
+    @patch("ffl_integrations.payments.api.notify_admins")
+    @patch("ffl_integrations.payments.api._commit_money_point")
     def test_double_failure_leaves_trace_and_forbids_retry(self, cp, na):
         with self.assertRaises(frappe.ValidationError) as ctx:
             _persist_money_fact(lambda: (_ for _ in ()).throw(Exception("db down")),
@@ -1488,7 +1518,7 @@ class PersistMoneyFact(FrappeTestCase):
         # notify_admins would leave a non-transactional Redis throttle key).
         self.assertEqual(na.call_count, 1)
         self.assertEqual(na.call_args.kwargs["dedup_key"],
-            "payroc-money-fact:INV-DEAD")
+            "card-money-fact:INV-DEAD")
 
 
 class VoidPersistWindow(FrappeTestCase):
@@ -1506,15 +1536,15 @@ class VoidPersistWindow(FrappeTestCase):
 
     def _charged_invoice(self, cc):
         inv = _pos_draft_invoice(rate=100)
-        with patch("ffl_integrations.payroc.api._check_perm"), \
-                patch("ffl_integrations.payroc.api._integration_ready", return_value=True):
+        with patch("ffl_integrations.payments.api._check_perm"), \
+                patch("ffl_integrations.payments.api._integration_ready", return_value=True):
             self._charge_and_settle(cc, inv, ask=100, ref="REF-A")
         return inv
 
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
     def test_void_retries_transient_stamp_failure(self, _rp, cc):
-        from ffl_integrations.payroc import api as payroc_api
+        from ffl_integrations.payments import api as payroc_api
         inv = self._charged_invoice(cc)
         cc.from_settings.return_value.reverse.return_value = {"ok": True}
         real_refresh = payroc_api._refresh_charge_stamps
@@ -1526,25 +1556,25 @@ class VoidPersistWindow(FrappeTestCase):
                 raise Exception("transient")
             return real_refresh(name)
 
-        with patch("ffl_integrations.payroc.api._refresh_charge_stamps",
+        with patch("ffl_integrations.payments.api._refresh_charge_stamps",
                 side_effect=flaky):
             out = void_pos_invoice(inv, reason="t")
         self.assertTrue(out["ok"])
         cc.from_settings.return_value.reverse.assert_called_once()   # gateway hit ONCE
         self.assertEqual(_charge_rows(inv)[0].status, "VOIDED")
 
-    @patch("ffl_integrations.payroc.api.notify_admins")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api.notify_admins")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
     def test_void_double_failure_stops_and_traces(self, _rp, cc, na):
         inv = self._charged_invoice(cc)
         cc.from_settings.return_value.reverse.return_value = {"ok": True}
-        with patch("ffl_integrations.payroc.api._refresh_charge_stamps",
+        with patch("ffl_integrations.payments.api._refresh_charge_stamps",
                 side_effect=Exception("db down")):
             with self.assertRaises(frappe.ValidationError) as ctx:
                 void_pos_invoice(inv, reason="t")
         self.assertEqual(na.call_count, 1)
-        self.assertEqual(na.call_args.kwargs["dedup_key"], f"payroc-money-fact:{inv}")
+        self.assertEqual(na.call_args.kwargs["dedup_key"], f"card-money-fact:{inv}")
         self.assertIn("Do not retry", str(ctx.exception))
         cc.from_settings.return_value.reverse.assert_called_once()
         # The row flip rolled back to the savepoint — DB truth still says
@@ -1575,7 +1605,7 @@ class RefundUnlock(FrappeTestCase):
         # test below.
         ret = _pos_draft_invoice(rate=10)
         frappe.db.set_value("POS Invoice", ret,
-            {"payroc_refund_reference": lock, "is_return": 1},
+            {"card_refund_reference": lock, "is_return": 1},
             update_modified=False)
         return ret
 
@@ -1584,7 +1614,7 @@ class RefundUnlock(FrappeTestCase):
             "reference_doctype": "POS Invoice", "reference_name": name,
             "comment_type": "Comment"}, pluck="content")
 
-    @patch("ffl_integrations.payroc.api._commit_money_point")
+    @patch("ffl_integrations.payments.api._commit_money_point")
     def test_unlock_clears_and_audits(self, cp):
         ret = self._locked_return()
         out = unlock_refund_lock(ret, reason="Payroc portal shows no refund landed")
@@ -1592,12 +1622,12 @@ class RefundUnlock(FrappeTestCase):
         self.assertEqual(out["cleared"], "UNKNOWN-OUTCOME")
         self.assertEqual(cp.call_count, 1)   # the clear is a durable point
         self.assertFalse(
-            frappe.db.get_value("POS Invoice", ret, "payroc_refund_reference"))
+            frappe.db.get_value("POS Invoice", ret, "card_refund_reference"))
         comments = self._comments(ret)
         self.assertTrue(any("UNKNOWN-OUTCOME" in c for c in comments))
         self.assertTrue(any("no refund landed" in c for c in comments))
 
-    @patch("ffl_integrations.payroc.api._commit_money_point")
+    @patch("ffl_integrations.payments.api._commit_money_point")
     def test_unlock_refuses_partial_lock(self, cp):
         """PARTIAL:* is the ONE record of what this return already pushed
         back — unlocking it re-arms a full-amount retry the per-original-card
@@ -1608,7 +1638,7 @@ class RefundUnlock(FrappeTestCase):
         self.assertIn("cannot be released", str(ctx.exception))
         self.assertEqual(cp.call_count, 0)
         self.assertEqual(frappe.db.get_value(
-            "POS Invoice", ret, "payroc_refund_reference"), "PARTIAL:RF-1,RF-2")
+            "POS Invoice", ret, "card_refund_reference"), "PARTIAL:RF-1,RF-2")
         self.assertFalse(self._comments(ret))   # refused = no audit comment
 
     def test_unlock_refuses_real_refund_reference(self):
@@ -1616,11 +1646,11 @@ class RefundUnlock(FrappeTestCase):
         with self.assertRaises(frappe.ValidationError):
             unlock_refund_lock(ret, reason="please")
         self.assertEqual(frappe.db.get_value(
-            "POS Invoice", ret, "payroc_refund_reference"), "RF-REAL-123")
+            "POS Invoice", ret, "card_refund_reference"), "RF-REAL-123")
 
     def test_unlock_refuses_non_return_unlocked_cancelled_and_blank_reason(self):
         plain = _pos_draft_invoice(rate=10)
-        frappe.db.set_value("POS Invoice", plain, "payroc_refund_reference",
+        frappe.db.set_value("POS Invoice", plain, "card_refund_reference",
             "UNKNOWN-OUTCOME", update_modified=False)
         with self.assertRaises(frappe.ValidationError):
             unlock_refund_lock(plain, reason="r")      # not a return
@@ -1638,7 +1668,7 @@ class RefundUnlock(FrappeTestCase):
         with self.assertRaises(frappe.ValidationError):
             unlock_refund_lock(locked, reason="   ")   # blank reason
         self.assertEqual(frappe.db.get_value(
-            "POS Invoice", locked, "payroc_refund_reference"), "UNKNOWN-OUTCOME")
+            "POS Invoice", locked, "card_refund_reference"), "UNKNOWN-OUTCOME")
 
     def test_unlock_requires_manager(self):
         ret = self._locked_return()
@@ -1646,12 +1676,12 @@ class RefundUnlock(FrappeTestCase):
             with self.assertRaises(frappe.PermissionError):
                 unlock_refund_lock(ret, reason="r")
         self.assertEqual(frappe.db.get_value(
-            "POS Invoice", ret, "payroc_refund_reference"), "UNKNOWN-OUTCOME")
+            "POS Invoice", ret, "card_refund_reference"), "UNKNOWN-OUTCOME")
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_locked_then_unlocked_return_refunds_through_real_entrance(
             self, _p, _rp, cc, _ir):
         """The first-slice-reject recovery story END-TO-END THROUGH refund_pos_invoice
@@ -1680,7 +1710,7 @@ class RefundUnlock(FrappeTestCase):
         with self.assertRaises(frappe.ValidationError):
             refund_pos_invoice(ret.name)
         self.assertEqual(frappe.db.get_value(
-            "POS Invoice", ret.name, "payroc_refund_reference"), "UNKNOWN-OUTCOME")
+            "POS Invoice", ret.name, "card_refund_reference"), "UNKNOWN-OUTCOME")
         self.assertEqual(flt(_charge_rows(inv)[0].refunded_amount), 0)
 
         # A blind retry is blocked by the guard, and the message names the
@@ -1702,9 +1732,9 @@ class RefundUnlock(FrappeTestCase):
             [(k.args[0], k.kwargs["refund_amount"]) for k in c.refund.call_args_list],
             [("REF-A", 50.0), ("REF-A", 50.0)])   # same full amount both times
         st = frappe.db.get_value("POS Invoice", ret.name,
-            ["payroc_refund_reference", "payroc_status"], as_dict=True)
-        self.assertEqual(st.payroc_refund_reference, "RF-2")
-        self.assertEqual(st.payroc_status, "REFUNDED")
+            ["card_refund_reference", "card_status"], as_dict=True)
+        self.assertEqual(st.card_refund_reference, "RF-2")
+        self.assertEqual(st.card_status, "REFUNDED")
 
 
 class ChargeRelockAfterSettle(FrappeTestCase):
@@ -1717,9 +1747,9 @@ class ChargeRelockAfterSettle(FrappeTestCase):
         super().setUpClass()
         cls.company = _ensure_pos_fixtures()
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_resume_path_retakes_the_row_lock(self, _p, cc, _ir):
         inv = _pos_draft_invoice(rate=100)
         c = cc.from_settings.return_value
@@ -1751,15 +1781,15 @@ class ChargeRelockAfterSettle(FrappeTestCase):
         self.assertEqual([(r.instruction_id, r.status) for r in rows],
             [("PI-1", "CHARGED"), ("PI-2", "IN_PROGRESS")])
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_foreign_inflight_after_settle_defers_instead_of_minting(self, _p, cc, _ir):
         """The relock must RE-JUDGE, not just re-read.
         Another till minting an instruction in the settle-commit window means
         this request must hand back that in-flight id for polling — never
         create a second live instruction."""
-        from ffl_integrations.payroc import api as payroc_api
+        from ffl_integrations.payments import api as payroc_api
         inv = _pos_draft_invoice(rate=100)
         c = cc.from_settings.return_value
         c.create_payment_instruction.return_value = {
@@ -1777,10 +1807,10 @@ class ChargeRelockAfterSettle(FrappeTestCase):
             res = real_settle(client, inst, invoice_name, row)
             # The other till slips in during the settle-commit unlock window.
             payroc_api._append_charge_row(invoice_name,
-                instruction_id="PI-FOREIGN", attempt=9)
+                instruction_id="PI-FOREIGN", attempt=9, processor="payroc")
             return res
 
-        with patch("ffl_integrations.payroc.api._settle_instruction_row",
+        with patch("ffl_integrations.payments.api._settle_instruction_row",
                 side_effect=settle_then_foreign):
             out = charge_pos_invoice(inv, amount=40)
         self.assertEqual(out["status"], "IN_PROGRESS")
@@ -1801,21 +1831,21 @@ class LegacyCapLockedSiblings(FrappeTestCase):
     _ret = PayrocApiUnit._ret
     _orig = PayrocApiUnit._orig
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.frappe.db.set_value")
-    @patch("ffl_integrations.payroc.api.frappe.get_all")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._charge_rows", return_value=[])
-    @patch("ffl_integrations.payroc.api.firearm_items_in", return_value=[])
-    @patch("ffl_integrations.payroc.api.frappe.db.get_value", side_effect=_gv_legacy("REF1"))
-    @patch("ffl_integrations.payroc.api.frappe.get_doc")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payments.api.frappe.db.set_value")
+    @patch("ffl_integrations.payments.api.frappe.get_all")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._charge_rows", return_value=[])
+    @patch("ffl_integrations.payments.api.firearm_items_in", return_value=[])
+    @patch("ffl_integrations.payments.api.frappe.db.get_value", side_effect=_gv_legacy("REF1"))
+    @patch("ffl_integrations.payments.api.frappe.get_doc")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
     def test_cap_rejection_names_locked_siblings(self, _p, gd, _gv, _f, _cr, cc, ga, sv, _ir):
         gd.side_effect = [self._ret(), self._orig(40.00)]
         ga.side_effect = [   # orphan gate (clean), then the locked sibling absorbs the cap
             [],
             [frappe._dict(name="RET-LOCKED",
-                payroc_refund_reference="UNKNOWN-OUTCOME")],
+                card_refund_reference="UNKNOWN-OUTCOME")],
             [-40.00]]
         with self.assertRaises(frappe.ValidationError) as ctx:
             refund_pos_invoice("RET-1")
@@ -1841,7 +1871,7 @@ class RefundPersistWindow(FrappeTestCase):
     # (reuse over copy).
     _charged = VoidPersistWindow._charged_invoice
 
-    @patch("ffl_integrations.payroc.api.PayrocClient")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
     def test_slice_transient_write_failure_retries_idempotently(self, cc):
         """First slice-ledger write fails once → retried under the savepoint;
         refunded_amount ends at EXACTLY old+take (the retry must not double-
@@ -1855,7 +1885,7 @@ class RefundPersistWindow(FrappeTestCase):
         boom = [True]
 
         def flaky_sv(dt, dn, *a, **k):
-            if dt == "Payroc Charge" and boom and a and a[0] == "refunded_amount":
+            if dt == "Card Charge" and boom and a and a[0] == "refunded_amount":
                 boom.pop()
                 raise Exception("transient lock wait")
             return real_sv(dt, dn, *a, **k)
@@ -1868,10 +1898,10 @@ class RefundPersistWindow(FrappeTestCase):
         self.assertEqual(flt(_charge_rows(inv)[0].refunded_amount), 50)   # not 100
         # The return-level booked fact rides the same idempotent write.
         self.assertEqual(flt(frappe.db.get_value(
-            "POS Invoice", ret_shell, "payroc_refunded_amount")), 50)
+            "POS Invoice", ret_shell, "card_refunded_amount")), 50)
 
-    @patch("ffl_integrations.payroc.api.notify_admins")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
+    @patch("ffl_integrations.payments.api.notify_admins")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
     def test_slice_double_write_failure_stops_with_trace(self, cc, na):
         """Both slice-ledger writes fail → DO-NOT-RETRY throw, the row value
         rolls back to the savepoint (the Error Log is the durable record,
@@ -1884,7 +1914,7 @@ class RefundPersistWindow(FrappeTestCase):
         real_sv = frappe.db.set_value
 
         def dead_sv(dt, dn, *a, **k):
-            if dt == "Payroc Charge" and a and a[0] == "refunded_amount":
+            if dt == "Card Charge" and a and a[0] == "refunded_amount":
                 raise Exception("db down")
             return real_sv(dt, dn, *a, **k)
 
@@ -1900,10 +1930,10 @@ class RefundPersistWindow(FrappeTestCase):
         self.assertTrue(logs)
         self.assertTrue(any("REF-A" in (l.error or "") for l in logs))
         self.assertEqual(na.call_args.kwargs["dedup_key"],
-            f"payroc-money-fact:{ret_shell}")
+            f"card-money-fact:{ret_shell}")
 
-    @patch("ffl_integrations.payroc.api.notify_admins")
-    @patch("ffl_integrations.payroc.api.PayrocClient")
+    @patch("ffl_integrations.payments.api.notify_admins")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
     def test_lock_arm_double_failure_replaces_message(self, cc, _na):
         """An outcome-unknown first slice arms the lock; if BOTH lock writes
         fail, the thrown message must be the scarier DO-NOT-RETRY stop (with
@@ -1918,7 +1948,7 @@ class RefundPersistWindow(FrappeTestCase):
 
         def dead_lock_sv(dt, dn, *a, **k):
             if (dt == "POS Invoice" and dn == ret_shell and a
-                    and isinstance(a[0], dict) and "payroc_refund_reference" in a[0]):
+                    and isinstance(a[0], dict) and "card_refund_reference" in a[0]):
                 raise Exception("db down")
             return real_sv(dt, dn, *a, **k)
 
@@ -1929,27 +1959,27 @@ class RefundPersistWindow(FrappeTestCase):
         self.assertIn("Do not retry", str(ctx.exception))
         self.assertNotIn("is now locked", str(ctx.exception))
         self.assertFalse(frappe.db.get_value(
-            "POS Invoice", ret_shell, "payroc_refund_reference"))
+            "POS Invoice", ret_shell, "card_refund_reference"))
         self.assertTrue(frappe.get_all("Error Log",
             filters={"method": ["like", f"%{ret_shell}%"]}, pluck="name"))
 
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
     def test_void_legacy_transient_write_failure_retries(self, _rp, cc):
         """The legacy void stamp clear (the past invoice site) rides
         the same helper: one transient failure → retried, stamps cleared,
         gateway reversed exactly once."""
         inv = _pos_draft_invoice(rate=50)
         frappe.db.set_value("POS Invoice", inv, {
-            "payroc_unique_reference": "REF-LEG", "payroc_status": "CHARGED",
-            "payroc_charged_amount": 50.0}, update_modified=False)
+            "card_unique_reference": "REF-LEG", "card_status": "CHARGED",
+            "card_charged_amount": 50.0}, update_modified=False)
         cc.from_settings.return_value.reverse.return_value = {"ok": True}
         real_sv = frappe.db.set_value
         boom = [True]
 
         def flaky_sv(dt, dn, *a, **k):
             if (dt == "POS Invoice" and dn == inv and a
-                    and isinstance(a[0], dict) and "payroc_unique_reference" in a[0]
+                    and isinstance(a[0], dict) and "card_unique_reference" in a[0]
                     and boom):
                 boom.pop()
                 raise Exception("transient")
@@ -1960,9 +1990,9 @@ class RefundPersistWindow(FrappeTestCase):
         self.assertTrue(out["ok"])
         cc.from_settings.return_value.reverse.assert_called_once()
         row = frappe.db.get_value("POS Invoice", inv,
-            ["payroc_status", "payroc_unique_reference"], as_dict=True)
-        self.assertEqual(row.payroc_status, "VOIDED")
-        self.assertFalse(row.payroc_unique_reference)
+            ["card_status", "card_unique_reference"], as_dict=True)
+        self.assertEqual(row.card_status, "VOIDED")
+        self.assertFalse(row.card_unique_reference)
 
 
 class RefundGuardLockBranches(FrappeTestCase):
@@ -1974,15 +2004,15 @@ class RefundGuardLockBranches(FrappeTestCase):
     def _ret(self, reference):
         return frappe._dict({
             "name": "RET-G", "is_return": 1, "return_against": "POS-G",
-            "payroc_refund_reference": reference,
+            "card_refund_reference": reference,
             "payments": [frappe._dict(mode_of_payment="Credit Card", amount=-25.00)],
             "items": [frappe._dict(item_code="AMMO-9MM")]})
 
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api.frappe.db.get_value", side_effect=_gv_legacy("REF1", guard='PARTIAL:RF-1'))
-    @patch("ffl_integrations.payroc.api.frappe.get_doc")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api.frappe.db.get_value", side_effect=_gv_legacy("REF1", guard='PARTIAL:RF-1'))
+    @patch("ffl_integrations.payments.api.frappe.get_doc")
     def test_guard_partial_lock_points_to_back_office(self, gd, _gv, cc, _ir, _perm):
         gd.return_value = self._ret("PARTIAL:RF-1")
         with self.assertRaises(frappe.ValidationError) as ctx:
@@ -1993,11 +2023,11 @@ class RefundGuardLockBranches(FrappeTestCase):
         self.assertNotIn("Unlock Card Refund", msg)   # never send PARTIAL to unlock
         cc.from_settings.return_value.refund.assert_not_called()
 
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api.frappe.db.get_value", side_effect=_gv_legacy("REF1", guard='RR-DONE'))
-    @patch("ffl_integrations.payroc.api.frappe.get_doc")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api.frappe.db.get_value", side_effect=_gv_legacy("REF1", guard='RR-DONE'))
+    @patch("ffl_integrations.payments.api.frappe.get_doc")
     def test_guard_real_reference_still_says_already_refunded(self, gd, _gv, cc, _ir, _perm):
         gd.return_value = self._ret("RR-DONE")
         with self.assertRaises(frappe.ValidationError) as ctx:
@@ -2023,17 +2053,17 @@ class LegacyPrearmLock(FrappeTestCase):
         return carrying a Credit Card row of |cc_amt|."""
         inv = _pos_draft_invoice(rate=100)
         frappe.db.set_value("POS Invoice", inv, {
-            "payroc_unique_reference": "REF-LEG", "payroc_status": "CHARGED",
-            "payroc_charged_amount": 100.0}, update_modified=False)
+            "card_unique_reference": "REF-LEG", "card_status": "CHARGED",
+            "card_charged_amount": 100.0}, update_modified=False)
         orig = frappe.get_doc("POS Invoice", inv)
         orig.flags.ignore_permissions = True
         orig.submit()
         return inv, _cc_return_against(inv, cc_amt)
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_timeout_leaves_the_prearmed_lock(self, _p, _rp, cc, _ir):
         """The legacy path's OLD naked hole: a timeout stamped nothing and a
         blind retry could refund twice. Now the pre-armed lock stays."""
@@ -2043,17 +2073,17 @@ class LegacyPrearmLock(FrappeTestCase):
         with self.assertRaises(frappe.ValidationError):
             refund_pos_invoice(ret)
         self.assertEqual(frappe.db.get_value(
-            "POS Invoice", ret, "payroc_refund_reference"), "UNKNOWN-OUTCOME")
+            "POS Invoice", ret, "card_refund_reference"), "UNKNOWN-OUTCOME")
         # The guard now blocks a blind retry cold — gateway stays at 1 call.
         with self.assertRaises(frappe.ValidationError) as ctx:
             refund_pos_invoice(ret)
         self.assertIn("Unlock Card Refund", str(ctx.exception))
         self.assertEqual(cc.from_settings.return_value.refund.call_count, 1)
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_definite_failure_disarms_and_stays_retryable(self, _p, _rp, cc, _ir):
         _inv, ret = self._legacy_pair()
         c = cc.from_settings.return_value
@@ -2065,20 +2095,20 @@ class LegacyPrearmLock(FrappeTestCase):
             refund_pos_invoice(ret)
         self.assertIn("you can simply retry", str(ctx.exception))
         self.assertFalse(frappe.db.get_value(
-            "POS Invoice", ret, "payroc_refund_reference"))   # disarmed
+            "POS Invoice", ret, "card_refund_reference"))   # disarmed
         out = refund_pos_invoice(ret)                          # retry sails through
         self.assertTrue(out["ok"])
         st = frappe.db.get_value("POS Invoice", ret,
-            ["payroc_refund_reference", "payroc_status", "payroc_refunded_amount"],
+            ["card_refund_reference", "card_status", "card_refunded_amount"],
             as_dict=True)
-        self.assertEqual(st.payroc_refund_reference, "RF-OK")
-        self.assertEqual(st.payroc_status, "REFUNDED")
-        self.assertEqual(flt(st.payroc_refunded_amount), 50)   # booked fact
+        self.assertEqual(st.card_refund_reference, "RF-OK")
+        self.assertEqual(st.card_status, "REFUNDED")
+        self.assertEqual(flt(st.card_refunded_amount), 50)   # booked fact
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_declined_in_200_disarms_and_stamps_response(self, _p, _rp, cc, _ir):
         _inv, ret = self._legacy_pair()
         cc.from_settings.return_value.refund.return_value = {
@@ -2087,14 +2117,14 @@ class LegacyPrearmLock(FrappeTestCase):
         with self.assertRaises(frappe.ValidationError):
             refund_pos_invoice(ret)
         st = frappe.db.get_value("POS Invoice", ret,
-            ["payroc_refund_reference", "payroc_response"], as_dict=True)
-        self.assertFalse(st.payroc_refund_reference)           # disarmed
-        self.assertIn("do not honor", st.payroc_response or "")
+            ["card_refund_reference", "card_response"], as_dict=True)
+        self.assertFalse(st.card_refund_reference)           # disarmed
+        self.assertIn("do not honor", st.card_response or "")
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_success_overwrite_double_failure_keeps_prearm_guarding(
             self, _p, _rp, cc, _ir):
         """The kill shot: gateway refunded, BOTH overwrite attempts
@@ -2107,17 +2137,17 @@ class LegacyPrearmLock(FrappeTestCase):
         def dead_overwrite(dt, dn, *a, **k):
             if (dt == "POS Invoice" and dn == ret and a
                     and isinstance(a[0], dict)
-                    and a[0].get("payroc_status") == "REFUNDED"):
+                    and a[0].get("card_status") == "REFUNDED"):
                 raise Exception("db down")
             return real_sv(dt, dn, *a, **k)
 
-        with patch("ffl_integrations.payroc.api.notify_admins"), \
+        with patch("ffl_integrations.payments.api.notify_admins"), \
                 patch.object(frappe.db, "set_value", side_effect=dead_overwrite):
             with self.assertRaises(frappe.ValidationError) as ctx:
                 refund_pos_invoice(ret)
         self.assertIn("Do not retry", str(ctx.exception))
         self.assertEqual(frappe.db.get_value(
-            "POS Invoice", ret, "payroc_refund_reference"), "UNKNOWN-OUTCOME")
+            "POS Invoice", ret, "card_refund_reference"), "UNKNOWN-OUTCOME")
         with self.assertRaises(frappe.ValidationError) as ctx2:
             refund_pos_invoice(ret)                            # blind retry
         self.assertIn("is locked", str(ctx2.exception))
@@ -2139,8 +2169,8 @@ class OrphanRefundGate(FrappeTestCase):
     def _orig_two_cards(self, cc):
         # qty 2 × 150 so each unit's return entitlement is a clean 150.
         inv = _pos_draft_invoice(rate=150, qty=2, card_amount=300)
-        with patch("ffl_integrations.payroc.api._check_perm"), \
-                patch("ffl_integrations.payroc.api._integration_ready", return_value=True):
+        with patch("ffl_integrations.payments.api._check_perm"), \
+                patch("ffl_integrations.payments.api._integration_ready", return_value=True):
             self._charge_and_settle(cc, inv, ask=200, ref="REF-A")
             self._charge_and_settle(cc, inv, ask=100, ref="REF-B")
         doc = frappe.get_doc("POS Invoice", inv)
@@ -2151,10 +2181,10 @@ class OrphanRefundGate(FrappeTestCase):
     def _one_unit_return(self, original):
         return _cc_return_against(original, -150, qty=-1)
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_abandoned_locked_draft_blocks_the_second_return(self, _p, _rp, cc, _ir):
         orig = self._orig_two_cards(cc)
         c = cc.from_settings.return_value
@@ -2169,9 +2199,9 @@ class OrphanRefundGate(FrappeTestCase):
         with self.assertRaises(frappe.ValidationError):
             refund_pos_invoice(ret1)
         st1 = frappe.db.get_value("POS Invoice", ret1,
-            ["payroc_refund_reference", "payroc_refunded_amount"], as_dict=True)
-        self.assertTrue((st1.payroc_refund_reference or "").startswith("PARTIAL:"))
-        self.assertEqual(flt(st1.payroc_refunded_amount), 100)   # booked through the real entrance
+            ["card_refund_reference", "card_refunded_amount"], as_dict=True)
+        self.assertTrue((st1.card_refund_reference or "").startswith("PARTIAL:"))
+        self.assertEqual(flt(st1.card_refunded_amount), 100)   # booked through the real entrance
 
         # Return 2 while return 1 sits as an abandoned locked draft: the old
         # code refunded another 150 here (100 + 150 = 250 on 150 of goods).
@@ -2194,7 +2224,7 @@ class OrphanRefundGate(FrappeTestCase):
             (c.refund.call_args.args[0], c.refund.call_args.kwargs["refund_amount"]),
             ("REF-A", 150.0))
         self.assertEqual(flt(frappe.db.get_value(
-            "POS Invoice", ret2, "payroc_refunded_amount")), 150)
+            "POS Invoice", ret2, "card_refunded_amount")), 150)
 
 
 class LockedReturnTrashGuard(FrappeTestCase):
@@ -2244,24 +2274,29 @@ class PayrocEndpointMethods(FrappeTestCase):
     """chore: every money-writing payroc endpoint is POST-only; the read-only
     admin smoke stays reachable by GET."""
 
-    def _allowed(self, name):
+    def _allowed(self, name, module="ffl_integrations.payments.api"):
+        import ffl_integrations.payments.api  # noqa: F401 — registers the whitelist
+        import ffl_integrations.payroc.api  # noqa: F401
         for fn, methods in frappe.allowed_http_methods_for_whitelisted_func.items():
-            if (getattr(fn, "__module__", "") == "ffl_integrations.payroc.api"
+            if (getattr(fn, "__module__", "") == module
                     and fn.__name__ == name):
                 return methods
         return None
 
     def test_write_endpoints_are_post_only(self):
-        for name in ("charge_pos_invoice", "poll_pos_charge", "cancel_pos_charge",
-                "void_pos_invoice", "refund_pos_invoice", "unlock_refund_lock"):
-            self.assertEqual(self._allowed(name), ["POST"], name)
+        for module in ("ffl_integrations.payments.api", "ffl_integrations.payroc.api"):
+            for name in ("charge_pos_invoice", "poll_pos_charge", "cancel_pos_charge",
+                    "void_pos_invoice", "refund_pos_invoice", "unlock_refund_lock"):
+                self.assertEqual(self._allowed(name, module), ["POST"], f"{module}.{name}")
 
     def test_discover_terminals_stays_get(self):
         # frappe stores the DEFAULT verb set for methods-less whitelists —
         # the point is that GET stays allowed (read-only admin smoke).
-        methods = self._allowed("discover_terminals")
-        self.assertIn("GET", methods or [])
-        self.assertNotEqual(methods, ["POST"])
+        for module, name in (("ffl_integrations.payments.api", "list_terminals"),
+                ("ffl_integrations.payroc.api", "discover_terminals")):
+            methods = self._allowed(name, module)
+            self.assertIn("GET", methods or [], name)
+            self.assertNotEqual(methods, ["POST"])
 
 
 class ReturnNeverInheritsChargeRows(FrappeTestCase):
@@ -2269,7 +2304,7 @@ class ReturnNeverInheritsChargeRows(FrappeTestCase):
     to SKIP brand-new docs, so make_return_doc's copied charge table (the
     field predates no_copy) was inserted under the return's own name —
     phantom Σcaptured that jammed block_partial_submit on every return of a
-    row-era sale. Two-layer fix: payroc_charges is no_copy now, and the
+    row-era sale. Two-layer fix: card_charges is no_copy now, and the
     restore hook strips foreign rows from any new doc's payload."""
 
     @classmethod
@@ -2279,9 +2314,9 @@ class ReturnNeverInheritsChargeRows(FrappeTestCase):
 
     _charge_and_settle = MultiCardLifecycle._charge_and_settle
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_return_of_row_era_sale_owns_no_rows_and_submits(self, _p, cc, _ir):
         inv = _pos_draft_invoice(rate=100)
         self._charge_and_settle(cc, inv, ask=100, ref="REF-A")
@@ -2304,7 +2339,7 @@ class ReturnNeverInheritsChargeRows(FrappeTestCase):
         inv.set_missing_values()
         inv.set("payments", [])
         inv.append("payments", {"mode_of_payment": MODE_OF_PAYMENT_NAME, "amount": 10})
-        inv.append("payroc_charges", {"status": "CHARGED", "amount": 999,
+        inv.append("card_charges", {"status": "CHARGED", "amount": 999,
             "instruction_id": "PI-FAKE", "attempt": 1})
         inv.flags.ignore_permissions = True
         inv.save()
@@ -2330,14 +2365,14 @@ class MoneyFactSurvival(FrappeTestCase):
         name = _pos_draft_invoice(rate=10)
         stale = frappe.get_doc("POS Invoice", name)   # loaded BEFORE the server writes
         frappe.db.set_value("POS Invoice", name, {
-            "payroc_refund_reference": "UNKNOWN-OUTCOME",
-            "payroc_refunded_amount": 100}, update_modified=False)
+            "card_refund_reference": "UNKNOWN-OUTCOME",
+            "card_refunded_amount": 100}, update_modified=False)
         stale.flags.ignore_permissions = True
         stale.save()                                   # would have written the old None/0 back
         row = frappe.db.get_value("POS Invoice", name,
-            ["payroc_refund_reference", "payroc_refunded_amount"], as_dict=True)
-        self.assertEqual(row.payroc_refund_reference, "UNKNOWN-OUTCOME")
-        self.assertEqual(flt(row.payroc_refunded_amount), 100)
+            ["card_refund_reference", "card_refunded_amount"], as_dict=True)
+        self.assertEqual(row.card_refund_reference, "UNKNOWN-OUTCOME")
+        self.assertEqual(flt(row.card_refunded_amount), 100)
 
     def test_amend_zeroes_booked_by_hook_and_keeps_the_lock(self):
         """Platform fact (pinned by ffl_core test_consignment_out_reinvoice):
@@ -2346,8 +2381,8 @@ class MoneyFactSurvival(FrappeTestCase):
         inherited LOCK deliberately stays (fail-safe until a manager acts)."""
         name = _pos_draft_invoice(rate=10)
         frappe.db.set_value("POS Invoice", name, {
-            "payroc_refund_reference": "PARTIAL:RF-1",
-            "payroc_refunded_amount": 60}, update_modified=False)
+            "card_refund_reference": "PARTIAL:RF-1",
+            "card_refunded_amount": 60}, update_modified=False)
         doc = frappe.get_doc("POS Invoice", name)
         doc.flags.ignore_permissions = True
         doc.submit()
@@ -2358,18 +2393,18 @@ class MoneyFactSurvival(FrappeTestCase):
         amended.flags.ignore_permissions = True
         amended.insert()
         row = frappe.db.get_value("POS Invoice", amended.name,
-            ["payroc_refund_reference", "payroc_refunded_amount"], as_dict=True)
-        self.assertEqual(flt(row.payroc_refunded_amount), 0)   # zeroed BY HOOK
+            ["card_refund_reference", "card_refunded_amount"], as_dict=True)
+        self.assertEqual(flt(row.card_refunded_amount), 0)   # zeroed BY HOOK
         # …and the inherited LOCK deliberately survives (fail-safe until a
         # manager acts) — whoever makes the islocal branch clear it too will
         # turn this red.
-        self.assertEqual(row.payroc_refund_reference, "PARTIAL:RF-1")
+        self.assertEqual(row.card_refund_reference, "PARTIAL:RF-1")
         # The predecessor's facts are untouched — the orphan gate still
         # counts its booked 60 until this amendment submits.
         prev = frappe.db.get_value("POS Invoice", doc.name,
-            ["payroc_refund_reference", "payroc_refunded_amount"], as_dict=True)
-        self.assertEqual(flt(prev.payroc_refunded_amount), 60)
-        self.assertEqual(prev.payroc_refund_reference, "PARTIAL:RF-1")
+            ["card_refund_reference", "card_refunded_amount"], as_dict=True)
+        self.assertEqual(flt(prev.card_refunded_amount), 60)
+        self.assertEqual(prev.card_refund_reference, "PARTIAL:RF-1")
 
 
 class MoneyFactSubmitCancelVectors(FrappeTestCase):
@@ -2388,16 +2423,16 @@ class MoneyFactSubmitCancelVectors(FrappeTestCase):
         name = _pos_draft_invoice(rate=10)
         stale = frappe.get_doc("POS Invoice", name)   # loaded BEFORE the server writes
         frappe.db.set_value("POS Invoice", name, {
-            "payroc_refund_reference": "UNKNOWN-OUTCOME",
-            "payroc_refunded_amount": 100}, update_modified=False)
+            "card_refund_reference": "UNKNOWN-OUTCOME",
+            "card_refunded_amount": 100}, update_modified=False)
         stale.flags.ignore_permissions = True
         stale.submit()                                 # the stale-submit vector
         row = frappe.db.get_value("POS Invoice", name,
-            ["payroc_refund_reference", "payroc_refunded_amount", "docstatus"],
+            ["card_refund_reference", "card_refunded_amount", "docstatus"],
             as_dict=True)
         self.assertEqual(int(row.docstatus), 1)
-        self.assertEqual(row.payroc_refund_reference, "UNKNOWN-OUTCOME")
-        self.assertEqual(flt(row.payroc_refunded_amount), 100)
+        self.assertEqual(row.card_refund_reference, "UNKNOWN-OUTCOME")
+        self.assertEqual(flt(row.card_refunded_amount), 100)
 
     def test_stale_cancel_cannot_wipe_lock_or_booked(self):
         name = _pos_draft_invoice(rate=10)
@@ -2406,16 +2441,16 @@ class MoneyFactSubmitCancelVectors(FrappeTestCase):
         doc.submit()
         stale = frappe.get_doc("POS Invoice", name)   # pre-server-write copy
         frappe.db.set_value("POS Invoice", name, {
-            "payroc_refund_reference": "UNKNOWN-OUTCOME",
-            "payroc_refunded_amount": 100}, update_modified=False)
+            "card_refund_reference": "UNKNOWN-OUTCOME",
+            "card_refunded_amount": 100}, update_modified=False)
         stale.flags.ignore_permissions = True
         stale.cancel()                                 # only before_cancel runs
         row = frappe.db.get_value("POS Invoice", name,
-            ["payroc_refund_reference", "payroc_refunded_amount", "docstatus"],
+            ["card_refund_reference", "card_refunded_amount", "docstatus"],
             as_dict=True)
         self.assertEqual(int(row.docstatus), 2)
-        self.assertEqual(row.payroc_refund_reference, "UNKNOWN-OUTCOME")
-        self.assertEqual(flt(row.payroc_refunded_amount), 100)
+        self.assertEqual(row.card_refund_reference, "UNKNOWN-OUTCOME")
+        self.assertEqual(flt(row.card_refunded_amount), 100)
 
 
 class AmendedOriginalRefunds(FrappeTestCase):
@@ -2430,14 +2465,14 @@ class AmendedOriginalRefunds(FrappeTestCase):
         super().setUpClass()
         cls.company = _ensure_pos_fixtures()
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_refund_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_refund_perm")
     def test_refund_against_amended_original_goes_to_back_office(self, _rp, cc, _ir):
         orig = _pos_draft_invoice(rate=100)
         frappe.db.set_value("POS Invoice", orig, {
-            "payroc_unique_reference": "REF-SINGLE", "payroc_status": "CHARGED",
-            "payroc_charged_amount": 100.0}, update_modified=False)
+            "card_unique_reference": "REF-SINGLE", "card_status": "CHARGED",
+            "card_charged_amount": 100.0}, update_modified=False)
         doc = frappe.get_doc("POS Invoice", orig)
         doc.flags.ignore_permissions = True
         doc.submit()
@@ -2449,7 +2484,7 @@ class AmendedOriginalRefunds(FrappeTestCase):
         amended.insert()
         # The envelope inherits the REAL single-card reference.
         self.assertEqual(frappe.db.get_value("POS Invoice", amended.name,
-            "payroc_unique_reference"), "REF-SINGLE")
+            "card_unique_reference"), "REF-SINGLE")
         amended.submit()
         ret = _cc_return_against(amended.name, -100)
         with self.assertRaises(frappe.ValidationError) as ctx:
@@ -2474,9 +2509,9 @@ class RecycleBinRestoreKeepsChargeRows(FrappeTestCase):
 
     _charge_and_settle = MultiCardLifecycle._charge_and_settle
 
-    @patch("ffl_integrations.payroc.api._integration_ready", return_value=True)
-    @patch("ffl_integrations.payroc.api.PayrocClient")
-    @patch("ffl_integrations.payroc.api._check_perm")
+    @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    @patch("ffl_integrations.payments.api._check_perm")
     def test_restored_draft_keeps_its_charge_row_and_number(self, _p, cc, _ir):
         from ffl_core.api.pos_recycle_bin import restore_deleted_invoice
         inv = _pos_draft_invoice(rate=100, card_amount=40, cash_amount=60)
@@ -2495,8 +2530,8 @@ class RecycleBinRestoreKeepsChargeRows(FrappeTestCase):
         self.assertEqual([(r.status, flt(r.amount), r.unique_reference) for r in rows],
             [("CHARGED", 40.0, "REF-BIN")])
         stamps = frappe.db.get_value("POS Invoice", inv,
-            ["payroc_status", "payroc_charged_amount"], as_dict=True)
-        self.assertEqual((stamps.payroc_status, flt(stamps.payroc_charged_amount)), ("CHARGED", 40.0))
+            ["card_status", "card_charged_amount"], as_dict=True)
+        self.assertEqual((stamps.card_status, flt(stamps.card_charged_amount)), ("CHARGED", 40.0))
         self.assertEqual(frappe.db.get_value("Deleted Document", log, "restored"), 1)
         # The gate is satisfied by the surviving row: Σrows == card tender.
         doc = frappe.get_doc("POS Invoice", inv)

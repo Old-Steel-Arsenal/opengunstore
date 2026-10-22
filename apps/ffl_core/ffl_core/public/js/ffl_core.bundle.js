@@ -2784,7 +2784,7 @@ frappe.provide('frappe.ui.form');
 //
 // Which integrations this store actually runs. Served on frappe.boot by
 // ffl_integrations.boot.extend_bootinfo and read LAZILY — boot may not be
-// populated when this bundle first executes, the same reason payrocMop() is a
+// populated when this bundle first executes, the same reason cardMop() is a
 // function rather than a constant.
 //
 // These only shape the UI and spare the counter dead round-trips; the server
@@ -2799,7 +2799,17 @@ frappe.provide('frappe.ui.form');
 	}
 	window.ffl = window.ffl || {};
 	window.ffl.switches = {
-		payrocEnabled: function () { return flag('ffl_payroc_enabled', true); },
+		// The card processor that takes new money ({code, label, enabled}). An absent
+		// key keeps the pre-switch behaviour: drive the terminal; the server answers
+		// {"skip": true} when there is nothing to drive.
+		cardProcessorEnabled: function () {
+			var p = frappe.boot && frappe.boot.ffl_card_processor;
+			return p ? !!Number(p.enabled) : true;
+		},
+		cardProcessorLabel: function () {
+			var p = frappe.boot && frappe.boot.ffl_card_processor;
+			return (p && p.label) || __('card processor');
+		},
 		fastboundEnabled: function () { return flag('ffl_fastbound_enabled', true); },
 		paper4473Mode: function () { return flag('ffl_paper_4473_mode', false); },
 		requireCardReference: function () { return flag('ffl_require_card_reference', false); },
@@ -2809,8 +2819,8 @@ frappe.provide('frappe.ui.form');
 		// server that cannot answer must not be what puts listing buttons in front
 		// of somebody.
 		gunbrokerEnabled: function () { return flag('ffl_gunbroker_enabled', false); },
-		// The Payroc tender name, so desk consumers don't re-derive it.
-		payrocMop: function () { return (frappe.boot && frappe.boot.payroc_mop) || 'Credit Card'; },
+		// The card tender name, so desk consumers don't re-derive it.
+		cardMop: function () { return (frappe.boot && frappe.boot.card_mop) || 'Credit Card'; },
 	};
 
 	// A Desk page for a subsystem this store has switched off. Frappe has no
@@ -2848,7 +2858,7 @@ frappe.provide('frappe.ui.form');
 		modes: function () {
 			var m = ['Zelle', 'ACH', 'Check/Money Order'];
 			var sw = window.ffl.switches;
-			if (sw && sw.requireCardReference()) m.push(sw.payrocMop());
+			if (sw && sw.requireCardReference()) m.push(sw.cardMop());
 			return m;
 		},
 		// The whole tender block for a Record Payment dialog. opts.terminal: the
@@ -2862,10 +2872,10 @@ frappe.provide('frappe.ui.form');
 		// screen can't satisfy.
 		fields: function (opts) {
 			var sw = window.ffl.switches;
-			var card = JSON.stringify(sw.payrocMop());
+			var card = JSON.stringify(sw.cardMop());
 			var terminal = !!(opts && opts.terminal);
 			var cardRule = terminal ? '(doc.mode==' + card + ' && doc.charged_outside)'
-				: (sw.payrocEnabled() ? 'doc.mode==' + card : 'false');
+				: (sw.cardProcessorEnabled() ? 'doc.mode==' + card : 'false');
 			var needs = 'eval:' + JSON.stringify(this.modes()) + '.includes(doc.mode) || ' + cardRule;
 			var ref = {
 				fieldtype: 'Data', fieldname: 'transaction_number',
@@ -2877,7 +2887,7 @@ frappe.provide('frappe.ui.form');
 			return [{
 				fieldtype: 'Check', fieldname: 'charged_outside',
 				label: __('Already charged on Virtual Terminal'),
-				depends_on: sw.payrocEnabled() ? 'eval:doc.mode==' + card : 'eval:false',
+				depends_on: sw.cardProcessorEnabled() ? 'eval:doc.mode==' + card : 'eval:false',
 				description: __('Records the card payment without running the terminal. Enter the approval code below.'),
 			}, ref];
 		},
@@ -2892,7 +2902,7 @@ frappe.provide('frappe.ui.form');
 			// Mirrors fields(): does this mode still need its reference once the box is off?
 			var needsRef = function (m) {
 				return self.modes().indexOf(m) !== -1
-					|| (!terminal && m === sw.payrocMop() && sw.payrocEnabled());
+					|| (!terminal && m === sw.cardMop() && sw.cardProcessorEnabled());
 			};
 			// Write only on a real change: a Check's onchange also fires when the
 			// dialog renders, and an unconditional set re-fires it forever.
@@ -2920,11 +2930,11 @@ frappe.provide('frappe.ui.form');
 })();
 
 
-// --- Payroc terminal payment on POS ---------------------------------------
+// --- Card processor terminal payment on POS -------------------------------
 //
 // When the cashier clicks "Complete Order" on /app/point-of-sale and the
 // invoice has a payment row using Mode of Payment "Credit Card", we
-// route the card portion through the Payroc terminal before letting
+// route the card portion through the card processor's terminal before letting
 // ERPNext submit the invoice. The cashier sees a "Waiting for terminal"
 // spinner; on approval we proceed to submit and a green toast shows.
 //
@@ -2934,26 +2944,26 @@ frappe.provide('frappe.ui.form');
 // callback installed by pos_controller.js's `init_payments()` once, and
 // every Complete-Order click flows through us.
 //
-// Save-then-charge ordering: the Payroc API needs an `order_id` (we use
+// Save-then-charge ordering: the processor needs an order reference (we use
 // the POS Invoice name) for receipt + idempotency. The default ERPNext
 // flow is single-shot savesubmit; we split it into save → charge →
-// (backend stamps payroc_unique_reference) → reload → submit.
+// (backend stamps card_unique_reference) → reload → submit.
 
-(function setupPayrocPosHook() {
+(function setupCardPosHook() {
 	const POLL_TIMEOUT_MS = 120000;   // overall wait for the terminal
 
-	// The Payroc tender name, served from the backend's single definition
-	// (ffl_integrations.boot → frappe.boot.payroc_mop). Read lazily — boot may
+	// The card tender name, served from the backend's single definition
+	// (ffl_integrations.boot → frappe.boot.card_mop). Read lazily — boot may
 	// not be populated yet when this bundle first executes.
-	function payrocMop() {
-		return (frappe.boot && frappe.boot.payroc_mop) || 'Credit Card';
+	function cardMop() {
+		return (frappe.boot && frappe.boot.card_mop) || 'Credit Card';
 	}
 
-	// Sum of the card tender rows in DECIMAL major units — Payroc wants
+	// Sum of the card tender rows in DECIMAL major units — the processor wants
 	// order.totalAmount as 42.50, NOT integer cents.
-	function payrocAmount(doc) {
+	function cardAmount(doc) {
 		return (doc.payments || [])
-			.filter((p) => p.mode_of_payment === payrocMop())
+			.filter((p) => p.mode_of_payment === cardMop())
 			.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
 	}
 
@@ -2964,14 +2974,14 @@ frappe.provide('frappe.ui.form');
 			fields: [{
 				fieldname: 'msg', fieldtype: 'HTML',
 				options: `
-					<div class="payroc-waiting" style="text-align:center;padding:24px 8px;">
-						<div class="payroc-spinner" style="margin:0 auto 18px;width:48px;height:48px;
+					<div class="card-waiting" style="text-align:center;padding:24px 8px;">
+						<div class="card-spinner" style="margin:0 auto 18px;width:48px;height:48px;
 							border:4px solid var(--gray-300);border-top-color:var(--green-600);border-radius:50%;
-							animation: payroc-spin 0.9s linear infinite;"></div>
+							animation: card-spin 0.9s linear infinite;"></div>
 						<p style="font-size:20px;font-weight:600;margin:0 0 6px;">$${dollars}</p>
 						<p style="margin:0;color:var(--text-muted);">${__('Customer should dip / tap card on terminal.')}</p>
 					</div>
-					<style>@keyframes payroc-spin { to { transform: rotate(360deg); } }</style>
+					<style>@keyframes card-spin { to { transform: rotate(360deg); } }</style>
 				`,
 			}],
 			primary_action_label: __('Cancel'),
@@ -2995,17 +3005,17 @@ frappe.provide('frappe.ui.form');
 	async function cancelInstruction(frm, instructionId) {
 		try {
 			await frappe.call({
-				method: 'ffl_integrations.payroc.api.cancel_pos_charge',
+				method: 'ffl_integrations.payments.api.cancel_pos_charge',
 				args: { invoice_name: frm.doc.name, instruction_id: instructionId },
 			});
 		} catch (e) { /* best-effort */ }
 	}
 
 	// Multi-card charge math lives in the pure, Node-tested module
-	// payroc_charges.js (window.ffl.payrocCharges) — single source shared with
+	// card_charges.js (window.ffl.cardCharges) — single source shared with
 	// the desk form's void picker.
-	function payrocMath() {
-		return (window.ffl && window.ffl.payrocCharges) || null;
+	function cardMath() {
+		return (window.ffl && window.ffl.cardCharges) || null;
 	}
 
 	// Per-card amount dialog: shows what each card already captured and asks
@@ -3015,7 +3025,7 @@ frappe.provide('frappe.ui.form');
 	function promptChargeAmount(frm, remaining) {
 		return new Promise((resolve) => {
 			let settled = false;
-			const pc = payrocMath();
+			const pc = cardMath();
 			const done = (pc ? pc.liveChargeRows(frm.doc) : []).map((r) =>
 				`<div style="display:flex;justify-content:space-between;gap:12px;">
 					<span>${frappe.utils.escape_html(r.card_summary || r.unique_reference || __('Card'))}</span>
@@ -3055,16 +3065,16 @@ frappe.provide('frappe.ui.form');
 	// the amount to charge NOW; the tender row keeps the card total, so ERPNext's
 	// totals and the charge loop below (remaining = tender − captured) ask for
 	// exactly what was typed. Runs after every render_payment_mode_dom
-	// (fflRenderPaymentModes). Payroc off → the tile keeps its plain meaning.
+	// (fflRenderPaymentModes). No processor on → the tile keeps its plain meaning.
 	function bindCardChargeNow(payment) {
-		const pc = payrocMath();
-		if (!pc || !pc.chargeNowControl || !payrocLive()) return;
+		const pc = cardMath();
+		if (!pc || !pc.chargeNowControl || !cardProcessorLive()) return;
 		// Payment section hidden: ERPNext's render bailed out, so payment[key] is
 		// the last render's control — never wrap it again or append to stale DOM.
 		if (!payment.$payment_modes || !payment.$payment_modes.is(':visible')) return;
 		const frm = payment.events.get_frm();
-		const row = ((frm && frm.doc.payments) || []).find((p) => p.mode_of_payment === payrocMop());
-		const mode = payment.sanitize_mode_of_payment(payrocMop());
+		const row = ((frm && frm.doc.payments) || []).find((p) => p.mode_of_payment === cardMop());
+		const mode = payment.sanitize_mode_of_payment(cardMop());
 		const key = `${mode}_control`;
 		const real = payment[key];
 		if (!row || !real || real.__fflReal) return;
@@ -3107,15 +3117,21 @@ frappe.provide('frappe.ui.form');
 	window.ffl = window.ffl || {};
 	window.ffl.bindCardChargeNow = bindCardChargeNow;
 
-	// Which integrations are live. Lazy, like payrocMop() — boot isn't guaranteed
+	// Which integrations are live. Lazy, like cardMop() — boot isn't guaranteed
 	// populated when this bundle first runs.
 	function switches() {
 		return (window.ffl && window.ffl.switches) || null;
 	}
 
-	function payrocLive() {
+	// The active card processor's name, for messages ("Payroc" on a Payroc store).
+	function cardLabel() {
 		const s = switches();
-		return s ? s.payrocEnabled() : true;   // no switches module → pre-switch behaviour
+		return (s && s.cardProcessorLabel) ? s.cardProcessorLabel() : __('card processor');
+	}
+
+	function cardProcessorLive() {
+		const s = switches();
+		return s ? s.cardProcessorEnabled() : true;   // no switches module → pre-switch behaviour
 	}
 
 	// A counter pickup's 4473 ticket (pos_tender_guard.pickupTicketState). Kernel
@@ -3183,29 +3199,29 @@ frappe.provide('frappe.ui.form');
 		proto.__fflTicketLoadPatched = true;
 	}
 
-	async function chargeViaPayroc(frm) {
+	async function chargeViaCardProcessor(frm) {
 		// A counter pickup ticket carries no money — it is on the order the ticket
 		// hands over. Never the card dialog, never the terminal, whatever this copy
 		// of the doc says (submit_invoice has already saved it back to $0).
 		if (pickupTicket(frm.doc)) return { skip: true };
 
-		// Payroc switched off: cards are swiped on a standalone terminal and the
+		// No card processor on: cards are swiped on a standalone terminal and the
 		// Credit Card row is ordinary tender, so Complete Order finishes in one
 		// click. Decided HERE rather than after the save + round-trip the server
 		// would only answer {"skip": true} to — that round-trip is the difference
 		// between a one-click sale and a visible pause at the counter.
-		if (!payrocLive()) return { skip: true };
+		if (!cardProcessorLive()) return { skip: true };
 
-		const target = payrocAmount(frm.doc);
+		const target = cardAmount(frm.doc);
 		// No positive card tender (e.g. a return) → don't intercept here.
 		if (target <= 0) return { skip: true };
 
 		// Legacy single-stamp era: already charged on a prior click? Don't
 		// double-charge. A stamped but PARTIAL capture is recorded for voiding,
 		// NOT fully paid — never let it submit the order as if it were.
-		const hasRows = (frm.doc.payroc_charges || []).length > 0;
-		if (!hasRows && frm.doc.payroc_unique_reference) {
-			if (frm.doc.payroc_status === 'PARTIAL') {
+		const hasRows = (frm.doc.card_charges || []).length > 0;
+		if (!hasRows && frm.doc.card_unique_reference) {
+			if (frm.doc.card_status === 'PARTIAL') {
 				frappe.msgprint({
 					title: __('Partial approval on file'), indicator: 'orange',
 					message: __('A prior attempt captured only part of the amount. Get a manager to void it (back office), then re-tender.'),
@@ -3216,7 +3232,7 @@ frappe.provide('frappe.ui.form');
 			// while the 4473 was pending). If the cart was edited since, the
 			// captured amount no longer matches the card tender — block instead
 			// of submitting a mispriced order.
-			const charged = flt(frm.doc.payroc_charged_amount);
+			const charged = flt(frm.doc.card_charged_amount);
 			if (charged > 0 && flt(target, 2) !== flt(charged, 2)) {
 				frappe.msgprint({
 					title: __('Charged amount mismatch'), indicator: 'red',
@@ -3245,16 +3261,16 @@ frappe.provide('frappe.ui.form');
 		// the captured rows cover the card tender. Each approved slice reloads
 		// the doc, so the loop re-evaluates rows AND the tender target fresh
 		// every pass (a reload may recompute payments).
-		const pc = payrocMath();
+		const pc = cardMath();
 		if (!pc) {
 			// Pure module missing (asset build problem) — fail safe: no charge
 			// is better than an unvalidated one.
 			frappe.msgprint({ title: __('POS asset error'), indicator: 'red',
-				message: __('payroc_charges.js is not loaded — reload the page; if it persists, rebuild assets.') });
+				message: __('card_charges.js is not loaded — reload the page; if it persists, rebuild assets.') });
 			return { skip: false, ok: false };
 		}
 		while (true) {
-			const targetNow = payrocAmount(frm.doc);
+			const targetNow = cardAmount(frm.doc);
 			const charged = flt(pc.sumLiveCharges(frm.doc), 2);
 			const remaining = flt(targetNow - charged, 2);
 			if (charged > 0 && remaining < -pc.TOLERANCE) {
@@ -3283,7 +3299,7 @@ frappe.provide('frappe.ui.form');
 		let instructionId = '';
 		try {
 			const c = await frappe.call({
-				method: 'ffl_integrations.payroc.api.charge_pos_invoice',
+				method: 'ffl_integrations.payments.api.charge_pos_invoice',
 				args: {
 					invoice_name: frm.doc.name, amount: amount,
 					description: `${frm.doc.name} — ${frm.doc.customer_name || frm.doc.customer || ''}`,
@@ -3317,7 +3333,7 @@ frappe.provide('frappe.ui.form');
 				let p;
 				try {
 					p = await frappe.call({
-						method: 'ffl_integrations.payroc.api.poll_pos_charge',
+						method: 'ffl_integrations.payments.api.poll_pos_charge',
 						args: { invoice_name: frm.doc.name, instruction_id: instructionId, expected_amount: amount },
 					});
 				} catch (err) {
@@ -3348,7 +3364,7 @@ frappe.provide('frappe.ui.form');
 				}
 				dlg.hide();
 				if (m.ok) {
-					// Backend stamped payroc_unique_reference — reload so
+					// Backend stamped card_unique_reference — reload so
 					// savesubmit doesn't write the stale doc back.
 					await frm.reload_doc();
 					frappe.show_alert({
@@ -3477,7 +3493,7 @@ frappe.provide('frappe.ui.form');
 	function promptCounterBalance(si, owed) {
 		return new Promise((resolve) => {
 			let settled = false;
-			const modes = ['Cash', payrocMop(), 'Zelle', 'ACH', 'Check/Money Order'];
+			const modes = ['Cash', cardMop(), 'Zelle', 'ACH', 'Check/Money Order'];
 			const refFields = (window.ffl && window.ffl.tenderReference)
 				? window.ffl.tenderReference.fields({ terminal: true })
 				: [{ fieldtype: 'Data', fieldname: 'transaction_number', label: __('Zelle Transaction Number'),
@@ -3488,7 +3504,7 @@ frappe.provide('frappe.ui.form');
 					{ fieldname: 'note', fieldtype: 'HTML', options:
 						`<p style="margin:0 0 8px">${__('This order still owes <b>{0}</b>. Collect it now — the gun is handed over against a settled order.', [format_currency(owed)])}</p>` },
 					{ fieldtype: 'Select', fieldname: 'mode', label: __('Payment Method'), reqd: 1,
-					  options: modes.join('\n'), default: payrocLive() ? payrocMop() : 'Cash' },
+					  options: modes.join('\n'), default: cardProcessorLive() ? cardMop() : 'Cash' },
 					...refFields,
 					{ fieldtype: 'Currency', fieldname: 'amount', label: __('Amount'), default: owed, reqd: 1,
 					  description: __('Less than the balance leaves the rest to collect before hand-over.') },
@@ -3527,16 +3543,16 @@ frappe.provide('frappe.ui.form');
 			if (owed <= 0.005) return { ok: true };
 			const choice = await promptCounterBalance(si, owed);
 			if (!choice) return { ok: false };
-			if (choice.mode === payrocMop() && payrocLive() && !choice.charged_outside && window.ffl.terminalCharge) {
+			if (choice.mode === cardMop() && cardProcessorLive() && !choice.charged_outside && window.ffl.terminalCharge) {
 				const res = await window.ffl.terminalCharge({
 					amount: choice.amount,
-					start: { method: 'ffl_integrations.payroc.api.charge_sales_invoice', args: { sales_invoice: si, amount: choice.amount } },
-					poll: { method: 'ffl_integrations.payroc.api.poll_sales_invoice_charge', args: { sales_invoice: si } },
-					cancel: { method: 'ffl_integrations.payroc.api.cancel_sales_invoice_charge', args: { sales_invoice: si } },
+					start: { method: 'ffl_integrations.payments.api.charge_sales_invoice', args: { sales_invoice: si, amount: choice.amount } },
+					poll: { method: 'ffl_integrations.payments.api.poll_sales_invoice_charge', args: { sales_invoice: si } },
+					cancel: { method: 'ffl_integrations.payments.api.cancel_sales_invoice_charge', args: { sales_invoice: si } },
 				});
 				if (res && res.skip) {
 					frappe.msgprint({ title: __('Terminal not configured'), indicator: 'orange',
-						message: __('The Payroc device is not set up on this store. Take the card on the Virtual Terminal or your standalone terminal first, then tick "Already charged on Virtual Terminal" and enter its approval code.') });
+						message: __('The {0} device is not set up on this store. Take the card on the Virtual Terminal or your standalone terminal first, then tick "Already charged on Virtual Terminal" and enter its approval code.', [cardLabel()]) });
 				}
 				continue;   // approved → the loop re-reads the balance; declined → ask again
 			}
@@ -3550,14 +3566,14 @@ frappe.provide('frappe.ui.form');
 		}
 	}
 
-	function payrocRefundAmount(doc) {
+	function cardRefundAmount(doc) {
 		// Returns carry NEGATIVE Credit Card rows — refund their absolute total.
 		return (doc.payments || [])
-			.filter((p) => p.mode_of_payment === payrocMop())
+			.filter((p) => p.mode_of_payment === cardMop())
 			.reduce((s, p) => s + Math.abs(parseFloat(p.amount) || 0), 0);
 	}
 
-	async function refundViaPayroc(frm) {
+	async function refundViaCardProcessor(frm) {
 		// NO client-side short-circuit here, unlike the charge path. Two reasons,
 		// both about money going OUT:
 		//   1. refund_pos_invoice runs _check_refund_perm() BEFORE its own skip, so
@@ -3568,18 +3584,18 @@ frappe.provide('frappe.ui.form');
 		//      was flipped must not quietly book a refund that never happened.
 		// The round-trip costs nothing on a return, and it is the thing enforcing
 		// both controls.
-		const amount = payrocRefundAmount(frm.doc);
+		const amount = cardRefundAmount(frm.doc);
 		if (amount <= 0) return { skip: true };                       // no card refund portion
-		const priorRef = frm.doc.payroc_refund_reference;
+		const priorRef = frm.doc.card_refund_reference;
 		if (priorRef) {
-			const pc = payrocMath();
+			const pc = cardMath();
 			if (!pc) {
 				// Pure module missing: we cannot tell a lock from a completed
 				// refund — fail CLOSED with the canonical asset-error copy
 				// (same as the charge path above), never a sentinel-specific
 				// claim we can't back.
 				frappe.msgprint({ title: __('POS asset error'), indicator: 'red',
-					message: __('payroc_charges.js is not loaded — reload the page; if it persists, rebuild assets.') });
+					message: __('card_charges.js is not loaded — reload the page; if it persists, rebuild assets.') });
 				return { skip: false, ok: false };
 			}
 			// A LOCK sentinel, not a completed refund — treating it as
@@ -3591,8 +3607,8 @@ frappe.provide('frappe.ui.form');
 				frappe.msgprint({
 					title: __('Card refund is locked'), indicator: 'red',
 					message: pc.isUnlockableLock(priorRef)
-						? __('This return\'s automatic refund is locked ({0}) after an attempt with an UNKNOWN outcome — it has NOT completed. A manager must verify in the Payroc portal that no refund landed, then use Unlock Card Refund on the return and retry.', [priorRef])
-						: __('This return\'s automatic refund is locked ({0}): some slices already refunded, the rest did not. The residue is settled manually at the back office (Payroc portal); after it is reconciled and documented on the return, a manager completes the return from Desk.', [priorRef]),
+						? __('This return\'s automatic refund is locked ({0}) after an attempt with an UNKNOWN outcome — it has NOT completed. A manager must verify in the {1} portal that no refund landed, then use Unlock Card Refund on the return and retry.', [priorRef, cardLabel()])
+						: __('This return\'s automatic refund is locked ({0}): some slices already refunded, the rest did not. The residue is settled manually at the back office ({1} portal); after it is reconciled and documented on the return, a manager completes the return from Desk.', [priorRef, cardLabel()]),
 				});
 				return { skip: false, ok: false };
 			}
@@ -3622,12 +3638,12 @@ frappe.provide('frappe.ui.form');
 		dlg.$wrapper.find('.modal-header .close').hide();
 		try {
 			const r = await frappe.call({
-				method: 'ffl_integrations.payroc.api.refund_pos_invoice',
+				method: 'ffl_integrations.payments.api.refund_pos_invoice',
 				args: { return_invoice_name: frm.doc.name },
 			});
 			dlg.hide();
 			const m = (r && r.message) || {};
-			// Not configured / original not Payroc-charged — the return submits
+			// Not configured / original not gateway-charged — the return submits
 			// normally; the card refund is handled manually on the terminal.
 			if (m.skip) return { skip: true };
 			if (m.ok) {
@@ -3676,9 +3692,9 @@ frappe.provide('frappe.ui.form');
 	// reference_no. Three tenders need this, for the same reason:
 	//   - Zelle: a bank transfer the customer made in an app;
 	//   - Check/Money Order: paper deposited at the bank later;
-	//   - Credit Card with Payroc switched off: a swipe on a standalone terminal.
+	//   - Credit Card with no card processor on: a swipe on a standalone terminal.
 	// Backend gates enforce both at submit (ffl_core.compliance.payment_mode and
-	// ffl_integrations.payroc.api respectively), so these prompts are the friendly
+	// ffl_integrations.payments.api respectively), so these prompts are the friendly
 	// POS path, never the only line of defence.
 	// Mirrors ffl_core.compliance.payment_mode.require_tender_reference, INCLUDING
 	// its includeRefunds parameter. The two implementations must agree row-for-row:
@@ -3767,7 +3783,7 @@ frappe.provide('frappe.ui.form');
 		const s = switches();
 		if (!s || !s.requireCardReference()) return Promise.resolve({ ok: true });
 		return ensureTenderReference(frm, {
-			mode: payrocMop(),
+			mode: cardMop(),
 			title: __('Card Approval Code'),
 			label: __('Approval code'),
 			// The APPROVAL CODE, not the batch number (one batch covers many sales
@@ -3783,7 +3799,7 @@ frappe.provide('frappe.ui.form');
 	}
 
 	function wrapSubmitInvoice(controller) {
-		if (!controller || !controller.payment || controller.payment.__payrocWrapped) return;
+		if (!controller || !controller.payment || controller.payment.__cardWrapped) return;
 		// Checkout gate: the $0 interim line trips frappe's child-mandatory save
 		// error ("Data missing in table Items") on the way to the payment screen
 		// — catch it here first with an actionable message.
@@ -3813,7 +3829,7 @@ frappe.provide('frappe.ui.form');
 				// server demanded it — and the counter had nowhere to type it.
 				const refundRef = await ensureCardReference(controller.frm);
 				if (!refundRef.ok) return;
-				const r = await refundViaPayroc(controller.frm);
+				const r = await refundViaCardProcessor(controller.frm);
 				if (!r.skip && !r.ok) return;
 				return originalSubmit();
 			}
@@ -3867,16 +3883,16 @@ frappe.provide('frappe.ui.form');
 			// FORWARD SALE: take the payment FIRST (store policy: money may be
 			// collected while the 4473/NICS is still pending), but the ORDER only
 			// completes after the gate — the gun never leaves stock early. The
-			// charge stamps payroc_unique_reference + payroc_charged_amount, so
+			// charge stamps card_unique_reference + card_charged_amount, so
 			// re-clicking Complete Order after the 4473 clears never re-charges.
 			// Counter pickup ticket: collect what the ORDER still owes before the
 			// gun is handed over (the ticket itself is $0 — pinned above and by the
 			// server — and the charge below never runs for it).
 			const balance = await collectCounterBalance(controller.frm);
 			if (!balance.ok) return;
-			const pcm = payrocMath();
+			const pcm = cardMath();
 			const capturedBefore = pcm ? pcm.sumLiveCharges(controller.frm.doc) : 0;
-			const payResult = await chargeViaPayroc(controller.frm);
+			const payResult = await chargeViaCardProcessor(controller.frm);
 			// A card was captured (the doc reloaded): repaint the tiles so the card
 			// tile shows what is still to charge and the new captured total.
 			if (pcm && pcm.sumLiveCharges(controller.frm.doc) !== capturedBefore) {
@@ -3887,7 +3903,7 @@ frappe.provide('frappe.ui.form');
 				// Persist the held draft so a captured payment reference (e.g. the
 				// Zelle Transaction Number set above) survives until the 4473 clears
 				// and isn't re-prompted on resume — the card path already saved in
-				// chargeViaPayroc; this covers no-card tenders. The 4473 gate is
+				// chargeViaCardProcessor; this covers no-card tenders. The 4473 gate is
 				// submit-only, so a Draft save here is allowed; best-effort.
 				// Stamp the hold — ONLY when the tender covers the order. The charge
 				// loop above returned ok, so any card portion is fully captured; the
@@ -3952,7 +3968,7 @@ frappe.provide('frappe.ui.form');
 			}
 			return originalSubmit();
 		};
-		controller.payment.__payrocWrapped = true;
+		controller.payment.__cardWrapped = true;
 	}
 
 	// Read the authoritative 4473 flags WITHOUT frm.reload_doc(): this runs on the
@@ -4037,13 +4053,13 @@ frappe.provide('frappe.ui.form');
 		}
 		// Patch the prototype so any future Controller instance (after the
 		// cashier closes + reopens POS without reload) also gets wrapped.
-		if (!C.prototype.__payrocPatched) {
+		if (!C.prototype.__cardPatched) {
 			const originalInit = C.prototype.init_payments;
-			C.prototype.init_payments = function payrocInitPayments() {
+			C.prototype.init_payments = function cardInitPayments() {
 				originalInit.apply(this, arguments);
 				wrapSubmitInvoice(this);
 			};
-			C.prototype.__payrocPatched = true;
+			C.prototype.__cardPatched = true;
 		}
 		// The live instance was constructed before our prototype patch
 		// landed (POS bundle loads ahead of app_include_js bundles in some
@@ -6012,7 +6028,7 @@ frappe.provide('frappe.ui.form');
 // tripping the false "Charged amount mismatch"). We re-decorate events.edit_order
 // to skip the reset when hasLiveTender(frm.doc) is true.
 //
-// UPGRADE-SAFE: same Controller-prototype monkey-patch style as the payroc
+// UPGRADE-SAFE: same Controller-prototype monkey-patch style as the card
 // init_payments wrap and the on_cart_update rate-seed wrap above. edit_order is
 // an arrow-fn on the PastOrderSummary events object (not a prototype method), so
 // we wrap the prototype `init_order_summary` that builds it and swap the event.
@@ -6071,7 +6087,7 @@ frappe.provide('frappe.ui.form');
 			return originalCheckout.apply(this, arguments);
 		};
 		// Card tile on an order with card money already captured takes the
-		// amount to charge now (bindCardChargeNow, Payroc block).
+		// amount to charge now (bindCardChargeNow, card processor block).
 		const originalRenderModes = P.prototype.render_payment_mode_dom;
 		if (typeof originalRenderModes === 'function') {
 			P.prototype.render_payment_mode_dom = function fflRenderPaymentModes() {
