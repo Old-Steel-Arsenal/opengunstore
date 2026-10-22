@@ -667,7 +667,7 @@ def run(config: dict | None = None) -> dict:
 	_email_account(c)
 	_site_branding(c)
 	_pos_profile(c, stc, letter_head, address)
-	from ffl_integrations.payroc.setup import ensure_mode_of_payment
+	from ffl_integrations.payments.setup import ensure_mode_of_payment
 	ensure_mode_of_payment()
 	result = _verify(c, a)
 	commit()

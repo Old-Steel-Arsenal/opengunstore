@@ -653,6 +653,15 @@ jobs:
           bench build
           ./env/bin/python -c 'import frappe, erpnext; print(f"bench moved to frappe {frappe.__version__}, erpnext {erpnext.__version__}")'
 
+      # The card-charge storage rename (ffl_integrations rename_payroc_storage_to_card) moves live
+      # money facts: card rows written in the OLD shape before the migrate must all read back under
+      # the new names after it. Runs the script from the commit under test against the old site;
+      # it seeds nothing (and verify checks nothing) once the base already has the new shape.
+      - name: Seed card charges in the old shape
+        if: ${{ inputs.upgrade_from != '' && matrix.suite == 'core' }}
+        working-directory: frappe-bench/sites
+        run: ../env/bin/python "$GITHUB_WORKSPACE/gunstore/scripts/ci/card_upgrade_check.py" seed ci.localhost
+
       - name: Upgrade the site to the commit under test
         if: ${{ inputs.upgrade_from != '' }}
         working-directory: frappe-bench
@@ -667,6 +676,11 @@ jobs:
           bench --site ci.localhost migrate
           echo "::endgroup::"
           bench --site ci.localhost execute "ffl_core.setup.test_bootstrap.run"
+
+      - name: Verify the seeded card charges came through the migrate
+        if: ${{ inputs.upgrade_from != '' && matrix.suite == 'core' }}
+        working-directory: frappe-bench/sites
+        run: ../env/bin/python "$GITHUB_WORKSPACE/gunstore/scripts/ci/card_upgrade_check.py" verify ci.localhost
 
       - name: Run tests
         if: matrix.suite == 'core'

@@ -161,9 +161,9 @@ def _since(days: int):
 def restore_deleted_invoice(name: str):
 	"""Put a deleted POS Invoice draft back, keeping its original number when free.
 
-	Re-inserts the logged JSON with `flags.from_restore` (so the Payroc charge
+	Re-inserts the logged JSON with `flags.from_restore` (so the card charge
 	protector keeps the invoice's own card rows — see
-	ffl_integrations.payroc.api.restore_charge_rows), retains the original
+	ffl_integrations.payments.api.restore_charge_rows), retains the original
 	owner / timestamps like frappe's own restore, and marks the log row
 	restored. Validation runs as on any insert: a serial sold in the meantime
 	makes the restore fail loudly instead of creating a double sale.
@@ -179,7 +179,7 @@ def restore_deleted_invoice(name: str):
 	_check_perm()
 	# Row lock first: two clerks restoring the same log row (double click, two
 	# registers) must serialise here, or the second one re-inserts a copy —
-	# under a new number — carrying the same captured Payroc row.
+	# under a new number — carrying the same captured card row.
 	locked = frappe.db.get_value("Deleted Document", name,
 		["restored", "new_name", "deleted_name", "deleted_doctype", "creation", "data"],
 		as_dict=True, for_update=True)

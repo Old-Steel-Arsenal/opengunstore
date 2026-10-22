@@ -1,4 +1,4 @@
-// Pure, dependency-free multi-card charge math for the POS Payroc flow.
+// Pure, dependency-free multi-card charge math for the POS card flow.
 // Shared by the POS bundle (multi-card charge loop) and the desk form's
 // per-charge void picker (pos_invoice.js), and unit-tested under Node — same
 // pattern as pos_tender_guard.js: NO DOM, NO Frappe, only stable POS Invoice
@@ -9,7 +9,7 @@
 	if (typeof module !== 'undefined' && module.exports) module.exports = api;   // Node test
 	if (typeof window !== 'undefined') {                                          // desk POS
 		window.ffl = window.ffl || {};
-		window.ffl.payrocCharges = api;
+		window.ffl.cardCharges = api;
 	}
 })(function () {
 	'use strict';
@@ -23,7 +23,7 @@
 	// Rows that hold live captured money. VOIDED/DECLINED/CANCELED rows never
 	// count; a row-less doc (legacy single-stamp era) yields [].
 	function liveChargeRows(doc) {
-		return ((doc && doc.payroc_charges) || []).filter(function (r) {
+		return ((doc && doc.card_charges) || []).filter(function (r) {
 			return r && r.status === 'CHARGED';
 		});
 	}
@@ -95,8 +95,8 @@
 	}
 
 	// REFUND LOCK sentinels — the two values the server's _lock_and_throw
-	// stamps into payroc_refund_reference (mirror of ffl_integrations
-	// payroc/api.py REFUND_LOCK_*). Anything else in that field is a real
+	// stamps into card_refund_reference (mirror of ffl_integrations
+	// payments/api.py REFUND_LOCK_*). Anything else in that field is a real
 	// gateway refund reference (or the legacy "UNKNOWN"/"MULTI" success
 	// markers) — a COMPLETED refund, never a lock.
 	var REFUND_LOCK_UNKNOWN = 'UNKNOWN-OUTCOME';
@@ -134,8 +134,22 @@
 		};
 	}
 
+	// Confirm Portal Refund applies when the processor that charged the original
+	// sale cannot send its refund: no processor is switched on, or the one that is
+	// on is another (the store has moved on). chargedBy: the charge row's processor
+	// code ('' = recorded before rows named one, which was Payroc); active:
+	// frappe.boot.ffl_card_processor. An absent boot key reads as "on" — the
+	// behaviour before the switch existed — so no button; the server re-checks.
+	var LEGACY_PROCESSOR = 'payroc';
+	function chargingProcessorOff(chargedBy, active) {
+		if (!active) return false;
+		if (!Number(active.enabled)) return true;
+		return (chargedBy || LEGACY_PROCESSOR) !== active.code;
+	}
+
 	return {
 		TOLERANCE: TOLERANCE,
+		chargingProcessorOff: chargingProcessorOff,
 		REFUND_LOCK_UNKNOWN: REFUND_LOCK_UNKNOWN,
 		REFUND_LOCK_PARTIAL_PREFIX: REFUND_LOCK_PARTIAL_PREFIX,
 		isRefundLock: isRefundLock,

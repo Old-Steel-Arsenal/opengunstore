@@ -1,8 +1,9 @@
-"""Payroc post-install / post-migrate setup.
+"""Card tender post-install / post-migrate setup.
 
 Ensures the "Credit Card" Mode of Payment exists (it ships with ERPNext
 by default) and is wired into every enabled POS Profile, so cashiers
-see a "Credit Card" tile in POS that routes through Payroc.
+see a "Credit Card" tile in POS that routes through the active card
+processor (or records plain tender when none is switched on).
 
 Idempotent — safe to re-run on every migrate.
 """

@@ -33,8 +33,8 @@ function makeCtrl(calls, payments) {
 }
 
 test('live full CHARGED card capture → preserve', () => {
-	// payroc_charged_amount stays set while the capture is live (full or partial).
-	assert.strictEqual(hasLiveTender({ payroc_charged_amount: 855.17 }), true);
+	// card_charged_amount stays set while the capture is live (full or partial).
+	assert.strictEqual(hasLiveTender({ card_charged_amount: 855.17 }), true);
 });
 
 test('non-zero split payment rows (Cash/Zelle) → preserve', () => {
@@ -47,14 +47,14 @@ test('non-zero split payment rows (Cash/Zelle) → preserve', () => {
 
 test('a single non-zero Zelle row with no card charge → preserve', () => {
 	assert.strictEqual(
-		hasLiveTender({ payroc_charged_amount: 0, payments: [{ amount: 584.55 }] }),
+		hasLiveTender({ card_charged_amount: 0, payments: [{ amount: 584.55 }] }),
 		true,
 	);
 });
 
 test('unpaid draft with zeroed profile rows → do NOT preserve (vanilla reset)', () => {
 	assert.strictEqual(
-		hasLiveTender({ payroc_charged_amount: 0, payments: [{ amount: 0 }, { amount: 0 }] }),
+		hasLiveTender({ card_charged_amount: 0, payments: [{ amount: 0 }, { amount: 0 }] }),
 		false,
 	);
 });
@@ -65,25 +65,25 @@ test('a fresh/empty doc → do NOT preserve', () => {
 	assert.strictEqual(hasLiveTender(undefined), false);
 });
 
-test('a VOIDED charge (payroc_charged_amount cleared to 0) → do NOT preserve', () => {
-	// payroc.api void_pos_invoice clears payroc_charged_amount to 0 (the Currency
+test('a VOIDED charge (card_charged_amount cleared to 0) → do NOT preserve', () => {
+	// payments.api void_pos_invoice clears card_charged_amount to 0 (the Currency
 	// column is NOT NULL — writing None was a past incident), so an
-	// un-voided charge is exactly payroc_charged_amount > 0. A void with no
+	// un-voided charge is exactly card_charged_amount > 0. A void with no
 	// remaining payment rows must fall back to the vanilla reset.
 	assert.strictEqual(
-		hasLiveTender({ payroc_status: 'VOIDED', payroc_charged_amount: 0, payments: [] }),
+		hasLiveTender({ card_status: 'VOIDED', card_charged_amount: 0, payments: [] }),
 		false,
 	);
 	// Defensive legacy input: null is no longer a produced state, but must
 	// still read as "no live tender".
 	assert.strictEqual(
-		hasLiveTender({ payroc_status: 'VOIDED', payroc_charged_amount: null, payments: [] }),
+		hasLiveTender({ card_status: 'VOIDED', card_charged_amount: null, payments: [] }),
 		false,
 	);
 });
 
 test('string/garbage amounts are coerced, not thrown', () => {
-	assert.strictEqual(hasLiveTender({ payroc_charged_amount: '855.17' }), true);
+	assert.strictEqual(hasLiveTender({ card_charged_amount: '855.17' }), true);
 	assert.strictEqual(hasLiveTender({ payments: [{ amount: 'x' }] }), false);
 	assert.strictEqual(hasLiveTender({ payments: [null, undefined] }), false);
 });
@@ -250,22 +250,22 @@ test('draftPaymentSummary: the payment screen pre-fill is entered, never confirm
 	const s = draftPaymentSummary(
 		{ due: 1000, charged: 0, held: 0, paid_amount: 1000,
 		  payments: [{ mode_of_payment: 'Cash', amount: 1000 }] },
-		{ cardMop: 'Credit Card', payrocOn: true });
+		{ cardMop: 'Credit Card', cardProcessorOn: true });
 	assert.deepStrictEqual(s.confirmed, { state: 'none', paid: 0, due: 1000 });
 	assert.deepStrictEqual(s.entered, [{ mode: 'Cash', amount: 1000 }]);
 });
 
 test('draftPaymentSummary: a card deposit is partial; the card row is not repeated as entered', () => {
 	const s = draftPaymentSummary(
-		{ due: 3084.04, charged: 712.25, held: 0, payroc_status: 'CHARGED',
+		{ due: 3084.04, charged: 712.25, held: 0, card_status: 'CHARGED',
 		  payments: [{ mode_of_payment: 'Credit Card', amount: 3084.04 }] },
-		{ cardMop: 'Credit Card', payrocOn: true });
+		{ cardMop: 'Credit Card', cardProcessorOn: true });
 	assert.deepStrictEqual(s.confirmed, { state: 'partial', paid: 712.25, due: 3084.04 });
 	assert.deepStrictEqual(s.entered, []);
 });
 
 test('draftPaymentSummary: card captures covering the total read paid (half-cent tolerance)', () => {
-	const s = draftPaymentSummary({ due: 718.78, charged: 718.776 }, { payrocOn: true });
+	const s = draftPaymentSummary({ due: 718.78, charged: 718.776 }, { cardProcessorOn: true });
 	assert.strictEqual(s.confirmed.state, 'paid');
 });
 
@@ -273,7 +273,7 @@ test('draftPaymentSummary: a held order counts its recorded split, cash included
 	const s = draftPaymentSummary(
 		{ due: 1439.72, charged: 855.17, held: 1, paid_amount: 1439.72,
 		  payments: [{ mode_of_payment: 'Credit Card', amount: 855.17 }, { mode_of_payment: 'Zelle', amount: 584.55 }] },
-		{ cardMop: 'Credit Card', payrocOn: true });
+		{ cardMop: 'Credit Card', cardProcessorOn: true });
 	assert.deepStrictEqual(s.confirmed, { state: 'paid', paid: 1439.72, due: 1439.72 });
 	assert.deepStrictEqual(s.entered, [], 'held tender is confirmed, not listed again');
 });
@@ -285,7 +285,7 @@ test('draftPaymentSummary: a web-order pickup ticket paid on WooCommerce reads p
 	const s = draftPaymentSummary(
 		{ due: 962.34, charged: 0, held: 0, paid_online: true, paid_amount: 962.34,
 		  payments: [{ mode_of_payment: 'WooCommerce', amount: 962.34 }] },
-		{ cardMop: 'Credit Card', payrocOn: true });
+		{ cardMop: 'Credit Card', cardProcessorOn: true });
 	assert.deepStrictEqual(s.confirmed, { state: 'paid', paid: 962.34, due: 962.34 });
 	assert.deepStrictEqual(s.entered, [], 'the Woo tender is confirmed, not listed again');
 });
@@ -294,7 +294,7 @@ test('draftPaymentSummary: a counter pickup ticket reads its ORDER\'s money — 
 	// The $0 ticket hands a gun over for a Sales Invoice; the chip must speak
 	// for that invoice (terminal deposit / Record Payment), never the ticket's
 	// zero rows.
-	const opts = { cardMop: 'Credit Card', payrocOn: true };
+	const opts = { cardMop: 'Credit Card', cardProcessorOn: true };
 	const deposit = draftPaymentSummary({ due: 0, charged: 0, held: 0, paid_amount: 0,
 		payments: [{ mode_of_payment: 'Cash', amount: 0 }],
 		counter_order: { name: 'SINV-1', total: 650, outstanding: 450 } }, opts);
@@ -312,16 +312,16 @@ test('draftPaymentSummary: a held order whose cart grew afterwards is partial', 
 });
 
 test('draftPaymentSummary: a card instruction still on the terminal is in progress', () => {
-	const s = draftPaymentSummary({ due: 500, charged: 0, payroc_status: 'IN_PROGRESS' }, {});
+	const s = draftPaymentSummary({ due: 500, charged: 0, card_status: 'IN_PROGRESS' }, {});
 	assert.strictEqual(s.confirmed.state, 'in_progress');
-	const split = draftPaymentSummary({ due: 3084.04, charged: 712.25, payroc_status: 'IN_PROGRESS' }, {});
+	const split = draftPaymentSummary({ due: 3084.04, charged: 712.25, card_status: 'IN_PROGRESS' }, {});
 	assert.deepStrictEqual(split.confirmed, { state: 'in_progress', paid: 712.25, due: 3084.04 }, 'the first card is carried');
 });
 
-test('draftPaymentSummary: Payroc off → a typed card row is entered like cash', () => {
+test('draftPaymentSummary: card processor off → a typed card row is entered like cash', () => {
 	const s = draftPaymentSummary(
 		{ due: 500, charged: 0, payments: [{ mode_of_payment: 'Credit Card', amount: 200 }, { mode_of_payment: 'Cash', amount: 50 }] },
-		{ cardMop: 'Credit Card', payrocOn: false });
+		{ cardMop: 'Credit Card', cardProcessorOn: false });
 	assert.deepStrictEqual(s.entered, [{ mode: 'Credit Card', amount: 200 }, { mode: 'Cash', amount: 50 }]);
 });
 
@@ -329,7 +329,7 @@ test('draftPaymentSummary: rows of one mode are summed; zero and junk rows ignor
 	const s = draftPaymentSummary(
 		{ due: 0, payments: [{ mode_of_payment: 'Cash', amount: 20 }, { mode_of_payment: 'Cash', amount: '5' },
 		  { mode_of_payment: 'Zelle', amount: 0 }, null, { amount: 9 }] },
-		{ payrocOn: true });
+		{ cardProcessorOn: true });
 	assert.strictEqual(s.confirmed, null);
 	assert.deepStrictEqual(s.entered, [{ mode: 'Cash', amount: 25 }]);
 	assert.deepStrictEqual(draftPaymentSummary(null, null), { confirmed: null, entered: [] });
@@ -342,7 +342,7 @@ test('draftPaymentSummary: rows of one mode are summed; zero and junk rows ignor
 //     so the recorded split survives to the payment screen. ---
 
 test('applyHeldTenderCheckoutGuard disables default-payment fill for a live-tender order', () => {
-	const frm = { set_default_payment: 1, doc: { payroc_charged_amount: 855.17 } };
+	const frm = { set_default_payment: 1, doc: { card_charged_amount: 855.17 } };
 	const guarded = applyHeldTenderCheckoutGuard(frm);
 	assert.strictEqual(guarded, true);
 	assert.strictEqual(frm.set_default_payment, 0, 'set_default_payment must be disabled so the split is not zeroed');
@@ -384,12 +384,12 @@ test('hasHeldPayment: only the held stamp counts', () => {
 	assert.strictEqual(hasHeldPayment({ payments: [{ amount: 535.84 }] }), false);
 	// First card of a multi-card split: money captured, balance still owed —
 	// the loop must stay reachable, so this is NOT held.
-	assert.strictEqual(hasHeldPayment({ payroc_charged_amount: 300, payroc_status: 'PARTIAL' }), false);
+	assert.strictEqual(hasHeldPayment({ card_charged_amount: 300, card_status: 'PARTIAL' }), false);
 	assert.strictEqual(hasHeldPayment({}), false);
 	assert.strictEqual(hasHeldPayment({ ffl_payment_held: 1 }), true);
 	assert.strictEqual(hasHeldPayment({ ffl_payment_held: '1' }), true);
 	// Voided: stamp cleared server-side → not held.
-	assert.strictEqual(hasHeldPayment({ payroc_charged_amount: 0, ffl_payment_held: 0 }), false);
+	assert.strictEqual(hasHeldPayment({ card_charged_amount: 0, ffl_payment_held: 0 }), false);
 });
 
 test('submitButtonState: no firearm / return / cleared → vanilla complete', () => {
@@ -407,7 +407,7 @@ test('submitButtonState: firearm, 4473 pending, nothing held → pay', () => {
 		{ key: 'pay', quiet: false });
 	// PARTIAL capture is still "pay": the balance is owed and the click resumes the loop.
 	assert.strictEqual(
-		submitButtonState({ payroc_charged_amount: 300 }, { hasFirearm: true, cleared: false }).key,
+		submitButtonState({ card_charged_amount: 300 }, { hasFirearm: true, cleared: false }).key,
 		'pay');
 });
 
@@ -563,7 +563,7 @@ test('negativeTicketState: no / unknown method blocks (card is not a payout meth
 
 test('negativeTicketState: card money already captured blocks (the server refuses a tender here)', () => {
 	const s = negativeTicketState({
-		grand_total: -100, items: neg(100), ffl_trade_in_payout_method: 'Cash', payroc_charged_amount: 40 });
+		grand_total: -100, items: neg(100), ffl_trade_in_payout_method: 'Cash', card_charged_amount: 40 });
 	assert.strictEqual(s.problem, 'card');
 	assert.strictEqual(s.ok, false);
 });
@@ -635,12 +635,12 @@ test('payoutSummary: a submitted negative ticket reports what the store paid; no
 });
 
 test('negativeTicketFix: a card already captured is NOT zeroed away — it blocks instead', () => {
-	const doc = { grand_total: -100, items: neg(100), ffl_trade_in_payout_method: 'Cash', payroc_charged_amount: 40,
+	const doc = { grand_total: -100, items: neg(100), ffl_trade_in_payout_method: 'Cash', card_charged_amount: 40,
 		payments: [{ name: 'p1', amount: 40 }] };
 	assert.strictEqual(negativeTicketFix(doc), null);
 	assert.strictEqual(negativeTicketState(doc).problem, 'card');
 	// cash typed (no card) is still cleared
-	assert.deepStrictEqual(negativeTicketFix({ ...doc, payroc_charged_amount: 0 }), { set: {}, zeroRows: ['p1'] });
+	assert.deepStrictEqual(negativeTicketFix({ ...doc, card_charged_amount: 0 }), { set: {}, zeroRows: ['p1'] });
 });
 
 // Counter pickup's 4473 ticket (counter_pickup.keep_ticket_free is the server side).

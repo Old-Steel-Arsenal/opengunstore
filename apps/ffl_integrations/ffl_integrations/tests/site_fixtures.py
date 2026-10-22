@@ -91,12 +91,12 @@ def ensure_ffl_supplier(name: str, ffl_number: str = "9-99-999-99-9X-99961",
 def ensure_credit_card_mop_account() -> None:
 	"""The "Credit Card" Mode of Payment carries a default account for every
 	company — ERPNext refuses to save any POS Profile whose payment row's MoP
-	has none, which is exactly what payroc.setup.ensure_mode_of_payment() does
+	has none, which is exactly what payments.setup.ensure_mode_of_payment() does
 	to every enabled profile. On prod the account predates us;
 	a CI site must seed it. Deliberately NOT calling
 	ensure_mode_of_payment() here: it wires profiles as a side effect and
 	would hit the very validation this fixture exists to satisfy."""
-	from ffl_integrations.payroc.setup import MODE_OF_PAYMENT_NAME
+	from ffl_integrations.payments.setup import MODE_OF_PAYMENT_NAME
 
 	if not frappe.db.exists("Mode of Payment", MODE_OF_PAYMENT_NAME):
 		frappe.get_doc({
@@ -125,3 +125,17 @@ def ensure_credit_card_mop_account() -> None:
 	if changed:
 		mop.flags.ignore_permissions = True
 		mop.save()
+
+
+def payroc_configured():
+	"""A patch under which Payroc counts as configured whenever it is switched on.
+
+	A card processor is ON only when switched on AND configured (payments.registry); the test
+	site holds no Payroc key, so tests that stand in for a store running Payroc start this.
+	"""
+	from unittest.mock import patch
+
+	from ffl_integrations import integration_gate
+
+	return patch("ffl_integrations.integration_gate.payroc_ready",
+		side_effect=lambda require_device=False: integration_gate.payroc_enabled())

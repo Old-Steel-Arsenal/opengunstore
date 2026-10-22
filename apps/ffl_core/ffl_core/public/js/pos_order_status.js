@@ -269,8 +269,8 @@
 		summary: function (facts) {
 			var s = sw();
 			return ffl.draftPaymentSummary(facts, {
-				cardMop: s ? s.payrocMop() : 'Credit Card',
-				payrocOn: s ? s.payrocEnabled() : true,
+				cardMop: s ? s.cardMop() : 'Credit Card',
+				cardProcessorOn: s ? s.cardProcessorEnabled() : true,
 			});
 		},
 	};

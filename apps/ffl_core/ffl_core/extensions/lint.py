@@ -55,6 +55,7 @@ GUNSHOP_HOOKS = {
 	"gunshop_dropship_listing", "gunshop_dropship_suggested_price", "gunshop_distributor_source_settled",
 	"gunshop_distributor_feed_stale", "gunshop_distributor_hub_rows", "gunshop_sidebar_items",
 	"gunshop_catalog_change_cursors", "gunshop_ai_connected", "gunshop_required_agreements",
+	"gunshop_card_processors",
 }
 # The ids first_party may be declared by, shipped with the core: the manifest's
 # own claim is not enough while packages are unsigned (lazy: an id allowlist, not a

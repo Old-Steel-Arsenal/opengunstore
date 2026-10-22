@@ -55,7 +55,7 @@ class SalesInvoiceHandlers(unittest.TestCase):
 			"ffl_integrations.distributor.counter.guard_sales_invoice_submit",
 			self._events("on_submit"))
 		for path in ("ffl_integrations.distributor.counter.repin_dropship_lines",
-				"ffl_integrations.payroc.api.require_card_reference_on_manual_tender"):
+				"ffl_integrations.payments.api.require_card_reference_on_manual_tender"):
 			self.assertIn(path, self._events("validate"))
 		# Containment, not equality: this key is still a bare string, and the
 		# lesson of this very file is that somebody will eventually make it a

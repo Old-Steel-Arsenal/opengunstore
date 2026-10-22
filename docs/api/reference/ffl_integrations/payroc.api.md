@@ -10,21 +10,16 @@ Source: `apps/ffl_integrations/ffl_integrations/payroc/api.py` · 11 endpoint(s)
 
 **Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager
 
-Cancel an in-flight Payroc instruction (race-safe).
-
-If the cancel RACES an approval (card just captured), the capture is
-reconciled instead of stranding it / letting a retry double-charge.
+Old path of ffl_integrations.payments.api.cancel_pos_charge (cancel an in-flight charge).
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
 | `invoice_name` | string | yes | — | POS Invoice being tendered. |
-| `instruction_id` | string | yes | — | The instruction to cancel. |
+| `instruction_id` | string | yes | — | The charge handle to cancel. |
 
-**Returns:** {ok: True, status: "CANCELED"} — or the reconciled settle result when the approval won the race.
+**Returns:** The new endpoint's answer.
 
-**Permissions:** POS charge roles (_check_perm).
-
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:775`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:55`</sub>
 
 ## `cancel_sales_invoice_charge`
 
@@ -32,21 +27,16 @@ reconciled instead of stranding it / letting a retry double-charge.
 
 **Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager
 
-Cancel an in-flight terminal charge on a Sales Invoice (race-safe).
-
-A cancel that races an approval settles the approval instead — the card
-was charged, so it is recorded and booked, never stranded.
+Old path of ffl_integrations.payments.api.cancel_sales_invoice_charge.
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
 | `sales_invoice` | string | yes | — | The Sales Invoice being charged. |
-| `instruction_id` | string | yes | — | The instruction to cancel. |
+| `instruction_id` | string | yes | — | The charge handle to cancel. |
 
-**Returns:** {ok: True, status: "CANCELED"} — or the settled approval with reconciled=True when the approval won the race.
+**Returns:** The new endpoint's answer.
 
-**Permissions:** POS charge roles (_check_perm).
-
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:1072`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:101`</sub>
 
 ## `charge_pos_invoice`
 
@@ -54,11 +44,7 @@ was charged, so it is recorded and booked, never stranded.
 
 **Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager
 
-Start a card charge on the Payroc A80 terminal for a POS invoice.
-
-Creates a device payment instruction; the frontend then polls
-poll_pos_charge() until the terminal returns. Reuses an in-flight
-instruction rather than double-charging.
+Old path of ffl_integrations.payments.api.charge_pos_invoice (start a card charge).
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
@@ -67,11 +53,9 @@ instruction rather than double-charging.
 | `amount` | — | no | `None` | Optional charge amount; defaults to the card-tender target. |
 | `description` | string \| null | no | `None` | Optional statement descriptor. |
 
-**Returns:** {ok, instruction_id, status, amount} — or {"skip": True} when the integration is unconfigured.
+**Returns:** The new endpoint's answer: {ok, instruction_id, status, amount} or {"skip": True}.
 
-**Permissions:** POS charge roles (_check_perm).
-
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:578`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:20`</sub>
 
 ## `charge_sales_invoice`
 
@@ -79,26 +63,17 @@ instruction rather than double-charging.
 
 **Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager
 
-Start a card charge on the Payroc terminal against a counter Sales Invoice.
-
-The counter's card tender for an on-account order (Create Order right
-after the order books; Pending Order → Record Payment for a balance).
-Creates a device payment instruction the frontend then polls with
-poll_sales_invoice_charge(); the approval books a Payment Entry. Reuses
-an in-flight instruction rather than double-charging, and never starts
-one while an earlier approval on this invoice is unrecorded.
+Old path of ffl_integrations.payments.api.charge_sales_invoice (card charge on a counter order).
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
 | `sales_invoice` | string | yes | — | Submitted Sales Invoice with an outstanding balance. |
-| `amount` | — | no | `None` | Charge amount, at most the outstanding balance (blank = the whole balance; less = a deposit). |
+| `amount` | — | no | `None` | Charge amount, at most the outstanding balance (blank = the whole balance). |
 | `terminal` | string \| null | no | `None` | Optional terminal id; defaults to the configured one. |
 
-**Returns:** {ok, instruction_id, status, amount} — {"skip": True} when the integration is unconfigured; an earlier approval found unrecorded comes back settled with already=True.
+**Returns:** The new endpoint's answer.
 
-**Permissions:** POS charge roles (_check_perm).
-
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:942`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:70`</sub>
 
 ## `confirm_out_of_band_refund`
 
@@ -106,27 +81,17 @@ one while an earlier approval on this invoice is unrecorded.
 
 **Auth (derived from code):** Roles: Sales Manager / System Manager
 
-Record that a gateway-charged sale's refund was issued in the Payroc portal.
-
-The manager-level exit for the switched-off refund guard. Deliberately its
-own field plus a timeline entry — never the tender row's ``reference_no``,
-which the standalone-terminal flow collects for a different purpose and
-which therefore cannot double as this guard's evidence (a guard whose
-evidence another rule force-collects clears itself).
+Old path of ffl_integrations.payments.api.confirm_out_of_band_refund.
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
 | `return_invoice_name` | string | yes | — | The POS RETURN invoice being confirmed. |
-| `portal_reference` | string | yes | — | The refund's reference from the Payroc portal. |
+| `portal_reference` | string | yes | — | The refund's reference from the processor's portal. |
 | `reason` | string | yes | — | Why the refund went out of band (audited, mandatory). |
 
-**Returns:** {ok: True, invoice, portal_reference}.
+**Returns:** The new endpoint's answer.
 
-**Raises:** ValidationError: Missing reference/reason, a PAN-shaped reference, Payroc switched on (the live path owns refunds then), unknown or cancelled document, not a return, an original that never took gateway money, or a confirmation that already exists.
-
-**Permissions:** Manager role (_check_manager).
-
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:2104`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:174`</sub>
 
 ## `discover_terminals`
 
@@ -134,16 +99,11 @@ evidence another rule force-collects clears itself).
 
 **Auth (derived from code):** Roles: Sales Manager / System Manager
 
-List the API key's allowed Payroc terminals (connectivity smoke test).
+Old path of ffl_integrations.payments.api.list_terminals (connectivity smoke test).
 
-The authenticate response lists the key's allowedTerminals — a
-zero-risk connectivity + pairing check.
+**Returns:** The new endpoint's answer: the processor's terminal list, {"error": ...} or {"skip": True}.
 
-**Returns:** The raw authenticate response JSON, {"error": <body>} on a non-OK response, or {"skip": True} when the integration is switched off / unconfigured.
-
-**Permissions:** Manager role.
-
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:1105`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:116`</sub>
 
 ## `poll_pos_charge`
 
@@ -151,22 +111,17 @@ zero-risk connectivity + pairing check.
 
 **Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager
 
-Poll a Payroc payment instruction once.
-
-IN_PROGRESS → {ok: False} (frontend loops). COMPLETED → fetch the
-Payment, verify full approval, stamp the reference on the invoice.
+Old path of ffl_integrations.payments.api.poll_pos_charge (poll a card charge once).
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
 | `invoice_name` | string | yes | — | POS Invoice being tendered. |
-| `instruction_id` | string | yes | — | The instruction returned by charge_pos_invoice. |
+| `instruction_id` | string | yes | — | The charge handle returned by charge_pos_invoice. |
 | `expected_amount` | — | no | `None` | Optional approval-amount check. |
 
-**Returns:** {ok: True, ...settled details} on completion; {ok: False, status: "IN_PROGRESS"} while pending; {ok: False, status, error} on terminal failure.
+**Returns:** The new endpoint's answer.
 
-**Permissions:** POS charge roles (_check_perm).
-
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:724`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:39`</sub>
 
 ## `poll_sales_invoice_charge`
 
@@ -174,22 +129,16 @@ Payment, verify full approval, stamp the reference on the invoice.
 
 **Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager
 
-Poll a terminal charge started by charge_sales_invoice once.
-
-IN_PROGRESS → {ok: False} (frontend loops). On approval the record goes
-CHARGED and a Payment Entry books against the invoice; the answer carries
-the new balance.
+Old path of ffl_integrations.payments.api.poll_sales_invoice_charge.
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
 | `sales_invoice` | string | yes | — | The Sales Invoice being charged. |
-| `instruction_id` | string | yes | — | The instruction returned by charge_sales_invoice. |
+| `instruction_id` | string | yes | — | The charge handle returned by charge_sales_invoice. |
 
-**Returns:** {ok: True, unique_reference, approval_code, amount, payment_entry, outstanding, paid} on approval; {ok: False, status: "IN_PROGRESS"} while pending; {ok: False, status, error} on decline / cancel.
+**Returns:** The new endpoint's answer.
 
-**Permissions:** POS charge roles (_check_perm).
-
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:1043`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:86`</sub>
 
 ## `refund_pos_invoice`
 
@@ -197,25 +146,16 @@ the new balance.
 
 **Auth (derived from code):** Roles: Sales Manager / System Manager
 
-Refund a POS return's card portion to the original card(s).
-
-Payroc referenced refund of the Credit Card portion of a POS RETURN
-invoice. Firearm returns are blocked (bound-book reversal is a
-separate project). Multi-card originals refund across rows within
-per-original-card caps.
+Old path of ffl_integrations.payments.api.refund_pos_invoice (refund a POS return's card portion).
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
 | `return_invoice_name` | string | yes | — | The POS RETURN invoice. |
 | `reason` | string \| null | no | `None` | Optional audit reason. |
 
-**Returns:** {ok: True, refund_reference, amount, original}; {"skip": True} when the integration is switched off / unconfigured, or the original never took gateway money.
+**Returns:** The new endpoint's answer.
 
-**Raises:** ValidationError: When the integration is switched off but the ORIGINAL was charged on the terminal and no manager has confirmed the portal refund yet (confirm_out_of_band_refund is the exit — ops are also emailed). Also: firearm returns (bound-book reversal is a separate project), a repeat refund of an already-refunded return, or a refund whose sibling returns' booked money exceeds their documented card entitlement.
-
-**Permissions:** Manager-gated refund roles (gate at entry).
-
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:1396`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:144`</sub>
 
 ## `unlock_refund_lock`
 
@@ -223,36 +163,16 @@ per-original-card caps.
 
 **Auth (derived from code):** Roles: Sales Manager / System Manager
 
-Manager unlock for a return whose automatic card refund armed the
-
-UNKNOWN-OUTCOME re-refund lock (the amplifier: the
-lock had no product-side unlock, so a locked return died in bench
-console).
-
-ONLY ``UNKNOWN-OUTCOME`` unlocks — zero slices booked, so a full-amount
-retry is exactly the original entitlement. A ``PARTIAL:*`` sentinel is
-the ONE record of how much this return already pushed back; clearing it
-re-arms a full-amount retry that the per-ORIGINAL-card caps cannot bound
-(an original with headroom would refund the booked slices again).
-Its residue goes to back-office manual processing.
-A real refund reference means the refund COMPLETED and never unlocks.
-
-The unlock is an attestation, not a reconciliation: the gateway may
-actually have refunded (rows still show headroom), so the manager must
-verify in the Payroc portal FIRST — the reason is required and the whole
-action lands in the document timeline (who/when/why/previous lock),
-mirroring manager_override_4473's audit posture.
+Old path of ffl_integrations.payments.api.unlock_refund_lock (manager unlock of a refund lock).
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
 | `return_invoice_name` | string | yes | — | The locked POS RETURN invoice. |
-| `reason` | string | yes | — | Required attestation — what the manager verified in the Payroc portal. |
+| `reason` | string | yes | — | Required attestation — what the manager verified in the processor's portal. |
 
-**Returns:** {ok: True, cleared: <previous lock value>, invoice}.
+**Returns:** The new endpoint's answer.
 
-**Permissions:** Manager gate (roles per the derived Auth line) + required reason — the reason must record what was verified in the Payroc portal.
-
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:1760`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:159`</sub>
 
 ## `void_pos_invoice`
 
@@ -260,11 +180,7 @@ mirroring manager_override_4473's audit posture.
 
 **Auth (derived from code):** Roles: Sales Manager / System Manager
 
-Reverse an unsettled Payroc charge (back-office; per-card on multi-card).
-
-Payroc has no /void — this books the gateway reversal. Multi-card
-invoices void PER CARD: pass the charge row's unique_reference when
-more than one live capture exists.
+Old path of ffl_integrations.payments.api.void_pos_invoice (reverse an unsettled charge).
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
@@ -272,8 +188,6 @@ more than one live capture exists.
 | `reason` | string \| null | no | `None` | Optional audit reason. |
 | `unique_reference` | string \| null | no | `None` | The specific charge row to void (required when several live captures exist). |
 
-**Returns:** {ok: True, unique_reference, response}.
+**Returns:** The new endpoint's answer.
 
-**Permissions:** Refund/void roles (_check_refund_perm).
-
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:1129`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:127`</sub>

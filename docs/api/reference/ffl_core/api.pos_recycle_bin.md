@@ -33,9 +33,9 @@ gate here is the caller's POS Invoice permission instead).
 
 Put a deleted POS Invoice draft back, keeping its original number when free.
 
-Re-inserts the logged JSON with `flags.from_restore` (so the Payroc charge
+Re-inserts the logged JSON with `flags.from_restore` (so the card charge
 protector keeps the invoice's own card rows — see
-ffl_integrations.payroc.api.restore_charge_rows), retains the original
+ffl_integrations.payments.api.restore_charge_rows), retains the original
 owner / timestamps like frappe's own restore, and marks the log row
 restored. Validation runs as on any insert: a serial sold in the meantime
 makes the restore fail loudly instead of creating a double sale.

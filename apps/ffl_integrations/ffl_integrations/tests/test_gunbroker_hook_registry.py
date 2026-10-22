@@ -2,7 +2,7 @@
 
 Three keys in this app's `doc_events` hold a BARE STRING today:
 
-    POS Invoice.before_submit    -> payroc.api.block_partial_submit
+    POS Invoice.before_submit    -> payments.api.block_partial_submit
     Sales Invoice.on_submit      -> distributor.counter.guard_sales_invoice_submit
     Woo Online Order.after_insert/on_update -> distributor.web_router.on_woo_order_change
       (since 1.5 the osa_dropship extension's; the key stays a list here)
@@ -38,10 +38,10 @@ from ffl_integrations import hooks
 # (doctype, event, the handler that must not be displaced)
 INCUMBENTS = (
 	("POS Invoice", "before_submit",
-		"ffl_integrations.payroc.api.block_partial_submit"),
+		"ffl_integrations.payments.api.block_partial_submit"),
 	# The delete guard stays first when GunBroker shares the key.
 	("POS Invoice", "on_trash",
-		"ffl_integrations.payroc.api.block_locked_return_trash"),
+		"ffl_integrations.payments.api.block_locked_return_trash"),
 	("Sales Invoice", "on_submit",
 		"ffl_integrations.distributor.counter.guard_sales_invoice_submit"),
 )
@@ -83,12 +83,12 @@ OURS_THAT_A_MERGE_MUST_NOT_DROP = (
 # handlers on the keys GunBroker touches. Named individually so a rename or a
 # module move is caught here rather than at the till.
 MUST_RESOLVE = (
-	"ffl_integrations.payroc.api.restore_charge_rows",
-	"ffl_integrations.payroc.api.protect_money_scalars",
-	"ffl_integrations.payroc.api.require_card_reference_on_manual_tender",
-	"ffl_integrations.payroc.api.block_unconfirmed_gateway_refund",
-	"ffl_integrations.payroc.api.block_partial_submit",
-	"ffl_integrations.payroc.api.block_locked_return_trash",
+	"ffl_integrations.payments.api.restore_charge_rows",
+	"ffl_integrations.payments.api.protect_money_scalars",
+	"ffl_integrations.payments.api.require_card_reference_on_manual_tender",
+	"ffl_integrations.payments.api.block_unconfirmed_gateway_refund",
+	"ffl_integrations.payments.api.block_partial_submit",
+	"ffl_integrations.payments.api.block_locked_return_trash",
 	"ffl_integrations.distributor.counter.guard_sales_invoice_submit",
 	# The Payment Entry remarks guard: a dotted path that only fires on a save
 	# nobody makes in a test, so a rename lands in production silently.

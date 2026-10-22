@@ -181,7 +181,7 @@ def _invoice(company: str) -> _StubDoc:
 		customer_name="A Buyer", net_total=100, grand_total=108.25,
 		total_taxes_and_charges=8.25,
 		taxes=[_StubDoc(description="Sales Tax", tax_amount=8.25)],
-		payroc_charges=[],
+		card_charges=[],
 		items=[_StubDoc(item_name="A Rifle", item_code="RIF-1", serial_no="SN1",
 			qty=1, rate=100, amount=100)],
 	)

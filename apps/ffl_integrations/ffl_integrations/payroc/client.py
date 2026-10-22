@@ -42,6 +42,7 @@ from urllib.parse import quote
 import frappe
 import requests
 from ffl_core.credentials import RedactedRepr, Secret
+from ffl_integrations.payments.base import CardProcessorError
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -55,11 +56,11 @@ PROD_BASE = "https://payments.worldnettps.com/merchant"
 SANDBOX_BASE = "https://testpayments.worldnettps.com/merchant"
 
 
-class PayrocError(RuntimeError):
+class PayrocError(CardProcessorError):
     """Raised on non-recoverable Payroc API errors.
 
-    ``outcome_known`` distinguishes the two failure families a money caller
-    must treat differently:
+    ``outcome_known`` (from CardProcessorError) distinguishes the two failure
+    families a money caller must treat differently:
       True  — the gateway DEFINITELY did not process money for this call
               (HTTP 4xx: request rejected; auth/config failure: request never
               sent). Retrying is safe.
@@ -68,10 +69,6 @@ class PayrocError(RuntimeError):
               before the failure). A refund caller must arm its re-refund
               lock instead of inviting a retry that could double-refund.
     """
-
-    def __init__(self, message: str, *, outcome_known: bool = True) -> None:
-        super().__init__(message)
-        self.outcome_known = outcome_known
 
 
 class PayrocConfigError(PayrocError):

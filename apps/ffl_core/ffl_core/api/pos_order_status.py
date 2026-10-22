@@ -30,7 +30,7 @@ def draft_order_status(invoices: list[str] | str) -> dict:
 	        Duplicates are ignored; at most 100 names are read.
 
 	Returns:
-	    {name: {"due", "currency", "paid_amount", "charged", "payroc_status",
+	    {name: {"due", "currency", "paid_amount", "charged", "card_status",
 	    "held", "paid_online", "payments": [{"mode_of_payment", "amount"}],
 	    "counter_order": {"name", "total", "outstanding"} | None,
 	    "has_firearm", "form_4473_status", "nics_status"}} for each name that is a draft,
@@ -55,7 +55,7 @@ def draft_order_status(invoices: list[str] | str) -> dict:
 		"POS Invoice",
 		filters={"name": ("in", names), "docstatus": 0, "is_return": 0},
 		fields=["name", "grand_total", "rounded_total", "paid_amount", "currency",
-			"form_4473_status", "nics_status", "payroc_status", "payroc_charged_amount",
+			"form_4473_status", "nics_status", "card_status", "card_charged_amount",
 			"ffl_payment_held"] + (["woo_online_order"] if has_web_link else [])
 			+ (["ffl_counter_order"] if has_counter_link else []),
 		limit=MAX_INVOICES,
@@ -87,8 +87,8 @@ def draft_order_status(invoices: list[str] | str) -> dict:
 			"due": flt(r.rounded_total) or flt(r.grand_total),
 			"currency": r.currency,
 			"paid_amount": flt(r.paid_amount),
-			"charged": flt(r.payroc_charged_amount),
-			"payroc_status": r.payroc_status or "",
+			"charged": flt(r.card_charged_amount),
+			"card_status": r.card_status or "",
 			"held": cint(r.ffl_payment_held),
 			# A web order's pickup ticket (ffl_woo_sync.woocommerce.pickup): the
 			# buyer already paid on WooCommerce and the ticket carries that tender

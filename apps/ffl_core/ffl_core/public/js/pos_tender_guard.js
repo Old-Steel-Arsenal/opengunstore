@@ -44,8 +44,8 @@
 
 	// True when a resumed Draft POS Invoice carries tender we must NOT discard.
 	// Two independent signals (either is sufficient):
-	//   1. payroc_charged_amount > 0 — a live (un-voided) card capture. void_pos_invoice
-	//      clears payroc_charged_amount to 0 (its Currency column is NOT NULL, so
+	//   1. card_charged_amount > 0 — a live (un-voided) card capture. void_pos_invoice
+	//      clears card_charged_amount to 0 (its Currency column is NOT NULL, so
 	//      never null), so > 0 is exactly an un-voided capture (full CHARGED or a
 	//      re-chargeable PARTIAL).
 	//   2. any `payments` row with a non-zero amount — a recorded Cash/Zelle split
@@ -57,7 +57,7 @@
 	// recomputes on edit), and erring toward preserve is the safe direction here.
 	function hasLiveTender(doc) {
 		doc = doc || {};
-		if (flt(doc.payroc_charged_amount) > 0) return true;
+		if (flt(doc.card_charged_amount) > 0) return true;
 		var rows = doc.payments || [];
 		for (var i = 0; i < rows.length; i++) {
 			if (rows[i] && flt(rows[i].amount) !== 0) return true;
@@ -160,7 +160,7 @@
 	// limit, covers the order — the server's payment_mode.require_full_payment
 	// rule, applied here BEFORE we park or submit the draft.
 	// rounded_total wins when the POS Profile rounds; TOLERANCE mirrors
-	// payroc_charges.js — half a cent, never a dependency on that module.
+	// card_charges.js — half a cent, never a dependency on that module.
 	var TOLERANCE = 0.005;
 	function balanceDue(doc) {
 		doc = doc || {};
@@ -174,8 +174,8 @@
 	// True when this draft's tender has actually been taken IN FULL and the
 	// order parked for the 4473 — the ffl_payment_held stamp the Complete Order
 	// wrapper writes only after the charge loop finished and isFullyTendered
-	// held. Deliberately NOT payroc_charged_amount (> 0 after the FIRST card of a
-	// multi-card split, while payroc_status is still PARTIAL and the balance is
+	// held. Deliberately NOT card_charged_amount (> 0 after the FIRST card of a
+	// multi-card split, while card_status is still PARTIAL and the balance is
 	// owed) and NOT hasLiveTender (true for the default-MOP row ERPNext pre-fills
 	// with the grand total when the payment screen opens). A manager's card void
 	// clears the stamp server-side: the order is no longer fully tendered.
@@ -230,16 +230,16 @@
 	//     terminal is `in_progress`. A held order (fully tendered when it was
 	//     parked) counts its recorded tender, which the tender guard preserves;
 	//     a cart that grew after the hold reads `partial`. Otherwise only captured
-	//     card money counts (payroc_charged_amount). null when nothing is due.
+	//     card money counts (card_charged_amount). null when nothing is due.
 	//     A web-order pickup ticket (`paid_online`) was paid on WooCommerce
 	//     before it reached the counter; its recorded tender counts the same way.
 	//   entered — the other tender typed on a draft that was never held (cash,
 	//     Zelle…), shown as NOT confirmed: ERPNext pre-fills the default payment
 	//     method with the grand total when the payment screen opens, so a typed
-	//     amount is not proof of payment. The Payroc card tender is represented by
-	//     `confirmed` and left out, unless Payroc is off (a standalone terminal
+	//     amount is not proof of payment. The integrated card tender is represented by
+	//     `confirmed` and left out, unless no card processor is on (a standalone terminal
 	//     leaves only the typed row).
-	// opts: { cardMop: the Payroc Mode of Payment name, payrocOn: bool }.
+	// opts: { cardMop: the card Mode of Payment name, cardProcessorOn: bool }.
 	function draftPaymentSummary(facts, opts) {
 		facts = facts || {};
 		opts = opts || {};
@@ -263,7 +263,7 @@
 		var charged = flt(facts.charged);
 		var held = hasHeldPayment({ ffl_payment_held: facts.held }) || !!facts.paid_online;
 		var confirmed = null;
-		if (facts.payroc_status === 'IN_PROGRESS') {
+		if (facts.card_status === 'IN_PROGRESS') {
 			confirmed = { state: 'in_progress', paid: charged, due: due };
 		} else if (due > 0) {
 			var paid = held ? Math.max(flt(facts.paid_amount), charged) : charged;
@@ -272,7 +272,7 @@
 		}
 		var entered = [];
 		if (!held) {
-			var cardMop = opts.payrocOn === false ? null : (opts.cardMop || 'Credit Card');
+			var cardMop = opts.cardProcessorOn === false ? null : (opts.cardMop || 'Credit Card');
 			var byMode = {};
 			(facts.payments || []).forEach(function (p) {
 				var amount = p ? flt(p.amount) : 0;
@@ -408,7 +408,7 @@
 			problem: null, ok: true,
 		};
 		if (!negative) return state;
-		if (flt(doc.payroc_charged_amount) > 0) state.problem = 'card';
+		if (flt(doc.card_charged_amount) > 0) state.problem = 'card';
 		else state.problem = payoutProblem(method, reference) || null;
 		state.ok = !state.problem;
 		return state;
@@ -434,7 +434,7 @@
 		var zeroRows = [];
 		// A card already captured on the draft is real money: never zero its row away (that would hide the
 		// captured tender and let the cashier believe it was never taken) — the 'card' problem blocks instead.
-		if (isNegativeTicket(doc) && !(flt(doc.payroc_charged_amount) > 0)) {
+		if (isNegativeTicket(doc) && !(flt(doc.card_charged_amount) > 0)) {
 			(doc.payments || []).forEach(function (r) {
 				if (r && flt(r.amount) !== 0) zeroRows.push(r.name);
 			});

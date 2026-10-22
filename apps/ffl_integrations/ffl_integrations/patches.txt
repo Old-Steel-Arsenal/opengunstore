@@ -1,6 +1,10 @@
 [pre_model_sync]
 # Patches added in this section will be executed before doctypes are migrated
 # Read docs to understand patches: https://frappeframework.com/docs/v14/user/en/database-migrations
+# Card charges get processor-neutral names (Payroc Charge -> Card Charge, Payroc Terminal Payment ->
+# Card Terminal Payment, POS Invoice payroc_* -> card_*). Before the model sync and the fixtures, or
+# they create empty card_* tables and columns beside the populated payroc_* ones.
+ffl_integrations.patches.rename_payroc_storage_to_card
 
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
@@ -24,3 +28,5 @@ ffl_integrations.patches.split_sports_south_invoice_fees
 ffl_integrations.patches.refetch_rsr_invoices
 ffl_integrations.patches.mark_existing_distributor_invoices_received
 ffl_integrations.patches.create_local_catalog_tables
+# Every card charge from before charges named their processor was taken by Payroc.
+ffl_integrations.patches.backfill_card_processor

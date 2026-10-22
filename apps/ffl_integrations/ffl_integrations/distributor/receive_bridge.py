@@ -840,6 +840,20 @@ def _resolve_line_item(provider, line) -> tuple:
 	return item_code, ""
 
 
+_CATALOG_UNREADABLE = "the catalog could not be read"
+
+
+def _free_unmatched(line, reasons) -> bool:
+	"""A $0 line the catalog and the shop both answered "no such item" for: a
+	distributor's promo freebie that is not in its catalog (a pistol case thrown in
+	with the guns). There is nothing to book it as and no cost to account for, so it
+	never holds its invoice open. A lookup that failed is not an answer: that line
+	still waits. ``reasons``: ``_resolve_lines``' unmatched reasons."""
+	reason = reasons.get(line.name)
+	return (float(line.unit_cost or 0) <= 0 and not line.item_code and bool(reason)
+		and not reason.startswith(_CATALOG_UNREADABLE))
+
+
 def _resolve_lines(inv, lines, only=None) -> tuple:
 	"""Find (or make) the Item of every line that still has units to book and no
 	``item_code`` yet: ``({line name: item_code}, {line name: reason})``. The house's
@@ -864,7 +878,7 @@ def _resolve_lines(inv, lines, only=None) -> tuple:
 			del frappe.local.message_log[messages:]
 			frappe.log_error(title=f"Invoice line item lookup failed: {ln.sku}",
 				message=frappe.get_traceback())
-			code, reason = None, f"the catalog could not be read ({type(exc).__name__})"
+			code, reason = None, f"{_CATALOG_UNREADABLE} ({type(exc).__name__})"
 		code = code or _local_item((ln.sku or "").strip(), (ln.upc or "").strip())
 		if code:
 			resolved[ln.name] = code
@@ -894,8 +908,10 @@ def stage_invoice(invoice_name: str) -> dict:
 	    {invoice_name, invoice_number, distributor, unmatched: [{sku, reason}],
 	    lines: [{line_name, item_code, item_name, sku, is_firearm, has_serial_no,
 	    outstanding, unit_cost, serials, manufacturer, model_name, firearm_type,
-	    caliber}]} — ``unmatched`` lists lines no Item could be found or
-	    made for (left off ``lines``; receive those as plain stock).
+	    caliber}], received} — ``unmatched`` lists lines no Item could be found or
+	    made for (left off ``lines``; receive those as plain stock). ``received``:
+	    true when the only units left were $0 unmatched lines (a promo freebie), so
+	    the invoice was closed here.
 
 	Permissions:
 	    Receive roles.
@@ -936,8 +952,13 @@ def stage_invoice(invoice_name: str) -> dict:
 			# received (typed off the box, in any order) is not offered again.
 			"serials": [x for x in _csv_list(ln.serials) if not frappe.db.exists("Serial No", x)][:room]
 				if slots else []})
+	# Everything left is a freebie nobody can book: nothing arrives to receive.
+	received = not out and all(_free_unmatched(ln, reasons) for ln in lines
+		if int(ln.qty or 0) - int(ln.received_qty or 0) > 0)
+	if received:
+		frappe.db.set_value(INVOICE_DT, inv.name, "received", 1)
 	return {"invoice_name": inv.name, "invoice_number": inv.invoice_number,
-		"distributor": inv.distributor, "unmatched": unmatched, "lines": out}
+		"distributor": inv.distributor, "unmatched": unmatched, "lines": out, "received": received}
 
 
 @frappe.whitelist()
@@ -977,8 +998,11 @@ def receive_invoice_lines(invoice_name: str, items, warehouse: str | None = None
 	index = open_order_index()  # once per request
 	_assert_receivable(inv, lines, index=index)
 	wanted = {(it.get("line_name") or "").strip() for it in items or []}
-	resolved, reasons = _resolve_lines(inv, lines, only=wanted)
-	inv, lines = _locked_invoice(invoice_name, set(resolved.values()), index)
+	# The $0 lines with no Item are tried too: one nobody can match does not hold it open.
+	free = {ln.name for ln in lines if float(ln.unit_cost or 0) <= 0 and not ln.item_code}
+	resolved, reasons = _resolve_lines(inv, lines, only=wanted | free)
+	inv, lines = _locked_invoice(invoice_name,
+		{code for name, code in resolved.items() if name in wanted}, index)
 	distributor = _receiving_distributor(inv)
 	by_name = {ln.name: ln for ln in lines}
 	taken: dict = {}
@@ -1025,7 +1049,7 @@ def receive_invoice_lines(invoice_name: str, items, warehouse: str | None = None
 		frappe.db.set_value(INVOICE_LINE_DT, name, "received_qty",
 			int(by_name[name].received_qty or 0) + n, update_modified=False)
 	done = all(int(ln.received_qty or 0) + taken.get(ln.name, 0) >= int(ln.qty or 0)
-		for ln in lines if int(ln.qty or 0) > 0)
+		for ln in lines if int(ln.qty or 0) > 0 and not _free_unmatched(ln, reasons))
 	frappe.db.set_value(INVOICE_DT, inv.name, {
 		"received": 1 if done else 0,
 		"received_receipts": ", ".join(filter(None, [inv.received_receipts, result.get("name")]))})
