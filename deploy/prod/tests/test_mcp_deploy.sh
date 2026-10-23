@@ -17,7 +17,10 @@ sed -n '/^deploy_mcp() {$/,/^}$/p' "$SCRIPT" > "$T/fn.sh"
 
 cat > "$T/up.sh" <<'SH'
 #!/usr/bin/env bash
-case "$*" in *get_single_value*) echo 1 ;; esac
+case "$*" in
+	*get_single_value*) echo 1 ;;
+	*"extensions.is_enabled"*) [ -n "${FAKE_RANGE:-}" ] && echo "$FAKE_RANGE" ;;
+esac
 SH
 chmod +x "$T/up.sh"
 # fake docker: log the call; `ps --format` reports both containers healthy
@@ -69,6 +72,15 @@ unset COMPOSE_PROJECT_NAME
 echo "== and with none exported the calls are unchanged"
 run ''
 grep -q 'docker compose -f .*up -d \[COMPOSE_PROJECT_NAME=unset\]' "$T/log" && ok "same calls as before" || bad "log: $(cat "$T/log")"
+
+echo "== the Range tools follow the Range extension"
+run ''
+env_has 'MCP_RANGE=0' && ok "no Range extension: MCP_RANGE=0" || bad "$(cat "$T/d/mcp/.env" 2>&1)"
+FAKE_RANGE=true run ''
+env_has 'MCP_RANGE=1' && ok "Range on: MCP_RANGE=1" || bad "$(cat "$T/d/mcp/.env" 2>&1)"
+FAKE_RANGE=garbage run ''
+env_has 'MCP_RANGE=0' && ok "anything but true: MCP_RANGE=0" || bad "$(cat "$T/d/mcp/.env" 2>&1)"
+unset FAKE_RANGE
 
 echo; echo "mcp-deploy: $pass passed, $fail failed"
 [ "$fail" = 0 ]
