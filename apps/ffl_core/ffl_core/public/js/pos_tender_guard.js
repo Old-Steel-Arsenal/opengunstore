@@ -206,6 +206,7 @@
 	//   no firearm / return / 4473 cleared → complete (vanilla ERPNext label)
 	//   firearm, 4473 pending, nothing held → pay   ("Take Payment")
 	//   firearm, 4473 pending, fully paid  → held  ("Paid — waiting for 4473", quiet)
+	//     — a web pickup ticket (paid on WooCommerce) is always this one
 	// `held` is NEVER disabled: the click still runs the submit wrapper, which
 	// re-checks the 4473 on the server (a page that missed the webhook nudge
 	// self-heals on click — a past incident) and resumes a
@@ -222,7 +223,7 @@
 		// A negative ticket takes no money — nothing is "taken" or "held": the
 		// store pays the customer when the order completes, after the 4473.
 		if (isNegativeTicket(doc)) return { key: 'wait', quiet: false };
-		if (hasHeldPayment(doc)) return { key: 'held', quiet: true };
+		if (hasHeldPayment(doc) || isPaidOnlineTicket(doc)) return { key: 'held', quiet: true };
 		return { key: 'pay', quiet: false };
 	}
 

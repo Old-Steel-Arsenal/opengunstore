@@ -430,6 +430,17 @@ test('hasHeldPayment: only the held stamp counts', () => {
 	assert.strictEqual(hasHeldPayment({ card_charged_amount: 0, ffl_payment_held: 0 }), false);
 });
 
+test('submitButtonState: a web pickup ticket reads as paid, never "Take Payment"', () => {
+	// Paid on WooCommerce before it reached the counter — "Take Payment" here
+	// sends the cashier to the terminal for an order that is already paid.
+	assert.deepStrictEqual(
+		submitButtonState({ woo_online_order: 'WOO-ORD-1' }, { hasFirearm: true, cleared: false }),
+		{ key: 'held', quiet: true });
+	assert.deepStrictEqual(
+		submitButtonState({ woo_online_order: 'WOO-ORD-1' }, { hasFirearm: true, cleared: true }),
+		{ key: 'complete', quiet: false });
+});
+
 test('submitButtonState: no firearm / return / cleared → vanilla complete', () => {
 	assert.deepStrictEqual(submitButtonState({}, { hasFirearm: false, cleared: false }),
 		{ key: 'complete', quiet: false });

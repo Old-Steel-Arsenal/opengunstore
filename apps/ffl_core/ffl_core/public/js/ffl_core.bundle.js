@@ -3204,6 +3204,10 @@ frappe.provide('frappe.ui.form');
 		// hands over. Never the card dialog, never the terminal, whatever this copy
 		// of the doc says (submit_invoice has already saved it back to $0).
 		if (pickupTicket(frm.doc)) return { skip: true };
+		// A web order's pickup ticket was paid on WooCommerce: never the terminal
+		// either. A card amount that reached it anyway is refused at submit
+		// (pickup.require_web_tender_on_submit) — before any money is taken.
+		if (window.ffl && ffl.isPaidOnlineTicket && ffl.isPaidOnlineTicket(frm.doc)) return { skip: true };
 
 		// No card processor on: cards are swiped on a standalone terminal and the
 		// Credit Card row is ordinary tender, so Complete Order finishes in one

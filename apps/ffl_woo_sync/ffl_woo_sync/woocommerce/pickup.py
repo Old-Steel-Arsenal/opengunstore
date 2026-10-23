@@ -415,11 +415,23 @@ def require_web_tender_on_submit(doc, method: str | None = None) -> None:
 	tender. A counter tender here is the customer paying twice; a WooCommerce
 	amount off the order total books money nobody collected. Extra goods go on a
 	ticket of their own.
+
+	The order itself is re-checked too — :func:`_refuse_unless_ready`, the same
+	refusals Pickup made when it opened this draft. The 4473 can take days; a
+	buyer who cancelled or was refunded online in the meantime must not leave
+	with the gun while the full amount is booked as collected.
 	"""
 	link = (doc.get("woo_online_order") or "").strip()
 	if not link or doc.get("is_return"):
 		return
-	charged = flt(frappe.db.get_value("Woo Online Order", link, "order_total"))
+	order = frappe.get_doc("Woo Online Order", link)
+	if order.order_status != _PENDING:
+		frappe.throw(_(
+			"{0} is no longer waiting for pickup (status: {1}). Do not hand the gun "
+			"over; ask a manager."
+		).format(link, order.order_status), title=_("Web Order Changed"))
+	_refuse_unless_ready(order)
+	charged = flt(order.order_total)
 	web = sum(flt(p.amount) for p in (doc.payments or [])
 		if p.mode_of_payment == WOO_MODE_OF_PAYMENT)
 	counter = sorted({p.mode_of_payment for p in (doc.payments or [])
