@@ -3204,6 +3204,10 @@ frappe.provide('frappe.ui.form');
 		// hands over. Never the card dialog, never the terminal, whatever this copy
 		// of the doc says (submit_invoice has already saved it back to $0).
 		if (pickupTicket(frm.doc)) return { skip: true };
+		// A web order's pickup ticket was paid on WooCommerce: never the terminal
+		// either. A card amount that reached it anyway is refused at submit
+		// (pickup.require_web_tender_on_submit) — before any money is taken.
+		if (window.ffl && ffl.isPaidOnlineTicket && ffl.isPaidOnlineTicket(frm.doc)) return { skip: true };
 
 		// No card processor on: cards are swiped on a standalone terminal and the
 		// Credit Card row is ordinary tender, so Complete Order finishes in one
@@ -6108,10 +6112,28 @@ frappe.provide('frappe.ui.form');
 		}
 		P.prototype.__fflPaymentTenderPatched = true;
 	}
+	// A web pickup ticket's WooCommerce row is not the profile's default mode, so
+	// ERPNext's set_default_payment zeroed it on the cart's first recompute — long
+	// before checkout, and after the onload that re-arms frm.set_default_payment.
+	// Skip it for that ticket only (pos_tender_guard.isPaidOnlineTicket); every
+	// other sale keeps ERPNext's default-MOP pre-fill. Patched on the base class:
+	// the POS Invoice controller inherits the method and does not override it.
+	function applyDefaultPaymentPatch(T) {
+		const proto = T && T.prototype;
+		if (!proto || proto.__fflWebTenderPatched || typeof proto.set_default_payment !== 'function') return;
+		const original = proto.set_default_payment;
+		proto.set_default_payment = function fflSetDefaultPayment() {
+			const paidOnline = window.ffl && ffl.isPaidOnlineTicket;
+			if (paidOnline && this.frm && paidOnline(this.frm.doc)) return;
+			return original.apply(this, arguments);
+		};
+		proto.__fflWebTenderPatched = true;
+	}
 	// Bounded retry ONLY for the degraded path (installClassHook unavailable or
 	// defineProperty rejected) — never the primary mechanism. Patches are idempotent,
 	// so re-applying whichever class is already present is safe.
 	function fallbackRetry(retriesLeft) {
+		if (window.erpnext && erpnext.taxes_and_totals) applyDefaultPaymentPatch(erpnext.taxes_and_totals);
 		const ns = window.erpnext && erpnext.PointOfSale;
 		if (ns) {
 			if (ns.Controller) applyEditOrderPatch(ns.Controller);
@@ -6134,7 +6156,8 @@ frappe.provide('frappe.ui.form');
 		if (hook) {
 			const c = hook(erpnext.PointOfSale, 'Controller', applyEditOrderPatch);
 			const p = hook(erpnext.PointOfSale, 'Payment', applyPaymentPatch);
-			if (c && p) return;
+			const t = hook(erpnext, 'taxes_and_totals', applyDefaultPaymentPatch);
+			if (c && p && t) return;
 		}
 		fallbackRetry(60);
 	}

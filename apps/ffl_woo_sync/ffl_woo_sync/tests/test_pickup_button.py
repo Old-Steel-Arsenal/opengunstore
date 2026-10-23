@@ -452,6 +452,85 @@ class TestCloseAndReopen(FrappeTestCase):
 		set_value.assert_not_called()
 
 
+class TestWebTenderOnSubmit(FrappeTestCase):
+	"""The ticket's WooCommerce row used to vanish in the register and the card
+	terminal was offered the full total — to a buyer who had already paid. Submit
+	is the last line: WooCommerce, for exactly what WooCommerce charged, and
+	nothing else — on an order that is still paid and still waiting."""
+
+	def _doc(self, payments, *, grand_total=812.40, woo_order=ORDER, is_return=0):
+		return frappe._dict(doctype="POS Invoice", name="ACC-PSINV-2026-09999",
+			woo_online_order=woo_order, is_return=is_return, grand_total=grand_total,
+			payments=[frappe._dict(mode_of_payment=m, amount=a) for m, a in payments])
+
+	def _order(self, *, order_total=812.40, order_status="Pending Fulfillment"):
+		return frappe._dict(name=ORDER, order_total=order_total, order_status=order_status)
+
+	def _submit(self, doc, order=None, ready=None):
+		from ffl_woo_sync.woocommerce import pickup
+		order = order or self._order()
+		with patch("frappe.get_doc", return_value=order) as get_doc, \
+			 patch(f"{PICKUP}._refuse_unless_ready", side_effect=ready) as refuse:
+			pickup.require_web_tender_on_submit(doc)
+		return get_doc, refuse
+
+	def test_the_woocommerce_tender_for_the_order_total_passes(self):
+		self._submit(self._doc([("WooCommerce", 812.40), ("Credit Card", 0), ("Cash", 0)]))
+
+	def test_a_card_tender_in_its_place_is_refused(self):
+		"""The register's reset: WooCommerce zeroed, card pre-filled."""
+		with self.assertRaises(frappe.ValidationError):
+			self._submit(self._doc([("WooCommerce", 0), ("Credit Card", 812.40)]))
+
+	def test_the_profile_rows_alone_are_refused(self):
+		with self.assertRaises(frappe.ValidationError):
+			self._submit(self._doc([("Credit Card", 812.40), ("Cash", 0)]))
+
+	def test_any_counter_tender_beside_it_is_refused(self):
+		with self.assertRaises(frappe.ValidationError):
+			self._submit(self._doc([("WooCommerce", 812.40), ("Cash", 20)], grand_total=832.40))
+
+	def test_a_woocommerce_amount_off_the_order_total_is_refused(self):
+		"""Money nobody collected, booked as collected."""
+		with self.assertRaises(frappe.ValidationError):
+			self._submit(self._doc([("WooCommerce", 870.00)], grand_total=870.00))
+
+	def test_a_ticket_that_no_longer_totals_the_order_is_refused(self):
+		with self.assertRaises(frappe.ValidationError):
+			self._submit(self._doc([("WooCommerce", 812.40)], grand_total=870.00))
+
+	def test_a_cent_of_rounding_is_tolerated(self):
+		self._submit(self._doc([("WooCommerce", 812.41)], grand_total=812.41))
+
+	def test_an_order_cancelled_since_pickup_is_refused(self):
+		"""The 4473 can take days; the buyer may cancel online meanwhile."""
+		with self.assertRaises(frappe.ValidationError):
+			self._submit(self._doc([("WooCommerce", 812.40)]),
+				order=self._order(order_status="Cancelled"))
+
+	def test_the_pickup_refusals_are_re_run_on_the_order(self):
+		"""Refunded / no longer paid / distributor leg open: the same checks
+		Pickup made when it opened the draft."""
+		order = self._order()
+		_get_doc, refuse = self._submit(self._doc([("WooCommerce", 812.40)]), order=order)
+		refuse.assert_called_once_with(order)
+		with self.assertRaises(frappe.ValidationError):
+			self._submit(self._doc([("WooCommerce", 812.40)]),
+				ready=frappe.ValidationError("refunded"))
+
+	def test_an_ordinary_counter_sale_is_left_alone(self):
+		get_doc, _refuse = self._submit(self._doc([("Credit Card", 500)], woo_order=None))
+		get_doc.assert_not_called()
+
+	def test_a_return_is_left_alone(self):
+		get_doc, _refuse = self._submit(self._doc([("Credit Card", -812.40)], is_return=1))
+		get_doc.assert_not_called()
+
+	def test_it_runs_before_submit(self):
+		hooks = frappe.get_hooks("doc_events")["POS Invoice"]["before_submit"]
+		self.assertIn("ffl_woo_sync.woocommerce.pickup.require_web_tender_on_submit", hooks)
+
+
 class TestOpenDraftsForOrders(FrappeTestCase):
 	def test_many_orders_are_answered_in_one_query(self):
 		"""The Pending Order page renders every pending order and reloads after

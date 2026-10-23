@@ -13,6 +13,7 @@ const {
 	applyHeldTenderCheckoutGuard,
 	lockedRowFix,
 	isLockedLine,
+	isPaidOnlineTicket,
 } = require('../../public/js/pos_tender_guard.js');
 
 // A fake POS Controller recording every call, so the resume step-list's arg
@@ -86,6 +87,43 @@ test('string/garbage amounts are coerced, not thrown', () => {
 	assert.strictEqual(hasLiveTender({ card_charged_amount: '855.17' }), true);
 	assert.strictEqual(hasLiveTender({ payments: [{ amount: 'x' }] }), false);
 	assert.strictEqual(hasLiveTender({ payments: [null, undefined] }), false);
+});
+
+// --- web-order pickup ticket: paid on WooCommerce, its tender is never reset ---
+
+test('a web pickup ticket is paid online', () => {
+	assert.strictEqual(isPaidOnlineTicket({ woo_online_order: 'WOO-ORD-1' }), true);
+	assert.strictEqual(isPaidOnlineTicket({ woo_online_order: '  ' }), false);
+	assert.strictEqual(isPaidOnlineTicket({}), false);
+	assert.strictEqual(isPaidOnlineTicket(null), false);
+});
+
+test('a return of a web pickup ticket is an ordinary refund, not paid online', () => {
+	assert.strictEqual(isPaidOnlineTicket({ woo_online_order: 'WOO-ORD-1', is_return: 1 }), false);
+});
+
+test('a web pickup ticket keeps its tender even after its row was zeroed', () => {
+	// The register zeroed the WooCommerce row before the reset ran; "no non-zero
+	// row" then let reset_mode_of_payments swap in the profile's card row.
+	assert.strictEqual(
+		hasLiveTender({ woo_online_order: 'WOO-ORD-1', card_charged_amount: 0,
+			payments: [{ mode_of_payment: 'WooCommerce', amount: 0 }] }),
+		true,
+	);
+});
+
+test('resuming a web pickup ticket skips reset_mode_of_payments', async () => {
+	const calls = [];
+	const ctrl = makeCtrl(calls, [{ mode_of_payment: 'WooCommerce', amount: 0 }]);
+	ctrl.frm.doc.woo_online_order = 'WOO-ORD-1';
+	for (const s of editOrderResumeSteps(ctrl, 'POS Invoice', 'INV-1')) await s();
+	assert.ok(!calls.some((c) => c[0] === 'frm.call'), 'no reset for a paid-online ticket');
+});
+
+test('the payment screen does not re-default a web pickup ticket', () => {
+	const frm = { set_default_payment: 1, doc: { woo_online_order: 'WOO-ORD-1', payments: [] } };
+	assert.strictEqual(applyHeldTenderCheckoutGuard(frm), true);
+	assert.strictEqual(frm.set_default_payment, 0);
 });
 
 // --- edit_order resume step-list (pins the ERPNext arity contract + reset-skip) ---
@@ -390,6 +428,17 @@ test('hasHeldPayment: only the held stamp counts', () => {
 	assert.strictEqual(hasHeldPayment({ ffl_payment_held: '1' }), true);
 	// Voided: stamp cleared server-side → not held.
 	assert.strictEqual(hasHeldPayment({ card_charged_amount: 0, ffl_payment_held: 0 }), false);
+});
+
+test('submitButtonState: a web pickup ticket reads as paid, never "Take Payment"', () => {
+	// Paid on WooCommerce before it reached the counter — "Take Payment" here
+	// sends the cashier to the terminal for an order that is already paid.
+	assert.deepStrictEqual(
+		submitButtonState({ woo_online_order: 'WOO-ORD-1' }, { hasFirearm: true, cleared: false }),
+		{ key: 'held', quiet: true });
+	assert.deepStrictEqual(
+		submitButtonState({ woo_online_order: 'WOO-ORD-1' }, { hasFirearm: true, cleared: true }),
+		{ key: 'complete', quiet: false });
 });
 
 test('submitButtonState: no firearm / return / cleared → vanilla complete', () => {

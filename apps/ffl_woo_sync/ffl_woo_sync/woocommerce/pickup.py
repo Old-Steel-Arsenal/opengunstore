@@ -49,6 +49,7 @@ from ffl_woo_sync.ffl_woo_sync.doctype.woo_online_order.woo_online_order import 
 	unmark_transferred,
 )
 from ffl_woo_sync.woocommerce.revenue import (
+	WOO_MODE_OF_PAYMENT,
 	_TOTAL_TOLERANCE,
 	_default_company,
 	_ensure_mode_of_payment,
@@ -394,6 +395,59 @@ def _release_reserved_serials(order_name: str) -> None:
 	):
 		frappe.db.set_value("Serial No", serial,
 			{"woo_reserved": 0, "woo_order": ""}, update_modified=False)
+
+
+def require_web_tender_on_submit(doc, method: str | None = None) -> None:
+	"""POS Invoice before_submit — a pickup ticket is settled by WooCommerce, in
+	full, and by nothing else.
+
+	The buyer paid online; the ticket's only tender is the WooCommerce row
+	:func:`_attach_payment` wrote. The register used to lose that row: ERPNext's
+	`set_default_payment` zeroed it on the first cart recompute (it is not the
+	profile's default mode), the resume path then saw no tender and reset the
+	rows to the profile's, and the payment screen offered the full total on the
+	card terminal — to a buyer who had already paid. The client now keeps the
+	row; this is the rule behind it for every other path (a stale tab, a Desk
+	submit, the API).
+
+	Strict on purpose, the same mirror `_attach_payment` checks at creation: the
+	ticket must still total what WooCommerce charged, and carry nothing but that
+	tender. A counter tender here is the customer paying twice; a WooCommerce
+	amount off the order total books money nobody collected. Extra goods go on a
+	ticket of their own.
+
+	The order itself is re-checked too — :func:`_refuse_unless_ready`, the same
+	refusals Pickup made when it opened this draft. The 4473 can take days; a
+	buyer who cancelled or was refunded online in the meantime must not leave
+	with the gun while the full amount is booked as collected.
+	"""
+	link = (doc.get("woo_online_order") or "").strip()
+	if not link or doc.get("is_return"):
+		return
+	order = frappe.get_doc("Woo Online Order", link)
+	if order.order_status != _PENDING:
+		frappe.throw(_(
+			"{0} is no longer waiting for pickup (status: {1}). Do not hand the gun "
+			"over; ask a manager."
+		).format(link, order.order_status), title=_("Web Order Changed"))
+	_refuse_unless_ready(order)
+	charged = flt(order.order_total)
+	web = sum(flt(p.amount) for p in (doc.payments or [])
+		if p.mode_of_payment == WOO_MODE_OF_PAYMENT)
+	counter = sorted({p.mode_of_payment for p in (doc.payments or [])
+		if p.mode_of_payment != WOO_MODE_OF_PAYMENT and flt(p.amount)})
+	if (not counter and abs(web - charged) <= _TOTAL_TOLERANCE
+			and abs(flt(doc.grand_total) - charged) <= _TOTAL_TOLERANCE):
+		return
+	frappe.throw(_(
+		"{0} is web order {1}, already paid on WooCommerce ({2}). It can only be "
+		"completed with the WooCommerce payment for exactly that amount — this "
+		"ticket has WooCommerce {3}, total {4}{5}. Take no payment at the counter; "
+		"ring any extra items on a separate ticket, and ask a manager to fix this one."
+	).format(doc.name, link, frappe.bold(charged), frappe.bold(web),
+		frappe.bold(flt(doc.grand_total)),
+		_(", and counter payment by {0}").format(", ".join(counter)) if counter else ""),
+		title=_("Already Paid Online"))
 
 
 def close_web_order_on_pos_submit(doc, method: str | None = None) -> None:
