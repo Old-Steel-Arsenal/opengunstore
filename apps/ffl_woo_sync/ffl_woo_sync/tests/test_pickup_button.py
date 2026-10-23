@@ -452,6 +452,65 @@ class TestCloseAndReopen(FrappeTestCase):
 		set_value.assert_not_called()
 
 
+class TestWebTenderOnSubmit(FrappeTestCase):
+	"""The ticket's WooCommerce row used to vanish in the register and the card
+	terminal was offered the full total — to a buyer who had already paid. Submit
+	is the last line: WooCommerce, for exactly what WooCommerce charged, and
+	nothing else."""
+
+	def _doc(self, payments, *, grand_total=1389.93, woo_order=ORDER, is_return=0):
+		doc = frappe._dict(doctype="POS Invoice", name="ACC-PSINV-2026-09999",
+			woo_online_order=woo_order, is_return=is_return, grand_total=grand_total,
+			payments=[frappe._dict(mode_of_payment=m, amount=a) for m, a in payments])
+		return doc
+
+	def _submit(self, doc, charged=1389.93):
+		from ffl_woo_sync.woocommerce import pickup
+		with patch("frappe.db.get_value", return_value=charged) as get_value:
+			pickup.require_web_tender_on_submit(doc)
+		return get_value
+
+	def test_the_woocommerce_tender_for_the_order_total_passes(self):
+		self._submit(self._doc([("WooCommerce", 1389.93), ("Credit Card", 0), ("Cash", 0)]))
+
+	def test_a_card_tender_in_its_place_is_refused(self):
+		"""The register's reset: WooCommerce zeroed, card pre-filled."""
+		with self.assertRaises(frappe.ValidationError):
+			self._submit(self._doc([("WooCommerce", 0), ("Credit Card", 1389.93)]))
+
+	def test_the_profile_rows_alone_are_refused(self):
+		with self.assertRaises(frappe.ValidationError):
+			self._submit(self._doc([("Credit Card", 1389.93), ("Cash", 0)]))
+
+	def test_any_counter_tender_beside_it_is_refused(self):
+		with self.assertRaises(frappe.ValidationError):
+			self._submit(self._doc([("WooCommerce", 1389.93), ("Cash", 20)], grand_total=1409.93))
+
+	def test_a_woocommerce_amount_off_the_order_total_is_refused(self):
+		"""Money nobody collected, booked as collected."""
+		with self.assertRaises(frappe.ValidationError):
+			self._submit(self._doc([("WooCommerce", 1450.00)], grand_total=1450.00))
+
+	def test_a_ticket_that_no_longer_totals_the_order_is_refused(self):
+		with self.assertRaises(frappe.ValidationError):
+			self._submit(self._doc([("WooCommerce", 1389.93)], grand_total=1450.00))
+
+	def test_a_cent_of_rounding_is_tolerated(self):
+		self._submit(self._doc([("WooCommerce", 1389.94)], grand_total=1389.94))
+
+	def test_an_ordinary_counter_sale_is_left_alone(self):
+		get_value = self._submit(self._doc([("Credit Card", 500)], woo_order=None))
+		get_value.assert_not_called()
+
+	def test_a_return_is_left_alone(self):
+		get_value = self._submit(self._doc([("Credit Card", -1389.93)], is_return=1))
+		get_value.assert_not_called()
+
+	def test_it_runs_before_submit(self):
+		hooks = frappe.get_hooks("doc_events")["POS Invoice"]["before_submit"]
+		self.assertIn("ffl_woo_sync.woocommerce.pickup.require_web_tender_on_submit", hooks)
+
+
 class TestOpenDraftsForOrders(FrappeTestCase):
 	def test_many_orders_are_answered_in_one_query(self):
 		"""The Pending Order page renders every pending order and reloads after
