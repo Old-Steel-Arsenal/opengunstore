@@ -32,3 +32,5 @@ services:
       # The GunBroker write tools: auto_deploy.sh sets this from the store's own
       # GunBroker Settings.enabled (a store that lists must be able to end).
       GUNSTORE_MCP_GUNBROKER_ACTIONS: ${MCP_GUNBROKER_ACTIONS:-0}
+      # The Range board tools: auto_deploy.sh sets this when the Range extension is on.
+      GUNSTORE_MCP_RANGE: ${MCP_RANGE:-0}

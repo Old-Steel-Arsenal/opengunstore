@@ -129,11 +129,17 @@ deploy_mcp() {
 	gb="$("$UP" exec -T backend bench --site "$SITE" execute frappe.db.get_single_value \
 		--args "['GunBroker Settings', 'enabled']" 2>/dev/null | tail -n 1 | tr -d '\r ')"
 	[ "$gb" = "1" ] || gb=0
+	# The Range tools follow the Range extension (osa_range): on only where it is installed and
+	# switched on. bench execute prints `true` for True and nothing for False or a missing app.
+	range="$("$UP" exec -T backend bench --site "$SITE" execute ffl_core.extensions.is_enabled \
+		--args "['osa_range']" 2>/dev/null | tail -n 1 | tr -d '\r ')"
+	[ "$range" = "true" ] && range=1 || range=0
 	{
 		echo "# written by auto_deploy.sh on every deploy — edit version.env / the script instead"
 		echo "FRAPPE_BASE_URL=$base"
 		echo "FRAPPE_INTERNAL_URL=http://${publish}"
 		echo "MCP_GUNBROKER_ACTIONS=$gb"
+		echo "MCP_RANGE=$range"
 		echo "MCP_TAG=$tag"
 		# the image to run: MCP_IMAGE from deploy/prod/.env when the store builds its own
 		grep -h '^MCP_IMAGE=' "$ENV_FILE" || true
