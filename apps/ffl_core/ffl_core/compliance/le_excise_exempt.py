@@ -87,6 +87,15 @@ def apply_le_excise_exemption_before(doc, method: str | None = None) -> None:
 	_strip(doc)
 
 
+def _certificate_on_file(doc) -> bool:
+	"""The certificate is a file kept on THIS buyer's Customer record: not a typed
+	value, and not another buyer's certificate left on the sale after the customer
+	was changed."""
+	cert, customer = doc.get(CERT), doc.get("customer")
+	return bool(cert and customer and frappe.db.exists("File", {"file_url": cert,
+		"attached_to_doctype": "Customer", "attached_to_name": customer}))
+
+
 def _strip(doc) -> bool:
 	"""Check the paperwork and drop the excise rows; True when a row went."""
 	if not cint(doc.get(FLAG)):
@@ -102,9 +111,10 @@ def _strip(doc) -> bool:
 	if not doc.get(BUYER):
 		frappe.throw(_("Say who the exempt buyer is: an active or retired peace officer, "
 			"or the law enforcement agency employing one."), title=_("Peace-Officer Exemption"))
-	if not doc.get(CERT):
-		frappe.throw(_("Attach the buyer's CDTFA-230-FET exemption certificate for this sale. "
-			"Without it the excise tax is charged."), title=_("Peace-Officer Exemption"))
+	if not _certificate_on_file(doc):
+		frappe.throw(_("Attach the buyer's CDTFA-230-FET exemption certificate for this sale, "
+			"uploaded on this buyer's own customer record. Without it the excise tax is charged."),
+			title=_("Peace-Officer Exemption"))
 	taxes = doc.get("taxes") or []
 	keep = [t for t in taxes if t.account_head != account]
 	if len(keep) == len(taxes):

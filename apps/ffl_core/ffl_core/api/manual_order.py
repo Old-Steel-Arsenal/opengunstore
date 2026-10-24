@@ -4668,7 +4668,7 @@ def quote_config(company: str | None = None) -> dict:
 
 
 @frappe.whitelist()
-def item_tax_rates(item_codes, company: str | None = None, le_excise_exempt: int = 0) -> dict:
+def item_tax_rates(item_codes, company: str | None = None, excise_exempt: int = 0) -> dict:
 	"""Per-item sales-tax rate for the Create Order preview.
 
 	The summed "On Net Total" rate of the company's default sales-tax template
@@ -4682,7 +4682,7 @@ def item_tax_rates(item_codes, company: str | None = None, le_excise_exempt: int
 	Args:
 	    item_codes: List (or JSON list) of Item codes.
 	    company: Optional company; defaults to the configured default.
-	    le_excise_exempt: 1 for a peace officer's sale — the excise account's
+	    excise_exempt: 1 for a peace officer's sale — the excise account's
 	        rows (compliance.le_excise_exempt) are left out of the rate.
 
 	Returns:
@@ -4699,10 +4699,8 @@ def item_tax_rates(item_codes, company: str | None = None, le_excise_exempt: int
 	tmpl = _default_template(company) if company else None
 	rows = [r for r in frappe.get_doc("Sales Taxes and Charges Template", tmpl).taxes
 		if r.charge_type == "On Net Total"] if tmpl else []
-	if cint(le_excise_exempt):
-		# The parameter shadows the module name here.
-		from ffl_core.compliance.le_excise_exempt import exempt_account
-		le_account = exempt_account(company)
+	if cint(excise_exempt):
+		le_account = le_excise_exempt.exempt_account(company)
 		rows = [r for r in rows if r.account_head != le_account]
 	base = {"company": company, "taxes": [
 		{"account_head": r.account_head, "rate": r.rate} for r in rows]}

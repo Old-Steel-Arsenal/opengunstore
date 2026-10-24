@@ -18,8 +18,16 @@ from frappe.utils import flt
 from ffl_core.compliance import le_excise_exempt as le
 
 ITEM = "_TEST-LE-PISTOL"
-CERT = "/private/files/230-fet-test.pdf"
+TYPED_CERT = "/private/files/230-fet-test.pdf"  # a path no File carries
 OFFICER = "Active Peace Officer"
+
+
+def _certificate(customer: str) -> str:
+	"""A CDTFA-230-FET file uploaded on this customer's record (as the page and the
+	register do); its URL."""
+	return frappe.get_doc({"doctype": "File", "file_name": "230-fet-test.txt", "content": f"CDTFA-230-FET for {customer}".encode(),
+		"is_private": 1, "attached_to_doctype": "Customer", "attached_to_name": customer}
+		).insert(ignore_permissions=True).file_url
 
 
 def _company() -> str:
@@ -72,6 +80,7 @@ class LeExciseFixtures(FrappeTestCase):
 		if not cls.customer:
 			cls.customer = frappe.get_doc({"doctype": "Customer", "customer_name": "_Test LE Officer",
 				"customer_type": "Individual"}).insert(ignore_permissions=True).name
+		cls.cert = _certificate(cls.customer)
 
 	def setUp(self):
 		self._was = frappe.db.get_single_value("FFL Settings", le.SETTING)
@@ -97,7 +106,7 @@ class LeExciseFixtures(FrappeTestCase):
 		return si
 
 	def _exempt(self, **over):
-		return {le.FLAG: 1, le.BUYER: OFFICER, le.CERT: CERT, **over}
+		return {le.FLAG: 1, le.BUYER: OFFICER, le.CERT: self.cert, **over}
 
 
 class ExemptSale(LeExciseFixtures):
@@ -134,6 +143,19 @@ class ExemptionPaperwork(LeExciseFixtures):
 		with self.assertRaises(frappe.ValidationError) as caught:
 			self._si(**self._exempt(**{le.CERT: ""}))
 		self.assertIn("230-FET", str(caught.exception))
+
+	def test_a_typed_certificate_is_not_one(self):
+		with self.assertRaises(frappe.ValidationError):
+			self._si(**self._exempt(**{le.CERT: TYPED_CERT}))
+
+	def test_another_buyers_certificate_is_not_this_ones(self):
+		"""The buyer was changed after the upload: the certificate left on the sale is
+		on someone else's record."""
+		other = frappe.db.get_value("Customer", {"customer_name": "_Test LE Other Buyer"}) or frappe.get_doc(
+			{"doctype": "Customer", "customer_name": "_Test LE Other Buyer", "customer_type": "Individual"}
+			).insert(ignore_permissions=True).name
+		with self.assertRaises(frappe.ValidationError):
+			self._si(**self._exempt(**{le.CERT: _certificate(other)}))
 
 	def test_who_the_buyer_is_is_required(self):
 		with self.assertRaises(frappe.ValidationError):
@@ -188,13 +210,14 @@ class HookUnit(unittest.TestCase):
 	def _doc(self, doctype="POS Invoice", **fields):
 		doc = frappe.new_doc(doctype)
 		doc.company = "Any Co"
-		doc.update({le.FLAG: 1, le.BUYER: OFFICER, le.CERT: CERT, **fields})
+		doc.update({le.FLAG: 1, le.BUYER: OFFICER, le.CERT: TYPED_CERT, **fields})
 		doc.append("taxes", {"charge_type": "On Net Total", "account_head": "Sales Tax - X", "rate": 8.75})
 		doc.append("taxes", {"charge_type": "On Net Total", "account_head": "Excise - X", "rate": 11})
 		return doc
 
 	def _run(self, doc, hook=le.apply_le_excise_exemption):
 		with patch.object(le, "exempt_account", return_value="Excise - X"), \
+				patch.object(le, "_certificate_on_file", return_value=True), \
 				patch.object(type(doc), "calculate_taxes_and_totals") as calc:
 			hook(doc)
 		return calc
@@ -239,6 +262,8 @@ class CreateOrderExemption(TaxExemptOrderFixtures):
 		frappe.db.set_single_value("FFL Settings", le.SETTING, acct)
 		self._ca = patch.object(le, "in_exempt_state", return_value=True)
 		self._ca.start()
+		self.buyer = self._indiv("LE Officer Buyer")
+		self.cert = _certificate(self.buyer)
 
 	def tearDown(self):
 		self._ca.stop()
@@ -248,7 +273,7 @@ class CreateOrderExemption(TaxExemptOrderFixtures):
 	def _order(self, serial_tag, **le_fields):
 		serial = self._stocked_serial(serial_tag)
 		return manual_order.create_order({
-			"buyer_type": "individual", "customer": self._indiv("LE Officer Buyer"),
+			"buyer_type": "individual", "customer": self.buyer,
 			"pos_profile": self._pos_profile(), "destination_ffl": DEST_FFL,
 			"dispose_now": 0, "payment_received": 1, "mode_of_payment": "Cash", "tax_exempt": 0,
 			"items": [{"item_code": "BO-GUN", "qty": 1, "rate": 1000, "serials": [serial]}],
@@ -257,16 +282,16 @@ class CreateOrderExemption(TaxExemptOrderFixtures):
 
 	def test_the_exemption_rides_onto_the_order_and_survives_the_paid_pass(self):
 		out = self._order("LE-CO-1", le_excise_exempt=1, le_exempt_buyer=OFFICER,
-			le_exempt_certificate=CERT)
+			le_exempt_certificate=self.cert)
 		si = frappe.get_doc("Sales Invoice", out["sales_invoice"])
 		self.assertEqual(si.is_pos, 1)
 		self.assertEqual(len(si.taxes), 0)
 		self.assertAlmostEqual(flt(si.grand_total), 1000, places=2)
 		so = frappe.get_doc("Sales Order", out["sales_order"])
 		for doc in (so, si):
-			self.assertEqual((doc.get(le.FLAG), doc.get(le.BUYER), doc.get(le.CERT)), (1, OFFICER, CERT))
+			self.assertEqual((doc.get(le.FLAG), doc.get(le.BUYER), doc.get(le.CERT)), (1, OFFICER, self.cert))
 		payload = manual_order.get_order_for_edit(si.name)["payload"]
-		self.assertEqual((payload["le_excise_exempt"], payload["le_exempt_certificate"]), (1, CERT))
+		self.assertEqual((payload["le_excise_exempt"], payload["le_exempt_certificate"]), (1, self.cert))
 
 	def test_no_certificate_no_order(self):
 		with self.assertRaises(frappe.ValidationError):

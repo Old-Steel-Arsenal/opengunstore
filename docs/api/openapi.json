@@ -8682,7 +8682,7 @@
           "ffl_core"
         ],
         "summary": "Tax-exempt flag + certificate URL for a customer.",
-        "description": "Lets the Create Order page pre-fill a Business buyer's existing\nexemption.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:4724`",
+        "description": "Lets the Create Order page pre-fill a Business buyer's existing\nexemption.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:4722`",
         "operationId": "ffl_core.api.manual_order.get_customer_tax_status",
         "responses": {
           "200": {
@@ -8864,7 +8864,7 @@
                     ],
                     "description": "Optional company; defaults to the configured default."
                   },
-                  "le_excise_exempt": {
+                  "excise_exempt": {
                     "type": "integer",
                     "description": "1 for a peace officer's sale — the excise account's rows (compliance.le_excise_exempt) are left out of the rate.",
                     "default": 0
@@ -9501,7 +9501,7 @@
           "ffl_core"
         ],
         "summary": "Persist a customer's sales-tax-exempt status (+ optional certificate).",
-        "description": "Checking the exemption is enough to exempt; the certificate is optional\nand, once on file, is attached to the Customer (retrievable any time)\nand reused.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:4748`",
+        "description": "Checking the exemption is enough to exempt; the certificate is optional\nand, once on file, is attached to the Customer (retrievable any time)\nand reused.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:4746`",
         "operationId": "ffl_core.api.manual_order.set_customer_tax_exempt",
         "responses": {
           "200": {

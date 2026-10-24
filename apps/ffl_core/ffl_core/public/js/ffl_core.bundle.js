@@ -1445,14 +1445,20 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		frm.dirty();
 		if (on) {
 			const account = frappe.boot.ffl_le_exempt_account;
-			frm.doc.taxes = (frm.doc.taxes || []).filter((t) => t.account_head !== account);
-			frm.doc.taxes.forEach((t, i) => { t.idx = i + 1; });
-			frm.cscript.calculate_taxes_and_totals();
-		} else {
+			const taxes = frm.doc.taxes || [];
+			// Kept for Remove exemption on a ticket with no template to refill from.
+			frm.__fflLeRemoved = taxes.filter((t) => t.account_head === account);
+			frm.doc.taxes = taxes.filter((t) => t.account_head !== account);
+		} else if (frm.doc.taxes_and_charges) {
 			// The template's rows back, excise included (ERPNext's own refill, which totals).
 			frm.doc.taxes = [];
 			await frm.cscript.taxes_and_charges();
+		} else {
+			frm.doc.taxes = [...(frm.doc.taxes || []), ...(frm.__fflLeRemoved || [])];
 		}
+		frm.__fflLeRemoved = on ? frm.__fflLeRemoved : null;
+		frm.doc.taxes.forEach((t, i) => { t.idx = i + 1; });
+		frm.cscript.calculate_taxes_and_totals();
 		if (pos && pos.cart && typeof pos.cart.update_totals_section === 'function') pos.cart.update_totals_section(frm);
 		const btn = document.getElementById(LE_EXEMPT_BTN_ID);
 		if (btn) btn.textContent = on ? __('LE Exempt ✓') : __('LE Exempt');

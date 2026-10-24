@@ -227,7 +227,7 @@ exemption.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:4724`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:4722`</sub>
 
 ## `get_order_draft`
 
@@ -290,7 +290,7 @@ server, no tax on or inside its shipping.
 |---|---|---|---|---|
 | `item_codes` | — | yes | — | List (or JSON list) of Item codes. |
 | `company` | string \| null | no | `None` | Optional company; defaults to the configured default. |
-| `le_excise_exempt` | integer | no | `0` | 1 for a peace officer's sale — the excise account's rows (compliance.le_excise_exempt) are left out of the rate. |
+| `excise_exempt` | integer | no | `0` | 1 for a peace officer's sale — the excise account's rows (compliance.le_excise_exempt) are left out of the rate. |
 
 **Returns:** {<item_code>: <rate %>} for every known item.
 
@@ -644,7 +644,7 @@ and reused.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:4748`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:4746`</sub>
 
 ## `update_order`
 

@@ -2214,7 +2214,7 @@ class CreateOrderApp {
 		const asked = this._itemRates;
 		frappe.call({
 			method: 'ffl_core.api.manual_order.item_tax_rates',
-			args: { item_codes: JSON.stringify(missing), le_excise_exempt: this._leExempt ? 1 : 0 },
+			args: { item_codes: JSON.stringify(missing), excise_exempt: this._leExempt ? 1 : 0 },
 			callback: (r) => {
 				if (asked !== this._itemRates) return; // the exemption flipped meanwhile
 				Object.assign(this._itemRates, r.message || {});
@@ -2350,7 +2350,7 @@ class CreateOrderApp {
 			missing.push(this._isCr() ? __('Destination FFL (click "Use this C&R license")') : __('Destination FFL'));
 		}
 		if (this._leExempt && !this.fields.le_exempt_buyer.get_value()) missing.push(__('Exempt buyer'));
-		if (this._leExempt && !this._leCert) missing.push(__('CDTFA-230-FET certificate'));
+		if (this._leExempt && !this._leCertOk()) missing.push(__('CDTFA-230-FET certificate'));
 		const tenderRef = this._tenderReference();
 		if (tenderRef && !(this.fields.transaction_number.get_value() || '').trim()) {
 			missing.push(tenderRef.missing);
@@ -2780,10 +2780,22 @@ class CreateOrderApp {
 		this._setLeExempt(on, this.fields.le_exempt_buyer.get_value(), this._leCert);
 	}
 
+	// The buyer the order is for — the record the certificate has to be on.
+	_leBuyer() {
+		return (this.buyerType === 'business' ? this._businessCustomer : this.fields.customer.get_value()) || '';
+	}
+
+	// A certificate uploaded here counts only for the buyer it was uploaded on (one
+	// restored from a draft or an edit is checked by the server).
+	_leCertOk() {
+		return !!this._leCert && (!this._leCertFor || this._leCertFor === this._leBuyer());
+	}
+
 	_setLeExempt(on, buyer, cert) {
 		const changed = on !== !!this._leExempt;
 		this._leExempt = on;
 		this._leCert = on ? (cert || null) : null;
+		this._leCertFor = null;
 		const setIf = (field, v) => { if ((this.fields[field].get_value() || '') !== v) this.fields[field].set_value(v); };
 		setIf('le_excise_exempt', on ? 1 : '');
 		setIf('le_exempt_buyer', on ? (buyer || '') : '');
@@ -2797,7 +2809,7 @@ class CreateOrderApp {
 	_renderLeCert() {
 		const $a = this.$body.find('#le-cert-area').empty();
 		if (!this._leExempt) return;
-		if (this._leCert) {
+		if (this._leCertOk()) {
 			$a.html(`${__('CDTFA-230-FET')}: <a href="${frappe.utils.escape_html(this._leCert)}" target="_blank">${__('view')}</a> · <a href="#" id="le-reupload">${__('replace')}</a>`);
 			$a.find('#le-reupload').on('click', (e) => { e.preventDefault(); this._uploadLeCert(); });
 		} else {
@@ -2807,7 +2819,7 @@ class CreateOrderApp {
 	}
 
 	_uploadLeCert() {
-		const cust = this.buyerType === 'business' ? this._businessCustomer : this.fields.customer.get_value();
+		const cust = this._leBuyer();
 		if (!cust) {
 			frappe.show_alert({ message: __('Pick the buyer first — the certificate is kept on their record.'), indicator: 'orange' });
 			return;
@@ -2817,6 +2829,7 @@ class CreateOrderApp {
 			restrictions: { allowed_file_types: ['.pdf', '.png', '.jpg', '.jpeg'] },
 			on_success: (file_doc) => {
 				this._leCert = file_doc.file_url;
+				this._leCertFor = cust;
 				this._renderLeCert();
 				this._reflectReadiness();
 			},
