@@ -4726,6 +4726,23 @@
   "hidden": 0
  },
  {
+  "doctype": "Custom Field",
+  "dt": "POS Invoice",
+  "fieldname": "ffl_cash_taken_at",
+  "fieldtype": "Datetime",
+  "label": "Payment Taken On Draft",
+  "insert_after": "ffl_payment_held",
+  "read_only": 1,
+  "no_copy": 1,
+  "print_hide": 1,
+  "hidden": 1,
+  "description": "Set (server clock) when Take Payment saves this order as a Draft: a part payment, or the tender taken before the 4473 clears. The cash drawer counts the cash rows of a draft only once this is set.",
+  "module": "FFL Core",
+  "name": "POS Invoice-ffl_cash_taken_at",
+  "is_system_generated": 0,
+  "modified": "2026-10-24 12:00:00"
+ },
+ {
   "allow_in_quick_entry": 0,
   "allow_on_submit": 0,
   "columns": 0,
