@@ -59,10 +59,15 @@ class LeExciseFixtures(FrappeTestCase):
 					{"charge_type": "On Net Total", "account_head": cls.excise,
 						"rate": 11, "description": "Excise 11%"},
 				]}).insert(ignore_permissions=True)
+		# A group of its own: no Item Tax Template overrides the template's rates.
+		group = "_Test LE Group"
+		if not frappe.db.exists("Item Group", group):
+			frappe.get_doc({"doctype": "Item Group", "item_group_name": group,
+				"parent_item_group": "All Item Groups"}).insert(ignore_permissions=True)
 		if not frappe.db.exists("Item", ITEM):
-			frappe.get_doc({"doctype": "Item", "item_code": ITEM, "item_name": ITEM,
-				"item_group": frappe.db.get_value("Item Group", {"is_group": 0}, "name"),
+			frappe.get_doc({"doctype": "Item", "item_code": ITEM, "item_name": ITEM, "item_group": group,
 				"stock_uom": "Nos", "is_stock_item": 0, "is_sales_item": 1}).insert(ignore_permissions=True)
+		frappe.db.set_value("Item", ITEM, "item_group", group, update_modified=False)
 		cls.customer = frappe.db.get_value("Customer", {"customer_name": "_Test LE Officer"}, "name")
 		if not cls.customer:
 			cls.customer = frappe.get_doc({"doctype": "Customer", "customer_name": "_Test LE Officer",
@@ -71,8 +76,12 @@ class LeExciseFixtures(FrappeTestCase):
 	def setUp(self):
 		self._was = frappe.db.get_single_value("FFL Settings", le.SETTING)
 		frappe.db.set_single_value("FFL Settings", le.SETTING, self.excise)
+		# The test Company's address is in Texas; these tests are a California store.
+		self._ca = patch.object(le, "in_exempt_state", return_value=True)
+		self._ca.start()
 
 	def tearDown(self):
+		self._ca.stop()
 		frappe.db.set_single_value("FFL Settings", le.SETTING, self._was)
 
 	def _si(self, *, extra_taxes=(), **fields):
@@ -138,6 +147,41 @@ class ExemptionPaperwork(LeExciseFixtures):
 			self._si(**self._exempt())
 
 
+class CaliforniaOnly(LeExciseFixtures):
+	"""The exemption is California law: a store elsewhere (the test Company is in
+	Texas) is never offered it, whatever FFL Settings holds."""
+
+	def setUp(self):
+		super().setUp()
+		self._ca.stop()  # the real home state: Texas
+
+	def tearDown(self):
+		self._ca.start()  # LeExciseFixtures.tearDown stops it
+		super().tearDown()
+
+	def test_a_texas_store_refuses_the_flag_and_offers_nothing(self):
+		self.assertIsNone(le.exempt_account(self.company))
+		with self.assertRaises(frappe.ValidationError) as caught:
+			self._si(**self._exempt())
+		self.assertIn("California", str(caught.exception))
+		from ffl_core.api import manual_order
+
+		self.assertFalse(manual_order.quote_config(self.company)["le_exempt_offered"])
+
+	def test_settings_refuse_the_account_outside_california(self):
+		settings = frappe.get_single("FFL Settings")
+		settings.set(le.SETTING, self.excise)
+		with self.assertRaises(frappe.ValidationError):
+			settings.validate()
+
+	def test_only_a_california_address_qualifies(self):
+		from ffl_core.compliance import interstate_tax
+
+		for answer, expected in ((("CA", ""), True), (("TX", ""), False), ((None, "no address"), False)):
+			with patch.object(interstate_tax, "_read_home_state", return_value=answer):
+				self.assertEqual(le.in_exempt_state(self.company), expected, answer)
+
+
 class HookUnit(unittest.TestCase):
 	"""The hook on an in-memory document: returns, channel mirrors and POS Invoice."""
 
@@ -193,8 +237,11 @@ class CreateOrderExemption(TaxExemptOrderFixtures):
 		self._was = frappe.db.get_single_value("FFL Settings", le.SETTING)
 		acct = frappe.db.get_value("Sales Taxes and Charges", {"parent": self.default_template}, "account_head")
 		frappe.db.set_single_value("FFL Settings", le.SETTING, acct)
+		self._ca = patch.object(le, "in_exempt_state", return_value=True)
+		self._ca.start()
 
 	def tearDown(self):
+		self._ca.stop()
 		frappe.db.set_single_value("FFL Settings", le.SETTING, self._was)
 		super().tearDown()
 

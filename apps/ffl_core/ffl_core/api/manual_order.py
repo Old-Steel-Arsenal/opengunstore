@@ -4657,7 +4657,7 @@ def quote_config(company: str | None = None) -> dict:
 	rows = [r for r in frappe.get_doc("Sales Taxes and Charges Template", tmpl).taxes
 		if r.charge_type == "On Net Total"] if tmpl else []
 	rate = sum(flt(r.rate) for r in rows)
-	le_account = le_excise_exempt.exempt_account()
+	le_account = le_excise_exempt.exempt_account(company)
 	return {"home_state": home_state(company), "rate": rate,
 		"le_exempt_offered": bool(le_account),
 		"le_excise_rate": sum(flt(r.rate) for r in rows if r.account_head == le_account),
@@ -4702,7 +4702,7 @@ def item_tax_rates(item_codes, company: str | None = None, le_excise_exempt: int
 	if cint(le_excise_exempt):
 		# The parameter shadows the module name here.
 		from ffl_core.compliance.le_excise_exempt import exempt_account
-		le_account = exempt_account()
+		le_account = exempt_account(company)
 		rows = [r for r in rows if r.account_head != le_account]
 	base = {"company": company, "taxes": [
 		{"account_head": r.account_head, "rate": r.rate} for r in rows]}

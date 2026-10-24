@@ -13,6 +13,17 @@ from frappe.utils import cint
 
 
 class FFLSettings(Document):
+	def validate(self):
+		"""The peace-officer excise exemption is California's: no account for it on a
+		store elsewhere (compliance/le_excise_exempt)."""
+		from ffl_core.compliance import le_excise_exempt
+
+		account = self.get(le_excise_exempt.SETTING)
+		if account and not le_excise_exempt.in_exempt_state(
+				frappe.db.get_value("Account", account, "company")):
+			frappe.throw(_("The Peace-Officer Exempt Tax Account is for California stores only "
+				"(the store's own address, in Company › Addresses, is not in California)."))
+
 	def on_update(self):
 		"""Carry a switch change into the two places that cache what it decides.
 

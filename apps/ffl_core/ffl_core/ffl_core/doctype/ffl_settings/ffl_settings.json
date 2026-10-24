@@ -95,7 +95,7 @@
    "fieldtype": "Link",
    "options": "Account",
    "label": "Peace-Officer Exempt Tax Account",
-   "description": "The excise tax account a sale to a peace officer or law enforcement agency is exempt from (California's 11% firearm and ammunition excise tax). The counter then offers a Peace-Officer Exemption that takes this tax off and keeps sales tax. Leave blank where there is no such tax."
+   "description": "California stores only. The excise tax account (the 11% firearm and ammunition excise tax) a sale to a peace officer or law enforcement agency is exempt from. The counter then offers a Peace-Officer Exemption that takes this tax off and keeps sales tax."
   },
   {
    "fieldname": "counter_lock_minutes",

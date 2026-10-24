@@ -11,9 +11,11 @@ One per-sale flag, ``ffl_le_excise_exempt``, on POS Invoice / Sales Order / Sale
 Invoice, with who the buyer is and the certificate beside it. FFL Settings'
 "Peace-Officer Exempt Tax Account" names the excise account; with the flag on,
 every taxes row booked to that account is dropped (the template's excise row and
-an excise row on freight alike) and the sales tax rows stay. A store that names
-no account (a state with no such tax) has nothing to exempt, so the flag is
-refused there rather than saved as a promise the invoice does not keep.
+an excise row on freight alike) and the sales tax rows stay. It is California
+law, so it is offered only to a store whose own address (the Company's, as for
+the sales-tax home state) is in California: anywhere else the setting is
+refused on save and ignored if present, and the flag is refused rather than saved
+as a promise the invoice does not keep.
 
 Not a customer-level switch: an officer's certificate covers one sale, and a
 standing flag would exempt their next purchase without one. A resale or
@@ -33,12 +35,28 @@ BUYER = "ffl_le_exempt_buyer"
 CERT = "ffl_le_exempt_certificate"
 SETTING = "peace_officer_exempt_tax_account"
 
+# R&TC §36021(a) is California's; a state is added here only on the advice of
+# the store's accountant.
+EXEMPT_HOME_STATES = frozenset({"CA"})
 
-def exempt_account() -> str | None:
-	"""The excise account a peace-officer sale is exempt from, or None (not offered)."""
+
+def exempt_account(company: str | None = None) -> str | None:
+	"""The excise account a peace-officer sale is exempt from, or None (not offered):
+	FFL Settings' account, for a store in California only."""
 	from ffl_core.utils import single_raw
 
-	return single_raw("FFL Settings", SETTING) or None
+	account = single_raw("FFL Settings", SETTING) or None
+	return account if account and in_exempt_state(company) else None
+
+
+def in_exempt_state(company: str | None = None) -> bool:
+	"""Whether the Company's own address is in a state with this exemption. Never
+	raises (boot calls it): a store with no readable address is not offered it."""
+	from ffl_core.compliance.interstate_tax import _read_home_state
+
+	company = company or frappe.defaults.get_user_default("company") or frappe.db.get_default("company")
+	code, _why = _read_home_state(company)
+	return code in EXEMPT_HOME_STATES
 
 
 def extend_bootinfo(bootinfo) -> None:
@@ -75,12 +93,12 @@ def _strip(doc) -> bool:
 		return False
 	if cint(doc.get("is_return")) or cint(doc.get("is_consolidated")) or is_channel_mirrored_invoice(doc):
 		return False
-	account = exempt_account()
+	account = exempt_account(doc.get("company"))
 	if not account:
 		frappe.throw(_(
-			"This store has no excise tax a peace officer is exempt from (FFL Settings › "
-			"Peace-Officer Exempt Tax Account is blank). Untick the exemption."),
-			title=_("Exemption Not Set Up"))
+			"The peace-officer excise exemption is for California stores only, with FFL "
+			"Settings › Peace-Officer Exempt Tax Account set. Untick the exemption."),
+			title=_("Exemption Not Available"))
 	if not doc.get(BUYER):
 		frappe.throw(_("Say who the exempt buyer is: an active or retired peace officer, "
 			"or the law enforcement agency employing one."), title=_("Peace-Officer Exemption"))

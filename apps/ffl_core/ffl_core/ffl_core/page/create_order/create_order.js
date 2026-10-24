@@ -2773,19 +2773,20 @@ class CreateOrderApp {
 	// required — the server refuses the order without it.
 
 	_onLeExemptChange() {
-		if (this._settingLe) return;
-		this._setLeExempt(!!this.fields.le_excise_exempt.get_value(),
-			this.fields.le_exempt_buyer.get_value(), this._leCert);
+		const on = !!this.fields.le_excise_exempt.get_value();
+		// A control's change fires after set_value settles, so _setLeExempt's own
+		// write comes back here: only a real flip goes on.
+		if (on === !!this._leExempt) return;
+		this._setLeExempt(on, this.fields.le_exempt_buyer.get_value(), this._leCert);
 	}
 
 	_setLeExempt(on, buyer, cert) {
 		const changed = on !== !!this._leExempt;
 		this._leExempt = on;
 		this._leCert = on ? (cert || null) : null;
-		this._settingLe = true;
-		this.fields.le_excise_exempt.set_value(on ? 1 : 0);
-		this.fields.le_exempt_buyer.set_value(on ? (buyer || '') : '');
-		this._settingLe = false;
+		const setIf = (field, v) => { if ((this.fields[field].get_value() || '') !== v) this.fields[field].set_value(v); };
+		setIf('le_excise_exempt', on ? 1 : '');
+		setIf('le_exempt_buyer', on ? (buyer || '') : '');
 		this.$body.find('#le-exempt-detail').toggle(on);
 		this._renderLeCert();
 		if (changed) this._itemRates = {}; // per-item rates differ with the excise off
