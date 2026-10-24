@@ -539,6 +539,18 @@ def refuse_drawer_je_copies(doc, method=None) -> None:
 			"page instead of amending it.").format(amended))
 
 
+def stamp_draft_payment(doc, method=None) -> None:
+	"""POS Invoice validate: Take Payment on a draft (a part payment, or the tender taken before the 4473 clears) sets
+	``ffl_cash_taken_at``, and from then on the drawer counts the draft's cash (``pending_pos_rows``). The browser only
+	asks for the stamp; the time is the server's. A screen loaded before the stamp never clears it.
+	lazy: a draft that already held cash before this stamp existed counts only after its next Take Payment or its
+	submit; stamp such drafts by hand (or with a patch) if one is found."""
+	if doc.docstatus != 0 or not doc.has_value_changed("ffl_cash_taken_at"):
+		return
+	before = doc.get_doc_before_save()
+	doc.ffl_cash_taken_at = now_datetime() if doc.get("ffl_cash_taken_at") else (before and before.get("ffl_cash_taken_at"))
+
+
 def stamp_cash_row(closing, *, expected: float, opening: float, counted: float | None, is_counted: bool) -> None:
 	"""Put the drawer's figures on the POS Closing Entry's Cash row (adding the row when the day had no cash
 	sale). ERPNext's ``difference`` is counted minus (opening + expected); here expected is already the whole
@@ -1846,6 +1858,7 @@ def note_goods_payout_on_cancel(doc, method=None) -> None:
 KIND_LABELS = {
 	"sale_pos": "Cash sale (register)",
 	"sale_counter": "Cash sale (counter order)",
+	"order_payment": "Cash paid on an open order",
 	"payment_in": "Customer payment",
 	"refund": "Cash refund",
 	"payout": "Seller paid for a gun",
@@ -2008,24 +2021,36 @@ def pending_pos_rows(company: str, account: str | None = None, created_after=Non
 		merged_into: list[str] | None = None) -> list[frappe._dict]:  # lazy: scans unmerged POS invoices, which leave the set as they merge; index POS Invoice (company, consolidated_invoice) if it ever gets slow
 	"""The cash of POS invoices not merged yet (tendered cash less change), one row each, same shape as
 	``cash_ledger_rows``. The one place that SQL lives: ``drawer_expected`` sums these. A return is a refund.
+	A draft counts once Take Payment stamped it (``stamp_draft_payment``: a part payment, or paid before the 4473
+	clears), dated by that stamp; ERPNext posts nothing for a draft, yet the cash is in the drawer. Its submit keeps it
+	here as a sale, so it is never counted twice.
 
 	``merged_into`` (Sales Invoice names) instead lists the POS invoices already merged into those invoices, each with
 	``merged_into``: the log shows a register's sales one by one, not as the night's merged total.
 	lazy: consolidated_invoice has no index; a year's log scans POS Invoice once -- add an index if it gets slow."""
 	account = account or cash_account(company)
 	default_cash = frappe.db.get_value("Company", company, "default_cash_account") or account
+	# Column-guarded: the app code is live before ``bench migrate`` adds the stamp. A draft is dated by its stamp, not by
+	# posting_date, which ERPNext moves to today on every draft save.
+	# lazy: a draft re-stamped by a later Take Payment lists all its cash at the new time, and its submit moves it to the
+	# submit day in the log; booking Take Payment cash as a Payment Entry (needs a CPA ruling) would date each part once.
+	taken = not merged_into and frappe.db.has_column("POS Invoice", "ffl_cash_taken_at")
+	when = "IF(i.docstatus = 0, i.ffl_cash_taken_at, i.creation)" if taken else "i.creation"
+	day = "IF(i.docstatus = 0, DATE(i.ffl_cash_taken_at), i.posting_date)" if taken else "i.posting_date"
 	return frappe.db.sql(
-		"""SELECT i.posting_date, i.creation, 'POS Invoice' AS voucher_type, i.name AS voucher_no, i.customer AS party,
-			i.owner, i.consolidated_invoice AS merged_into,
-			IF(i.is_return, 'refund', 'sale_pos') AS kind, NULL AS remark, NULL AS entry,
+		"""SELECT {day} AS posting_date, {when} AS creation, 'POS Invoice' AS voucher_type, i.name AS voucher_no,
+			i.customer AS party, i.owner, i.consolidated_invoice AS merged_into,
+			IF(i.docstatus = 0, 'order_payment', IF(i.is_return, 'refund', 'sale_pos')) AS kind, NULL AS remark, NULL AS entry,
 			(IFNULL((SELECT SUM(p.amount) FROM `tabSales Invoice Payment` p WHERE p.parent = i.name
 					AND p.parenttype = 'POS Invoice'
 					AND (p.account = %(a)s OR (IFNULL(p.account, '') = '' AND p.mode_of_payment = 'Cash'))), 0)
 				- IF(IFNULL(NULLIF(i.account_for_change_amount, ''), %(d)s) = %(a)s, i.change_amount, 0)) AS amount
 		FROM `tabPOS Invoice` i
-		WHERE i.company = %(c)s AND i.docstatus = 1 AND {merged}
-			AND (%(after)s IS NULL OR i.creation > %(after)s) AND (%(before)s IS NULL OR i.creation <= %(before)s)
-		HAVING amount != 0 ORDER BY i.creation""".format(
+		WHERE i.company = %(c)s AND {status} AND {merged}
+			AND (%(after)s IS NULL OR {when} > %(after)s) AND (%(before)s IS NULL OR {when} <= %(before)s)
+		HAVING amount != 0 ORDER BY creation""".format(
+			day=day, when=when,
+			status="(i.docstatus = 1 OR (i.docstatus = 0 AND i.ffl_cash_taken_at IS NOT NULL))" if taken else "i.docstatus = 1",
 			merged="i.consolidated_invoice IN %(into)s" if merged_into else "IFNULL(i.consolidated_invoice, '') = ''"),
 		{"a": account, "d": default_cash, "c": company, "after": created_after, "before": created_before,
 			"into": tuple(merged_into or ("",))}, as_dict=True)

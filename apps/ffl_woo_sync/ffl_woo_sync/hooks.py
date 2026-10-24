@@ -267,6 +267,9 @@ doc_events = {
         # ...and deleting the draft (the POS recycle bin / the manager cleanup
         # button) is what releases it again.
         "on_trash": "ffl_woo_sync.woocommerce.doc_events.on_pos_invoice_trash",
+        # An in-store pickup's ticket was paid on WooCommerce: it completes on
+        # that tender, in full, or not at all — never on a second, counter one.
+        "before_submit": "ffl_woo_sync.woocommerce.pickup.require_web_tender_on_submit",
         "on_submit": [
             "ffl_woo_sync.woocommerce.doc_events.on_invoice_change",
             # An in-store pickup's counter invoice: submitting it IS the moment

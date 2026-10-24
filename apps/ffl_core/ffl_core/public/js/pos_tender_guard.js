@@ -36,6 +36,7 @@
 		window.ffl.PAYOUT_METHODS = api.PAYOUT_METHODS;
 		window.ffl.payoutProblem = api.payoutProblem;
 		window.ffl.pickupTicketState = api.pickupTicketState;
+		window.ffl.isPaidOnlineTicket = api.isPaidOnlineTicket;
 	}
 })(function () {
 	'use strict';
@@ -55,8 +56,22 @@
 	// the grand total on an UNPAID held draft, that draft is preserved rather than
 	// re-defaulted — harmless (the saved amount matches the saved cart, and on_cart_update
 	// recomputes on edit), and erring toward preserve is the safe direction here.
+	// A web order's in-store pickup ticket (POS Invoice.woo_online_order): the buyer
+	// paid on WooCommerce and the ticket's WooCommerce row records it. That row is
+	// not the profile's default mode, so ERPNext's set_default_payment zeroes it on
+	// the first recompute, and a reset then swaps in the profile's rows with the
+	// card pre-filled — asking an already-paid buyer to pay again. The ticket's
+	// tender is never reset or re-defaulted; the server refuses to submit it on
+	// anything else (pickup.require_web_tender_on_submit). A return is an ordinary
+	// refund and is not one.
+	function isPaidOnlineTicket(doc) {
+		doc = doc || {};
+		return !!String(doc.woo_online_order || '').trim() && !parseInt(doc.is_return, 10);
+	}
+
 	function hasLiveTender(doc) {
 		doc = doc || {};
+		if (isPaidOnlineTicket(doc)) return true;
 		if (flt(doc.card_charged_amount) > 0) return true;
 		var rows = doc.payments || [];
 		for (var i = 0; i < rows.length; i++) {
@@ -191,6 +206,7 @@
 	//   no firearm / return / 4473 cleared → complete (vanilla ERPNext label)
 	//   firearm, 4473 pending, nothing held → pay   ("Take Payment")
 	//   firearm, 4473 pending, fully paid  → held  ("Paid — waiting for 4473", quiet)
+	//     — a web pickup ticket (paid on WooCommerce) is always this one
 	// `held` is NEVER disabled: the click still runs the submit wrapper, which
 	// re-checks the 4473 on the server (a page that missed the webhook nudge
 	// self-heals on click — a past incident) and resumes a
@@ -207,7 +223,7 @@
 		// A negative ticket takes no money — nothing is "taken" or "held": the
 		// store pays the customer when the order completes, after the 4473.
 		if (isNegativeTicket(doc)) return { key: 'wait', quiet: false };
-		if (hasHeldPayment(doc)) return { key: 'held', quiet: true };
+		if (hasHeldPayment(doc) || isPaidOnlineTicket(doc)) return { key: 'held', quiet: true };
 		return { key: 'pay', quiet: false };
 	}
 
@@ -481,6 +497,7 @@
 	return {
 		PAYOUT_METHODS: PAYOUT_METHODS,
 		pickupTicketState: pickupTicketState,
+		isPaidOnlineTicket: isPaidOnlineTicket,
 		payoutProblem: payoutProblem,
 		payoutSummary: payoutSummary,
 		isNegativeTicket: isNegativeTicket,

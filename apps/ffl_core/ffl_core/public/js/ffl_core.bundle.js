@@ -812,6 +812,14 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		ensureBtn('ffl-customer-display-btn', __('Customer Display'), function () {
 			if (window.fflOpenCustomerDisplay) window.fflOpenCustomerDisplay();
 		});
+		if (frappe.boot.ffl_le_exempt_account) {
+			// Only on a change: a text write is itself a DOM mutation, and this runs
+			// from the observer.
+			const doc = window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc;
+			const btn = ensureBtn(LE_EXEMPT_BTN_ID, '', openLeExemptDialog);
+			const label = doc && cint(doc[LE.flag]) ? __('LE Exempt ✓') : __('LE Exempt');
+			if (btn.textContent !== label) btn.textContent = label;
+		}
 		if (frappe.user.has_role(WORK_ORDER_ROLES)) ensureBtn(WORK_ORDER_BTN_ID, __('Work Order'), openWorkOrderDialog);
 		if (frappe.user.has_role(TRADE_IN_ROLES)) ensureBtn(BUTTON_ID, __('Trade-in'), openTradeInDialog);
 		renderExtensionPosActions(ensureBtn);
@@ -1376,6 +1384,83 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 	// cart) below. Each is a sale like any other, so its checkout takes the card. The Desk
 	// work-order form sends the clerk here with route options for Complete.
 	const WORK_ORDER_BTN_ID = 'ffl-work-order-btn';
+
+	// Peace-officer excise exemption (compliance/le_excise_exempt.py): excise off,
+	// sales tax stays, with the buyer and their CDTFA-230-FET on the ticket. The
+	// server drops the excise rows on every save; this mirrors it on the live cart
+	// so the total the customer sees is the one they pay.
+	const LE_EXEMPT_BTN_ID = 'ffl-le-exempt-btn';
+	const LE = { flag: 'ffl_le_excise_exempt', buyer: 'ffl_le_exempt_buyer', cert: 'ffl_le_exempt_certificate' };
+	const LE_BUYERS = ['Active Peace Officer', 'Retired Peace Officer', 'Law Enforcement Agency'];
+
+	function openLeExemptDialog() {
+		const pos = window.cur_pos;
+		const frm = pos && pos.frm;
+		if (!frm) return;
+		if (cint(frm.doc.is_return)) {
+			return frappe.show_alert({ indicator: 'orange', message: __('A return keeps the tax of the sale it returns.') });
+		}
+		if (!frm.doc.customer) {
+			return frappe.show_alert({ indicator: 'orange', message: __('Pick the customer first — the certificate is kept on their record.') });
+		}
+		let cert = frm.doc[LE.cert] || '';
+		const dialog = new frappe.ui.Dialog({
+			title: __('Peace-Officer Excise Exemption'),
+			fields: [
+				{ fieldtype: 'HTML', options: `<p class="text-muted">${__('An active or retired peace officer, or the law enforcement agency employing one, pays no excise tax on firearms, precursor parts and ammunition. Sales tax is still charged. A CDTFA-230-FET certificate is required for this sale.')}</p>` },
+				{ label: __('Exempt buyer'), fieldname: 'buyer', fieldtype: 'Select', reqd: 1,
+					options: ['', ...LE_BUYERS].join('\n'), default: frm.doc[LE.buyer] || '' },
+				{ fieldtype: 'HTML', fieldname: 'cert_area' },
+			],
+			primary_action_label: __('Apply exemption'),
+			primary_action(values) {
+				if (!cert) return frappe.show_alert({ indicator: 'orange', message: __('Upload the CDTFA-230-FET certificate first.') });
+				dialog.hide();
+				setLeExempt(frm, true, values.buyer, cert);
+			},
+		});
+		const renderCert = () => {
+			const $a = dialog.fields_dict.cert_area.$wrapper.empty();
+			$a.append(cert
+				? `<p>${__('CDTFA-230-FET')}: <a href="${frappe.utils.escape_html(cert)}" target="_blank">${__('view')}</a></p>`
+				: `<p class="text-muted">${__('No certificate yet.')}</p>`);
+			$(`<button class="btn btn-default btn-sm">${cert ? __('Replace certificate') : __('Upload CDTFA-230-FET')}</button>`)
+				.appendTo($a).on('click', () => new frappe.ui.FileUploader({
+					doctype: 'Customer', docname: frm.doc.customer, allow_multiple: false,
+					restrictions: { allowed_file_types: ['.pdf', '.png', '.jpg', '.jpeg'] },
+					on_success: (file_doc) => { cert = file_doc.file_url; renderCert(); },
+				}));
+		};
+		renderCert();
+		if (cint(frm.doc[LE.flag])) {
+			dialog.set_secondary_action_label(__('Remove exemption'));
+			dialog.set_secondary_action(() => { dialog.hide(); setLeExempt(frm, false); });
+		}
+		dialog.show();
+	}
+
+	async function setLeExempt(frm, on, buyer, cert) {
+		const pos = window.cur_pos;
+		Object.assign(frm.doc, { [LE.flag]: on ? 1 : 0, [LE.buyer]: on ? buyer : '', [LE.cert]: on ? cert : '' });
+		frm.dirty();
+		if (on) {
+			const account = frappe.boot.ffl_le_exempt_account;
+			frm.doc.taxes = (frm.doc.taxes || []).filter((t) => t.account_head !== account);
+		} else if (frm.doc.taxes_and_charges) {
+			// The template's rows back, excise included (ERPNext's own refill, which totals).
+			frm.doc.taxes = [];
+			await frm.cscript.taxes_and_charges();
+		}
+		// Without a template the ticket's tax rows came from nowhere an excise row could
+		// come back from, so they are left as they are.
+		frm.doc.taxes.forEach((t, i) => { t.idx = i + 1; });
+		frm.cscript.calculate_taxes_and_totals();
+		if (pos && pos.cart && typeof pos.cart.update_totals_section === 'function') pos.cart.update_totals_section(frm);
+		const btn = document.getElementById(LE_EXEMPT_BTN_ID);
+		if (btn) btn.textContent = on ? __('LE Exempt ✓') : __('LE Exempt');
+		frappe.show_alert({ indicator: 'green', message: on
+			? __('Excise tax removed — sales tax stays.') : __('Exemption removed — excise tax charged.') });
+	}
 	// Who sees it: roles.COUNTER_ROLES, mirrored (the server gate on create_work_order;
 	// test_gunsmith_work_order pins the two lists together).
 	const WORK_ORDER_ROLES = ['Sales User', 'Sales Manager', 'Stock Manager', 'System Manager'];
@@ -3204,6 +3289,10 @@ frappe.provide('frappe.ui.form');
 		// hands over. Never the card dialog, never the terminal, whatever this copy
 		// of the doc says (submit_invoice has already saved it back to $0).
 		if (pickupTicket(frm.doc)) return { skip: true };
+		// A web order's pickup ticket was paid on WooCommerce: never the terminal
+		// either. A card amount that reached it anyway is refused at submit
+		// (pickup.require_web_tender_on_submit) — before any money is taken.
+		if (window.ffl && ffl.isPaidOnlineTicket && ffl.isPaidOnlineTicket(frm.doc)) return { skip: true };
 
 		// No card processor on: cards are swiped on a standalone terminal and the
 		// Credit Card row is ordinary tender, so Complete Order finishes in one
@@ -3919,6 +4008,12 @@ frappe.provide('frappe.ui.form');
 					controller.frm.doc.ffl_payment_held = 1;
 					controller.frm.dirty();
 				}
+				// Money was taken on this draft: the cash drawer counts its cash from now on
+				// (cash_drawer.stamp_draft_payment; the server sets the time).
+				if (!neg.negative) {
+					controller.frm.doc.ffl_cash_taken_at = frappe.datetime.now_datetime();
+					controller.frm.dirty();
+				}
 				if (controller.frm.is_dirty() || controller.frm.doc.__islocal) {
 					try { await controller.frm.save(); } catch (e) { /* held regardless; backend gate backstops */ }
 				}
@@ -3955,6 +4050,7 @@ frappe.provide('frappe.ui.form');
 			const doc = controller.frm.doc;
 			if (!doc.is_return && !neg.negative && window.ffl && ffl.isFullyTendered
 				&& !ffl.isFullyTendered(doc)) {
+				doc.ffl_cash_taken_at = frappe.datetime.now_datetime();   // the drawer counts this cash (as above)
 				controller.frm.dirty();
 				try { await controller.frm.save(); } catch (e) { return; }   // the server said why
 				const due = ffl.balanceDue(doc);
@@ -6108,10 +6204,28 @@ frappe.provide('frappe.ui.form');
 		}
 		P.prototype.__fflPaymentTenderPatched = true;
 	}
+	// A web pickup ticket's WooCommerce row is not the profile's default mode, so
+	// ERPNext's set_default_payment zeroed it on the cart's first recompute — long
+	// before checkout, and after the onload that re-arms frm.set_default_payment.
+	// Skip it for that ticket only (pos_tender_guard.isPaidOnlineTicket); every
+	// other sale keeps ERPNext's default-MOP pre-fill. Patched on the base class:
+	// the POS Invoice controller inherits the method and does not override it.
+	function applyDefaultPaymentPatch(T) {
+		const proto = T && T.prototype;
+		if (!proto || proto.__fflWebTenderPatched || typeof proto.set_default_payment !== 'function') return;
+		const original = proto.set_default_payment;
+		proto.set_default_payment = function fflSetDefaultPayment() {
+			const paidOnline = window.ffl && ffl.isPaidOnlineTicket;
+			if (paidOnline && this.frm && paidOnline(this.frm.doc)) return;
+			return original.apply(this, arguments);
+		};
+		proto.__fflWebTenderPatched = true;
+	}
 	// Bounded retry ONLY for the degraded path (installClassHook unavailable or
 	// defineProperty rejected) — never the primary mechanism. Patches are idempotent,
 	// so re-applying whichever class is already present is safe.
 	function fallbackRetry(retriesLeft) {
+		if (window.erpnext && erpnext.taxes_and_totals) applyDefaultPaymentPatch(erpnext.taxes_and_totals);
 		const ns = window.erpnext && erpnext.PointOfSale;
 		if (ns) {
 			if (ns.Controller) applyEditOrderPatch(ns.Controller);
@@ -6134,7 +6248,8 @@ frappe.provide('frappe.ui.form');
 		if (hook) {
 			const c = hook(erpnext.PointOfSale, 'Controller', applyEditOrderPatch);
 			const p = hook(erpnext.PointOfSale, 'Payment', applyPaymentPatch);
-			if (c && p) return;
+			const t = hook(erpnext, 'taxes_and_totals', applyDefaultPaymentPatch);
+			if (c && p && t) return;
 		}
 		fallbackRetry(60);
 	}
