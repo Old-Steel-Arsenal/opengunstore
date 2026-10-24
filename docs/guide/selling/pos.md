@@ -76,12 +76,13 @@ Manager or System Manager can ring the sale, and the invoice notes it.
 
 ## The extra buttons
 
-Two buttons sit in the page toolbar at the top of the register, to the left of
+These buttons sit in the page toolbar at the top of the register, to the left of
 **Recent Orders**:
 
 | Button | What it does |
 |---|---|
 | **Trade-in** | Books a gun the customer is trading in and puts the allowance on the ticket. See [Trade-ins](../inventory/trade-ins.md). |
+| **LE Exempt** | California stores only: takes the 11% excise tax off a sale to a peace officer or their agency. See [below](#peace-officer-excise-exemption-california). |
 | **Customer Display** | Opens the customer-facing screen. |
 
 To order something for a customer and take a deposit, use
@@ -92,6 +93,24 @@ customer to read: the items, the totals and the payment stage. Put it on the
 second monitor and leave it open. It follows the cart on its own, so there is
 nothing to press again during a sale. If nothing opens, the browser blocked the
 popup. Allow popups for this site and click **Customer Display** again.
+
+### Peace-officer excise exemption (California)
+
+An active or retired peace officer, or the law enforcement agency that employs
+one, pays no California excise tax on firearms, precursor parts and ammunition.
+Sales tax is still charged. The button appears only in a California store whose
+[FFL Settings](../settings/ffl-settings.md) name the excise tax account.
+
+1. Pick the customer on the ticket first. The certificate is kept on their
+   record.
+2. Click **LE Exempt**. In the dialog pick the **Exempt buyer** and click
+   **Upload CDTFA-230-FET** to attach their certificate.
+3. Click **Apply exemption**. The excise line leaves the cart and the button
+   reads **LE Exempt ✓**.
+
+To undo it, click **LE Exempt ✓** and then **Remove exemption**. The excise
+comes back. The ticket cannot be saved with the exemption on and no
+certificate, or with a certificate that belongs to a different customer.
 
 One more button, purple and labeled **Transfer (4473)**, sits on the cart above
 **Checkout**. That one is for a customer's own gun arriving from another dealer.
