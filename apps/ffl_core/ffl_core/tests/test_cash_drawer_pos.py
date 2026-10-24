@@ -195,6 +195,45 @@ class ShiftCases:
 		after = cd.drawer_expected(self.company)
 		self.assertEqual((after.gl, after.pending, after.expected), (100, 0, 100))
 
+	def test_cash_taken_on_a_draft_counts_once_take_payment_stamped_it(self):
+		"""A part payment (or a tender taken before the 4473 clears) stays a draft; its cash is in the drawer."""
+		self._open_shift()
+		before = self._expected()
+		frappe.set_user(self.cashier)
+		try:
+			inv = frappe.new_doc("POS Invoice")
+			inv.pos_profile = self.profile
+			inv.customer = "_Test CD Customer"
+			inv.append("items", {"item_code": "CD-SERVICE", "qty": 1, "rate": 300, "price_list_rate": 300})
+			inv.set_missing_values()
+			inv.items[0].rate = inv.items[0].price_list_rate = 300
+			inv.set("payments", [])
+			inv.append("payments", {"mode_of_payment": "Cash", "amount": 100})
+			inv.flags.ignore_permissions = True
+			inv.save()
+			self.assertEqual(self._expected(), before)  # typed on a draft, never taken: not counted
+			inv.ffl_cash_taken_at = "2000-01-01 00:00:00"  # the browser asks; the server dates it
+			inv.save()
+			stamp = frappe.db.get_value("POS Invoice", inv.name, "ffl_cash_taken_at")
+			self.assertGreater(stamp, add_to_date(now_datetime(), minutes=-5))
+			self.assertEqual(self._expected(), before + 100)
+			rows = [r for r in cd.pending_pos_rows(self.company) if r.voucher_no == inv.name]
+			self.assertEqual([(r.kind, r.amount, r.creation) for r in rows], [("order_payment", 100, stamp)])
+			stale = frappe.get_doc("POS Invoice", inv.name)
+			stale.ffl_cash_taken_at = None  # a register screen loaded before the stamp
+			stale.flags.ignore_permissions = True
+			stale.save()
+			self.assertEqual(frappe.db.get_value("POS Invoice", inv.name, "ffl_cash_taken_at"), stamp)
+			inv = frappe.get_doc("POS Invoice", inv.name)
+			total = flt(inv.rounded_total or inv.grand_total)
+			next(p for p in inv.payments if p.mode_of_payment == "Cash").amount = total  # the rest, paid on completing
+			inv.flags.ignore_permissions = True
+			inv.save()  # ERPNext checks the paid amount before it totals the payments again
+			inv.submit()
+		finally:
+			frappe.set_user("Administrator")
+		self.assertEqual(self._expected(), flt(before + total, 2))  # the sale now, not the draft as well
+
 	def test_a_closing_made_on_the_pos_screen_is_per_shift_and_not_a_count(self):
 		"""One shift at a time: the Cash row is that shift's own cash (ERPNext's figure), opening 0, never the whole drawer."""
 		from erpnext.accounts.doctype.pos_closing_entry.pos_closing_entry import make_closing_entry_from_opening

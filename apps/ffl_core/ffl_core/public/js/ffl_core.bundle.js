@@ -3923,6 +3923,12 @@ frappe.provide('frappe.ui.form');
 					controller.frm.doc.ffl_payment_held = 1;
 					controller.frm.dirty();
 				}
+				// Money was taken on this draft: the cash drawer counts its cash from now on
+				// (cash_drawer.stamp_draft_payment; the server sets the time).
+				if (!neg.negative) {
+					controller.frm.doc.ffl_cash_taken_at = frappe.datetime.now_datetime();
+					controller.frm.dirty();
+				}
 				if (controller.frm.is_dirty() || controller.frm.doc.__islocal) {
 					try { await controller.frm.save(); } catch (e) { /* held regardless; backend gate backstops */ }
 				}
@@ -3959,6 +3965,7 @@ frappe.provide('frappe.ui.form');
 			const doc = controller.frm.doc;
 			if (!doc.is_return && !neg.negative && window.ffl && ffl.isFullyTendered
 				&& !ffl.isFullyTendered(doc)) {
+				doc.ffl_cash_taken_at = frappe.datetime.now_datetime();   // the drawer counts this cash (as above)
 				controller.frm.dirty();
 				try { await controller.frm.save(); } catch (e) { return; }   // the server said why
 				const due = ffl.balanceDue(doc);

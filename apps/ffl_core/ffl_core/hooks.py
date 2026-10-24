@@ -492,6 +492,8 @@ doc_events = {
 			# account: the owner-scoped nightly close will skip this sale (8/25,
 			# 8/26 incidents); the sweep posts it later.
 			"ffl_core.api.pos_consolidate.warn_owner_shift_mismatch",
+			# Take Payment on a draft: the server's clock, not the browser's, dates the cash for the drawer.
+			"ffl_core.cash_drawer.stamp_draft_payment",
 			# Counter pickup ticket: refuse one ERPNext's validate put money back on
 			# after the before_validate pin (fail closed).
 			"ffl_core.api.counter_pickup.assert_ticket_free",
