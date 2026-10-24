@@ -163,6 +163,8 @@ extend_bootinfo = [
 	"ffl_core.staff_switch.extend_bootinfo",
 	# Navbar Settings' Dark Mode Logo for the dark desk theme (store_identity.py).
 	"ffl_core.store_identity.extend_bootinfo",
+	# The peace-officer exempt excise account, for the register's LE Exempt button.
+	"ffl_core.compliance.le_excise_exempt.extend_bootinfo",
 ]
 
 
@@ -330,6 +332,9 @@ doc_events = {
 			# wholesale-replacing the table on the out-of-state template swap; this one
 			# rebuilds the shipping charge row from ffl_shipping_amount afterward.
 			"ffl_core.compliance.shipping_charge.apply_shipping_charge",
+			# A peace officer's sale drops the excise rows (compliance/le_excise_exempt):
+			# after apply_shipping_charge, which may have rebuilt an excise freight row.
+			"ffl_core.compliance.le_excise_exempt.apply_le_excise_exemption",
 			# MUST stay LAST among the tax hooks, for two reasons: (1) a tax-exempt
 			# customer's 0% must win over anything apply_interstate_tax picked
 			# (including the Out-of-State template) — see the module docstring for
@@ -403,6 +408,8 @@ doc_events = {
 			"ffl_core.compliance.interstate_tax.apply_interstate_tax",
 			# Keep after apply_interstate_tax — see the Sales Invoice note above.
 			"ffl_core.compliance.shipping_charge.apply_shipping_charge",
+			# After the freight row is rebuilt — see the Sales Invoice note above.
+			"ffl_core.compliance.le_excise_exempt.apply_le_excise_exemption",
 			# Keep LAST — see the Sales Invoice note above.
 			"ffl_core.compliance.customer_tax_exempt.enforce_customer_tax_exemption",
 		],
@@ -447,6 +454,9 @@ doc_events = {
 			# Locked lines pinned before core prices/totals the rows — see the
 			# Sales Invoice entry.
 			"ffl_core.compliance.locked_lines.pin_locked_lines",
+			# A peace officer's sale: the excise rows off before ERPNext totals the ticket
+			# (compliance/le_excise_exempt), and before the trade-in floor reads the rows.
+			"ffl_core.compliance.le_excise_exempt.apply_le_excise_exemption_before",
 			# A ticket with trade-in credit never takes a negative sales tax: rates settled before ERPNext totals
 			# (its own refusal of a negative ticket must see the floored total).
 			"ffl_core.compliance.negative_trade_in.floor_trade_in_tax_before",

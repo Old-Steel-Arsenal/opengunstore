@@ -812,6 +812,14 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		ensureBtn('ffl-customer-display-btn', __('Customer Display'), function () {
 			if (window.fflOpenCustomerDisplay) window.fflOpenCustomerDisplay();
 		});
+		if (frappe.boot.ffl_le_exempt_account) {
+			// Only on a change: a text write is itself a DOM mutation, and this runs
+			// from the observer.
+			const doc = window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc;
+			const btn = ensureBtn(LE_EXEMPT_BTN_ID, '', openLeExemptDialog);
+			const label = doc && cint(doc[LE.flag]) ? __('LE Exempt ✓') : __('LE Exempt');
+			if (btn.textContent !== label) btn.textContent = label;
+		}
 		if (frappe.user.has_role(WORK_ORDER_ROLES)) ensureBtn(WORK_ORDER_BTN_ID, __('Work Order'), openWorkOrderDialog);
 		if (frappe.user.has_role(TRADE_IN_ROLES)) ensureBtn(BUTTON_ID, __('Trade-in'), openTradeInDialog);
 		renderExtensionPosActions(ensureBtn);
@@ -1376,6 +1384,81 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 	// cart) below. Each is a sale like any other, so its checkout takes the card. The Desk
 	// work-order form sends the clerk here with route options for Complete.
 	const WORK_ORDER_BTN_ID = 'ffl-work-order-btn';
+
+	// Peace-officer excise exemption (compliance/le_excise_exempt.py): excise off,
+	// sales tax stays, with the buyer and their CDTFA-230-FET on the ticket. The
+	// server drops the excise rows on every save; this mirrors it on the live cart
+	// so the total the customer sees is the one they pay.
+	const LE_EXEMPT_BTN_ID = 'ffl-le-exempt-btn';
+	const LE = { flag: 'ffl_le_excise_exempt', buyer: 'ffl_le_exempt_buyer', cert: 'ffl_le_exempt_certificate' };
+	const LE_BUYERS = ['Active Peace Officer', 'Retired Peace Officer', 'Law Enforcement Agency'];
+
+	function openLeExemptDialog() {
+		const pos = window.cur_pos;
+		const frm = pos && pos.frm;
+		if (!frm) return;
+		if (cint(frm.doc.is_return)) {
+			return frappe.show_alert({ indicator: 'orange', message: __('A return keeps the tax of the sale it returns.') });
+		}
+		if (!frm.doc.customer) {
+			return frappe.show_alert({ indicator: 'orange', message: __('Pick the customer first — the certificate is kept on their record.') });
+		}
+		let cert = frm.doc[LE.cert] || '';
+		const dialog = new frappe.ui.Dialog({
+			title: __('Peace-Officer Excise Exemption'),
+			fields: [
+				{ fieldtype: 'HTML', options: `<p class="text-muted">${__('An active or retired peace officer, or the law enforcement agency employing one, pays no excise tax on firearms, precursor parts and ammunition. Sales tax is still charged. A CDTFA-230-FET certificate is required for this sale.')}</p>` },
+				{ label: __('Exempt buyer'), fieldname: 'buyer', fieldtype: 'Select', reqd: 1,
+					options: ['', ...LE_BUYERS].join('\n'), default: frm.doc[LE.buyer] || '' },
+				{ fieldtype: 'HTML', fieldname: 'cert_area' },
+			],
+			primary_action_label: __('Apply exemption'),
+			primary_action(values) {
+				if (!cert) return frappe.show_alert({ indicator: 'orange', message: __('Upload the CDTFA-230-FET certificate first.') });
+				dialog.hide();
+				setLeExempt(frm, true, values.buyer, cert);
+			},
+		});
+		const renderCert = () => {
+			const $a = dialog.fields_dict.cert_area.$wrapper.empty();
+			$a.append(cert
+				? `<p>${__('CDTFA-230-FET')}: <a href="${frappe.utils.escape_html(cert)}" target="_blank">${__('view')}</a></p>`
+				: `<p class="text-muted">${__('No certificate yet.')}</p>`);
+			$(`<button class="btn btn-default btn-sm">${cert ? __('Replace certificate') : __('Upload CDTFA-230-FET')}</button>`)
+				.appendTo($a).on('click', () => new frappe.ui.FileUploader({
+					doctype: 'Customer', docname: frm.doc.customer, allow_multiple: false,
+					restrictions: { allowed_file_types: ['.pdf', '.png', '.jpg', '.jpeg'] },
+					on_success: (file_doc) => { cert = file_doc.file_url; renderCert(); },
+				}));
+		};
+		renderCert();
+		if (cint(frm.doc[LE.flag])) {
+			dialog.set_secondary_action_label(__('Remove exemption'));
+			dialog.set_secondary_action(() => { dialog.hide(); setLeExempt(frm, false); });
+		}
+		dialog.show();
+	}
+
+	async function setLeExempt(frm, on, buyer, cert) {
+		const pos = window.cur_pos;
+		Object.assign(frm.doc, { [LE.flag]: on ? 1 : 0, [LE.buyer]: on ? buyer : '', [LE.cert]: on ? cert : '' });
+		frm.dirty();
+		if (on) {
+			const account = frappe.boot.ffl_le_exempt_account;
+			frm.doc.taxes = (frm.doc.taxes || []).filter((t) => t.account_head !== account);
+			frm.doc.taxes.forEach((t, i) => { t.idx = i + 1; });
+			frm.cscript.calculate_taxes_and_totals();
+		} else {
+			// The template's rows back, excise included (ERPNext's own refill, which totals).
+			frm.doc.taxes = [];
+			await frm.cscript.taxes_and_charges();
+		}
+		if (pos && pos.cart && typeof pos.cart.update_totals_section === 'function') pos.cart.update_totals_section(frm);
+		const btn = document.getElementById(LE_EXEMPT_BTN_ID);
+		if (btn) btn.textContent = on ? __('LE Exempt ✓') : __('LE Exempt');
+		frappe.show_alert({ indicator: 'green', message: on
+			? __('Excise tax removed — sales tax stays.') : __('Exemption removed — excise tax charged.') });
+	}
 	// Who sees it: roles.COUNTER_ROLES, mirrored (the server gate on create_work_order;
 	// test_gunsmith_work_order pins the two lists together).
 	const WORK_ORDER_ROLES = ['Sales User', 'Sales Manager', 'Stock Manager', 'System Manager'];

@@ -6,6 +6,11 @@
 // the button only appears when that app is installed.
 
 frappe.ui.form.on('FFL Settings', {
+	setup(frm) {
+		frm.set_query('peace_officer_exempt_tax_account', () => ({
+			filters: { account_type: 'Tax', is_group: 0 },
+		}));
+	},
 	// Store Customer ID Numbers on -> off erases every stored DOB / ID number when
 	// saved (FFLSettings.on_update). The confirm sits in the save itself, so
 	// Ctrl+S cannot get past it; ticking the box again after a change of mind

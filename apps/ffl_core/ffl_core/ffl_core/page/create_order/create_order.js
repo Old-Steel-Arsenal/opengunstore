@@ -221,6 +221,13 @@ class CreateOrderApp {
 							<div id="tax-cert-area" class="helper" style="margin-top:4px"></div>
 						</div>
 					</div>
+					<div id="le-exempt" style="display:none; margin-top:12px">
+						<div id="f-le_excise_exempt"></div>
+						<div id="le-exempt-detail" style="display:none">
+							<div id="f-le_exempt_buyer"></div>
+							<div id="le-cert-area" class="helper" style="margin-top:4px"></div>
+						</div>
+					</div>
 				</div>
 
 				<!-- 2. DESTINATION FFL -->
@@ -407,6 +414,17 @@ class CreateOrderApp {
 				label: __('Tax Exempt (resale/exemption certificate on file)'),
 				fieldtype: 'Check', fieldname: 'tax_exempt',
 				change: () => this._onTaxExemptChange(),
+			}),
+			le_excise_exempt: this._f('#f-le_excise_exempt', {
+				label: __('Peace officer / law enforcement agency — excise tax exempt'),
+				description: __('Active or retired peace officer, or the agency employing one, with a CDTFA-230-FET certificate for this sale. Takes off the excise tax only; sales tax stays.'),
+				fieldtype: 'Check', fieldname: 'le_excise_exempt',
+				change: () => this._onLeExemptChange(),
+			}),
+			le_exempt_buyer: this._f('#f-le_exempt_buyer', {
+				label: __('Exempt buyer'), fieldtype: 'Select', fieldname: 'le_exempt_buyer',
+				options: ['', 'Active Peace Officer', 'Retired Peace Officer', 'Law Enforcement Agency'].join('\n'),
+				change: () => this._reflectReadiness(),
 			}),
 			dest_ffl: this._f('#f-dest_ffl', {
 				label: __('Destination FFL'), fieldtype: 'Link', options: 'ATF FFL Record', fieldname: 'dest_ffl',
@@ -1288,6 +1306,11 @@ class CreateOrderApp {
 			// counter pickup server-side; anything typed earlier is not sent.
 			payload.ship_to[key] = pickup ? '' : (this.fields[field].get_value() || '');
 		}
+		if (this._leExempt) {
+			payload.le_excise_exempt = 1;
+			payload.le_exempt_buyer = this.fields.le_exempt_buyer.get_value() || '';
+			payload.le_exempt_certificate = this._leCert || '';
+		}
 		if (this.buyerType === 'business') {
 			payload.tax_exempt = this._taxExempt ? 1 : 0;
 			if (this._taxCert) payload.tax_certificate = this._taxCert;
@@ -1420,6 +1443,7 @@ class CreateOrderApp {
 			this.fields[field].set_value((p.ship_to || {})[key] || '');
 		}
 		if (p.paid_amount) { this.fields.amount.set_value(p.paid_amount); this._amountEdited = true; }
+		this._setLeExempt(!!p.le_excise_exempt, p.le_exempt_buyer, p.le_exempt_certificate);
 		this.$body.find(`#seg-dispose button[data-v="${p.dispose_now ? 'now' : 'later'}"]`).click();
 
 		const items = p.items || [];
@@ -2124,7 +2148,7 @@ class CreateOrderApp {
 	// taxed at the home rate; out-of-state (or an exempt buyer) is 0. The server
 	// recomputes the authoritative tax from the shipping address at create time.
 	_taxPct() {
-		return this._inState() ? (this._taxRate || 0) : 0;
+		return this._inState() ? Math.max(0, (this._taxRate || 0) - (this._leExempt ? this._leExciseRate || 0 : 0)) : 0;
 	}
 
 	// Taxed unless the ship-to reads as ANOTHER US state — the server's rule
@@ -2187,10 +2211,12 @@ class CreateOrderApp {
 			.filter((c) => c && !(c in this._itemRates));
 		if (!missing.length) return;
 		missing.forEach((c) => { this._itemRates[c] = null; });
+		const asked = this._itemRates;
 		frappe.call({
 			method: 'ffl_core.api.manual_order.item_tax_rates',
-			args: { item_codes: JSON.stringify(missing) },
+			args: { item_codes: JSON.stringify(missing), le_excise_exempt: this._leExempt ? 1 : 0 },
 			callback: (r) => {
+				if (asked !== this._itemRates) return; // the exemption flipped meanwhile
 				Object.assign(this._itemRates, r.message || {});
 				this._updateTotals();
 			},
@@ -2253,7 +2279,8 @@ class CreateOrderApp {
 				: (this._freightTaxed(goodsTax) && this._shipTaxIncluded() ? ` ${__('(sales tax included)')}` : '')}` : '';
 		this.$body.find('#tax-line').text(
 			net > 0 && rate > 0
-				? `${__('Subtotal')} ${format_currency(net)}  ·  ${__('Sales Tax')} ${rate}% ${format_currency(tax)}${shippingLabel}`
+				? `${__('Subtotal')} ${format_currency(net)}  ·  ${__('Sales Tax')} ${rate}% ${format_currency(tax)}${
+					this._leExempt ? ` (${__('excise exempt')})` : ''}${shippingLabel}`
 				: (net > 0 && this._taxExempt ? `${__('Tax exempt — no sales tax')}${shippingLabel}`
 				   : (net > 0 && !this._homeState ? this._noHomeStateNotice()
 				      : (net > 0 && state && !taxed ? `${__('Out-of-state — no sales tax')}${shippingLabel}` : ''))));
@@ -2293,6 +2320,8 @@ class CreateOrderApp {
 				this._taxConfigFailed = !this._homeState;
 				this._freightTaxable = m.freight_taxable !== false;
 				this._shipInclusive = !!m.shipping_tax_inclusive;
+				this._leExciseRate = flt(m.le_excise_rate) || 0;
+				this.$body.find('#le-exempt').toggle(!!m.le_exempt_offered);
 				this._usStates = m.us_states || {};
 				this._stateCodes = new Set(Object.values(this._usStates));
 				this.fields.shipping.set_description(this._freightTaxable ? '' : __(
@@ -2320,6 +2349,8 @@ class CreateOrderApp {
 			// operator reads "Destination FFL" while looking at a filled form.
 			missing.push(this._isCr() ? __('Destination FFL (click "Use this C&R license")') : __('Destination FFL'));
 		}
+		if (this._leExempt && !this.fields.le_exempt_buyer.get_value()) missing.push(__('Exempt buyer'));
+		if (this._leExempt && !this._leCert) missing.push(__('CDTFA-230-FET certificate'));
 		const tenderRef = this._tenderReference();
 		if (tenderRef && !(this.fields.transaction_number.get_value() || '').trim()) {
 			missing.push(tenderRef.missing);
@@ -2707,6 +2738,7 @@ class CreateOrderApp {
 		// handler won't mistake the reset for a user edit and re-pin _amountEdited.
 		this._lastAutoAmount = '';
 		this._clearTaxExempt();
+		this._setLeExempt(false);
 		['customer', 'email', 'phone', 'biz_ffl', 'dest_ffl', 'recipient_name', 'recipient_phone',
 			'ship_line1', 'ship_line2', 'ship_city', 'ship_state', 'ship_zip', 'scan', 'amount', 'shipping', 'note',
 			'cr_license_number', 'cr_license_expiry', 'cr_contact_name', 'cr_premise_street',
@@ -2733,6 +2765,61 @@ class CreateOrderApp {
 		this._syncDestSection();
 		this._reflectReadiness();
 		this.$body.find('#btn-submit').text(__('Create Order'));
+	}
+
+	// ------------------------------------------------- peace-officer exemption
+	// The sale's own flag (compliance/le_excise_exempt): excise off, sales tax
+	// stays. The certificate is attached to the buyer's Customer record and
+	// required — the server refuses the order without it.
+
+	_onLeExemptChange() {
+		if (this._settingLe) return;
+		this._setLeExempt(!!this.fields.le_excise_exempt.get_value(),
+			this.fields.le_exempt_buyer.get_value(), this._leCert);
+	}
+
+	_setLeExempt(on, buyer, cert) {
+		const changed = on !== !!this._leExempt;
+		this._leExempt = on;
+		this._leCert = on ? (cert || null) : null;
+		this._settingLe = true;
+		this.fields.le_excise_exempt.set_value(on ? 1 : 0);
+		this.fields.le_exempt_buyer.set_value(on ? (buyer || '') : '');
+		this._settingLe = false;
+		this.$body.find('#le-exempt-detail').toggle(on);
+		this._renderLeCert();
+		if (changed) this._itemRates = {}; // per-item rates differ with the excise off
+		this._updateTotals();
+		this._reflectReadiness();
+	}
+
+	_renderLeCert() {
+		const $a = this.$body.find('#le-cert-area').empty();
+		if (!this._leExempt) return;
+		if (this._leCert) {
+			$a.html(`${__('CDTFA-230-FET')}: <a href="${frappe.utils.escape_html(this._leCert)}" target="_blank">${__('view')}</a> · <a href="#" id="le-reupload">${__('replace')}</a>`);
+			$a.find('#le-reupload').on('click', (e) => { e.preventDefault(); this._uploadLeCert(); });
+		} else {
+			$a.html(`<button class="btn btn-xs btn-default" id="le-upload">${__('Upload CDTFA-230-FET')}</button> <span class="text-muted">${__('(required)')}</span>`);
+			$a.find('#le-upload').on('click', () => this._uploadLeCert());
+		}
+	}
+
+	_uploadLeCert() {
+		const cust = this.buyerType === 'business' ? this._businessCustomer : this.fields.customer.get_value();
+		if (!cust) {
+			frappe.show_alert({ message: __('Pick the buyer first — the certificate is kept on their record.'), indicator: 'orange' });
+			return;
+		}
+		new frappe.ui.FileUploader({
+			doctype: 'Customer', docname: cust, allow_multiple: false,
+			restrictions: { allowed_file_types: ['.pdf', '.png', '.jpg', '.jpeg'] },
+			on_success: (file_doc) => {
+				this._leCert = file_doc.file_url;
+				this._renderLeCert();
+				this._reflectReadiness();
+			},
+		});
 	}
 
 	// ------------------------------------------------------------- tax exempt
