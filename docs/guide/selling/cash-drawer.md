@@ -45,6 +45,7 @@ line each, with the time, what it was, the document behind it and the amount.
 |---|---|
 | **Cash sale (register)** | A cash sale at the register |
 | **Cash sale (counter order)** | A cash payment taken on Create Order |
+| **Cash paid on an open order** | Cash taken at the register on an order that is not finished yet: a part payment, or payment before the 4473 clears. It counts from the moment you click **Take Payment** |
 | **Customer payment** | Cash taken against an order later, for example at pickup |
 | **Cash refund** | Cash handed back on a return |
 | **Seller paid for a gun**, **Seller paid for received goods** | Cash paid to a private seller |
