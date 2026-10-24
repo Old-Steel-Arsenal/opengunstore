@@ -29,7 +29,7 @@ _MAX_DAYS = 400
 _MONEY = (
 	("cash_pos", "Register sales", ("sale_pos",)),
 	("cash_counter", "Counter orders", ("sale_counter",)),
-	("cash_payments", "Customer payments", ("payment_in", "order_payment")),
+	("cash_payments", "Customer payments", ("payment_in",)),
 	("refunds", "Cash refunds", ("refund",)),
 	("payouts", "Paid to sellers", ("payout", "trade_in_payout", "goods_payout")),
 	("deposits", "Bank deposits", ("deposit",)),
@@ -126,7 +126,7 @@ def execute(filters=None):
 		for r in by_day.get(key, []):
 			field = next(f for f, _l, kinds in _MONEY if r.kind in kinds)
 			out[field] = flt(out[field] + r.amount, 2)
-			if r.kind in ("sale_pos", "sale_counter", "payment_in", "order_payment"):
+			if r.kind in ("sale_pos", "sale_counter", "payment_in"):
 				receipts.append(r.voucher_no)
 			elif r.kind == "refund":
 				refunds.append(r.voucher_no)

@@ -9,7 +9,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import frappe
-from frappe.utils import add_days, add_to_date, flt, now_datetime, nowdate
+from frappe.utils import add_days, add_to_date, flt, getdate, now_datetime, nowdate
 
 from ffl_core import cash_drawer as cd
 from ffl_core.api import cash_drawer as api
@@ -218,7 +218,15 @@ class ShiftCases:
 			self.assertGreater(stamp, add_to_date(now_datetime(), minutes=-5))
 			self.assertEqual(self._expected(), before + 100)
 			rows = [r for r in cd.pending_pos_rows(self.company) if r.voucher_no == inv.name]
-			self.assertEqual([(r.kind, r.amount, r.creation) for r in rows], [("order_payment", 100, stamp)])
+			self.assertEqual([(r.kind, r.amount, r.creation, r.posting_date) for r in rows],
+				[("order_payment", 100, stamp, getdate(stamp))])  # dated by the stamp, not the draft's moving posting_date
+			_opening, logged = cd.log_rows(self.company, self.cash, getdate(stamp), getdate(stamp))
+			self.assertEqual([(r.kind, r.amount) for r in logged if r.voucher_no == inv.name], [("order_payment", 100)])
+			frappe.set_user(self.manager)
+			page = api.get_today(self.company)
+			frappe.set_user(self.cashier)
+			self.assertIn(("order_payment", "Cash paid on an open order", 100), [
+				(l["kind"], l["label"], l["amount"]) for l in page["lines"] if l["voucher_no"] == inv.name])
 			stale = frappe.get_doc("POS Invoice", inv.name)
 			stale.ffl_cash_taken_at = None  # a register screen loaded before the stamp
 			stale.flags.ignore_permissions = True
