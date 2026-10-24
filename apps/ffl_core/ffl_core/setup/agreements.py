@@ -5,7 +5,8 @@
   (``agreements.refuse_missing_required``). Next to the Firearm flags on the
   first tab.
 * **Item Group** — the same field: every Item in the group and its sub-groups needs it,
-  unless the Item names its own (``agreements.required_for_item``).
+  unless the Item names its own; a used Item naming none takes FFL Settings › Used Item
+  Agreement (``agreements.required_for_item``).
 * **Customer** — an "Agreements" section on the Profile tab, after the merged
   aliases: one HTML slot the form script fills with the customer's copies and the
   Request agreement button.
@@ -21,7 +22,8 @@ FIELDS = {
 	"Item": [
 		{"fieldname": "ffl_required_agreement", "fieldtype": "Link", "options": "Agreement Template",
 			"label": "Agreement Required to Buy", "insert_after": "is_antique",
-			"description": "The customer must have signed this before a counter sale of the item is submitted."},
+			"description": "The customer must have signed this before a counter sale of the item is submitted. "
+				"Empty: the Item Group's, else for a used item FFL Settings › Used Item Agreement."},
 	],
 	"Item Group": [
 		{"fieldname": "ffl_required_agreement", "fieldtype": "Link", "options": "Agreement Template",
