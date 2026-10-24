@@ -4642,9 +4642,9 @@ def quote_config(company: str | None = None) -> dict:
 	    {"home_state": ..., "rate": <summed On Net Total %>, "freight_taxable": bool,
 	    "shipping_tax_inclusive": bool (a new order's shipping includes its
 	    sales tax — FFL Settings), "us_states": {<state name>: <USPS code>},
-	    "le_exempt_offered": bool (the store names an excise tax a peace
-	    officer is exempt from), "le_excise_rate": <that account's On Net
-	    Total % in the default template>}.
+	    "le_exempt_offered": bool (a California store that names the excise
+	    account a peace officer is exempt from), "le_excise_rate": <that
+	    account's On Net Total % in the default template>}.
 
 	Permissions:
 	    Sales User / Sales Manager / Stock Manager / System Manager.
