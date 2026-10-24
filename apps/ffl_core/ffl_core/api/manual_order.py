@@ -40,7 +40,7 @@ from ffl_core.api.counter_pickup import (
 	submitted_pickup_invoices,
 	ticket_remarks,
 )
-from ffl_core.compliance import channel_invoice, cr_transfer, dealer_transfer
+from ffl_core.compliance import channel_invoice, cr_transfer, dealer_transfer, le_excise_exempt
 from ffl_core.compliance.firearm import is_awaiting_procurement_row
 from ffl_core.customer_name import refresh_customer_name_snapshots
 from ffl_core.firearm import (
@@ -271,7 +271,11 @@ def create_order(payload) -> dict:
 	            regulated firearm is allowed only as a ship-to-store line (it is
 	            handed over on a POS Invoice, with its 4473, once it arrives),
 	        ship_to?: {address_line1, address_line2, city, state, pincode},
-	        notes?, pos_profile?, tax_exempt?, tax_certificate?, draft?
+	        notes?, pos_profile?, tax_exempt?, tax_certificate?, draft?,
+	        le_excise_exempt?, le_exempt_buyer?, le_exempt_certificate? —
+	            a peace officer's (or their agency's) sale: the excise tax comes
+	            off, sales tax stays; buyer and CDTFA-230-FET certificate required
+	            (compliance.le_excise_exempt)
 	        } — dict or JSON string.
 
 	Returns:
@@ -306,6 +310,7 @@ def _create_order(payload, *, shipping_tax_inclusive: int | None = None) -> dict
 			(str(payload.get("tax_certificate") or "")).strip() or None)
 	else:
 		tax_exempt = bool(frappe.db.get_value("Customer", customer, "is_tax_exempt"))
+	le_exemption = _le_exemption(payload)
 
 	rows, _serials, has_regulated = _validate_items(payload.get("items") or [])
 	# Counter pickup: the customer collects here, so the order HAS no destination —
@@ -475,6 +480,7 @@ def _create_order(payload, *, shipping_tax_inclusive: int | None = None) -> dict
 	# (on validate) swaps it for the 0% Out-of-State template for out-of-state.
 	if not tax_exempt:
 		_apply_default_tax_template(so, company)
+	so.update(le_exemption)
 	so.ffl_shipping_amount = shipping_amount
 	so.ffl_shipping_tax_inclusive = shipping_tax_inclusive
 	so.flags.ffl_shipping_tax_basis_set = True  # stamp_shipping_tax_basis keeps it
@@ -509,6 +515,7 @@ def _create_order(payload, *, shipping_tax_inclusive: int | None = None) -> dict
 	# broken invoice, and a pickup with a gun on it must never read as one.
 	si.ffl_pickup_in_store = 1 if pickup else 0
 	si.ffl_buyer_type = _BUYER_BUSINESS if is_business else _BUYER_INDIVIDUAL
+	si.update(le_exemption)
 	si.ffl_shipping_amount = shipping_amount
 	si.ffl_shipping_tax_inclusive = shipping_tax_inclusive
 	si.flags.ffl_shipping_tax_basis_set = True
@@ -2511,6 +2518,10 @@ def get_order_for_edit(sales_invoice: str) -> dict:
 		"contact_email": si.contact_email or "",
 		"notes": (getattr(si, "ffl_staff_note", "") or ""),
 		"pos_profile": si.pos_profile or "",
+		# Unlike tax_exempt (the customer's standing flag), this one is the sale's own.
+		"le_excise_exempt": cint(si.get(le_excise_exempt.FLAG)),
+		"le_exempt_buyer": si.get(le_excise_exempt.BUYER) or "",
+		"le_exempt_certificate": si.get(le_excise_exempt.CERT) or "",
 		"payment_received": 0,
 		"dispose_now": 0,
 		# The buyer's own door, when that is where the order ships — a rebuild
@@ -4452,6 +4463,19 @@ def _repin_economics(si, rows: list[dict]) -> None:
 			row.ffl_storage_location = src.get("storage_location") or None
 
 
+def _le_exemption(payload) -> dict:
+	"""The peace-officer excise exemption fields for this order's Sales Order and
+	Sales Invoice, or {} — compliance.le_excise_exempt checks the paperwork and
+	drops the excise rows on their validate."""
+	if not cint(payload.get("le_excise_exempt") or 0):
+		return {}
+	return {
+		le_excise_exempt.FLAG: 1,
+		le_excise_exempt.BUYER: (str(payload.get("le_exempt_buyer") or "")).strip() or None,
+		le_excise_exempt.CERT: (str(payload.get("le_exempt_certificate") or "")).strip() or None,
+	}
+
+
 def _reassert_tax_exemption(si, tax_exempt: bool) -> None:
 	"""Force the invoice back to zero tax for a tax-exempt order — the
 	counterpart to create_order's insert-time skip of _apply_default_tax_template.
@@ -4617,7 +4641,10 @@ def quote_config(company: str | None = None) -> dict:
 	Returns:
 	    {"home_state": ..., "rate": <summed On Net Total %>, "freight_taxable": bool,
 	    "shipping_tax_inclusive": bool (a new order's shipping includes its
-	    sales tax — FFL Settings), "us_states": {<state name>: <USPS code>}}.
+	    sales tax — FFL Settings), "us_states": {<state name>: <USPS code>},
+	    "le_exempt_offered": bool (a California store that names the excise
+	    account a peace officer is exempt from), "le_excise_rate": <that
+	    account's On Net Total % in the default template>}.
 
 	Permissions:
 	    Sales User / Sales Manager / Stock Manager / System Manager.
@@ -4626,13 +4653,14 @@ def quote_config(company: str | None = None) -> dict:
 	from ffl_core.compliance.interstate_tax import (
 		US_STATES, _default_template, freight_taxable, home_state)
 	company = (str(company or "")).strip() or _default_company()
-	rate = 0.0
 	tmpl = _default_template(company) if company else None
-	if tmpl:
-		rate = sum(flt(r.rate) for r in frappe.get_doc(
-			"Sales Taxes and Charges Template", tmpl).taxes
-			if r.charge_type == "On Net Total")
+	rows = [r for r in frappe.get_doc("Sales Taxes and Charges Template", tmpl).taxes
+		if r.charge_type == "On Net Total"] if tmpl else []
+	rate = sum(flt(r.rate) for r in rows)
+	le_account = le_excise_exempt.exempt_account(company)
 	return {"home_state": home_state(company), "rate": rate,
+		"le_exempt_offered": bool(le_account),
+		"le_excise_rate": sum(flt(r.rate) for r in rows if r.account_head == le_account),
 		"freight_taxable": freight_taxable(company),
 		"shipping_tax_inclusive": bool(shipping_tax_inclusive_setting()),
 		# The server's own name → code table, so the preview reads "Texas" as TX.
@@ -4640,7 +4668,7 @@ def quote_config(company: str | None = None) -> dict:
 
 
 @frappe.whitelist()
-def item_tax_rates(item_codes, company: str | None = None) -> dict:
+def item_tax_rates(item_codes, company: str | None = None, excise_exempt: int = 0) -> dict:
 	"""Per-item sales-tax rate for the Create Order preview.
 
 	The summed "On Net Total" rate of the company's default sales-tax template
@@ -4654,6 +4682,8 @@ def item_tax_rates(item_codes, company: str | None = None) -> dict:
 	Args:
 	    item_codes: List (or JSON list) of Item codes.
 	    company: Optional company; defaults to the configured default.
+	    excise_exempt: 1 for a peace officer's sale — the excise account's
+	        rows (compliance.le_excise_exempt) are left out of the rate.
 
 	Returns:
 	    {<item_code>: <rate %>} for every known item.
@@ -4669,6 +4699,9 @@ def item_tax_rates(item_codes, company: str | None = None) -> dict:
 	tmpl = _default_template(company) if company else None
 	rows = [r for r in frappe.get_doc("Sales Taxes and Charges Template", tmpl).taxes
 		if r.charge_type == "On Net Total"] if tmpl else []
+	if cint(excise_exempt):
+		le_account = le_excise_exempt.exempt_account(company)
+		rows = [r for r in rows if r.account_head != le_account]
 	base = {"company": company, "taxes": [
 		{"account_head": r.account_head, "rate": r.rate} for r in rows]}
 	codes = frappe.parse_json(item_codes) if isinstance(item_codes, str) else item_codes

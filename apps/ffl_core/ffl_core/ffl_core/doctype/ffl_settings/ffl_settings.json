@@ -14,6 +14,7 @@
   "pending_order_age_alert_days",
   "receipt_footer_note",
   "shipping_price_includes_tax",
+  "peace_officer_exempt_tax_account",
   "counter_lock_minutes",
   "section_gunsmithing",
   "gunsmith_labor_item",
@@ -88,6 +89,13 @@
    "label": "Shipping Price Includes Sales Tax",
    "default": "1",
    "description": "On: when an order is taxed, the shipping you enter is what the customer pays, with the sales tax already inside it, and the receipt says \"sales tax included\". Off: sales tax is added on top of the shipping. Only affects new orders; an existing order keeps the way it was created."
+  },
+  {
+   "fieldname": "peace_officer_exempt_tax_account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "label": "Peace-Officer Exempt Tax Account",
+   "description": "California stores only. The excise tax account (the 11% firearm and ammunition excise tax) a sale to a peace officer or law enforcement agency is exempt from. The counter then offers a Peace-Officer Exemption that takes this tax off and keeps sales tax."
   },
   {
    "fieldname": "counter_lock_minutes",
@@ -210,7 +218,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-17 18:00:00.000000",
+ "modified": "2026-10-24 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "FFL Settings",

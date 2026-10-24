@@ -336,6 +336,7 @@ app: `ffl_core` · module: FFL Core · single · roles: System Manager
 | `pending_order_age_alert_days` | Int | Pending Order overdue after (days) |  |  |
 | `receipt_footer_note` | Small Text | Receipt Footer Note |  |  |
 | `shipping_price_includes_tax` | Check | Shipping Price Includes Sales Tax |  |  |
+| `peace_officer_exempt_tax_account` | Link | Peace-Officer Exempt Tax Account |  | Account |
 | `counter_lock_minutes` | Int | Lock Idle Screen After (minutes) |  |  |
 | `gunsmith_labor_item` | Link | Gunsmith Labor Item |  | Item |
 | `gunsmith_agreement_template` | Link | Intake Authorization |  | Agreement Template |
