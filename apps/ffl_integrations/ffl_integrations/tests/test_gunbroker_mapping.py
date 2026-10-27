@@ -517,6 +517,11 @@ class BuildListingPayload(FrappeTestCase):
 		self.assertEqual(payload["SKU"], "COLT-PYTHON::SN-001")
 		self.assertEqual(payload["SerialNumber"], "SN-001")
 
+	def test_a_sku_over_the_50_char_limit_goes_out_in_the_short_form(self):
+		code = "DAVIDE PEDERSOLI S.TRAPDOOR CARBINE .45-70 X"  # 52 chars with ::SN-001
+		payload = self._build(serial={"item_code": code})
+		self.assertEqual(payload["SKU"], "::SN-001")
+
 	def test_the_price_is_the_resolved_sell_price(self):
 		self.assertEqual(self._build()["FixedPrice"], 1200.0)
 
