@@ -376,6 +376,7 @@ class AGunPricedOneByOneStaysRefused(FrappeTestCase):
 		}
 		with patch("ffl_integrations.integration_gate.gunbroker_enabled", return_value=True), \
 				patch.object(listings, "is_custody_serial", return_value=False), \
+				patch.object(listings, "_has_field", return_value=False), \
 				patch.object(listings.mapping, "listing_context", return_value=context):
 			for relist in (False, True):
 				with self.subTest(relist=relist):

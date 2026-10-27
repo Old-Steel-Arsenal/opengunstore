@@ -61,6 +61,7 @@ DISABLED = "disabled"
 NOT_CONFIGURED = "not_configured"
 NOT_ACTIVE = "not_active"
 TRANSFER_CUSTODY = "transfer_custody"
+CONSIGNOR_MISSING = "consignor_missing"
 UNIFORM_ITEM = "uniform_item"
 # A model (uniform-price gun) listing's own refusals.
 PER_SERIAL_LIVE = "per_serial_live"
@@ -279,10 +280,22 @@ def check_push_guards(serial_no: str, *, relist: bool = False,
 	# (fulfillment.dispose_gb_order); an NFA item lists and disposes like any
 	# other gun — the Form 3/4 is filed in ATF eForms, outside this system.
 
-	# No consigned-IN guard either. A consigned gun lists like store stock: the
-	# GunBroker sale books a Sales Invoice with the serial on the line, which
-	# freezes the commission and posts the consignor payable like a counter
-	# sale, and consignment sales are never returnable by store policy.
+	# 5. Consigned IN with no consignor. A consigned gun otherwise lists like
+	#    store stock: the GunBroker sale books a Sales Invoice with the serial on
+	#    the line, which freezes the commission and posts the consignor payable
+	#    like a counter sale, and consignment sales are never returnable. But
+	#    that payable is skipped when no consignor is recorded, and nobody is at
+	#    the counter to notice on an online sale — so the consignor must be set
+	#    before the gun goes up.
+	if _has_field("Serial No", "is_consignment"):
+		consigned = frappe.db.get_value("Serial No", serial_no,
+			["is_consignment", "consignor"], as_dict=True) or {}
+		if consigned.get("is_consignment") and not consigned.get("consignor"):
+			return skip(CONSIGNOR_MISSING, _(
+				"Serial {0} came in on consignment but has no consignor recorded, so "
+				"a GunBroker sale would owe nobody. Set the Consignor on the Serial "
+				"No first."
+			).format(serial_no))
 
 	# 6. Uniform-priced model: sold as one shared product, not per gun. Lists as a
 	#    MODEL from the Item form instead. `relist` does not lift this, unlike the
@@ -405,6 +418,13 @@ def _shelf_message(serial_no: str, shelf: dict) -> str:
 		return _("Serial {0} may already be sold on GunBroker.").format(serial_no)
 	return _("Serial {0} is not available to sell right now ({1})."
 		).format(serial_no, reason or "?")
+
+
+def _has_field(doctype: str, fieldname: str) -> bool:
+	try:
+		return bool(frappe.get_meta(doctype).has_field(fieldname))
+	except Exception:  # noqa: BLE001 — a meta failure must not decide a guard
+		return False
 
 
 # ---------------------------------------------------------------------------
