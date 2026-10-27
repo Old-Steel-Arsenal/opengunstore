@@ -403,6 +403,9 @@ def run_saved_card_charge(sales_invoice: str, saved_card: str, amount=None,
 			update_modified=False)
 		_commit()
 		frappe.throw(_lock_message(p.label), title=_("Charge not confirmed"))
+	# The commit above released the invoice lock; a lookup on another screen may have settled
+	# this row meanwhile. Re-take it so the row is read (and settled) once.
+	frappe.db.get_value("Sales Invoice", sales_invoice, "name", for_update=True)
 	return api._settle_terminal_payment(p, res, api._terminal_payment_row(sales_invoice, reference))
 
 
@@ -424,6 +427,9 @@ def _resolve_waiting(api, row) -> dict:
 	# charge never reached it — but a lagging search would look the same, and closing on our own
 	# would let the next click charge the customer twice. Stay locked until a manager has looked
 	# in the processor's portal and releases it (release_saved_card_charge).
+	if res.gateway_status == "FOUND":
+		return {"ok": False, "status": "FOUND", "resolved": False, "terminal_payment": row.name,
+			"error": res.message}
 	return {"ok": False, "status": "UNCONFIRMED", "resolved": False, "terminal_payment": row.name,
 		"error": _("{0} still has no record of the earlier saved-card charge ({1}). Look it up in "
 			"the {0} portal: if it is there, click Charge saved card again later — it records the "
@@ -466,6 +472,11 @@ def release_saved_card_charge(terminal_payment: str, reason: str) -> dict:
 		out = api._settle_terminal_payment(p, res, row)
 		out["resolved"] = True
 		return out
+	if res.gateway_status == "FOUND":
+		# The gateway holds a sale under this id: never close it as not charged from here.
+		frappe.throw(_("{0} Record it with the processor's portal and the store's manual card "
+			"steps; it cannot be released as not charged.").format(escape_html(res.message)),
+			title=_("Charge found at the gateway"))
 	if not _past_grace(api, row):
 		frappe.throw(_lock_message(p.label), title=_("Charge not confirmed"))
 	frappe.db.set_value(api.TERMINAL_PAYMENT, row.name, {"status": "CANCELED",

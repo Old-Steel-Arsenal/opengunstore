@@ -560,6 +560,28 @@ class ChargingASavedCard(_CardOnFileBase):
 		self.assertTrue(res["ok"] and res["resolved"])
 		self.assertEqual(self._rows(si)[0].status, "CHARGED")
 
+	def test_a_sale_the_lookup_cannot_settle_is_never_released_as_not_charged(self, cc):
+		client = cc.from_settings.return_value
+		cust = self._customer()
+		card = self._saved_card(cust)
+		si, _ = self._unpaid_order(cust)
+		client.charge_stored_credential.side_effect = requests.exceptions.ReadTimeout("read timed out")
+		with self.assertRaises(frappe.ValidationError):
+			saved_cards.charge_saved_card(si, card)
+		row = self._rows(si)[0]
+		frappe.db.set_value(api.TERMINAL_PAYMENT, row.name, "creation", add_to_date(now_datetime(), minutes=-30),
+			update_modified=False)
+		for found in ({"type": "SALE", "orderId": si, "resultCode": "E", "uniqueReference": "REF-E"},
+				{"type": "SALE", "orderId": si, "resultCode": "A", "status": "VOID", "uniqueReference": "REF-V"}):
+			client.find_transaction.return_value = {"data": [found]}
+			res = saved_cards.charge_saved_card(si, card)
+			self.assertEqual(res["status"], "FOUND")
+			with self.assertRaises(frappe.ValidationError):
+				saved_cards.release_saved_card_charge(row.name, "checked")
+			self.assertEqual(self._rows(si)[0].status, "IN_PROGRESS")
+		client.retrieve_payment.assert_not_called()
+		self.assertEqual(client.charge_stored_credential.call_count, 1)
+
 	def test_gateway_refusal_records_nothing_charged_and_scrubs_the_token(self, cc):
 		client = cc.from_settings.return_value
 		cust = self._customer()

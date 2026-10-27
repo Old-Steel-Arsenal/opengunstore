@@ -270,18 +270,29 @@ class PayrocProcessor(CardProcessor):
 		return self._payment_result(payment or {}, undecided=UNKNOWN)
 
 	def find_stored_charge(self, reference: str) -> CardResult:
-		"""GET transactions?orderId= — the sale filed under ``reference``: approved (read back in
-		full by its uniqueReference), declined, or UNKNOWN when Payroc holds none."""
+		"""GET transactions?orderId= — the sale filed under ``reference``: approved and still held
+		(read back in full by its uniqueReference), declined, or UNKNOWN. UNKNOWN with
+		gateway_status FOUND = Payroc holds a sale under that id that cannot be settled from here
+		(an undecided or partial result, or an approval already reversed): never "no record"."""
+		from ffl_integrations.payroc.reconcile import HELD_STATUSES
+
 		rows = (self.client.find_transaction(order_id=reference) or {}).get("data") or []
 		sales = [t for t in rows if str(t.get("type") or "SALE").upper() == "SALE"
 			and str(t.get("orderId") or reference) == reference]
 		approved = next((t for t in sales if str(t.get("resultCode") or "").upper() in _APPROVED), None)
-		if approved and approved.get("uniqueReference"):
+		# A status the list leaves out is not held against it; one it names must still be held.
+		held = approved is not None and (not approved.get("status")
+			or str(approved["status"]).upper() in HELD_STATUSES)
+		if approved and held and approved.get("uniqueReference"):
 			return self._payment_result(self.client.retrieve_payment(approved["uniqueReference"]) or {},
 				undecided=UNKNOWN)
 		if sales and all(str(t.get("resultCode") or "").upper() in _DECLINED_CODES for t in sales):
 			return CardResult(status=DECLINED, message=sales[0].get("resultMessage") or "declined",
 				unique_reference=sales[0].get("uniqueReference") or "", raw=_mask_credentials(sales[0]))
+		if sales:
+			return CardResult(status=UNKNOWN, gateway_status="FOUND", message=_(
+				"Payroc holds a sale under {0} that cannot be recorded automatically — check it in "
+				"the Payroc portal.").format(reference), raw=_mask_credentials({"data": rows}))
 		return CardResult(status=UNKNOWN, message=_("Payroc holds no answer for {0} yet.").format(reference),
 			raw=_mask_credentials({"data": rows}))
 
