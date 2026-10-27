@@ -429,10 +429,28 @@
 		},
 	});
 
+	// A signature lands from the tablet or the customer's phone: re-read the register
+	// customer's flags and repaint, so the clerk never refreshes the page (and loses an
+	// unsaved cart) to see it. Event from agreements._announce_signed.
+	function onAgreementSigned(msg) {
+		var cart = window.cur_pos && cur_pos.cart;
+		var c = cart && cart.customer_info && cart.customer_info.customer;
+		if (!c || !msg || msg.customer !== c) return;
+		fetchFlags(c).then(function () {
+			if (cart.customer_info && cart.customer_info.customer === c) cart.update_customer_section();
+			frappe.show_alert({ message: __('{0} signed {1}.', [api.escText(cart.customer_info.customer_name || c),
+				api.escText(msg.agreement || '')]), indicator: 'green' }, 7);
+		}, function () { /* the strip is a hint */ });
+	}
+
 	function wire() {
 		frappe.provide('erpnext.PointOfSale');
 		var hook = window.ffl && ffl.installClassHook;
 		if (hook) hook(erpnext.PointOfSale, 'ItemCart', patchCart);
+		if (frappe.realtime && frappe.model.can_read('Customer Agreement')) {
+			frappe.realtime.doctype_subscribe('Customer Agreement');
+			frappe.realtime.on('customer_agreement_signed', onAgreementSigned);
+		}
 	}
 	if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire);
 	else wire();
