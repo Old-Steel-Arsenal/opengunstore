@@ -44,7 +44,7 @@ charge up at the gateway and records it.
 
 **Returns:** {ok, status, unique_reference, approval_code, amount, payment_entry, outstanding, paid} on approval; {ok: False, status, error} on a decline; resolved=True when an earlier charge was settled instead of a new one.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:491`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:494`</sub>
 
 ## `list_saved_cards`
 
@@ -102,4 +102,4 @@ When the default card goes, the newest remaining card becomes the default.
 
 **Returns:** {ok: True, status: "Removed"}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:518`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:521`</sub>

@@ -460,11 +460,14 @@ def release_saved_card_charge(terminal_payment: str, reason: str) -> dict:
 	reason = (reason or "").strip()
 	if not reason:
 		frappe.throw(_("Say what you checked in the processor's portal."))
-	row = frappe.db.get_value(api.TERMINAL_PAYMENT, terminal_payment or "", ["name", "sales_invoice",
-		"status", "saved_card", "processor", "instruction_id"], as_dict=True)
+	invoice = frappe.db.get_value(api.TERMINAL_PAYMENT, terminal_payment or "", "sales_invoice")
+	if invoice:
+		# Lock first, then read: a lookup on another screen may be settling this row.
+		frappe.db.get_value("Sales Invoice", invoice, "name", for_update=True)
+	row = frappe.db.get_value(api.TERMINAL_PAYMENT, terminal_payment or "", api._TP_FIELDS,
+		as_dict=True)
 	if not row or not row.saved_card or row.status != "IN_PROGRESS":
 		frappe.throw(_("{0} is not a saved-card charge waiting for its answer.").format(terminal_payment))
-	frappe.db.get_value("Sales Invoice", row.sales_invoice, "name", for_update=True)
 	p = api._processor(row.processor or "")
 	p.prepare()
 	res = p.find_stored_charge(row.instruction_id)
