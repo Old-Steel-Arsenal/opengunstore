@@ -1,0 +1,47 @@
+{
+ "actions": [],
+ "creation": "2026-10-27 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "issingle": 1,
+ "field_order": [
+  "card_on_file_enabled",
+  "card_on_file_template"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "description": "Offer \"Save this card\" when a customer pays on the card terminal. Needs a processor that can keep cards and the authorization below.",
+   "fieldname": "card_on_file_enabled",
+   "fieldtype": "Check",
+   "label": "Offer to Save Cards"
+  },
+  {
+   "description": "The agreement the customer signs on the signing tablet before a card is saved (a Per customer template).",
+   "fieldname": "card_on_file_template",
+   "fieldtype": "Link",
+   "label": "Card-on-File Authorization",
+   "options": "Agreement Template",
+   "mandatory_depends_on": "eval:doc.card_on_file_enabled"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-27 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FFL Integrations",
+ "name": "Card On File Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

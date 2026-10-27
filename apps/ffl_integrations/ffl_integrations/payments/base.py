@@ -13,8 +13,13 @@ switched on per site — the single "Credit Card" Mode of Payment is what they s
 charge row records the ``code`` of the processor that took it, so void / refund / poll go back
 to that processor even after the store has moved to another.
 
-Room for later: card-on-file charges would be one more method with a default that raises
-``NotImplementedError`` — no existing adapter has to change.
+Card on file (optional): a processor that can keep a card at its gateway sets
+``supports_card_on_file`` and implements ``charge_stored`` / ``find_stored_charge`` /
+``delete_stored``; its ``start_charge`` then also takes ``save_card``. The defaults say "not
+supported" (the flag is False and the methods raise ``NotImplementedError``), and the core only
+passes ``save_card`` to a processor that set the flag — so an adapter written before card on file
+keeps working unchanged. The core keeps the saved card itself (``Saved Card``, token encrypted;
+``payments.saved_cards``); the gateway's token never leaves the server.
 """
 from __future__ import annotations
 
@@ -54,7 +59,11 @@ class CardResult:
 	message           the gateway's result / failure text for the operator
 	gateway_status    the processor's own word for a finished instruction that did not approve
 	                  (Payroc: CANCELED / FAILURE); echoed back to the POS in poll answers
-	raw               the gateway's body as parsed JSON; the core stores ``json.dumps(raw)`` (1 KB)
+	raw               the gateway's body as parsed JSON; the core stores ``json.dumps(raw)`` (1 KB).
+	                  Never put a stored-card token in it — the adapter masks it first
+	stored_credential the gateway's token for a card saved by this charge (card on file only;
+	                  "" when the card was not saved). Stored encrypted, never shown
+	card_expiry       the card's expiry as MMYY, when the gateway sends one
 	"""
 
 	status: str
@@ -65,6 +74,8 @@ class CardResult:
 	message: str = ""
 	gateway_status: str = ""
 	raw: Any = None
+	stored_credential: str = ""
+	card_expiry: str = ""
 
 
 class CardProcessor:
@@ -82,6 +93,9 @@ class CardProcessor:
 	enabled_default: int = 1
 	# (label, fieldname) pairs read off the settings Single: "is money actually flowing".
 	health_fields: tuple[tuple[str, str], ...] = ()
+	# Card on file: True when start_charge takes ``save_card`` and the three stored-card
+	# methods below are implemented.
+	supports_card_on_file: bool = False
 
 	# ------------------------------------------------------------ switch
 
@@ -103,9 +117,14 @@ class CardProcessor:
 	# ------------------------------------------------------------ card-present charge
 
 	def start_charge(self, *, document: str, attempt: int, amount: float, terminal: str | None,
-			description: str, operator: str) -> tuple[str, str]:
+			description: str, operator: str, save_card: dict | None = None) -> tuple[str, str]:
 		"""Put ``amount`` on the card device for ``document`` (a POS Invoice / Sales Invoice name);
 		``attempt`` counts every instruction ever started for that document, declines included.
+
+		``save_card`` (card on file only; passed only when ``supports_card_on_file``):
+		``{"reference": <merchant reference>, "usage": "RECURRING" | "UNSCHEDULED"}`` — keep the
+		card at the gateway if the sale is approved; ``poll`` then answers its token in
+		``CardResult.stored_credential``.
 
 		Returns (handle, status): the handle ``poll`` / ``cancel`` take, and the gateway's status
 		word for the new instruction ("" = in progress). Throws when the gateway returned no handle.
@@ -131,6 +150,39 @@ class CardProcessor:
 		"""Refund ``amount`` of a capture back to its card. APPROVED (``unique_reference`` = the
 		refund's reference) or DECLINED; raises :class:`CardProcessorError` with ``outcome_known``
 		set honestly — the core locks the return when it is False."""
+		raise NotImplementedError
+
+	# ------------------------------------------------------------ card on file (optional)
+
+	def order_reference(self, document: str, attempt: int) -> str:
+		"""The id the gateway files attempt ``attempt`` on ``document`` under. The core records it
+		before a saved-card charge goes out, so a charge whose answer was lost can be looked up."""
+		return document if int(attempt or 1) <= 1 else f"{document}-A{int(attempt)}"
+
+	def charge_stored(self, *, token: str, amount: float, document: str, attempt: int,
+			description: str, operator: str, usage: str = "UNSCHEDULED",
+			initial_reference: str = "") -> CardResult:
+		"""Charge a saved card, merchant-initiated (no card present), synchronously.
+
+		``token`` is ``CardResult.stored_credential`` from the sale that saved the card; ``usage``
+		the agreement it was saved under; ``initial_reference`` that sale's ``unique_reference``
+		(the first transaction of the stored-credential series). The gateway's id for this
+		charge is ``order_reference(document, attempt)``. APPROVED (``amount`` = authorized),
+		DECLINED, or UNKNOWN when the gateway answered but did not settle it. Raises
+		:class:`CardProcessorError` with ``outcome_known`` set honestly — False means the charge
+		may have gone through and the core looks it up before ever charging again. Never puts the
+		token in an error message or in ``raw``."""
+		raise NotImplementedError
+
+	def find_stored_charge(self, reference: str) -> CardResult:
+		"""Look up a saved-card charge by ``order_reference``: APPROVED / DECLINED as the gateway
+		holds it, UNKNOWN when it holds nothing under that id (yet)."""
+		raise NotImplementedError
+
+	def delete_stored(self, reference: str) -> None:
+		"""Remove a saved card at the gateway by the merchant reference it was saved under.
+		Raises :class:`CardProcessorError` when the gateway refused or could not be reached; a
+		card the gateway no longer holds counts as removed."""
 		raise NotImplementedError
 
 	# ------------------------------------------------------------ setup / health

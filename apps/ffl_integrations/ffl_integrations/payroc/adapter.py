@@ -10,12 +10,19 @@ Payroc shapes the adapter keeps to itself: the per-attempt orderId, the device p
 instruction lifecycle (IN_PROGRESS / COMPLETED / FAILURE / CANCELED, then a HATEOAS link to the
 Payment), ``transactionResult.resultCode`` (A = approved, D = declined) inside 200 bodies, and
 the masked-PAN card summary.
+
+Card on file: a sale started with ``save_card`` asks Payroc to tokenize the card; the token
+(``transactionResult.storedPaymentCredentials.credentialsNumber``) comes back to the core only
+as ``CardResult.stored_credential`` — every ``raw`` body this adapter hands out has it masked
+(:func:`_mask_credentials`), and no error message carries it.
 """
 from __future__ import annotations
 
+import copy as _copy
 import re as _re
 
 import frappe
+import requests
 from frappe import _
 from frappe.utils import flt
 
@@ -27,9 +34,10 @@ from ffl_integrations.payments.base import (
 	PENDING,
 	UNKNOWN,
 	CardProcessor,
+	CardProcessorError,
 	CardResult,
 )
-from ffl_integrations.payroc.client import SETTINGS_DOCTYPE, PayrocClient
+from ffl_integrations.payroc.client import SETTINGS_DOCTYPE, PayrocClient, PayrocError
 
 # What "approved" looks like in a Payroc transactionResult.
 _APPROVED = {"A"}
@@ -75,6 +83,34 @@ def _order_id(doc_name: str, attempt: int) -> str:
 
 def _txn(payment: dict) -> dict:
 	return (payment or {}).get("transactionResult") or {}
+
+
+# A merchant-initiated charge answers synchronously; only these resultCodes are a definite no
+# (D declined, R refer to issuer, C pick up card). E (accepted, result unknown), P (partial) or
+# no code at all is not something to guess at: the core keeps the charge locked and looks it up.
+_DECLINED_CODES = {"D", "R", "C"}
+_MASK = "[saved card]"
+
+
+def _stored_credentials(payment: dict) -> dict:
+	"""The Secure Credentials Payroc created with this payment (empty when none)."""
+	return _txn(payment).get("storedPaymentCredentials") or {}
+
+
+def _mask_credentials(body):
+	"""A deep copy of ``body`` with every ``credentialsNumber`` value masked: the token is a
+	card-number-shaped secret and ``raw`` is stored on charge rows and shown in the desk."""
+	def walk(node):
+		if isinstance(node, dict):
+			return {k: (_MASK if k == "credentialsNumber" and v else walk(v)) for k, v in node.items()}
+		if isinstance(node, list):
+			return [walk(v) for v in node]
+		return node
+	return walk(_copy.deepcopy(body)) if body else body
+
+
+def _without(text: str, secret: str) -> str:
+	return text.replace(secret, _MASK) if secret else text
 
 
 def _declined(resp: dict) -> str:
@@ -139,10 +175,15 @@ class PayrocProcessor(CardProcessor):
 
 	# ------------------------------------------------------------ card-present charge
 
-	def start_charge(self, *, document, attempt, amount, terminal, description, operator):
+	def start_charge(self, *, document, attempt, amount, terminal, description, operator,
+			save_card=None):
+		cof = None
+		if save_card:
+			cof = {"tokenize": True, "merchantReference": save_card["reference"],
+				"usageAgreement": save_card.get("usage") or "UNSCHEDULED"}
 		created = self.client.create_payment_instruction(
 			amount=amount, order_id=_order_id(document, attempt), terminal=terminal,
-			operator=operator, description=description)
+			operator=operator, description=description, credential_on_file=cof)
 		iid = (created or {}).get("paymentInstructionId") or ""
 		if not iid:
 			frappe.throw(_("Payroc returned no paymentInstructionId."))
@@ -164,17 +205,29 @@ class PayrocProcessor(CardProcessor):
 			return CardResult(status=UNKNOWN, gateway_status=st, raw=inst)
 		href = self.client.payment_link(inst)
 		payment = self.client.retrieve_payment(href) if href else inst
+		return self._payment_result(payment, gateway_status=st)
+
+	def _payment_result(self, payment: dict, *, gateway_status: str = "",
+			undecided: str = DECLINED) -> CardResult:
+		"""A Payment → CardResult. ``undecided`` is the status for a resultCode that is neither
+		approved nor a definite decline (the device flow has always read it as declined)."""
 		tr = _txn(payment)
-		approved = (tr.get("resultCode") or "") in _APPROVED
+		code = (tr.get("resultCode") or "").upper()
+		approved = code in _APPROVED
+		status = APPROVED if approved else DECLINED if code in _DECLINED_CODES else undecided
+		token = (_stored_credentials(payment).get("credentialsNumber") or "") if approved else ""
+		acct = (payment or {}).get("customerAccount") or {}
 		return CardResult(
-			status=APPROVED if approved else DECLINED,
+			status=status,
 			amount=flt(tr.get("authorizedAmount") or 0) if approved else 0.0,
 			unique_reference=(payment or {}).get("uniqueReference") or "",
 			approval_code=tr.get("approvalCode") or "",
 			card_summary=_gateway_card_summary(payment) if approved else "",
 			# The gateway's result text either way: an approval for 0 is refused with it too.
 			message=tr.get("resultMessage") or tr.get("resultCode") or "declined",
-			gateway_status=st, raw=payment)
+			gateway_status=gateway_status, raw=_mask_credentials(payment),
+			stored_credential=str(token).strip(),
+			card_expiry=str(acct.get("expiryDate") or "") if approved else "")
 
 	def cancel(self, handle: str) -> CardResult:
 		resp = self.client.cancel_payment_instruction(handle)
@@ -189,6 +242,57 @@ class PayrocProcessor(CardProcessor):
 	def refund(self, unique_reference: str, *, amount, reason: str, operator: str) -> CardResult:
 		return _after_the_fact(self.client.refund(unique_reference, refund_amount=amount,
 			refund_reason=reason, operator=operator))
+
+	# ------------------------------------------------------------ card on file
+
+	supports_card_on_file = True
+
+	def order_reference(self, document: str, attempt: int) -> str:
+		return _order_id(document, attempt)
+
+	def charge_stored(self, *, token, amount, document, attempt, description, operator,
+			usage="UNSCHEDULED", initial_reference=""):
+		"""POST payments (MOTO, SECURE_CREDENTIALS). A 4xx is a definite no; a 5xx, an
+		unreadable answer, a timeout or a dropped connection may have charged the card
+		(outcome unknown — the core looks the order up before anything else). The token is
+		scrubbed from every message on the way out."""
+		try:
+			payment = self.client.charge_stored_credential(
+				credentials_number=token, amount=amount, order_id=_order_id(document, attempt),
+				usage=usage or "UNSCHEDULED", first_reference=initial_reference or None,
+				description=description, operator=operator)
+		except PayrocError as e:
+			raise PayrocError(_without(str(e), token), outcome_known=e.outcome_known) from None
+		except requests.RequestException as e:
+			# The POST may have reached Payroc before the connection broke.
+			raise CardProcessorError(_without(f"Payroc did not answer: {type(e).__name__}", token),
+				outcome_known=False) from None
+		return self._payment_result(payment or {}, undecided=UNKNOWN)
+
+	def find_stored_charge(self, reference: str) -> CardResult:
+		"""GET transactions?orderId= — the sale filed under ``reference``: approved (read back in
+		full by its uniqueReference), declined, or UNKNOWN when Payroc holds none."""
+		rows = (self.client.find_transaction(order_id=reference) or {}).get("data") or []
+		sales = [t for t in rows if str(t.get("type") or "SALE").upper() == "SALE"
+			and str(t.get("orderId") or reference) == reference]
+		approved = next((t for t in sales if str(t.get("resultCode") or "").upper() in _APPROVED), None)
+		if approved and approved.get("uniqueReference"):
+			return self._payment_result(self.client.retrieve_payment(approved["uniqueReference"]) or {},
+				undecided=UNKNOWN)
+		if sales and all(str(t.get("resultCode") or "").upper() in _DECLINED_CODES for t in sales):
+			return CardResult(status=DECLINED, message=sales[0].get("resultMessage") or "declined",
+				unique_reference=sales[0].get("uniqueReference") or "", raw=_mask_credentials(sales[0]))
+		return CardResult(status=UNKNOWN, message=_("Payroc holds no answer for {0} yet.").format(reference),
+			raw=_mask_credentials({"data": rows}))
+
+	def delete_stored(self, reference: str) -> None:
+		"""A card Payroc no longer holds (404) is already removed."""
+		try:
+			self.client.delete_credentials(reference)
+		except PayrocError as e:
+			if " 404" in str(e):
+				return
+			raise
 
 	# ------------------------------------------------------------ setup / health
 
@@ -225,7 +329,28 @@ class PayrocProcessor(CardProcessor):
 		checks.append({"label": _("Default terminal"),
 			"ok": True if default_terminal else None,
 			"detail": default_terminal or _("not set")})
+		checks.append(self._saved_cards_check(default_terminal))
 		return checks
+
+	def _saved_cards_check(self, terminal) -> dict:
+		"""Whether the default terminal may keep cards (terminalFeatures.secureCredentials.enable).
+		Read-only and informational: an error reads as unknown, never as a failed probe."""
+		label = _("Saved cards")
+		if not terminal:
+			return {"label": label, "ok": None, "detail": _("unknown — no default terminal")}
+		try:
+			features = (self.client.load_terminal(terminal) or {}).get("terminalFeatures") or {}
+			enabled = (features.get("secureCredentials") or {}).get("enable")
+		except Exception as e:  # noqa: BLE001 — the probe never fails on this line
+			return {"label": label, "ok": None,
+				"detail": _("unknown — could not read the terminal ({0})").format(str(e)[:150])}
+		if enabled is True:
+			return {"label": label, "ok": True, "detail": _("enabled on terminal {0}").format(terminal)}
+		if enabled is False:
+			return {"label": label, "ok": None, "detail": _(
+				"not enabled on terminal {0} — ask Payroc to turn on Secure Credentials before "
+				"switching card on file on").format(terminal)}
+		return {"label": label, "ok": None, "detail": _("unknown — the terminal does not say")}
 
 	def note_charge(self) -> None:
 		try:

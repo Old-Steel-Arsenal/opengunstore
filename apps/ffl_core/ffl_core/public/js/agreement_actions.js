@@ -292,5 +292,37 @@
 		request($(this).attr('data-ffl-agreement-customer'), $(this).attr('data-ffl-agreement-template'));
 	});
 
-	window.ffl.agreements = { request: request, recordPaper: recordPaper, showQr: showQr, forSale: forSale };
+	// Put one agreement in front of the customer with no dialog of choices: on the signing
+	// tablet (the one pickTerminal chooses) when one is paired, else as a QR code. Resolves true
+	// once it is out — or already out with a working link (the customer may be signing it now),
+	// false when it could not be sent. Card on file (ffl.cardOnFile) waits for the signature.
+	function sendForSigning(customer, template, customerName) {
+		// A QR code is only worth showing fresh (the old link is not stored anywhere); a tablet
+		// that already holds an open link keeps it.
+		var call = function (deliver, terminal) {
+			return frappe.call({ method: M + 'request_agreement', args: { customer: customer,
+				template: template, deliver: deliver, replace: deliver === 'qr' ? 1 : 0, terminal: terminal || null } })
+				.then(function (r) { return r.message || {}; });
+		};
+		return frappe.call({ method: 'ffl_core.signing_terminal.list_terminals' })
+			.then(function (r) { return (r.message || []).filter(function (t) { return t.paired; }); },
+				function () { return []; })
+			.then(function (terminals) {
+				var terminal = pickTerminal(terminals);
+				if (terminal) {
+					return call('tablet', terminal).then(function (m) {
+						if (!m.link_open) frappe.show_alert({ message: __('Sent to {0} for {1} to sign.', [esc(terminal), esc(customerName || customer)]), indicator: 'blue' });
+						return true;
+					});
+				}
+				return call('qr').then(function (m) {
+					showQr(m, customerName || customer);
+					return true;
+				});
+			})
+			.then(null, function () { return false; });
+	}
+
+	window.ffl.agreements = { request: request, recordPaper: recordPaper, showQr: showQr, forSale: forSale,
+		sendForSigning: sendForSigning };
 })();

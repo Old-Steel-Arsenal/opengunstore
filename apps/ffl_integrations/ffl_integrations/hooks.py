@@ -125,6 +125,9 @@ doctype_js = {
 	# register handlers for Item and none can see the others, so this block
 	# gates itself independently — same arrangement as Serial No.
 	"Item": "public/js/item.js",
+	# Card on file (payments/saved_cards.py): the customer's saved cards, and Charge saved card.
+	"Customer": "public/js/customer_saved_cards.js",
+	"Sales Invoice": "public/js/sales_invoice_saved_cards.js",
 }
 
 # Server constants exposed to desk JS (frappe.boot.*) — see boot.py.
