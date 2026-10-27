@@ -51,10 +51,40 @@
 							frappe.show_alert({ indicator: 'green', message: m.paid
 								? __('Approved · auth {0} — {1} fully paid.', [m.approval_code || m.unique_reference || 'OK', frm.doc.name])
 								: __('Approved · auth {0} — {1} still outstanding.', [m.approval_code || m.unique_reference || 'OK', format_currency(m.outstanding)]) }, 7);
+						} else if (m.status === 'UNCONFIRMED') {
+							releaseDialog(frm, m);
 						} else {
 							frappe.msgprint({ title: __('Card not charged'), indicator: m.resolved ? 'orange' : 'red',
 								message: esc(m.error || __('Card declined.')) });
 						}
+						frm.reload_doc();
+					},
+				});
+			},
+		});
+		d.show();
+	}
+
+	// An earlier saved-card charge the gateway still has no record of: release it as not
+	// charged only after looking in the processor's portal (the server re-checks first).
+	function releaseDialog(frm, m) {
+		const d = new frappe.ui.Dialog({
+			title: __('Charge not confirmed'),
+			fields: [
+				{ fieldtype: 'HTML', options: `<p>${esc(m.error)}</p>` },
+				{ fieldtype: 'Small Text', fieldname: 'reason', label: __('What you checked in the portal'), reqd: 1 },
+			],
+			primary_action_label: __('Release as not charged'),
+			primary_action: (v) => {
+				d.hide();
+				frappe.call({
+					method: M + 'release_saved_card_charge',
+					args: { terminal_payment: m.terminal_payment, reason: v.reason },
+					freeze: true,
+					callback: (r) => {
+						const out = (r && r.message) || {};
+						frappe.show_alert({ indicator: out.ok ? 'green' : 'orange',
+							message: esc(out.ok ? __('The charge was found and recorded.') : out.error) }, 7);
 						frm.reload_doc();
 					},
 				});

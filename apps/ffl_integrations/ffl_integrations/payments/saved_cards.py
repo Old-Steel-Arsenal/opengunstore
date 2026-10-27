@@ -418,18 +418,62 @@ def _resolve_waiting(api, row) -> dict:
 		if out.get("ok"):
 			out["already"] = True
 		return out
-	created = frappe.db.get_value(api.TERMINAL_PAYMENT, row.name, "creation")
-	if get_datetime(created) > add_to_date(now_datetime(), minutes=-LOOKUP_GRACE_MINUTES):
+	if not _past_grace(api, row):
 		frappe.throw(_lock_message(p.label), title=_("Charge not confirmed"))
-	# Long past the gateway's own timeout and it holds nothing under that id: the charge never
-	# reached it. Close the record; the next click charges afresh under a new order id.
+	# Past the gateway's own timeout and it still holds nothing under that id. Most likely the
+	# charge never reached it — but a lagging search would look the same, and closing on our own
+	# would let the next click charge the customer twice. Stay locked until a manager has looked
+	# in the processor's portal and releases it (release_saved_card_charge).
+	return {"ok": False, "status": "UNCONFIRMED", "resolved": False, "terminal_payment": row.name,
+		"error": _("{0} still has no record of the earlier saved-card charge ({1}). Look it up in "
+			"the {0} portal: if it is there, click Charge saved card again later — it records the "
+			"charge once the gateway's search shows it; if it is not, release it as not charged.").format(p.label, row.instruction_id)}
+
+
+def _past_grace(api, row) -> bool:
+	created = frappe.db.get_value(api.TERMINAL_PAYMENT, row.name, "creation")
+	return get_datetime(created) <= add_to_date(now_datetime(), minutes=-LOOKUP_GRACE_MINUTES)
+
+
+@frappe.whitelist(methods=["POST"])
+def release_saved_card_charge(terminal_payment: str, reason: str) -> dict:
+	"""Close an unconfirmed saved-card charge as not charged, after a manager checked the
+	processor's portal. Looks it up once more first and records it if the gateway now has it;
+	refused while the charge is younger than the lookup grace period.
+
+	Args:
+	    terminal_payment: Card Terminal Payment of the saved-card charge (IN_PROGRESS).
+	    reason: What the manager checked (kept on the record).
+
+	Returns:
+	    {ok: False, status: "CANCELED"} when released; the settle answer when the gateway had it.
+	"""
+	frappe.only_for(MANAGER_ROLES)
+	from ffl_integrations.payments import api
+
+	reason = (reason or "").strip()
+	if not reason:
+		frappe.throw(_("Say what you checked in the processor's portal."))
+	row = frappe.db.get_value(api.TERMINAL_PAYMENT, terminal_payment or "", ["name", "sales_invoice",
+		"status", "saved_card", "processor", "instruction_id"], as_dict=True)
+	if not row or not row.saved_card or row.status != "IN_PROGRESS":
+		frappe.throw(_("{0} is not a saved-card charge waiting for its answer.").format(terminal_payment))
+	frappe.db.get_value("Sales Invoice", row.sales_invoice, "name", for_update=True)
+	p = api._processor(row.processor or "")
+	p.prepare()
+	res = p.find_stored_charge(row.instruction_id)
+	if res.status in (APPROVED, DECLINED):
+		out = api._settle_terminal_payment(p, res, row)
+		out["resolved"] = True
+		return out
+	if not _past_grace(api, row):
+		frappe.throw(_lock_message(p.label), title=_("Charge not confirmed"))
 	frappe.db.set_value(api.TERMINAL_PAYMENT, row.name, {"status": "CANCELED",
-		"response": api._resp_json({"lookup": "not found at the gateway", "raw": res.raw})},
-		update_modified=False)
+		"response": api._resp_json({"released_by": frappe.session.user, "reason": reason[:500],
+			"lookup": "not found at the gateway", "raw": res.raw})}, update_modified=False)
 	_commit()
 	return {"ok": False, "status": "CANCELED", "resolved": True, "error": _(
-		"The earlier saved-card charge never reached {0} — nothing was charged. Charge the card "
-		"again if the balance is still due.").format(p.label)}
+		"Released as not charged. Charge the card again if the balance is still due.")}
 
 
 @frappe.whitelist(methods=["POST"])

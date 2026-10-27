@@ -515,7 +515,7 @@ class ChargingASavedCard(_CardOnFileBase):
 			"reference_name": si, "docstatus": 1}), 1)
 		self._assert_no_token_anywhere(res)
 
-	def test_lookup_that_never_finds_it_closes_the_record_after_the_grace_period(self, cc):
+	def test_lookup_that_never_finds_it_stays_locked_until_a_manager_releases_it(self, cc):
 		client = cc.from_settings.return_value
 		cust = self._customer()
 		card = self._saved_card(cust)
@@ -525,13 +525,40 @@ class ChargingASavedCard(_CardOnFileBase):
 		with self.assertRaises(frappe.ValidationError):
 			saved_cards.charge_saved_card(si, card)
 		row = self._rows(si)[0]
+		client.find_transaction.return_value = {"data": []}
+		# Inside the grace period a release is refused.
+		with self.assertRaises(frappe.ValidationError):
+			saved_cards.release_saved_card_charge(row.name, "checked the portal")
 		frappe.db.set_value(api.TERMINAL_PAYMENT, row.name, "creation", add_to_date(now_datetime(), minutes=-30),
 			update_modified=False)
-		client.find_transaction.return_value = {"data": []}
-		res = saved_cards.charge_saved_card(si, card)
+		# Past it, charging again never closes the record on its own and never charges again.
+		for _i in range(2):
+			res = saved_cards.charge_saved_card(si, card)
+			self.assertEqual((res["ok"], res["status"], res["terminal_payment"]), (False, "UNCONFIRMED", row.name))
+		self.assertEqual(self._rows(si)[0].status, "IN_PROGRESS")
+		with self.assertRaises(frappe.ValidationError):
+			saved_cards.release_saved_card_charge(row.name, "  ")
+		res = saved_cards.release_saved_card_charge(row.name, "not in the Payroc portal")
 		self.assertEqual((res["ok"], res["status"], res["resolved"]), (False, "CANCELED", True))
 		self.assertEqual(self._rows(si)[0].status, "CANCELED")
+		self.assertIn("not in the Payroc portal", frappe.db.get_value(api.TERMINAL_PAYMENT, row.name, "response"))
 		self.assertEqual(client.charge_stored_credential.call_count, 1)
+
+	def test_release_records_the_charge_when_the_gateway_has_it_after_all(self, cc):
+		client = cc.from_settings.return_value
+		cust = self._customer()
+		card = self._saved_card(cust)
+		si, outstanding = self._unpaid_order(cust)
+		client.charge_stored_credential.side_effect = requests.exceptions.ReadTimeout("read timed out")
+		with self.assertRaises(frappe.ValidationError):
+			saved_cards.charge_saved_card(si, card)
+		row = self._rows(si)[0]
+		client.find_transaction.return_value = {"data": [{"type": "SALE", "orderId": si,
+			"resultCode": "A", "uniqueReference": "REF-LATE"}]}
+		client.retrieve_payment.return_value = _payment("REF-LATE", outstanding)
+		res = saved_cards.release_saved_card_charge(row.name, "found it")
+		self.assertTrue(res["ok"] and res["resolved"])
+		self.assertEqual(self._rows(si)[0].status, "CHARGED")
 
 	def test_gateway_refusal_records_nothing_charged_and_scrubs_the_token(self, cc):
 		client = cc.from_settings.return_value
