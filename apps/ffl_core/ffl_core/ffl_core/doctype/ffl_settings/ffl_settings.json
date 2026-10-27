@@ -29,6 +29,8 @@
   "transfer_fee_amount",
   "section_customer_records",
   "store_customer_id_numbers",
+  "section_sale_agreements",
+  "used_item_agreement_template",
   "tab_verification",
   "section_live_check",
   "live_check_provider",
@@ -181,6 +183,18 @@
    "description": "Keep ID numbers and dates of birth on customer records; turning this off erases the stored numbers and dates of birth, while attached ID copies, change history and deleted records are kept."
   },
   {
+   "fieldname": "section_sale_agreements",
+   "fieldtype": "Section Break",
+   "label": "Sale Agreements"
+  },
+  {
+   "fieldname": "used_item_agreement_template",
+   "fieldtype": "Link",
+   "label": "Used Item Agreement",
+   "options": "Agreement Template",
+   "description": "Every Item marked Used needs this agreement signed before a counter sale is submitted, unless the Item or its Item Group names its own. Leave empty to turn this off."
+  },
+  {
    "fieldname": "tab_verification",
    "fieldtype": "Tab Break",
    "label": "FFL Verification"
@@ -218,7 +232,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-24 12:00:00.000000",
+ "modified": "2026-10-24 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "FFL Settings",

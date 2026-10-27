@@ -10,6 +10,11 @@ frappe.ui.form.on('FFL Settings', {
 		frm.set_query('peace_officer_exempt_tax_account', () => ({
 			filters: { account_type: 'Tax', is_group: 0 },
 		}));
+		// Only an active Required by item template that is not Per document gates a
+		// sale (agreements.sale_requirements).
+		frm.set_query('used_item_agreement_template', () => ({
+			filters: { active: 1, requirement: 'Required by item', scope: ['!=', 'Per document'] },
+		}));
 	},
 	// Store Customer ID Numbers on -> off erases every stored DOB / ID number when
 	// saved (FFLSettings.on_update). The confirm sits in the save itself, so

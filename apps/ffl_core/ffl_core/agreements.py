@@ -32,7 +32,8 @@ An **Agreement Template** holds the text (a range waiver, a rental agreement); a
   :class:`AgreementRequired` for an extension that needs a signature first.
   :func:`expire_agreements` (daily) turns copies past ``expires_on`` to Expired.
 * **Sale gate** — an Item can name the agreement its buyer must have signed
-  or its Item Group does (:func:`required_for_item`); a template's ``requirement`` says
+  or its Item Group does, else a used Item takes FFL Settings › Used Item Agreement
+  (:func:`required_for_item`); a template's ``requirement`` says
   whether that matters, or every sale needs it, or it is only offered; its ``scope``
   says whether one signature covers the customer or each firearm sold needs its own
   copy naming the gun (:func:`sale_requirements`). The register's Agreements button
@@ -259,21 +260,30 @@ def counter_panel_rows(customer: str) -> list[dict]:
 
 def required_for_item(item_code: str) -> str | None:
 	"""The agreement an Item needs: its own ``ffl_required_agreement``, else the
-	nearest Item Group (the Item's group or a parent) that names one."""
-	row = frappe.db.get_value("Item", item_code, ["ffl_required_agreement", "item_group"], as_dict=True) \
+	nearest Item Group (the Item's group or a parent) that names one, else — for
+	an Item marked Used — FFL Settings › Used Item Agreement."""
+	row = frappe.db.get_value("Item", item_code, ["ffl_required_agreement", "item_group", "is_used"], as_dict=True) \
 		if frappe.db.has_column("Item", "ffl_required_agreement") else None
 	if not row:
 		return None
 	if row.ffl_required_agreement:
 		return row.ffl_required_agreement
-	if not row.item_group or not frappe.db.has_column("Item Group", "ffl_required_agreement"):
+	return _group_agreement(row.item_group) or (_used_item_agreement() if row.is_used else None)
+
+
+def _group_agreement(item_group: str | None) -> str | None:
+	if not item_group or not frappe.db.has_column("Item Group", "ffl_required_agreement"):
 		return None
-	lft, rgt = frappe.db.get_value("Item Group", row.item_group, ["lft", "rgt"]) or (None, None)
+	lft, rgt = frappe.db.get_value("Item Group", item_group, ["lft", "rgt"]) or (None, None)
 	if lft is None:
 		return None
 	hit = frappe.get_all("Item Group", filters={"lft": ("<=", lft), "rgt": (">=", rgt),
 		"ffl_required_agreement": ("is", "set")}, pluck="ffl_required_agreement", order_by="lft desc", limit=1)
 	return hit[0] if hit else None
+
+
+def _used_item_agreement() -> str | None:
+	return frappe.db.get_single_value("FFL Settings", "used_item_agreement_template") or None
 
 
 def _row_serials(row) -> list[str]:

@@ -6,7 +6,9 @@ The rules are the accounting treatment below and the store owner's decisions. Co
 ## What the drawer should hold
 
 The books carry one cash account per company (`Cash - <abbr>`); the drawer's expected amount is that account's balance
-(cancelled entries excluded) plus the cash of POS invoices that are submitted but not merged yet. ERPNext's own closing
+(cancelled entries excluded) plus the cash of POS invoices that are submitted but not merged yet, and of draft POS
+invoices where Take Payment took cash (a part payment, or paid before the 4473 clears; dated by the server time Take
+Payment stamped, listed as "Cash paid on an open order"). ERPNext's own closing
 figure is not used for cash. There is no safe in the store and the company reserve kept elsewhere is out of scope: the page
 counts the drawer only, and the counted cash is the next opening.
 

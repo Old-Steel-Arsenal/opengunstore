@@ -584,6 +584,21 @@ class SaleGate(_Base):
 		frappe.db.set_value("Agreement Template", self.tpl.name, "active", 0)
 		agreements.refuse_missing_required(self.invoice())
 
+	def test_used_item_falls_back_to_the_settings_agreement(self):
+		other = _template()
+		frappe.db.set_single_value("FFL Settings", "used_item_agreement_template", other.name)
+		frappe.db.set_value("Item", self.item.name, "ffl_required_agreement", None)
+		self.assertIsNone(agreements.required_for_item(self.item.name))   # not used
+		frappe.db.set_value("Item", self.item.name, "is_used", 1)
+		self.assertEqual(agreements.required_for_item(self.item.name), other.name)
+		with self.assertRaises(agreements.AgreementRequired):
+			agreements.refuse_missing_required(self.invoice())
+		frappe.db.set_value("Item", self.item.name, "ffl_required_agreement", self.tpl.name)   # the Item's own wins
+		self.assertEqual(agreements.required_for_item(self.item.name), self.tpl.name)
+		frappe.db.set_value("Item", self.item.name, "ffl_required_agreement", None)
+		frappe.db.set_single_value("FFL Settings", "used_item_agreement_template", None)   # empty: off
+		self.assertIsNone(agreements.required_for_item(self.item.name))
+
 	def test_extension_hook_adds_and_a_broken_one_is_logged(self):
 		other = _template()
 		_PROVIDED.append(other.name)

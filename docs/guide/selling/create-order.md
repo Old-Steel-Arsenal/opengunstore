@@ -91,6 +91,37 @@ links instead. The checkbox alone is what exempts the order. Whether you also
 need the paper certificate on file is a matter for your accountant and your
 state.
 
+### Peace-officer excise exemption (California)
+
+California charges an 11% excise tax on firearms, firearm precursor parts and
+ammunition. It does not apply when the buyer is an active or retired peace
+officer, or the law enforcement agency that employs one. Sales tax still does.
+
+In a California store whose [FFL Settings](../settings/ffl-settings.md) name the
+excise tax account, the page shows **Peace officer / law enforcement agency —
+excise tax exempt** under the buyer, for both buyer types. Stores in other states
+do not see it.
+
+1. Tick the box. The tax line drops the excise and reads "(excise exempt)".
+2. Pick the **Exempt buyer**: **Active Peace Officer**, **Retired Peace
+   Officer** or **Law Enforcement Agency**.
+3. Click **Upload CDTFA-230-FET** and attach the buyer's certificate (PDF, PNG
+   or JPG). It is kept on that customer's record. Pick the buyer before you
+   upload.
+
+Until the buyer and the certificate are in, the bottom bar lists **Exempt
+buyer** and **CDTFA-230-FET certificate** and the order cannot be created. An
+officer gives a certificate for every sale; an agency may give one that covers
+its purchases. A certificate uploaded for one customer does not count for
+another, so changing the buyer asks for a new one.
+
+The exemption belongs to this order only. The next order for the same officer
+asks again. Editing the order keeps it.
+
+This is not the **Tax exempt** box above: that one drops all tax for a resale
+or government buyer. An individual service member is not exempt from either
+tax.
+
 ## 2. Destination FFL
 
 This section appears only for an **Individual** buyer once the order has at

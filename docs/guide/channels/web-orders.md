@@ -126,7 +126,7 @@ When the buyer picks your own shop from the FFL list at checkout, they are colle
 The card shows an **In-store pickup** badge and a **Pickup** button instead.
 
 1. Click **Pickup**. For a firearm the POS opens a draft counter order, already paid, and takes you straight to it.
-2. Run the [Form 4473 and NICS](../compliance/4473.md) on that order the ordinary way, then complete it at the register. Do not take money again. The buyer already paid on the store.
+2. Run the [Form 4473 and NICS](../compliance/4473.md) on that order the ordinary way, then complete it at the register. The ticket arrives with the WooCommerce payment already on it for the full amount, and the payment screen shows it paid. Do not take money again. The buyer already paid on the store. Anything else the customer buys goes on a ticket of its own; this one completes only while it totals what WooCommerce charged.
 3. The web order stays on the queue until that counter order is submitted, so an abandoned draft is visible rather than lost. Meanwhile the card offers **Open counter order**, which returns you to the same draft.
 
 An order with no regulated firearm has no 4473 to run. Pickup closes it on the spot, issuing the stock, retiring the listing and booking the revenue.
