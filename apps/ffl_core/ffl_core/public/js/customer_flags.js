@@ -383,6 +383,7 @@
 					}
 				};
 				paint();
+				if (c) listenForSignatures();
 				// A resumed held draft (load_invoice) never fires the customer event, so its
 				// flags may be missing or old: read them again, then paint if still showing.
 				if (c && !(cache[c] && Date.now() - (fetchedAt[c] || 0) < CACHE_MS)) {
@@ -428,6 +429,30 @@
 			});
 		},
 	});
+
+	// A signature lands from the tablet or the customer's phone: re-read the register
+	// customer's flags and repaint, so the clerk never refreshes the page (and loses an
+	// unsaved cart) to see it. Event from agreements._announce_signed.
+	function onAgreementSigned(msg) {
+		var cart = window.cur_pos && cur_pos.cart;
+		var c = cart && cart.customer_info && cart.customer_info.customer;
+		if (!c || !msg || msg.customer !== c) return;
+		var name = cart.customer_info.customer_name || c;
+		fetchFlags(c).then(function () {
+			if (cart.customer_info && cart.customer_info.customer === c) cart.update_customer_section();
+			frappe.show_alert({ message: __('{0} signed {1}.', [api.escText(name),
+				api.escText(msg.agreement || '')]), indicator: 'green' }, 7);
+		}, function () { /* the strip is a hint */ });
+	}
+
+	// Once, from the cart: at page load frappe.realtime has no socket yet (on() is a no-op).
+	var listening = false;
+	function listenForSignatures() {
+		if (listening || !(frappe.realtime && frappe.realtime.socket) || !frappe.model.can_read('Customer Agreement')) return;
+		listening = true;
+		frappe.realtime.doctype_subscribe('Customer Agreement');
+		frappe.realtime.on('customer_agreement_signed', onAgreementSigned);
+	}
 
 	function wire() {
 		frappe.provide('erpnext.PointOfSale');

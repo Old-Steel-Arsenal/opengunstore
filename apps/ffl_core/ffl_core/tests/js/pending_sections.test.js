@@ -97,3 +97,22 @@ test('an item name with markup cannot inject into the dialog label or the dropdo
 	assert.strictEqual(pdEscape(undefined), '');
 	assert.strictEqual(pdEscape(5), '5');
 });
+
+// ---- Agreements on a counter card ---------------------------------------------------
+const { pdAgreementKind, pdAgreementNames } = require('../../ffl_core/page/pending_dispositions/pending_dispositions.js');
+
+test('an agreement reads as signed, sent, link expired, expired or not signed', () => {
+	assert.strictEqual(pdAgreementKind({ state: 'signed', signed: true }), 'signed');
+	assert.strictEqual(pdAgreementKind({ state: 'expiring', signed: true }), 'signed');
+	assert.strictEqual(pdAgreementKind({ state: 'pending', link_open: true }), 'sent');
+	assert.strictEqual(pdAgreementKind({ state: 'pending', link_open: false }), 'link_expired');
+	assert.strictEqual(pdAgreementKind({ state: 'expired' }), 'expired');
+	assert.strictEqual(pdAgreementKind({ state: 'missing' }), 'missing');
+	assert.strictEqual(pdAgreementKind(null), 'missing');
+});
+
+test('unsigned agreements are named with their gun, escaped', () => {
+	assert.strictEqual(pdAgreementNames([{ template: 'Used Item Agreement' }, { template: 'Bill <b>', serial_no: 'SN1' }]),
+		'Used Item Agreement, Bill &lt;b&gt; (SN1)');
+	assert.strictEqual(pdAgreementNames([]), '');
+});

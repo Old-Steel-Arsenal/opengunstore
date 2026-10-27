@@ -557,10 +557,17 @@ list, and turns green with "Ready to create." when nothing is. Click
 8. Where ShipStation is enabled, pushes the shipment so staff buy the label
    there.
 9. Deletes the draft you resumed, if any.
+10. When the buyer has not signed an agreement the sale needs (the Used Item
+    Agreement, or one an item names), emails the signing link to the order's
+    email, or the customer's when there is none. The order is created either
+    way. With **Dispose & ship now** the order is not disposed: the gun waits on
+    the Pending Order queue until it is signed.
 
 The **Order Created** dialog then links the Sales Order and the Sales Invoice,
 states what was paid or left outstanding, and says whether the order was disposed
-or queued. **Print Invoice** opens the invoice print view in a new tab. After a
+or queued, and lists any agreement not signed yet with the address its link went
+to. When a link could not be sent (no email address, a mail error) it says so in
+red: send it from the order's **Resend link** on Pending Order. **Print Invoice** opens the invoice print view in a new tab. After a
 terminal charge that did not go through, **Retry card** sits beside it.
 
 <figure markdown>
