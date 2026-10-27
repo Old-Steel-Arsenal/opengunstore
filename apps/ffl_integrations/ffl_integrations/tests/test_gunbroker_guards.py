@@ -67,7 +67,6 @@ class GuardMatrix(FrappeTestCase):
 		self._patch_object(listings, "effective_serial_price", return_value=1200.0)
 		self._patch_object(listings, "serial_shelf_state",
 			side_effect=lambda _sn, **_kw: self.shelf)
-		self._patch_object(listings, "_has_field", return_value=True)
 		# Guard 13 asks the gallery for candidate paths. It resolves no bytes, so
 		# a stubbed answer here is enough — and the gun under test is one that
 		# HAS photos, so every other guard gets its turn.
@@ -213,12 +212,8 @@ class GuardMatrix(FrappeTestCase):
 				self.context["item"]["firearm_type"] = ftype
 				self.assertIsNone(self._refusal())
 
-	def test_05_consigned_in(self):
+	def test_05_a_consigned_gun_is_listable(self):
 		with patch("frappe.db.get_value", return_value=1):
-			self._assert_refused(listings.CONSIGNED_IN)
-
-	def test_05_a_site_without_the_consignment_field_is_unaffected(self):
-		with patch.object(listings, "_has_field", return_value=False):
 			self.assertIsNone(self._refusal())
 
 	def test_06_uniform_priced_model(self):
