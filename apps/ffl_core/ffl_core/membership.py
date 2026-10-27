@@ -312,14 +312,20 @@ def saved_card_usage(sales_invoice: str) -> str | None:
 
 def activate_paid_memberships(doc, method=None) -> None:
 	"""Payment Entry on_submit: a membership waiting for this invoice's payment turns Active once
-	the invoice owes nothing."""
+	the invoice owes nothing. Never blocks the payment (a card may already be charged): a failure
+	is logged and the Memberships panel activates it on its next look (:func:`get_memberships`)."""
 	invoices = [r.reference_name for r in doc.get("references") or []
 		if r.reference_doctype == "Sales Invoice" and r.reference_name]
 	if not invoices:
 		return
 	for name in set(frappe.get_all(INVOICE_ROW, filters={"parenttype": DOCTYPE,
 			"sales_invoice": ("in", invoices), "status": UNPAID}, pluck="parent")):
-		settle(name)
+		try:
+			frappe.db.savepoint("membership_activation")
+			settle(name)
+		except Exception:
+			frappe.db.rollback(save_point="membership_activation")
+			frappe.log_error(title=f"Membership {name} not activated on payment", message=frappe.get_traceback())
 
 
 def settle(membership: str) -> bool:

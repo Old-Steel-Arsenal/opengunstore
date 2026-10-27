@@ -24,7 +24,7 @@ cancelled; a refund is a credit note.
 
 **Returns:** The membership's panel row.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:524`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:530`</sub>
 
 ## `change_card`
 
@@ -43,7 +43,7 @@ charges.
 
 **Returns:** The membership's panel row.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:498`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:504`</sub>
 
 ## `discard_membership`
 
@@ -62,7 +62,7 @@ refused once any payment or card charge touched it.
 
 **Returns:** The membership's panel row (status Cancelled).
 
-<sub>`apps/ffl_core/ffl_core/membership.py:581`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:587`</sub>
 
 ## `get_memberships`
 
@@ -80,7 +80,7 @@ A Pending membership whose invoice has since been paid another way is activated 
 
 **Returns:** {plans: [{name, price, billing_period, registration_fee, auto_renew_default, terms_template}], memberships: [panel rows, live first], cards: the customer's active recurring-use saved cards [{name, card_summary}], can_cancel: whether the caller may cancel}.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:403`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:409`</sub>
 
 ## `invoice_membership`
 
@@ -118,7 +118,7 @@ is a manager's cancellation and stays off.
 
 **Returns:** The membership's panel row.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:456`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:462`</sub>
 
 ## `start_membership`
 

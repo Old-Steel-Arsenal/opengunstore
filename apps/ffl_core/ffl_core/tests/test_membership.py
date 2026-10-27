@@ -222,6 +222,16 @@ class SignUp(_Base):
 			getdate(doc.current_period_end), doc.invoices[0].status),
 			(ms.ACTIVE, date(2026, 11, 15), date(2026, 11, 15), date(2026, 12, 14), ms.PAID))
 
+	def test_activation_failure_never_blocks_the_payment(self):
+		m, si = _sell(self.customer, self.plan.name)
+		with patch("ffl_core.membership.settle", side_effect=RuntimeError("boom")):
+			_pay(si)
+		self.assertEqual(flt(frappe.db.get_value("Sales Invoice", si, "outstanding_amount")), 0)
+		self.assertEqual(frappe.db.get_value(ms.DOCTYPE, m, "status"), ms.PENDING)
+		frappe.db.delete("Error Log", {"method": f"Membership {m} not activated on payment"})   # MyISAM: not rolled back
+		row = next(r for r in ms.get_memberships(self.customer)["memberships"] if r["name"] == m)
+		self.assertEqual(row["status"], ms.ACTIVE)
+
 	def test_paid_with_auto_renew_but_no_saved_card_turns_auto_renew_off(self):
 		m, si = _sell(self.customer, self.plan.name, auto_renew=1)
 		_pay(si)
