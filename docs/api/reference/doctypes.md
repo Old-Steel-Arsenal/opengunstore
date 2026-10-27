@@ -344,6 +344,7 @@ app: `ffl_core` · module: FFL Core · single · roles: System Manager
 | `transfer_fee_item` | Link | Transfer Fee Item |  | Item |
 | `transfer_fee_amount` | Currency | Default Transfer Fee |  |  |
 | `store_customer_id_numbers` | Check | Store Customer ID Numbers |  |  |
+| `enforce_sale_agreements` | Check | Require Agreements at Sale |  |  |
 | `used_item_agreement_template` | Link | Used Item Agreement |  | Agreement Template |
 | `live_check_provider` | Select | Provider |  | ATF Form Scraper, Data Service, Manual Only |
 | `live_check_rate_limit_per_hour` | Int | Rate Limit (req/hr) |  |  |

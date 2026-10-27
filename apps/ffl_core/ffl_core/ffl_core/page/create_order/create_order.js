@@ -2562,6 +2562,8 @@ class CreateOrderApp {
 					m.refund_entry ? __('Refunded {0} ({1}).', [format_currency(m.refunded_amount), m.refund_entry]) : '',
 					m.outstanding > 0 ? __('Outstanding: {0} — collect via Record Payment.', [format_currency(m.outstanding)]) : '',
 				].filter(Boolean);
+				const agreementNote = this._agreementNote(m);
+				if (agreementNote) bits.push(agreementNote);
 				frappe.msgprint({ title: __('Order Updated'),
 					message: bits.join('<br>'), indicator: 'green' });
 				this._exitEditMode();
@@ -2688,7 +2690,8 @@ class CreateOrderApp {
 						<p>${__('Sales Invoice')}: <a href="/app/sales-invoice/${si}">${si}</a></p>
 						<p class="pay-line">${pay}</p>
 						<p>${ship}</p>
-						${m.email_to ? `<p>${__('Receipt emailed to {0}.', [frappe.utils.escape_html(m.email_to)])}</p>` : ''}`);
+						${m.email_to ? `<p>${__('Receipt emailed to {0}.', [frappe.utils.escape_html(m.email_to)])}</p>` : ''}
+						${this._agreementNote(m)}`);
 					resultDialog.show();
 					// The consumed draft (if any) was deleted server-side.
 					this._draftName = null;
@@ -2698,6 +2701,31 @@ class CreateOrderApp {
 			},
 			error: () => { $btn.prop('disabled', false).text(__('Create Order')); },
 		});
+	}
+
+	// Agreements the buyer has not signed yet (manual_order.create_order's
+	// `agreements`): the order exists either way; say what was emailed, what could
+	// not be, and — when Dispose & Ship Now was held back — that the gun waits.
+	_agreementNote(m) {
+		const rows = m.agreements || [];
+		if (!rows.length) return '';
+		const esc = frappe.utils.escape_html;
+		const name = (a) => esc(a.template) + (a.serial_no ? ` (${esc(a.serial_no)})` : '');
+		const sent = rows.filter((a) => a.state !== 'failed');
+		const failed = rows.filter((a) => a.state === 'failed');
+		const lines = [];
+		if (sent.length) {
+			lines.push(__('Not signed yet: {0}. Signing link emailed to {1}.', [sent.map(name).join(', '), esc(sent[0].email || '')]));
+		}
+		if (failed.length) {
+			lines.push(`<b>${__('Not signed and NOT emailed: {0}.', [failed.map(name).join(', ')])}</b> `
+				+ esc(m.agreement_email_error || '') + ' '
+				+ __('Use Resend link on the order in Pending Order (you can type an email there).'));
+		}
+		lines.push(m.ship_held_for_agreements
+			? `<b>${__('Not disposed: the gun ships from Pending Order once the customer signs.')}</b>`
+			: __('Dispose on Pending Order waits for the signature.'));
+		return `<div style="margin-top:8px;padding:10px 12px;border-radius:6px;background:var(--bg-${failed.length ? 'red' : 'yellow'});color:var(--${failed.length ? 'red' : 'yellow'}-700)">${lines.join('<br>')}</div>`;
 	}
 
 	// Run the card on the terminal against the new Sales Invoice (the server

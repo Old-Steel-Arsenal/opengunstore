@@ -41,10 +41,13 @@ An **Agreement Template** holds the text (a range waiver, a rental agreement); a
   signed for one record (``reference_doctype`` / ``reference_name``: a gunsmith work order's
   intake authorization), from that record, and is never asked for at a sale.
   (``Item.ffl_required_agreement``, ``setup/agreements.py``), and extensions can add
-  more through the ``gunshop_required_agreements`` hook. :func:`refuse_missing_required`
+  more through the ``gunshop_required_agreements`` hook. FFL Settings › Require
+  Agreements at Sale (on by default) switches the whole sale gate off. :func:`refuse_missing_required`
   refuses to submit a counter sale (POS Invoice / Sales Invoice) until the customer
   has signed them. Returns, POS consolidation invoices and web / GunBroker sales
-  booked after the fact are left alone.
+  booked after the fact are left alone. A counter order (``manual_order.create_order``)
+  is booked unsigned instead: the links are emailed (:func:`email_sale_agreements`)
+  and its Dispose on Pending Order waits for the signatures.
 """
 from __future__ import annotations
 
@@ -60,13 +63,13 @@ import frappe
 from frappe import _
 from frappe.rate_limiter import rate_limit
 from frappe.utils import add_days, cint, escape_html, flt, fmt_money, formatdate, get_datetime, get_fullname, get_url, \
-	getdate, now_datetime, nowdate
+	getdate, now_datetime, nowdate, split_emails, strip_html
 from frappe.utils.html_utils import sanitize_html
 
 from ffl_core.compliance.channel_invoice import is_channel_mirrored_invoice
 from ffl_core.roles import COUNTER_ROLES, CUSTOMER_MANAGER_ROLES
 from ffl_core.store_identity import company_brand
-from ffl_core.utils import atomic, commit, guest_job_elevated, set_file_privacy
+from ffl_core.utils import atomic, commit, guest_job_elevated, set_file_privacy, single_flag
 
 DOCTYPE = "Customer Agreement"
 TEMPLATE = "Agreement Template"
@@ -290,6 +293,13 @@ def _row_serials(row) -> list[str]:
 	return [s.strip() for s in (row.get("serial_no") or "").replace(",", "\n").splitlines() if s.strip()]
 
 
+def sale_agreements_enforced() -> bool:
+	"""FFL Settings › Require Agreements at Sale (on unless a store turned it off).
+	Only the sale gate: requesting, signing, paper copies, Per document agreements and
+	:func:`require_agreement` work either way."""
+	return single_flag("FFL Settings", "enforce_sale_agreements", default=1)
+
+
 def sale_requirements(doc) -> list[dict]:
 	"""What a counter sale's customer must have signed: [{"template", "serial_no",
 	"item_code"}] (serial_no only for an Each firearm sold template, one entry per gun).
@@ -302,8 +312,12 @@ def sale_requirements(doc) -> list[dict]:
 	* Optional — never; it is offered from the Agreements button only.
 
 	An Each firearm sold template applies to the sale's serial-numbered lines only; a
-	Per document one never applies to a sale.
+	Per document one never applies to a sale. With FFL Settings › Require Agreements
+	at Sale off, nothing does (providers are not even asked): the sale gate, a counter
+	order's emails, Dispose's check and the register's "required" marks all read this.
 	"""
+	if not sale_agreements_enforced():
+		return []
 	rows = [r for r in doc.get("items") or [] if r.get("item_code")]
 	named: dict[str, list] = {}
 	for r in rows:
@@ -410,9 +424,15 @@ def refuse_missing_required(doc, method=None) -> None:
 
 	There is no override: the customer signs (the Agreements button at the register,
 	or Request agreement on the customer), or a manager records a copy signed on paper.
+	The one exception is a counter order built by ``manual_order.create_order``
+	(``doc.flags.ffl_defer_agreements``): a phone or ship-to-FFL sale where the customer
+	is not here to sign. It is booked, the links are emailed (:func:`email_sale_agreements`)
+	and the gun waits on Pending Order, whose Dispose checks again.
 	"""
 	customer = doc.get("customer")
 	if not customer or doc.get("is_return") or doc.get("is_consolidated"):
+		return
+	if doc.flags.get("ffl_defer_agreements"):
 		return
 	if frappe.flags.in_import or frappe.flags.in_patch or frappe.flags.in_migrate:
 		return
@@ -440,13 +460,59 @@ def mark_firearm_agreements_used(doc, method=None) -> None:
 		if not n["serial_no"]:
 			continue
 		st = agreement_status(doc.customer, n["template"], serial_no=n["serial_no"], sale=doc.name)
-		if st["state"] == "signed" and st["agreement"]:
+		# Already this sale's (a counter order signed before it was disposed): nothing to redo.
+		if st["state"] == "signed" and st["agreement"] \
+				and frappe.db.get_value(DOCTYPE, st["agreement"], "reference_name") != doc.name:
 			frappe.db.set_value(DOCTYPE, st["agreement"], {"reference_doctype": doc.doctype,
 				"reference_name": doc.name}, update_modified=False)
 			# The signed copy now names its invoice / receipt number: build it again.
 			if frappe.db.get_value(DOCTYPE, st["agreement"], "signature"):
 				frappe.enqueue("ffl_core.agreements.rebuild_signed_pdf", queue="short",
 					enqueue_after_commit=True, name=st["agreement"])
+
+
+def _line_rate(doc, serial_no: str | None):
+	"""The price of the line that sells *serial_no* (for an Each firearm sold copy's text)."""
+	return next((flt(r.get("rate")) for r in doc.get("items") or [] if serial_no and serial_no in _row_serials(r)),
+		None)
+
+
+def email_sale_agreements(doc, email: str | None, needs: list[dict] | None = None, replace: int = 0) -> list[dict]:
+	"""Email *doc*'s customer a signing link for each agreement the sale still needs.
+
+	For a sale booked before the customer signed (a counter order taken on the phone;
+	see :func:`refuse_missing_required`). *needs* defaults to :func:`missing_requirements`;
+	an Each firearm sold one gets a copy per gun, naming that line's price. A copy
+	whose link is still open is left alone unless *replace*. Never raises: each one is
+	tried on its own and a failure is reported, not thrown, so it cannot undo the sale.
+
+	Returns:
+	    [{"template", "serial_no", "state": "sent" / "link_open" / "failed", "email",
+	    "token_expires", "error"}].
+	"""
+	# An order may carry a list of addresses; the link goes to the first.
+	email = next(iter(split_emails(email or "")), "").strip()
+	out = []
+	for n in missing_requirements(doc) if needs is None else needs:
+		row = {"template": n["template"], "serial_no": n.get("serial_no"), "state": "failed", "email": email or None,
+			"token_expires": None, "error": None}
+		out.append(row)
+		if not email:
+			row["error"] = _("No email address on this order.")
+			continue
+		mark = len(frappe.local.message_log or [])
+		try:
+			with atomic("email sale agreement"):
+				r = _request(doc.customer, n["template"], "email", replace, serial_no=n.get("serial_no"),
+					price=_line_rate(doc, n.get("serial_no")), email=email)
+			row.update(state="link_open" if r.get("link_open") else "sent", token_expires=r.get("token_expires"))
+		except Exception as e:
+			# A handled failure: its throw must not sit as a red error on a successful order.
+			if frappe.local.message_log is not None:
+				del frappe.local.message_log[mark:]
+			row["error"] = strip_html(str(e)) or _("The email could not be sent.")
+			frappe.log_error(title=f"Agreement email for {doc.name} failed")
+	return out
 
 
 def release_firearm_agreements(doc, method=None) -> None:
@@ -506,6 +572,14 @@ def request_agreement(customer: str, template: str, deliver: str = "qr", replace
 	"""
 	frappe.only_for(COUNTER_ROLES)
 	frappe.has_permission("Customer", "read", doc=customer, throw=True)
+	return _request(customer, template, deliver, replace, terminal, serial_no, price, reference_doctype,
+		reference_name)
+
+
+def _request(customer, template, deliver="qr", replace=0, terminal=None, serial_no=None, price=None,
+		reference_doctype=None, reference_name=None, email: str | None = None) -> dict:
+	""":func:`request_agreement` past its role / Customer checks (the caller made its own).
+	*email*, for ``email``, is where the link goes instead of the customer's address."""
 	if deliver not in DELIVERIES:
 		frappe.throw(_("Unknown delivery: {0}").format(escape_html(deliver)))
 	tpl = frappe.get_doc(TEMPLATE, template)
@@ -531,7 +605,7 @@ def request_agreement(customer: str, template: str, deliver: str = "qr", replace
 		reference = (reference_doctype, reference_name)
 	firearm = firearm_context(serial_no, price) if serial_no else \
 		document_context(*reference) if reference else None
-	email = (cust.get("email_id") or "").strip()
+	email = (email or cust.get("email_id") or "").strip()
 	if deliver == "tablet":
 		row = frappe.db.get_value("Signing Terminal", terminal or "", ["active", "device_secret_hash"], as_dict=True)
 		if not row or not row.active or not row.device_secret_hash:
@@ -679,6 +753,7 @@ def record_paper_agreement(name: str, file_url: str, signer_name: str, paper_sig
 		doc.add_comment("Comment", _("Paper copy recorded by {0} on {1}: {2}, signed {3} by {4}.").format(
 			escape_html(frappe.session.user), now_datetime().strftime("%Y-%m-%d %H:%M"),
 			escape_html(url.rsplit("/", 1)[-1]), day, escape_html(signer_name)))
+	_announce_signed(doc)
 	return {"name": doc.name, "status": doc.status, "expires_on": str(doc.expires_on or ""),
 		"signed_pdf": doc.signed_pdf}
 
@@ -931,7 +1006,17 @@ def submit_signature(token: str, signature: str, agreed: int, signer_name: str,
 		doc.save(ignore_permissions=True)
 	frappe.enqueue("ffl_core.agreements.finish_signed_agreement", queue="short",
 		enqueue_after_commit=True, name=doc.name)
+	_announce_signed(doc)
 	return {"signed": True, "store_name": company_brand(doc.company).get("name") or ""}
+
+
+def _announce_signed(doc) -> None:
+	"""Tell open staff pages (Pending Order) once the signature commits. Only the
+	Customer, template and serial; the room is for users who may read agreements."""
+	from frappe.realtime import get_doctype_room
+
+	frappe.publish_realtime("customer_agreement_signed", {"customer": doc.customer, "agreement": doc.template,
+		"serial_no": doc.get("serial_no") or None}, room=get_doctype_room(DOCTYPE), after_commit=True)
 
 
 # ------------------------------------------------------------------ after signing

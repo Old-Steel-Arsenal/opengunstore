@@ -30,7 +30,7 @@ import frappe
 from frappe import _
 from datetime import date
 
-from frappe.utils import cint, flt, getdate, nowdate
+from frappe.utils import cint, flt, get_datetime, getdate, now_datetime, nowdate
 
 from ffl_core.api.counter_pickup import (
 	LINK_FIELD as PICKUP_LINK_FIELD,
@@ -60,7 +60,7 @@ from ffl_core.reservations import (
 )
 from ffl_core.setup.payments import CHECK_MONEY_ORDER, ZELLE
 
-from ffl_core import storage
+from ffl_core import agreements, storage
 from ffl_core.roles import COUNTER_ROLES
 from ffl_core.compliance.shipping_charge import shipping_tax_inclusive_setting
 from ffl_core.utils import set_missing_values_keeping_taxes
@@ -278,9 +278,17 @@ def create_order(payload) -> dict:
 	            (compliance.le_excise_exempt)
 	        } — dict or JSON string.
 
+	Agreements the buyer has not signed yet (FFL Settings › Used Item Agreement,
+	an Item's required agreement) do not stop the order: each is emailed to the
+	order's email (else the customer's) and Dispose waits for it; a dispose_now
+	order is then held back on Pending Order (``ship_held_for_agreements``). A
+	failed or impossible email never undoes the order — it is reported.
+
 	Returns:
 	    {ok, sales_order, sales_invoice, paid_amount, outstanding,
-	    disposed, ship_pushed, ship_error, email_to}.
+	    disposed, ship_pushed, ship_error, email_to, agreements: [{template,
+	    serial_no, state: sent / link_open / failed, email, token_expires,
+	    error}], agreement_email_error, ship_held_for_agreements}.
 
 	Permissions:
 	    Sales User / Sales Manager / Stock Manager / System Manager.
@@ -544,6 +552,22 @@ def _create_order(payload, *, shipping_tax_inclusive: int | None = None) -> dict
 	si.flags.ignore_permissions = True
 	si.insert()
 
+	# Agreements the buyer has not signed (a used gun's acknowledgment, say) do not
+	# stop the order: a phone / ship-to-FFL buyer is not here to sign, so the links
+	# are emailed below. The gun waits for them instead — Dispose on Pending Order
+	# checks again — so a Dispose & Ship Now is held back to a deferred order.
+	unsigned = agreements.missing_requirements(si)
+	si.flags.ffl_defer_agreements = True
+	# Only a gun waits: Pending Order's Dispose is the step that checks again.
+	ship_held_for_agreements = bool(unsigned and ship_now and has_regulated)
+	if ship_held_for_agreements:
+		ship_now = False
+		frappe.msgprint(_(
+			"{0} has not signed {1} yet, so this order is not disposed now. The signing "
+			"link is emailed; the gun ships from Pending Order once it is signed."
+		).format(frappe.bold(frappe.utils.escape_html(si.customer_name or customer)),
+			_agreement_names(unsigned)), alert=True, indicator="orange")
+
 	# Re-pin staff economics + serials (set_missing_values reset them), and set
 	# update_stock — ship now → 1, defer → 0 — AFTER insert so it wins over the
 	# dealer-shipment before_insert auto-enable (which forces it on for FFL buyers).
@@ -682,6 +706,11 @@ def _create_order(payload, *, shipping_tax_inclusive: int | None = None) -> dict
 	if draft:
 		delete_order_draft(draft)
 
+	# Last, so a failure above rolls the emails (queued in this transaction) back too.
+	# Never raises: a bad address or a mail problem is reported, the order stands.
+	sent = agreements.email_sale_agreements(si, _customer_email_hint(si), unsigned) if unsigned else []
+	failed = [a for a in sent if a["state"] == "failed"]
+
 	disposed = bool(ship_now and has_regulated)
 	# Dispose & Ship Now also pushes the shipment to ShipStation (owner
 	# decision 2026-07-03) — best-effort: on failure the order stays queued
@@ -702,7 +731,18 @@ def _create_order(payload, *, shipping_tax_inclusive: int | None = None) -> dict
 		"ship_pushed": ship_pushed,
 		"ship_error": ship_error,
 		"email_to": _customer_email_hint(si),
+		# Unsigned agreements: what was emailed (agreements.email_sale_agreements) and
+		# whether a Dispose & Ship Now was held back for them.
+		"agreements": sent,
+		"agreement_email_error": "; ".join(dict.fromkeys(a["error"] for a in failed)) or None,
+		"ship_held_for_agreements": ship_held_for_agreements,
 	}
+
+
+def _agreement_names(needs: list[dict]) -> str:
+	""""Used Item Agreement, Bill of Sale (SN123)" — escaped, for a message."""
+	return ", ".join(frappe.utils.escape_html(n["template"] + (f" ({n['serial_no']})" if n.get("serial_no") else ""))
+		for n in needs)
 
 
 # Pending Order page sections: the ONE thing a row waits
@@ -1057,6 +1097,9 @@ def list_pending_dispositions() -> list[dict]:
 			"note": (inv.ffl_staff_note or "").strip(),
 			"paid": paid,
 			"needs_disposition": needs_disposition,
+			# The agreements the gun waits for (never a blocked stage: Dispose may
+			# override them). Only while there is a gun to dispose.
+			"agreements": _agreement_rows(si) if needs_disposition else [],
 			"pending_serials": pending,
 			"store_pickup": store_pickup,
 			"pickup_invoice": pickup_map.get(inv.name) if store_pickup else None,
@@ -1139,6 +1182,8 @@ def list_pending_dispositions() -> list[dict]:
 				preview = {"company": None, **addr}
 		row["ship_to_preview"] = preview
 		row["has_ship_address"] = bool(preview)
+		row["agreements_missing"] = [{"template": a["template"], "serial_no": a["serial_no"]}
+			for a in row["agreements"] if not a["signed"]]
 		# Page section + why it is stuck + how long it has waited.
 		stamp_stage(row, inv.posting_date, limit_days, today)
 		if ss_enabled:
@@ -1519,19 +1564,26 @@ def assign_procured_serials(sales_invoice: str, procured_by_item: dict,
 
 
 @frappe.whitelist()
-def dispose_order(sales_invoice: str) -> dict:
+def dispose_order(sales_invoice: str, override_agreement: int = 0, reason: str | None = None) -> dict:
 	"""Dispose (ship) the firearms on a submitted order — the queue action.
 
 	Books one transfer disposition per not-yet-disposed serial; the
 	disposition's own on_submit issues the stock-out Material Issue and
 	enqueues the FastBound push. Idempotent. Gated on the pre-ship payment
-	rule (ship_payment_block) and a valid destination FFL.
+	rule (ship_payment_block), a valid destination FFL and the agreements the
+	sale needs: an unsigned one refuses (``AgreementRequired``) unless
+	``override_agreement`` is 1, which disposes anyway and records who, what
+	was unsigned and why as a comment on the invoice. The signed Each firearm
+	sold copies then belong to this invoice.
 
 	Args:
 	    sales_invoice: Submitted Sales Invoice with a destination FFL.
+	    override_agreement: 1 to dispose although agreements are unsigned.
+	    reason: Why, for the override's comment (optional).
 
 	Returns:
-	    {"ok": True, "dispositions": [names], "disposed_count": n}.
+	    {"ok": True, "dispositions": [names], "disposed_count": n,
+	    "agreement_override": whether unsigned agreements were overridden}.
 
 	Permissions:
 	    Sales User / Sales Manager / Stock Manager / System Manager.
@@ -1561,10 +1613,93 @@ def dispose_order(sales_invoice: str) -> dict:
 	if not target:
 		frappe.throw(_("Could not resolve the destination FFL for {0}.").format(sales_invoice))
 	destination, disposition_type = target
+	# Only while a gun is still to go (a re-run on a disposed order stays a no-op).
+	unsigned = agreements.missing_requirements(si) if si_pending_firearm_serials(si) else []
+	if unsigned and not cint(override_agreement):
+		frappe.throw(_(
+			"{0} has not signed {1}. Send the link again from the order's Agreements, or "
+			"dispose without it (recorded on the order).").format(
+			frappe.bold(frappe.utils.escape_html(si.customer_name or si.customer)), _agreement_names(unsigned)),
+			agreements.AgreementRequired, title=_("Agreement not signed"))
 	names = dealer_transfer._register_dispositions(
 		si, destination=destination, disposition_type=disposition_type,
 		link_field="sales_invoice")
-	return {"ok": True, "dispositions": names, "disposed_count": len(names)}
+	if unsigned and names:
+		reason = (str(reason or "")).strip()
+		si.add_comment("Comment", _("Disposed by {0} without the signed agreement: {1}. Reason: {2}").format(
+			frappe.utils.escape_html(frappe.session.user), _agreement_names(unsigned),
+			frappe.utils.escape_html(reason) if reason else _("none given")))
+	# At submit these were unsigned, so nothing was bound then.
+	agreements.mark_firearm_agreements_used(si)
+	return {"ok": True, "dispositions": names, "disposed_count": len(names),
+		"agreement_override": bool(unsigned and names)}
+
+
+def _agreement_rows(si) -> list[dict]:
+	"""Each agreement *si*'s sale needs and where the customer stands with it."""
+	out = []
+	for n in agreements.sale_requirements(si):
+		st = agreements.agreement_status(si.customer, n["template"], serial_no=n["serial_no"], sale=si.name)
+		link = frappe.db.get_value("Customer Agreement", st["agreement"], ["token_expires", "delivery_channel"],
+			as_dict=True) if st["state"] == "pending" else None
+		out.append({"template": n["template"], "serial_no": n["serial_no"], "item_code": n["item_code"],
+			"state": st["state"], "signed": st["state"] in ("signed", "expiring"),
+			"token_expires": str(link.token_expires) if link and link.token_expires else None,
+			"link_open": bool(link and link.token_expires and get_datetime(link.token_expires) > now_datetime()),
+			"sent_by": link.delivery_channel if link else None})
+	return out
+
+
+@frappe.whitelist()
+def order_agreements(sales_invoice: str) -> dict:
+	"""The agreements a counter order's sale needs and whether the buyer signed —
+	the Pending Order card's Agreements strip.
+
+	Args:
+	    sales_invoice: Submitted counter-order Sales Invoice.
+
+	Returns:
+	    {"email": where a link goes, "rows": [{template, serial_no, item_code,
+	    state (signed / expiring / expired / pending / missing), signed,
+	    token_expires, link_open, sent_by}]}.
+	"""
+	frappe.only_for(_ROLES)
+	si = frappe.get_doc("Sales Invoice", sales_invoice)
+	return {"email": _customer_email_hint(si), "rows": _agreement_rows(si)}
+
+
+@frappe.whitelist(methods=["POST"])
+def resend_order_agreement(sales_invoice: str, template: str, serial_no: str | None = None,
+		email: str | None = None) -> dict:
+	"""Email a counter order's buyer a fresh signing link (the old one stops working).
+
+	Args:
+	    sales_invoice: Submitted counter-order Sales Invoice.
+	    template: An agreement this order's sale needs.
+	    serial_no: The gun, for an Each firearm sold agreement.
+	    email: Send here instead of the order's email (else the customer's).
+
+	Returns:
+	    {"email", "token_expires"}.
+	"""
+	frappe.only_for(_ROLES)
+	si = frappe.get_doc("Sales Invoice", sales_invoice)
+	if si.docstatus != 1:
+		frappe.throw(_("{0} is not a submitted invoice.").format(sales_invoice))
+	serial_no = (serial_no or "").strip() or None
+	need = next((n for n in agreements.sale_requirements(si)
+		if n["template"] == template and n["serial_no"] == serial_no), None)
+	if not need:
+		frappe.throw(_("{0} does not need {1}.").format(sales_invoice, frappe.utils.escape_html(template)))
+	to = (str(email or "")).strip() or _customer_email_hint(si)
+	if not to:
+		frappe.throw(_("This order has no email address. Type one in."), title=_("No email address"))
+	if email:
+		frappe.utils.validate_email_address(to, throw=True)
+	[res] = agreements.email_sale_agreements(si, to, [need], replace=1)
+	if res["state"] == "failed":
+		frappe.throw(res["error"], title=_("Not sent"))
+	return {"email": res["email"], "token_expires": res["token_expires"]}
 
 
 def _classify_deferred_lines(si) -> tuple[list, list, list]:
@@ -3020,7 +3155,8 @@ def update_order(sales_invoice: str, payload, refund_mode: str | None = None,
 	Returns:
 	    {ok, sales_invoice: <new SI>, replaced: <old SI>,
 	    sales_orders_cancelled, grand_total, carried_amount, refund_entry,
-	    refunded_amount, outstanding, ...}.
+	    refunded_amount, outstanding, agreements, agreement_email_error} —
+	    the last two as create_order's (a link still open is not sent again).
 
 	Permissions:
 	    Sales User / Sales Manager / Stock Manager / System Manager.
@@ -3196,6 +3332,8 @@ def update_order(sales_invoice: str, payload, refund_mode: str | None = None,
 		"refund_entry": refund_entry,
 		"refunded_amount": flt(refunded),
 		"outstanding": flt(new_si.outstanding_amount),
+		"agreements": created.get("agreements") or [],
+		"agreement_email_error": created.get("agreement_email_error"),
 	}
 
 

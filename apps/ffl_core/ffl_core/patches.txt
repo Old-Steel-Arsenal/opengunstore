@@ -81,3 +81,5 @@ ffl_core.patches.v0_1_0_reset_last_known_versions
 ffl_core.patches.v0_1_2_gunstore_header_icon
 # The idle counter lock defaults to 5 minutes on stores whose settings stored 0 for the new field.
 ffl_core.patches.seed_counter_lock_minutes
+# Require Agreements at Sale (the sale gate switch) shows on, as it reads, on stores that already had FFL Settings.
+ffl_core.patches.seed_enforce_sale_agreements
