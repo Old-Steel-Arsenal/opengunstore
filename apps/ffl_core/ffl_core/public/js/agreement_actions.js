@@ -248,9 +248,10 @@
 				});
 			});
 		};
-		// Signed while the list is open (customer_flags.js subscribes the room): show it.
+		// Signed while the list is open: show it.
 		var onSigned = function (msg) { if (msg && msg.customer === customer) load(); };
-		if (frappe.realtime) {
+		if (frappe.realtime && frappe.realtime.socket) {
+			frappe.realtime.doctype_subscribe('Customer Agreement');
 			frappe.realtime.on('customer_agreement_signed', onSigned);
 			d.onhide = function () { frappe.realtime.off('customer_agreement_signed', onSigned); };
 		}

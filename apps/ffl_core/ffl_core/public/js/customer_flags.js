@@ -383,6 +383,7 @@
 					}
 				};
 				paint();
+				if (c) listenForSignatures();
 				// A resumed held draft (load_invoice) never fires the customer event, so its
 				// flags may be missing or old: read them again, then paint if still showing.
 				if (c && !(cache[c] && Date.now() - (fetchedAt[c] || 0) < CACHE_MS)) {
@@ -443,14 +444,19 @@
 		}, function () { /* the strip is a hint */ });
 	}
 
+	// Once, from the cart: at page load frappe.realtime has no socket yet (on() is a no-op).
+	var listening = false;
+	function listenForSignatures() {
+		if (listening || !(frappe.realtime && frappe.realtime.socket) || !frappe.model.can_read('Customer Agreement')) return;
+		listening = true;
+		frappe.realtime.doctype_subscribe('Customer Agreement');
+		frappe.realtime.on('customer_agreement_signed', onAgreementSigned);
+	}
+
 	function wire() {
 		frappe.provide('erpnext.PointOfSale');
 		var hook = window.ffl && ffl.installClassHook;
 		if (hook) hook(erpnext.PointOfSale, 'ItemCart', patchCart);
-		if (frappe.realtime && frappe.model.can_read('Customer Agreement')) {
-			frappe.realtime.doctype_subscribe('Customer Agreement');
-			frappe.realtime.on('customer_agreement_signed', onAgreementSigned);
-		}
 	}
 	if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire);
 	else wire();
