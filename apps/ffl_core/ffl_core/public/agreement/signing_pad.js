@@ -125,6 +125,8 @@
 			canvas.width = size.width;
 			canvas.height = size.height;
 			ctx.setTransform(size.width / cssW, 0, 0, size.height / cssH, 0, 0);
+			// Mid-stroke (a phone's toolbar sliding away): the rest of it maps to the new box.
+			if (active !== null) rect = r;
 			redraw();
 		}
 

@@ -94,6 +94,7 @@ The top line carries the customer name and a run of badges.
 | **WC** | The live WooCommerce status of a web order. |
 | **GB** | The live GunBroker status. |
 | **Serial conflict** | A serial arrived from the web store and was rejected. |
+| **Awaiting signature** | The buyer has not signed an agreement this counter order needs. Dispose asks before going ahead without it. |
 | **In-store pickup** | A web order addressed to your own license, or a counter order built with **Pickup in store**. Once its pickup ticket is open the badge reads **In-store pickup · counter order open**. |
 
 The line under it links the Sales Invoice, the Woo Online Order, or the GunBroker
@@ -116,6 +117,22 @@ Counter orders with distributor legs get a second strip of pills:
   **arrived** or **partly arrived** once received. Clicking the pill opens that
   Distributor Order. Trouble states are colored, red for Error and amber for
   Hold.
+
+### Agreements
+
+A counter order whose gun needs a signed agreement shows an **Agreements** strip:
+each agreement (one per gun for an agreement signed for each firearm) reads
+**signed**, **sent, link open until** a date and time, **link expired**, or **not
+signed**. **Resend link** emails a new link to the order's email (you can change
+the address in the dialog); the old link stops working. The strip updates by
+itself when the customer signs.
+
+Dispose on such an order opens with a red warning: the customer has not signed,
+and disposing without the signed acknowledgment is recorded on the order. Add a
+reason if you have one and click **Dispose without signature**. The order's Sales
+Invoice then carries a comment naming you, the unsigned agreements and the
+reason. Once the customer signs, Dispose works as usual and the signed copy is
+attached to the order.
 
 ## The action buttons
 

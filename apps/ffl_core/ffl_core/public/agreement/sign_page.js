@@ -133,6 +133,10 @@
 
 	pad = SigningPad.attach($('[data-pad]'), { onchange: function () { problem(''); } });
 	$('[data-clear]').addEventListener('click', function () { pad.clear(); });
+	// The keyboard's Done / Enter closes the keyboard; it does not submit half a form.
+	form.signer_name.addEventListener('keydown', function (e) {
+		if (e.key === 'Enter') { e.preventDefault(); form.signer_name.blur(); }
+	});
 	form.addEventListener('submit', submit);
 
 	if (!token) {
