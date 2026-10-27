@@ -59,6 +59,7 @@ from ffl_integrations.gunbroker.client import (
 	gb_datetime,
 	kv_key,
 )
+from ffl_integrations.gunbroker import mapping
 from ffl_integrations.gunbroker.crosschannel import REASON_SOLD, fire_serial_channel_exit
 from ffl_integrations.integration_gate import gunbroker_enabled
 from ffl_integrations.notifications import notify_admins, safe_log_error
@@ -569,10 +570,10 @@ def channel_committed_units(item_code: str) -> int:
 		INNER JOIN `tabGunBroker Order` o ON o.name = l.parent
 		WHERE l.parenttype = 'GunBroker Order'
 		  AND l.parentfield = 'lines'
-		  AND l.sku = %(item_code)s
+		  AND l.sku = %(sku)s
 		  AND o.order_status = 'Pending Fulfillment'
 		""",
-		{"item_code": item_code},
+		{"sku": mapping.item_listing_sku(item_code)},
 	)
 	return int(row[0][0] or 0) if row else 0
 
@@ -879,12 +880,34 @@ def _warn_on_gateway_payment(order) -> None:
 
 
 def split_sku(sku: str) -> tuple[str, str | None]:
-	"""``item_code::serial`` → the pair. Same rule the web store's SKUs use."""
+	"""``item_code::serial`` → the pair. Same rule the web store's SKUs use.
+
+	Also reads the two short forms ``mapping`` mints when the full SKU is over
+	GunBroker's limit: ``::serial`` (item code read off the Serial No; empty when
+	no such serial) and an item-level ``prefix~digest`` (the one Item whose code
+	starts with the prefix and hashes to the digest; the SKU as-is when none does).
+	"""
 	sku = (sku or "").strip()
 	if "::" in sku:
 		item_code, serial = sku.split("::", 1)
-		return item_code.strip(), serial.strip() or None
-	return sku, None
+		item_code, serial = item_code.strip(), serial.strip() or None
+		if not item_code and serial:
+			item_code = frappe.db.get_value("Serial No", serial, "item_code") or ""
+		return item_code, serial
+	return _resolve_short_item_sku(sku), None
+
+
+def _resolve_short_item_sku(sku: str) -> str:
+	parts = mapping.short_item_sku_parts(sku)
+	if not parts or frappe.db.exists("Item", sku):
+		return sku
+	prefix, digest = parts
+	like = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+	for name in frappe.db.sql_list(
+			"SELECT name FROM `tabItem` WHERE name LIKE %(like)s", {"like": like}):
+		if len(name) > mapping.SKU_MAX_LEN and mapping.item_sku_hash(name) == digest:
+			return name
+	return sku
 
 
 # ---------------------------------------------------------------------------

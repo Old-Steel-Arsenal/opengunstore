@@ -269,8 +269,9 @@ class RecordPaymentDialogSource(FrappeTestCase):
 
 	def test_pending_dispositions_dialog_has_received_on(self):
 		js = _page_js("pending_dispositions")
-		# The method definition, not the click handler that calls it.
-		block = js[js.index("\n\t_recordPayment(row) {"):]
+		# The method definition, not the click handler that calls it (async since it asks the
+		# server whether to offer "Save this card" before building the dialog).
+		block = js[re.search(r"\n\t(?:async )?_recordPayment\(row\) \{", js).start():]
 		block = block[:block.index("\n\t// ")]
 		self.assertIn("fieldname: 'received_on'", block)
 		self.assertIn("Payment received on", block)

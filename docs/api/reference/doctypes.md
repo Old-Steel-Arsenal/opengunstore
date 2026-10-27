@@ -661,6 +661,18 @@ app: `ffl_integrations` · module: FFL Integrations · child table
 | `processor` | Data | Processor |  |  |
 | `instruction_id` | Data | Instruction ID |  |  |
 | `response` | Code | Gateway Response |  |  |
+| `save_card` | Check | Save Card Requested |  |  |
+| `save_reference` | Data | Saved Card Reference |  |  |
+| `saved_card` | Link | Saved Card |  | Saved Card |
+
+## Card On File Settings
+
+app: `ffl_integrations` · module: FFL Integrations · single · roles: System Manager
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `card_on_file_enabled` | Check | Offer to Save Cards |  |  |
+| `card_on_file_template` | Link | Card-on-File Authorization |  | Agreement Template |
 
 ## Card Terminal Payment
 
@@ -677,6 +689,9 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sal
 | `payment_entry` | Link | Payment Entry |  | Payment Entry |
 | `processor` | Data | Processor |  |  |
 | `instruction_id` | Data | Instruction ID |  |  |
+| `save_card` | Check | Save Card Requested |  |  |
+| `save_reference` | Data | Saved Card Reference |  |  |
+| `saved_card` | Link | Saved Card |  | Saved Card |
 | `response` | Code | Gateway Response |  |  |
 
 ## Data Service Settings
@@ -1142,6 +1157,7 @@ app: `ffl_integrations` · module: FFL Integrations · single · roles: System M
 | `api_key` | Password | Merchant API Key |  |  |
 | `default_terminal` | Data | Gateway Terminal Number |  |  |
 | `device_serial_number` | Data | Device Serial Number |  |  |
+| `saved_card_terminal` | Data | Saved-Card Terminal Number |  |  |
 | `default_currency` | Link | Default Currency |  | Currency |
 | `integration_id` | Data | X-Integration-ID (ISV only) |  |  |
 | `sandbox_mode` | Check | Sandbox Mode |  |  |
@@ -1235,6 +1251,29 @@ Where RSR will not ship one product, as published in their ship-restrictions fil
 | `entry_count` | Int | Entry Count |  |  |
 | `load_batch` | Data | Load Batch |  |  |
 | `entries` | Long Text | Entries (JSON) |  |  |
+
+## Saved Card
+
+app: `ffl_integrations` · module: FFL Integrations · roles: Accounts Manager, Sales Manager, Sales User, System Manager
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `customer` | Link | Customer | ✓ | Customer |
+| `card_summary` | Data | Card |  |  |
+| `card_expiry` | Data | Expiry (MMYY) |  |  |
+| `status` | Select | Status |  | Active, Removed |
+| `is_default` | Check | Default Card |  |  |
+| `usage` | Select | Usage |  | UNSCHEDULED, RECURRING |
+| `authorization` | Link | Signed Authorization | ✓ | Customer Agreement |
+| `source_doctype` | Link | Saved From (Type) |  | DocType |
+| `source_name` | Dynamic Link | Saved From |  | source_doctype |
+| `processor` | Data | Processor | ✓ |  |
+| `initial_reference` | Data | First Charge Reference |  |  |
+| `merchant_reference` | Data | Merchant Reference |  |  |
+| `token` | Password | Gateway Token | ✓ |  |
+| `removed_by` | Link | Removed By |  | User |
+| `removed_on` | Datetime | Removed On |  |  |
+| `removed_reason` | Small Text | Reason |  |  |
 
 ## ShipStation Settings
 

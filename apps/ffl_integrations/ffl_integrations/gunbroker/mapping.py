@@ -20,6 +20,7 @@ Two things about GunBroker shape what is here more than the docs do:
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import re
 from typing import Any
@@ -821,9 +822,38 @@ def _add_product_codes(payload: dict, item: dict) -> bool:
 	return bool(upc)
 
 
+# GunBroker refuses a SKU over 50 characters ("SKU cannot exceed 50 characters");
+# the limit is not in its API docs.
+SKU_MAX_LEN = 50
+# The item-level short form: a prefix of the item code, then ``~`` and this many hex
+# digits of the full code's SHA-1, padded out to exactly SKU_MAX_LEN.
+_ITEM_SKU_HASH_LEN = 8
+_ITEM_SKU_SHORT_RE = re.compile(r"^(.+)~([0-9a-f]{%d})$" % _ITEM_SKU_HASH_LEN)
+
+
 def listing_sku(item_code: str, serial_no: str) -> str:
-	"""``item_code::serial`` — the same SKU shape the web store uses."""
-	return f"{item_code}::{serial_no}"
+	"""``item_code::serial`` — the same SKU shape the web store uses.
+
+	When that is longer than GunBroker accepts, the item code is dropped and the
+	SKU is ``::serial``: the serial alone names the gun, and ``orders.split_sku``
+	reads the item code back off the Serial No. Only a gun whose full SKU is too
+	long gets the short form, so the SKU of every listing already up is unchanged.
+	"""
+	sku = f"{item_code}::{serial_no}"
+	return sku if len(sku) <= SKU_MAX_LEN else f"::{serial_no}"
+
+
+def item_sku_hash(item_code: str) -> str:
+	"""The digest that ties an item-level short SKU to its full item code."""
+	return hashlib.sha1(item_code.encode("utf-8")).hexdigest()[:_ITEM_SKU_HASH_LEN]
+
+
+def short_item_sku_parts(sku: str) -> tuple[str, str] | None:
+	"""``(prefix, digest)`` when ``sku`` has the item-level short form, else None."""
+	if len(sku) != SKU_MAX_LEN:
+		return None
+	m = _ITEM_SKU_SHORT_RE.match(sku)
+	return (m.group(1), m.group(2)) if m else None
 
 
 def item_listing_context(item_code: str) -> dict:
@@ -1090,8 +1120,16 @@ def item_listing_sku(item_code: str) -> str:
 
 	``split_sku`` already reads a SKU with no ``::`` as (item_code, None), so the
 	order side tells the two listing kinds apart by whether a serial came back.
+
+	An item code longer than GunBroker accepts is cut to a prefix plus ``~`` and a
+	digest of the whole code (exactly :data:`SKU_MAX_LEN` long); ``orders.split_sku``
+	finds the Item by prefix and digest. Shorter codes are unchanged.
 	"""
-	return (item_code or "").strip()
+	item_code = (item_code or "").strip()
+	if len(item_code) <= SKU_MAX_LEN:
+		return item_code
+	digest = item_sku_hash(item_code)
+	return f"{item_code[:SKU_MAX_LEN - len(digest) - 1]}~{digest}"
 
 
 def _enum_code(value: Any, *, default: int) -> int:

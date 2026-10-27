@@ -3107,7 +3107,7 @@ frappe.provide('frappe.ui.form');
 	// how much to put on the NEXT card. Default = everything remaining, so the
 	// single-card majority path is dialog → Charge; typing a smaller amount is
 	// what splits the sale across cards.
-	function promptChargeAmount(frm, remaining) {
+	function promptChargeAmount(frm, remaining, saveOffer) {
 		return new Promise((resolve) => {
 			let settled = false;
 			const pc = cardMath();
@@ -3125,6 +3125,8 @@ frappe.provide('frappe.ui.form');
 					  default: remaining, reqd: 1,
 					  description: __('Remaining card balance {0}. Enter less to split across more cards.',
 						[format_currency(remaining)]) },
+					// Card on file: only when the server offered it for this customer.
+					...(saveOffer ? [window.ffl.cardOnFile.field()] : []),
 				],
 				primary_action_label: __('Charge'),
 				primary_action(values) {
@@ -3137,7 +3139,7 @@ frappe.provide('frappe.ui.form');
 					}
 					settled = true;
 					dlg.hide();
-					resolve({ amount: amt });
+					resolve({ amount: amt, save_card: saveOffer && values.save_card ? 1 : 0 });
 				},
 			});
 			dlg.$wrapper.on('hidden.bs.modal', () => { if (!settled) resolve(null); });
@@ -3351,6 +3353,7 @@ frappe.provide('frappe.ui.form');
 		// the doc, so the loop re-evaluates rows AND the tender target fresh
 		// every pass (a reload may recompute payments).
 		const pc = cardMath();
+		let saveOffer;   // card on file: asked once, when the first card dialog opens
 		if (!pc) {
 			// Pure module missing (asset build problem) — fail safe: no charge
 			// is better than an unvalidated one.
@@ -3373,16 +3376,19 @@ frappe.provide('frappe.ui.form');
 				return { skip: false, ok: false };
 			}
 			if (remaining <= pc.TOLERANCE) return { skip: false, ok: true };
-			const req = await promptChargeAmount(frm, remaining);
+			if (saveOffer === undefined) saveOffer = await window.ffl.cardOnFile.offer(frm.doc.customer);
+			const req = await promptChargeAmount(frm, remaining, saveOffer);
 			if (!req) return { skip: false, ok: false };   // cashier backed out
-			const res = await runSingleCharge(frm, req.amount);
+			if (req.save_card && !(await window.ffl.cardOnFile.ensureSigned(frm.doc.customer, saveOffer,
+				frm.doc.customer_name))) continue;     // not signed: back to the card dialog
+			const res = await runSingleCharge(frm, req.amount, req.save_card);
 			if (res.skip || !res.ok) return res;
 		}
 	}
 
 	// One card: create the instruction for `amount` and poll it to a terminal
 	// state — the single-charge era flow, parameterized by amount.
-	async function runSingleCharge(frm, amount) {
+	async function runSingleCharge(frm, amount, saveCard) {
 
 		// 1. Create the device payment instruction (returns fast with an id).
 		let instructionId = '';
@@ -3392,6 +3398,8 @@ frappe.provide('frappe.ui.form');
 				args: {
 					invoice_name: frm.doc.name, amount: amount,
 					description: `${frm.doc.name} — ${frm.doc.customer_name || frm.doc.customer || ''}`,
+					// Sent only when ticked: the request is byte-for-byte the old one otherwise.
+					...(saveCard ? { save_card: 1 } : {}),
 				},
 			});
 			const created = (c && c.message) || {};
@@ -3460,6 +3468,7 @@ frappe.provide('frappe.ui.form');
 						message: __('Approved · auth {0}', [m.approval_code || m.unique_reference || 'OK']),
 						indicator: 'green',
 					});
+					window.ffl.cardOnFile.report(m);
 					return { skip: false, ok: true };
 				}
 				if (m.partial) {
@@ -3500,7 +3509,72 @@ frappe.provide('frappe.ui.form');
 	// lazy: runSingleCharge above keeps its own copy of this loop — its partial-
 	// approval and frm.reload_doc semantics are POS-specific; fold it onto this
 	// helper once the multi-card flow is expressed in terms of it.
+	// Card on file (ffl_integrations/payments/saved_cards.py) — "Save this card" on a terminal
+	// charge. offer(customer): the server's offer for this customer, or null (store has it off —
+	// boot flag, no round trip — walk-in customer, processor cannot save cards). ensureSigned:
+	// true once the customer has signed the card-on-file authorization — sent to the signing
+	// tablet (or shown as a QR code) and waited for, cancellable. The server re-checks both.
 	window.ffl = window.ffl || {};
+	window.ffl.cardOnFile = {
+		async offer(customer) {
+			if (!customer || !(frappe.boot && Number(frappe.boot.ffl_card_on_file))) return null;
+			try {
+				const r = await frappe.call({ method: 'ffl_integrations.payments.saved_cards.card_on_file_offer',
+					args: { customer } });
+				const m = (r && r.message) || {};
+				return m.offer ? m : null;
+			} catch (e) {
+				return null;   // no offer is the safe answer; the sale goes on as before
+			}
+		},
+		field() {
+			return { fieldtype: 'Check', fieldname: 'save_card', label: __('Save this card'),
+				description: __('Keep this card for later charges. The customer signs the card-on-file authorization first.') };
+		},
+		async ensureSigned(customer, offer, customerName) {
+			if (['signed', 'expiring'].includes(offer.state)) return true;
+			const sent = window.ffl.agreements && window.ffl.agreements.sendForSigning
+				? await window.ffl.agreements.sendForSigning(customer, offer.template, customerName) : false;
+			if (!sent) return false;
+			return new Promise((resolve) => {
+				let done = false;
+				const finish = (ok) => { if (done) return; done = true; dlg.hide(); resolve(ok); };
+				const dlg = new frappe.ui.Dialog({
+					title: __('Waiting for the signature'),
+					fields: [{ fieldtype: 'HTML', fieldname: 'msg', options: `<p>${__('{0} is signing {1}. The card is charged once it is signed.',
+						[frappe.utils.escape_html(customerName || customer), `<b>${frappe.utils.escape_html(offer.template)}</b>`])}</p>` }],
+					primary_action_label: __('Cancel'),
+					primary_action: () => finish(false),
+				});
+				dlg.$wrapper.on('hidden.bs.modal', () => finish(false));
+				dlg.show();
+				const deadline = Date.now() + 10 * 60 * 1000;
+				const tick = async () => {
+					if (done) return;
+					if (Date.now() > deadline) return finish(false);
+					try {
+						const r = await frappe.call({ method: 'ffl_integrations.payments.saved_cards.card_on_file_offer',
+							args: { customer } });
+						const m = (r && r.message) || {};
+						if (['signed', 'expiring'].includes(m.state)) { offer.state = m.state; return finish(true); }
+					} catch (e) { /* keep waiting; Cancel is always there */ }
+					setTimeout(tick, 2000);
+				};
+				setTimeout(tick, 2000);
+			});
+		},
+		// The settle answer's card-on-file part: a green note when saved, a plain message when not.
+		report(m) {
+			if (!m || m.card_saved === undefined) return;
+			if (m.card_saved) {
+				frappe.show_alert({ message: m.save_message || __('Card saved.'), indicator: 'green' }, 7);
+			} else {
+				frappe.msgprint({ title: __('Card charged but not saved'), indicator: 'orange',
+					message: frappe.utils.escape_html(m.save_message || __('The card was charged but not saved.')) });
+			}
+		},
+	};
+
 	window.ffl.terminalCharge = async function ({ amount, start, poll, cancel }) {
 		const call = (spec, extra) => frappe.call({
 			method: spec.method, args: Object.assign({}, spec.args, extra || {}) });
@@ -3555,6 +3629,7 @@ frappe.provide('frappe.ui.form');
 				if (m.ok) {
 					frappe.show_alert({ indicator: 'green',
 						message: __('Approved · auth {0}', [m.approval_code || m.unique_reference || 'OK']) });
+					window.ffl.cardOnFile.report(m);
 					return Object.assign({ skip: false }, m);
 				}
 				frappe.msgprint({ title: __('Payment not completed'), indicator: 'red',
