@@ -61,6 +61,7 @@ class PaymentHubApp {
 	render() {
 		const $cards = this.$body.find('.cards').empty();
 		this.data.processors.forEach((row) => this.renderCard($cards, row));
+		if (this.data.card_on_file) this.renderCardOnFile($cards, this.data.card_on_file);
 		this.$body.find('.note').text(__(
 			'Adding a processor is a registry entry in ffl_integrations/payments/hub.py '
 			+ 'plus its own Settings doctype — this page and the workspace card stay as they are.'));
@@ -119,6 +120,43 @@ class PaymentHubApp {
 			.on('click', (e) => this.testConnection(row, $(e.currentTarget))).appendTo($foot);
 		$('<button class="btn btn-default btn-sm"></button>').text(__('Credentials'))
 			.on('click', () => frappe.set_route('Form', row.settings_doctype)).appendTo($foot);
+	}
+
+	// Card on file (payments/saved_cards.py): "Save this card" at the terminal, after the
+	// customer signs the authorization picked here. Saved through the Single's own rules.
+	renderCardOnFile($cards, cof) {
+		const esc = frappe.utils.escape_html;
+		const supported = this.data.processors.some((p) => p.enabled && p.ready && p.supports_card_on_file);
+		const $card = $(`<div class="hub-card ${cof.enabled ? '' : 'off'}"></div>`).appendTo($cards);
+		const $head = $('<div class="head"></div>').appendTo($card);
+		$head.append(`<span class="hname">${esc(__('Card on file'))}</span>`);
+		$head.append(cof.enabled
+			? (supported ? `<span class="state ok">${esc(__('on — "Save this card" is offered at the terminal'))}</span>`
+				: `<span class="state warn">${esc(__('on, but the active processor cannot save cards'))}</span>`)
+			: `<span class="state idle">${esc(__('off'))}</span>`);
+		const $form = $('<div style="margin-top:10px; max-width:420px"></div>').appendTo($card);
+		const control = frappe.ui.form.make_control({
+			parent: $form, render_input: true,
+			df: { fieldtype: 'Link', fieldname: 'card_on_file_template', options: 'Agreement Template',
+				label: __('Authorization the customer signs first'),
+				get_query: () => ({ filters: { active: 1, scope: 'Per customer' } }) },
+		});
+		control.set_value(cof.template || '');
+		control.$input.prop('disabled', !cof.can_write);
+		const $tg = $('<div class="toggles"></div>').appendTo($card);
+		const $label = $(`<label class="${cof.can_write ? '' : 'ro'}"></label>`).appendTo($tg);
+		const $cb = $('<input type="checkbox">').prop('checked', !!cof.enabled)
+			.prop('disabled', !cof.can_write).appendTo($label);
+		$label.append(document.createTextNode(__('Offer "Save this card"')));
+		$card.append(`<div class="meta"><span>${esc(__('A saved card can later be charged against a counter order\'s balance (Sales Invoice → Charge saved card). The card number never reaches this system: the processor keeps it and hands back a token, stored encrypted.'))}</span></div>`);
+		const $foot = $('<div class="foot"></div>').appendTo($card);
+		$('<button class="btn btn-default btn-sm"></button>').text(__('Save'))
+			.prop('disabled', !cof.can_write).appendTo($foot)
+			.on('click', () => frappe.call({
+				method: 'ffl_integrations.payments.hub.save_card_on_file',
+				args: { enabled: $cb.prop('checked') ? 1 : 0, template: control.get_value() || '' },
+				callback: () => { frappe.show_alert({ message: __('Saved'), indicator: 'green' }); this.refresh(); },
+			}));
 	}
 
 	when(value) {

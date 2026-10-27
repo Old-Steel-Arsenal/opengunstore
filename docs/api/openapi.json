@@ -2238,6 +2238,40 @@
           "response": {
             "type": "string",
             "description": "Gateway Response"
+          },
+          "save_card": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Save Card Requested"
+          },
+          "save_reference": {
+            "type": "string",
+            "description": "Saved Card Reference"
+          },
+          "saved_card": {
+            "type": "string",
+            "description": "Saved Card (Link: Saved Card)"
+          }
+        }
+      },
+      "Card_On_File_Settings": {
+        "type": "object",
+        "description": "Custom DocType (ffl_integrations); CRUD via /api/resource/Card%20On%20File%20Settings — see docs/api/frappe-rest.md.",
+        "properties": {
+          "card_on_file_enabled": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Offer to Save Cards"
+          },
+          "card_on_file_template": {
+            "type": "string",
+            "description": "Card-on-File Authorization (Link: Agreement Template)"
           }
         }
       },
@@ -2286,6 +2320,22 @@
           "instruction_id": {
             "type": "string",
             "description": "Instruction ID"
+          },
+          "save_card": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Save Card Requested"
+          },
+          "save_reference": {
+            "type": "string",
+            "description": "Saved Card Reference"
+          },
+          "saved_card": {
+            "type": "string",
+            "description": "Saved Card (Link: Saved Card)"
           },
           "response": {
             "type": "string",
@@ -4177,6 +4227,10 @@
             "type": "string",
             "description": "Device Serial Number"
           },
+          "saved_card_terminal": {
+            "type": "string",
+            "description": "Saved-Card Terminal Number"
+          },
           "default_currency": {
             "type": "string",
             "description": "Default Currency (Link: Currency)"
@@ -4520,6 +4574,94 @@
         },
         "required": [
           "rsr_stock_number"
+        ]
+      },
+      "Saved_Card": {
+        "type": "object",
+        "description": "Custom DocType (ffl_integrations); CRUD via /api/resource/Saved%20Card — see docs/api/frappe-rest.md.",
+        "properties": {
+          "customer": {
+            "type": "string",
+            "description": "Customer (Link: Customer)"
+          },
+          "card_summary": {
+            "type": "string",
+            "description": "Card"
+          },
+          "card_expiry": {
+            "type": "string",
+            "description": "Expiry (MMYY)"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Active",
+              "Removed"
+            ],
+            "description": "Status"
+          },
+          "is_default": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Default Card"
+          },
+          "usage": {
+            "type": "string",
+            "enum": [
+              "UNSCHEDULED",
+              "RECURRING"
+            ],
+            "description": "Usage"
+          },
+          "authorization": {
+            "type": "string",
+            "description": "Signed Authorization (Link: Customer Agreement)"
+          },
+          "source_doctype": {
+            "type": "string",
+            "description": "Saved From (Type) (Link: DocType)"
+          },
+          "source_name": {
+            "type": "string",
+            "description": "Saved From (Link: source_doctype)"
+          },
+          "processor": {
+            "type": "string",
+            "description": "Processor"
+          },
+          "initial_reference": {
+            "type": "string",
+            "description": "First Charge Reference"
+          },
+          "merchant_reference": {
+            "type": "string",
+            "description": "Merchant Reference"
+          },
+          "token": {
+            "type": "string",
+            "description": "Gateway Token"
+          },
+          "removed_by": {
+            "type": "string",
+            "description": "Removed By (Link: User)"
+          },
+          "removed_on": {
+            "type": "string",
+            "description": "Removed On"
+          },
+          "removed_reason": {
+            "type": "string",
+            "description": "Reason"
+          }
+        },
+        "required": [
+          "customer",
+          "authorization",
+          "processor",
+          "token"
         ]
       },
       "ShipStation_Settings": {
@@ -18728,7 +18870,7 @@
           "ffl_integrations"
         ],
         "summary": "Cancel an in-flight card charge (race-safe).",
-        "description": "If the cancel RACES an approval (card just captured), the capture is\nreconciled instead of stranding it / letting a retry double-charge.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:749`",
+        "description": "If the cancel RACES an approval (card just captured), the capture is\nreconciled instead of stranding it / letting a retry double-charge.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:776`",
         "operationId": "ffl_integrations.payments.api.cancel_pos_charge",
         "responses": {
           "200": {
@@ -18781,7 +18923,7 @@
           "ffl_integrations"
         ],
         "summary": "Cancel an in-flight terminal charge on a Sales Invoice (race-safe).",
-        "description": "A cancel that races an approval settles the approval instead — the card\nwas charged, so it is recorded and booked, never stranded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1047`",
+        "description": "A cancel that races an approval settles the approval instead — the card\nwas charged, so it is recorded and booked, never stranded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1098`",
         "operationId": "ffl_integrations.payments.api.cancel_sales_invoice_charge",
         "responses": {
           "200": {
@@ -18834,11 +18976,11 @@
           "ffl_integrations"
         ],
         "summary": "Start a card charge on the card processor's terminal for a POS invoice.",
-        "description": "Starts the charge on the active processor's card device; the frontend then\npolls poll_pos_charge() until the terminal returns. Reuses an in-flight\ncharge rather than double-charging.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:545`",
+        "description": "Starts the charge on the active processor's card device; the frontend then\npolls poll_pos_charge() until the terminal returns. Reuses an in-flight\ncharge rather than double-charging.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:562`",
         "operationId": "ffl_integrations.payments.api.charge_pos_invoice",
         "responses": {
           "200": {
-            "description": "{ok, instruction_id, status, amount} — or {\"skip\": True} when no card processor is switched on and configured.",
+            "description": "{ok, instruction_id, status, amount} — or {\"skip\": True} when no card processor is switched on and configured. The poll that settles an approval then adds card_saved / save_message.",
             "content": {
               "application/json": {
                 "schema": {
@@ -18882,6 +19024,10 @@
                       "null"
                     ],
                     "description": "Optional statement descriptor."
+                  },
+                  "save_card": {
+                    "description": "1 to keep the card for later charges (card on file): refused unless saving is switched on, the processor can keep cards and the invoice customer has signed the card-on-file authorization.",
+                    "default": 0
                   }
                 },
                 "required": [
@@ -18899,11 +19045,11 @@
           "ffl_integrations"
         ],
         "summary": "Start a card charge on the card processor's terminal against a counter Sales Invoice.",
-        "description": "The counter's card tender for an on-account order (Create Order right\nafter the order books; Pending Order → Record Payment for a balance).\nStarts a charge on the active processor's card device; the frontend polls it with\npoll_sales_invoice_charge(); the approval books a Payment Entry. Reuses\nan in-flight instruction rather than double-charging, and never starts\none while an earlier approval on this invoice is unrecorded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:916`",
+        "description": "The counter's card tender for an on-account order (Create Order right\nafter the order books; Pending Order → Record Payment for a balance).\nStarts a charge on the active processor's card device; the frontend polls it with\npoll_sales_invoice_charge(); the approval books a Payment Entry. Reuses\nan in-flight instruction rather than double-charging, and never starts\none while an earlier approval on this invoice is unrecorded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:952`",
         "operationId": "ffl_integrations.payments.api.charge_sales_invoice",
         "responses": {
           "200": {
-            "description": "{ok, instruction_id, status, amount} — {\"skip\": True} when no card processor is switched on and configured; an earlier approval found unrecorded comes back settled with already=True.",
+            "description": "{ok, instruction_id, status, amount} — {\"skip\": True} when no card processor is switched on and configured; an earlier approval found unrecorded comes back settled with already=True. The poll that settles an approval then adds card_saved / save_message.",
             "content": {
               "application/json": {
                 "schema": {
@@ -18940,6 +19086,10 @@
                       "null"
                     ],
                     "description": "Optional terminal id; defaults to the configured one."
+                  },
+                  "save_card": {
+                    "description": "1 to keep the card for later charges (card on file): refused unless saving is switched on, the processor can keep cards and the invoice customer has signed the card-on-file authorization.",
+                    "default": 0
                   }
                 },
                 "required": [
@@ -18957,7 +19107,7 @@
           "ffl_integrations"
         ],
         "summary": "Record that a gateway-charged sale's refund was issued in the card processor's portal.",
-        "description": "The manager-level exit for the switched-off refund guard. Deliberately its\nown field plus a timeline entry — never the tender row's ``reference_no``,\nwhich the standalone-terminal flow collects for a different purpose and\nwhich therefore cannot double as this guard's evidence (a guard whose\nevidence another rule force-collects clears itself).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role (_check_manager).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:2153`",
+        "description": "The manager-level exit for the switched-off refund guard. Deliberately its\nown field plus a timeline entry — never the tender row's ``reference_no``,\nwhich the standalone-terminal flow collects for a different purpose and\nwhich therefore cannot double as this guard's evidence (a guard whose\nevidence another rule force-collects clears itself).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role (_check_manager).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:2205`",
         "operationId": "ffl_integrations.payments.api.confirm_out_of_band_refund",
         "responses": {
           "200": {
@@ -19015,7 +19165,7 @@
           "ffl_integrations"
         ],
         "summary": "List the terminals the active card processor's credentials may use (connectivity smoke test).",
-        "description": "A zero-risk connectivity + pairing check (Payroc: the authenticate\nresponse's allowedTerminals).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1080`",
+        "description": "A zero-risk connectivity + pairing check (Payroc: the authenticate\nresponse's allowedTerminals).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1131`",
         "operationId": "ffl_integrations.payments.api.list_terminals",
         "responses": {
           "200": {
@@ -19045,7 +19195,7 @@
           "ffl_integrations"
         ],
         "summary": "Poll a card charge once, on the processor that started it.",
-        "description": "In progress → {ok: False} (frontend loops). Finished → verify full\napproval, stamp the reference on the invoice.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:699`",
+        "description": "In progress → {ok: False} (frontend loops). Finished → verify full\napproval, stamp the reference on the invoice.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:726`",
         "operationId": "ffl_integrations.payments.api.poll_pos_charge",
         "responses": {
           "200": {
@@ -19101,7 +19251,7 @@
           "ffl_integrations"
         ],
         "summary": "Poll a terminal charge started by charge_sales_invoice once.",
-        "description": "IN_PROGRESS → {ok: False} (frontend loops). On approval the record goes\nCHARGED and a Payment Entry books against the invoice; the answer carries\nthe new balance.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1016`",
+        "description": "IN_PROGRESS → {ok: False} (frontend loops). On approval the record goes\nCHARGED and a Payment Entry books against the invoice; the answer carries\nthe new balance.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1067`",
         "operationId": "ffl_integrations.payments.api.poll_sales_invoice_charge",
         "responses": {
           "200": {
@@ -19154,7 +19304,7 @@
           "ffl_integrations"
         ],
         "summary": "Refund a POS return's card portion to the original card(s).",
-        "description": "Referenced refund of the Credit Card portion of a POS RETURN invoice,\nsent to the processor that took each original charge. Firearm returns\nare blocked (bound-book reversal is a separate project). Multi-card\noriginals refund across rows within per-original-card caps.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager-gated refund roles (gate at entry).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1417`",
+        "description": "Referenced refund of the Credit Card portion of a POS RETURN invoice,\nsent to the processor that took each original charge. Firearm returns\nare blocked (bound-book reversal is a separate project). Multi-card\noriginals refund across rows within per-original-card caps.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager-gated refund roles (gate at entry).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1468`",
         "operationId": "ffl_integrations.payments.api.refund_pos_invoice",
         "responses": {
           "200": {
@@ -19209,7 +19359,7 @@
           "ffl_integrations"
         ],
         "summary": "Manager unlock for a return whose automatic card refund armed the",
-        "description": "UNKNOWN-OUTCOME re-refund lock (the amplifier: the\nlock had no product-side unlock, so a locked return died in bench\nconsole).\n\nONLY ``UNKNOWN-OUTCOME`` unlocks — zero slices booked, so a full-amount\nretry is exactly the original entitlement. A ``PARTIAL:*`` sentinel is\nthe ONE record of how much this return already pushed back; clearing it\nre-arms a full-amount retry that the per-ORIGINAL-card caps cannot bound\n(an original with headroom would refund the booked slices again).\nIts residue goes to back-office manual processing.\nA real refund reference means the refund COMPLETED and never unlocks.\n\nThe unlock is an attestation, not a reconciliation: the gateway may\nactually have refunded (rows still show headroom), so the manager must\nverify in the processor's portal FIRST — the reason is required and the whole\naction lands in the document timeline (who/when/why/previous lock),\nmirroring manager_override_4473's audit posture.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager gate (roles per the derived Auth line) + required reason — the reason must record what was verified in the processor's portal.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1792`",
+        "description": "UNKNOWN-OUTCOME re-refund lock (the amplifier: the\nlock had no product-side unlock, so a locked return died in bench\nconsole).\n\nONLY ``UNKNOWN-OUTCOME`` unlocks — zero slices booked, so a full-amount\nretry is exactly the original entitlement. A ``PARTIAL:*`` sentinel is\nthe ONE record of how much this return already pushed back; clearing it\nre-arms a full-amount retry that the per-ORIGINAL-card caps cannot bound\n(an original with headroom would refund the booked slices again).\nIts residue goes to back-office manual processing.\nA real refund reference means the refund COMPLETED and never unlocks.\n\nThe unlock is an attestation, not a reconciliation: the gateway may\nactually have refunded (rows still show headroom), so the manager must\nverify in the processor's portal FIRST — the reason is required and the whole\naction lands in the document timeline (who/when/why/previous lock),\nmirroring manager_override_4473's audit posture.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager gate (roles per the derived Auth line) + required reason — the reason must record what was verified in the processor's portal.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1843`",
         "operationId": "ffl_integrations.payments.api.unlock_refund_lock",
         "responses": {
           "200": {
@@ -19262,7 +19412,7 @@
           "ffl_integrations"
         ],
         "summary": "Reverse an unsettled card charge (back-office; per-card on multi-card).",
-        "description": "Books the gateway reversal on the processor that took the charge (Payroc\nhas no /void: it reverses). Multi-card invoices void PER CARD: pass the\ncharge row's unique_reference when more than one live capture exists.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Refund/void roles (_check_refund_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1104`",
+        "description": "Books the gateway reversal on the processor that took the charge (Payroc\nhas no /void: it reverses). Multi-card invoices void PER CARD: pass the\ncharge row's unique_reference when more than one live capture exists.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Refund/void roles (_check_refund_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1155`",
         "operationId": "ffl_integrations.payments.api.void_pos_invoice",
         "responses": {
           "200": {
@@ -19328,7 +19478,7 @@
         "operationId": "ffl_integrations.payments.hub.overview",
         "responses": {
           "200": {
-            "description": "{processors: [{code, label, kind, settings_doctype, mode_of_payment, enabled, ready, can_write, health: [{label, at}]}], can_write}. ``ready`` is enabled AND credentials present — the switch can be on while the key is missing, and the card has to show that as its own state, not as \"working\".",
+            "description": "{processors: [{code, label, kind, settings_doctype, mode_of_payment, enabled, ready, can_write, supports_card_on_file, health: [{label, at}]}], can_write, card_on_file: {enabled, template, can_write}}. ``ready`` is enabled AND credentials present — the switch can be on while the key is missing, and the card has to show that as its own state, not as \"working\".",
             "content": {
               "application/json": {
                 "schema": {
@@ -19348,13 +19498,67 @@
         }
       }
     },
+    "/api/method/ffl_integrations.payments.hub.save_card_on_file": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Switch \"Save this card\" on or off and pick the authorization customers sign first.",
+        "description": "Through the real settings save, so the Single's rules apply: switching on needs an active\nPer customer agreement template.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager, plus the doc-level write check ``doc.save()`` runs.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/hub.py:92`",
+        "operationId": "ffl_integrations.payments.hub.save_card_on_file",
+        "responses": {
+          "200": {
+            "description": "{enabled: 0|1, template}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "description": "Truthy/falsy."
+                  },
+                  "template": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Agreement Template name (required to switch on)."
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_integrations.payments.hub.test_connection": {
       "post": {
         "tags": [
           "ffl_integrations"
         ],
         "summary": "Run the processor's read-only connection probe.",
-        "description": "**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/hub.py:125`",
+        "description": "**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/hub.py:155`",
         "operationId": "ffl_integrations.payments.hub.test_connection",
         "responses": {
           "200": {
@@ -19402,7 +19606,7 @@
           "ffl_integrations"
         ],
         "summary": "Flip one processor's enable switch, through the real settings save.",
-        "description": "Deliberately ``doc.save()``, not ``db_set``: the settings form makes the\ncredential fields mandatory while the switch is on (a store cannot arm a\nprocessor it holds no key for), and a hub that wrote the flag straight to\nthe table would be a side door around exactly that rule. Disabling never\ntrips it — credentials are only demanded while ``enabled`` stays 1. Only one\nprocessor takes cards at a time: switching one on while another is on is\nrefused (switch the other off first).\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager, plus the doc-level write check ``doc.save()`` runs.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/hub.py:87`",
+        "description": "Deliberately ``doc.save()``, not ``db_set``: the settings form makes the\ncredential fields mandatory while the switch is on (a store cannot arm a\nprocessor it holds no key for), and a hub that wrote the flag straight to\nthe table would be a side door around exactly that rule. Disabling never\ntrips it — credentials are only demanded while ``enabled`` stays 1. Only one\nprocessor takes cards at a time: switching one on while another is on is\nrefused (switch the other off first).\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager, plus the doc-level write check ``doc.save()`` runs.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/hub.py:117`",
         "operationId": "ffl_integrations.payments.hub.toggle",
         "responses": {
           "200": {
@@ -19441,6 +19645,264 @@
                 "required": [
                   "processor",
                   "value"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.payments.saved_cards.card_on_file_offer": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Whether the counter may offer \"Save this card\" for this customer, and where the",
+        "description": "customer stands with the authorization (the dialog polls it while the customer signs).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Accounts Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:150`",
+        "operationId": "ffl_integrations.payments.saved_cards.card_on_file_offer",
+        "responses": {
+          "200": {
+            "description": "{offer: bool, reason: text when not offered, template, state: signed / expiring / expired / pending / missing, agreement: the copy the state comes from}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "customer": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Customer name (document id)."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.payments.saved_cards.charge_saved_card": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Charge a customer's saved card against a submitted Sales Invoice (merchant-initiated).",
+        "description": "Refused before the gateway when the card was removed or is another customer's, the invoice\nis not submitted or owes nothing, or the amount exceeds the balance. The approval books a\nPayment Entry exactly like a terminal payment; a decline books nothing. An answer that never\ncame back locks the invoice against another saved-card charge until a later call looks the\ncharge up at the gateway and records it.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:494`",
+        "operationId": "ffl_integrations.payments.saved_cards.charge_saved_card",
+        "responses": {
+          "200": {
+            "description": "{ok, status, unique_reference, approval_code, amount, payment_entry, outstanding, paid} on approval; {ok: False, status, error} on a decline; resolved=True when an earlier charge was settled instead of a new one.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sales_invoice": {
+                    "type": "string",
+                    "description": "Submitted Sales Invoice with an outstanding balance."
+                  },
+                  "saved_card": {
+                    "type": "string",
+                    "description": "Saved Card name (must be Active and the invoice customer's)."
+                  },
+                  "amount": {
+                    "description": "Amount to charge, at most the outstanding balance (blank = the whole balance)."
+                  }
+                },
+                "required": [
+                  "sales_invoice",
+                  "saved_card"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.payments.saved_cards.list_saved_cards": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "A customer's active saved cards — summary, expiry, default — for the Customer form and the",
+        "description": "Charge saved card picker. Never the token.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Accounts Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:279`",
+        "operationId": "ffl_integrations.payments.saved_cards.list_saved_cards",
+        "responses": {
+          "200": {
+            "description": "{cards: [{name, card_summary, card_expiry, is_default, usage, saved_on}], can_manage: whether the caller may charge or remove them}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "customer": {
+                    "type": "string",
+                    "description": "Customer name (document id)."
+                  }
+                },
+                "required": [
+                  "customer"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.payments.saved_cards.release_saved_card_charge": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Close an unconfirmed saved-card charge as not charged, after a manager checked the",
+        "description": "processor's portal. Looks it up once more first and records it if the gateway now has it;\nrefused while the charge is younger than the lookup grace period.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:445`",
+        "operationId": "ffl_integrations.payments.saved_cards.release_saved_card_charge",
+        "responses": {
+          "200": {
+            "description": "{ok: False, status: \"CANCELED\"} when released; the settle answer when the gateway had it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "terminal_payment": {
+                    "type": "string",
+                    "description": "Card Terminal Payment of the saved-card charge (IN_PROGRESS)."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "What the manager checked (kept on the record)."
+                  }
+                },
+                "required": [
+                  "terminal_payment",
+                  "reason"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.payments.saved_cards.remove_saved_card": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Remove a saved card: the card processor forgets it, then the record turns Removed.",
+        "description": "A gateway failure leaves the card Active and says so. A Removed card can never be charged.\nWhen the default card goes, the newest remaining card becomes the default.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:521`",
+        "operationId": "ffl_integrations.payments.saved_cards.remove_saved_card",
+        "responses": {
+          "200": {
+            "description": "{ok: True, status: \"Removed\"}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "saved_card": {
+                    "type": "string",
+                    "description": "Saved Card name."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Why it is removed (kept on the record)."
+                  }
+                },
+                "required": [
+                  "saved_card",
+                  "reason"
                 ]
               }
             }

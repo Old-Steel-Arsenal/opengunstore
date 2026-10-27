@@ -32,6 +32,10 @@ def extend_bootinfo(bootinfo):
         # travel as frappe.boot.gunshop_extensions.
         flags = single_flags(SETTINGS_DOCTYPE, {"store_customer_id_numbers": 0})
         bootinfo.ffl_store_customer_id_numbers = 1 if flags["store_customer_id_numbers"] else 0
+        # Card on file: whether the card dialogs offer "Save this card" (switched on, an
+        # authorization picked, and the active processor can keep cards). Never raises.
+        from ffl_integrations.payments.saved_cards import offer_enabled
+        bootinfo.ffl_card_on_file = 1 if offer_enabled() else 0
     except Exception:
         # Boot must never fail on a settings read: a site mid-migrate (tabSingles
         # present, this app's doctypes not yet synced) still has to log in and

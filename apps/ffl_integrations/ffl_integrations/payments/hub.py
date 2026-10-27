@@ -22,7 +22,7 @@ from __future__ import annotations
 import frappe
 from frappe import _
 
-from ffl_integrations.payments import registry
+from ffl_integrations.payments import registry, saved_cards
 from ffl_integrations.payments.setup import MODE_OF_PAYMENT_NAME
 
 ROLES = ("System Manager",)
@@ -54,7 +54,8 @@ def overview() -> dict:
 
 	Returns:
 	    {processors: [{code, label, kind, settings_doctype, mode_of_payment,
-	    enabled, ready, can_write, health: [{label, at}]}], can_write}.
+	    enabled, ready, can_write, supports_card_on_file, health: [{label, at}]}],
+	    can_write, card_on_file: {enabled, template, can_write}}.
 	    ``ready`` is enabled AND credentials present — the switch can be on
 	    while the key is missing, and the card has to show that as its own
 	    state, not as "working".
@@ -75,12 +76,41 @@ def overview() -> dict:
 			"enabled": 1 if p.enabled() else 0,
 			"ready": bool(p.ready()),
 			"can_write": can_write,
+			"supports_card_on_file": bool(p.supports_card_on_file),
 			"health": [{
 				"label": label,
 				"at": frappe.db.get_single_value(p.settings_doctype, fieldname),
 			} for label, fieldname in p.health_fields],
 		})
-	return {"processors": rows, "can_write": any(r["can_write"] for r in rows)}
+	enabled, template = saved_cards.settings()
+	return {"processors": rows, "can_write": any(r["can_write"] for r in rows),
+		"card_on_file": {"enabled": 1 if enabled else 0, "template": template,
+			"can_write": bool(frappe.has_permission(saved_cards.SETTINGS, ptype="write"))}}
+
+
+@frappe.whitelist(methods=["POST"])
+def save_card_on_file(enabled, template: str | None = None) -> dict:
+	"""Switch "Save this card" on or off and pick the authorization customers sign first.
+
+	Through the real settings save, so the Single's rules apply: switching on needs an active
+	Per customer agreement template.
+
+	Args:
+	    enabled: Truthy/falsy.
+	    template: Agreement Template name (required to switch on).
+
+	Returns:
+	    {enabled: 0|1, template}.
+
+	Permissions:
+	    System Manager, plus the doc-level write check ``doc.save()`` runs.
+	"""
+	frappe.only_for(ROLES)
+	doc = frappe.get_doc(saved_cards.SETTINGS)
+	doc.card_on_file_enabled = 1 if frappe.utils.cint(enabled) else 0
+	doc.card_on_file_template = (template or "").strip() or None
+	doc.save()
+	return {"enabled": int(doc.card_on_file_enabled), "template": doc.card_on_file_template}
 
 
 @frappe.whitelist(methods=["POST"])

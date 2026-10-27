@@ -1040,7 +1040,11 @@ class PendingDispositionsApp {
 		d.show();
 	}
 
-	_recordPayment(row) {
+	async _recordPayment(row) {
+		// Card on file: "Save this card" only when the server offers it for this customer
+		// (no round trip when the store has it off).
+		const cof = window.ffl && window.ffl.cardOnFile;
+		const saveOffer = cof ? await cof.offer(row.customer) : null;
 		const d = new frappe.ui.Dialog({
 			title: __('Record Payment — {0}', [row.sales_invoice]),
 			fields: [
@@ -1062,6 +1066,8 @@ class PendingDispositionsApp {
 					default: row.outstanding_amount, reqd: 1,
 					description: __('Outstanding: {0}', [format_currency(row.outstanding_amount)]),
 				},
+				...(saveOffer ? [Object.assign(cof.field(), {
+					depends_on: "eval:doc.mode=='Credit Card' && !doc.charged_outside" })] : []),
 				{
 					// The day the money arrived, not the day it was typed in — a
 					// payment logged late books on its real date. The server owns
@@ -1082,10 +1088,15 @@ class PendingDispositionsApp {
 				const card = frappe.boot && frappe.boot.ffl_card_processor;
 				if (v.mode === cardMop && Number(card && card.enabled)
 						&& !v.charged_outside && window.ffl && window.ffl.terminalCharge) {
+					const saveCard = saveOffer && v.save_card ? 1 : 0;
 					d.hide();
+					if (saveCard && !(await cof.ensureSigned(row.customer, saveOffer, row.customer_name))) {
+						d.show();   // not signed: back to the dialog
+						return;
+					}
 					const res = await window.ffl.terminalCharge({
 						amount: flt(v.amount),
-						start: { method: 'ffl_integrations.payments.api.charge_sales_invoice', args: { sales_invoice: row.sales_invoice, amount: v.amount } },
+						start: { method: 'ffl_integrations.payments.api.charge_sales_invoice', args: { sales_invoice: row.sales_invoice, amount: v.amount, ...(saveCard ? { save_card: 1 } : {}) } },
 						poll: { method: 'ffl_integrations.payments.api.poll_sales_invoice_charge', args: { sales_invoice: row.sales_invoice } },
 						cancel: { method: 'ffl_integrations.payments.api.cancel_sales_invoice_charge', args: { sales_invoice: row.sales_invoice } },
 					});

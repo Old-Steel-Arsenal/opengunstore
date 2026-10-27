@@ -10,6 +10,7 @@
   "api_key",
   "default_terminal",
   "device_serial_number",
+  "saved_card_terminal",
   "column_creds",
   "default_currency",
   "integration_id",
@@ -61,6 +62,12 @@
    "fieldname": "device_serial_number",
    "fieldtype": "Data",
    "label": "Device Serial Number"
+  },
+  {
+   "description": "Gateway terminal that charges saved cards (card not present, MOTO). Leave blank to use the Gateway Terminal Number. Cards are always saved and removed on the Gateway Terminal Number.",
+   "fieldname": "saved_card_terminal",
+   "fieldtype": "Data",
+   "label": "Saved-Card Terminal Number"
   },
   {
    "fieldname": "column_creds",
@@ -127,7 +134,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-06-09 12:00:00",
+ "modified": "2026-10-27 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "Payroc Settings",

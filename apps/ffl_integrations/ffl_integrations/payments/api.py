@@ -37,7 +37,7 @@ import json as _json
 
 import frappe
 from frappe import _
-from frappe.utils import flt
+from frappe.utils import cint, flt
 
 from ffl_core.compliance.payment_mode import looks_like_pan, require_tender_reference
 from ffl_core.firearm import firearm_items_in
@@ -150,7 +150,8 @@ def _charge_rows(invoice_name: str) -> list:
     return frappe.get_all("Card Charge",
         filters={"parenttype": "POS Invoice", "parent": invoice_name},
         fields=["name", "amount", "refunded_amount", "status", "unique_reference",
-                "instruction_id", "attempt", "card_summary", "processor"],
+                "instruction_id", "attempt", "card_summary", "processor",
+                "save_card", "save_reference", "saved_card"],
         order_by="idx asc, creation asc")
 
 
@@ -170,7 +171,7 @@ def _card_target(inv) -> float:
 
 
 def _append_charge_row(invoice_name: str, *, instruction_id: str, attempt: int,
-        processor: str) -> str:
+        processor: str, save: dict | None = None) -> str:
     """Row-level insert (db_insert, hash name — how Frappe names child rows):
     charge stamps must not run the parent's validate/save cycle mid-charge,
     exactly like every set_value(update_modified=False) in this module."""
@@ -185,6 +186,9 @@ def _append_charge_row(invoice_name: str, *, instruction_id: str, attempt: int,
         # Currency columns are NOT NULL — seed 0, never None.
         "amount": 0, "refunded_amount": 0,
     })
+    if save:
+        # Card on file: the cashier asked to keep this card (saved_cards.save_request).
+        row.update({"save_card": 1, "save_reference": save["reference"]})
     # Explicit hash (same shape Frappe gives child rows): db_insert's own
     # autonaming for standalone child docs isn't provable across versions.
     row.name = frappe.generate_hash(length=10)
@@ -241,6 +245,8 @@ def _settle_instruction_row(p, res, invoice_name: str, row) -> dict:
     invoice-level fullness is judged by the aggregates (Σ vs card tender) —
     per-instruction fullness died with the single-charge model. Returns the poll
     shape the frontend loops on."""
+    if res.stored_credential:
+        res.raw = _saved_cards().scrub(res.raw, res.stored_credential)
     if res.status == CANCELED:
         frappe.db.set_value("Card Charge", row.name, {
             "status": "CANCELED", "amount": 0, "response": _resp_json(res.raw),
@@ -276,10 +282,21 @@ def _settle_instruction_row(p, res, invoice_name: str, row) -> dict:
     # and rewrites the row, so retry-then-alert would be redundant here.
     _commit_money_point()
     inv = frappe.get_doc("POS Invoice", invoice_name)
+    # Card on file, AFTER the money point: saving never blocks or undoes the sale, and a
+    # re-poll finds the card already saved (idempotent on the merchant reference).
+    saved = _saved_cards().record_from_charge(p, res, row_doctype="Card Charge", row=row,
+        customer=inv.customer, source_doctype="POS Invoice",
+        source_name=invoice_name) if cint(row.get("save_card")) else {}
     remaining = flt(_card_target(inv) - _live_total(_charge_rows(invoice_name)), 2)
     return {"ok": True, "status": "COMPLETED", "unique_reference": ref,
             "approval_code": res.approval_code or "", "amount": authorized,
-            "remaining": max(remaining, 0)}
+            "remaining": max(remaining, 0), **saved}
+
+
+def _saved_cards():
+    """payments.saved_cards (card on file), imported where used: it imports this module."""
+    from ffl_integrations.payments import saved_cards
+    return saved_cards
 
 
 def _resp_json(resp) -> str:
@@ -543,7 +560,7 @@ def _still_on_device(res) -> bool:
 
 @frappe.whitelist(methods=["POST"])
 def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
-        amount=None, description: str | None = None) -> dict:
+        amount=None, description: str | None = None, save_card=0) -> dict:
     """Start a card charge on the card processor's terminal for a POS invoice.
 
     Starts the charge on the active processor's card device; the frontend then
@@ -556,10 +573,14 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
         amount: Optional charge amount; defaults to the card-tender
             target.
         description: Optional statement descriptor.
+        save_card: 1 to keep the card for later charges (card on file): refused
+            unless saving is switched on, the processor can keep cards and the
+            invoice customer has signed the card-on-file authorization.
 
     Returns:
         {ok, instruction_id, status, amount} — or {"skip": True} when no card
-        processor is switched on and configured.
+        processor is switched on and configured. The poll that settles an
+        approval then adds card_saved / save_message.
 
     Permissions:
         POS charge roles (_check_perm).
@@ -574,6 +595,10 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
         frappe.throw(_("invoice_name is required."))
     if not frappe.db.exists("POS Invoice", invoice_name):
         frappe.throw(_("POS Invoice {0} not found.").format(invoice_name))
+    # Card on file: every gate (switch, processor, customer, signed authorization) is checked
+    # here, before any gateway call — the dialog's checkbox is not the gate.
+    save = _saved_cards().save_request(frappe.db.get_value("POS Invoice", invoice_name,
+        "customer"), _processor(None)) if cint(save_card) else None
     # Concurrency: two tills / a double-click must serialize on this invoice —
     # everything below is read-check-insert and is only safe under the parent
     # row lock (r1 F6). Released with the request's transaction — or EARLIER,
@@ -660,10 +685,12 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
     attempt = int(inv.get("card_attempt") or 0) + 1
     iid, started = active.start_charge(document=invoice_name, attempt=attempt, amount=amt,
         terminal=terminal, operator=frappe.session.user,
-        description=description or f"POS Invoice {invoice_name}")
+        description=description or f"POS Invoice {invoice_name}",
+        # Passed only when asked for: a processor without card on file never sees the argument.
+        **({"save_card": save} if save else {}))
     try:
         _append_charge_row(invoice_name, instruction_id=iid, attempt=attempt,
-            processor=active.code)
+            processor=active.code, save=save)
         stamps = {"card_attempt": attempt}
         if inv.get("card_manual_settlement"):
             # New money through the integration invalidates a prior
@@ -813,7 +840,8 @@ def cancel_pos_charge(invoice_name: str, instruction_id: str) -> dict:
 # --------------------------------------------------------------------------
 TERMINAL_PAYMENT = "Card Terminal Payment"
 _TP_FIELDS = ["name", "sales_invoice", "amount", "status", "instruction_id",
-    "unique_reference", "approval_code", "card_summary", "payment_entry", "processor"]
+    "unique_reference", "approval_code", "card_summary", "payment_entry", "processor",
+    "save_card", "save_reference", "saved_card"]
 
 
 def _terminal_payments(sales_invoice: str) -> list:
@@ -851,6 +879,8 @@ def _settle_terminal_payment(p, res, row) -> dict:
     is committed before the booking so a failed booking can never hide a capture."""
     if row.status != "IN_PROGRESS":
         return _terminal_payment_result(row)
+    if res.stored_credential:
+        res.raw = _saved_cards().scrub(res.raw, res.stored_credential)
     if res.status == CANCELED:
         frappe.db.set_value(TERMINAL_PAYMENT, row.name, {
             "status": "CANCELED", "response": _resp_json(res.raw)}, update_modified=False)
@@ -871,13 +901,19 @@ def _settle_terminal_payment(p, res, row) -> dict:
     }, update_modified=False)
     p.note_charge()
     _commit_money_point()
+    # Card on file: after the capture is durable and before the booking, so a booking failure
+    # (which throws) cannot lose the card; saving itself never raises.
+    saved = _saved_cards().record_from_charge(p, res, row_doctype=TERMINAL_PAYMENT, row=row,
+        customer=frappe.db.get_value("Sales Invoice", row.sales_invoice, "customer"),
+        source_doctype="Sales Invoice", source_name=row.sales_invoice) \
+        if cint(row.get("save_card")) else {}
     pe = _book_terminal_payment(row.name, row.sales_invoice, authorized, ref or approval,
         processor_label=p.label)
     outstanding = flt(frappe.db.get_value("Sales Invoice", row.sales_invoice,
         "outstanding_amount"))
     return {"ok": True, "status": "COMPLETED", "unique_reference": ref,
             "approval_code": approval, "amount": authorized, "payment_entry": pe,
-            "outstanding": outstanding, "paid": outstanding <= 0.01}
+            "outstanding": outstanding, "paid": outstanding <= 0.01, **saved}
 
 
 def _book_terminal_payment(row_name: str, sales_invoice: str, amount: float,
@@ -913,7 +949,8 @@ def _book_terminal_payment(row_name: str, sales_invoice: str, amount: float,
 
 
 @frappe.whitelist(methods=["POST"])
-def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None = None) -> dict:
+def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None = None,
+        save_card=0) -> dict:
     """Start a card charge on the card processor's terminal against a counter Sales Invoice.
 
     The counter's card tender for an on-account order (Create Order right
@@ -928,11 +965,15 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
         amount: Charge amount, at most the outstanding balance (blank = the
             whole balance; less = a deposit).
         terminal: Optional terminal id; defaults to the configured one.
+        save_card: 1 to keep the card for later charges (card on file): refused
+            unless saving is switched on, the processor can keep cards and the
+            invoice customer has signed the card-on-file authorization.
 
     Returns:
         {ok, instruction_id, status, amount} — {"skip": True} when no card
         processor is switched on and configured; an earlier approval found
-        unrecorded comes back settled with already=True.
+        unrecorded comes back settled with already=True. The poll that settles
+        an approval then adds card_saved / save_message.
 
     Permissions:
         POS charge roles (_check_perm).
@@ -950,12 +991,20 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
         ["docstatus", "outstanding_amount", "customer_name"], as_dict=True)
     if si.docstatus != 1:
         frappe.throw(_("{0} is not a submitted invoice.").format(sales_invoice))
+    # Card on file: every gate is checked before any gateway call (the checkbox is not the gate).
+    save = _saved_cards().save_request(frappe.db.get_value("Sales Invoice", sales_invoice,
+        "customer"), _processor(None)) if cint(save_card) else None
     gateway = _gateways()
     active = gateway(None)
 
     in_flight = [r for r in _terminal_payments(sales_invoice) if r.status == "IN_PROGRESS"]
     if in_flight:
         row = in_flight[0]
+        if row.saved_card:
+            # A saved-card charge still waiting for its answer (its instruction_id is an order
+            # id, not a device instruction): only Charge saved card may settle it.
+            frappe.throw(_("A saved-card charge on {0} has not been confirmed yet — use Charge "
+                "saved card to look it up before taking another card.").format(sales_invoice))
         owner = gateway(row.processor)
         polled = owner.poll(row.instruction_id)
         if _still_on_device(polled):
@@ -993,11 +1042,13 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
     attempt = len(_terminal_payments(sales_invoice)) + 1
     iid, started = active.start_charge(document=sales_invoice, attempt=attempt, amount=amt,
         terminal=terminal, operator=frappe.session.user,
-        description=f"{sales_invoice} — {si.customer_name or ''}".strip(" —"))
+        description=f"{sales_invoice} — {si.customer_name or ''}".strip(" —"),
+        **({"save_card": save} if save else {}))
     try:
         rec = frappe.get_doc({"doctype": TERMINAL_PAYMENT, "sales_invoice": sales_invoice,
             "amount": amt, "status": "IN_PROGRESS", "instruction_id": iid,
-            "processor": active.code})
+            "processor": active.code,
+            **({"save_card": 1, "save_reference": save["reference"]} if save else {})})
         rec.flags.ignore_permissions = True
         rec.insert()
     except Exception:
@@ -1974,7 +2025,8 @@ def restore_charge_rows(doc, method=None):
         return (r.get("name"), r.get("status"), flt(r.get("amount")),
             flt(r.get("refunded_amount")), r.get("unique_reference") or "",
             r.get("instruction_id") or "", int(r.get("attempt") or 0),
-            r.get("card_summary") or "", r.get("response") or "", r.get("processor") or "")
+            r.get("card_summary") or "", r.get("response") or "", r.get("processor") or "",
+            int(r.get("save_card") or 0), r.get("save_reference") or "", r.get("saved_card") or "")
 
     payload = [_row_shape(r) for r in (doc.get("card_charges") or [])]
     truth = [_row_shape(r) for r in db_rows]

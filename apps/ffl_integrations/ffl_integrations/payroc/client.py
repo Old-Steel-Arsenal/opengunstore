@@ -30,6 +30,20 @@ Refund / reverse reference a prior payment by its `uniqueReference` (10 chars):
     PATCH …/transaction/payments/{uniqueReference}/reverse   { reversalAmount?, reversalReason? }
 
 There is NO discrete /void — pre-settlement reversal is `reverse`; settled is `refunds`.
+
+Card on file ("Secure Credentials"): a device sale carrying
+`credentialOnFile {tokenize: true, merchantReference, usageAgreement}` keeps the card at the
+gateway when it is approved; the Payment then carries the token (`credentialsNumber`, BIN
+296753) in `transactionResult.storedPaymentCredentials`. A later merchant-initiated charge is
+
+    POST {base}/api/v1/transaction/payments
+      body { channel: MOTO, terminal, order:{orderId, currency, totalAmount,
+             standingInstructions:{sequence: SUBSEQUENT, processingModel, referenceDataOfFirstTxn}},
+             customerAccount:{payloadType: SECURE_CREDENTIALS, credentialsNumber} }
+      → 201 Payment (transactionResult.resultCode A / D …)
+
+    DELETE {base}/api/v1/customer/credentials/{merchantReference}?terminal=…   — remove a card
+    GET    {base}/api/v1/account/terminals/{terminal}  — terminalFeatures.secureCredentials.enable
 """
 from __future__ import annotations
 
@@ -37,7 +51,7 @@ import time
 from dataclasses import dataclass
 import threading
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 import frappe
 import requests
@@ -51,6 +65,11 @@ SETTINGS_DOCTYPE = "Payroc Settings"
 
 # Refresh the JWT a bit before it actually expires.
 TOKEN_REFRESH_SKEW_SECONDS = 60
+
+# Merchant-initiated charges of a saved card: SECURE_CREDENTIALS payloads are accepted on the WEB
+# and MOTO channels only (POS is card-present). A charge the store keys for a customer who is not
+# there is mail / telephone order.
+STORED_CARD_CHANNEL = "MOTO"
 
 PROD_BASE = "https://payments.worldnettps.com/merchant"
 SANDBOX_BASE = "https://testpayments.worldnettps.com/merchant"
@@ -84,6 +103,7 @@ class PayrocConfig(RedactedRepr):
     default_currency: str
     integration_id: str | None
     timeout: int
+    saved_card_terminal: str | None = None
 
     @classmethod
     def from_settings(cls) -> "PayrocConfig":
@@ -101,6 +121,7 @@ class PayrocConfig(RedactedRepr):
             default_currency=(s.default_currency or "USD").strip(),
             integration_id=(s.get("integration_id") or "").strip() or None,
             timeout=int(s.request_timeout_seconds or 30),
+            saved_card_terminal=(s.get("saved_card_terminal") or "").strip() or None,
         )
 
 
@@ -267,7 +288,7 @@ class PayrocClient:
             serial_number: str | None = None, terminal: str | None = None,
             currency: str | None = None, description: str | None = None,
             operator: str | None = None, auto_capture: bool = True,
-            process_as_sale: bool = False) -> dict:
+            process_as_sale: bool = False, credential_on_file: dict | None = None) -> dict:
         """POST devices/{serial}/paymentInstructions — start a card sale on the
         physical PAX. Returns the 202 body (paymentInstructionId, status, links).
 
@@ -275,7 +296,10 @@ class PayrocClient:
         taken, AND the txn stays reversible in the open batch (our void/reverse
         path needs that). process_as_sale=True is a one-step "Sale" (COMPLETE,
         NOT adjustable even in the open batch) — and our terminal 380572001
-        rejected it with X_422_011 "Terminal does not support Sale transactions"."""
+        rejected it with X_422_011 "Terminal does not support Sale transactions".
+
+        credential_on_file: ``{"tokenize": True, "merchantReference", "usageAgreement"}`` to keep
+        the card at the gateway if the sale is approved (sent as ``credentialOnFile``)."""
         if float(amount) <= 0:
             raise PayrocError(f"amount must be > 0, got {amount}")
         serial = serial_number or self.config.default_serial_number
@@ -300,6 +324,8 @@ class PayrocClient:
         }
         if operator:
             body["operator"] = operator[:50]
+        if credential_on_file:
+            body["credentialOnFile"] = dict(credential_on_file)
         return self._request(
             "POST", f"/api/v1/transaction/devices/{serial}/paymentInstructions",
             json_body=body,
@@ -360,6 +386,66 @@ class PayrocClient:
             "PATCH", f"/api/v1/transaction/payments/{unique_reference}/reverse",
             json_body=body or None,
         )
+
+    # -------------------------------------------------- card on file (Secure Credentials)
+
+    def charge_stored_credential(self, *, credentials_number: str, amount, order_id: str,
+            usage: str, first_reference: str | None = None, currency: str | None = None,
+            description: str | None = None, operator: str | None = None) -> dict:
+        """POST payments — a merchant-initiated charge of a saved card (auth + auto-capture,
+        so it stays reversible in the open batch like the device sales). Returns the Payment.
+
+        The charge is marked as a SUBSEQUENT transaction of the stored-credential series
+        (``order.standingInstructions``; ``processingModel`` = the agreement the card was saved
+        under, ``referenceDataOfFirstTxn`` = the sale that saved it). Goes out on
+        ``saved_card_terminal`` when Payroc Settings names one, else the default terminal.
+        Never retried here (POST): a lost answer is looked up by orderId instead."""
+        if float(amount) <= 0:
+            raise PayrocError(f"amount must be > 0, got {amount}")
+        term = self.config.saved_card_terminal or self.config.default_terminal
+        if not term:
+            raise PayrocError("No gateway terminal configured (settings or argument).")
+        standing: dict[str, Any] = {"sequence": "SUBSEQUENT", "processingModel": usage}
+        if first_reference:
+            standing["referenceDataOfFirstTxn"] = {"uniqueReference": first_reference}
+        order: dict[str, Any] = {
+            "orderId": str(order_id)[:24],
+            "currency": (currency or self.config.default_currency).upper(),
+            "totalAmount": round(float(amount), 2),
+            "standingInstructions": standing,
+        }
+        if description:
+            order["description"] = description[:1024]
+        body: dict[str, Any] = {
+            "channel": STORED_CARD_CHANNEL,
+            "terminal": term,
+            "order": order,
+            "customerAccount": {"payloadType": "SECURE_CREDENTIALS",
+                "credentialsNumber": credentials_number},
+            "autoCapture": True,
+            "processAsSale": False,
+        }
+        if operator:
+            body["operator"] = operator[:50]
+        return self._request("POST", "/api/v1/transaction/payments", json_body=body)
+
+    def delete_credentials(self, merchant_reference: str) -> None:
+        """DELETE customer/credentials/{merchantReference} — a logical removal at the gateway
+        (the reference can never be reused). Only the terminal that saved the card may delete
+        it: the device sales run on the default terminal, so that is the owner."""
+        term = self.config.default_terminal
+        if not term:
+            raise PayrocError("No gateway terminal configured (settings or argument).")
+        self._request("DELETE", f"/api/v1/customer/credentials/{quote(merchant_reference, safe='')}?"
+            + urlencode({"terminal": term}))
+
+    def load_terminal(self, terminal: str | None = None) -> dict:
+        """GET account/terminals/{terminal} — the terminal's configuration (read-only; the
+        Payments page probe reads ``terminalFeatures.secureCredentials.enable``)."""
+        term = terminal or self.config.default_terminal
+        if not term:
+            raise PayrocError("No gateway terminal configured (settings or argument).")
+        return self._request("GET", f"/api/v1/account/terminals/{quote(term, safe='')}") or {}
 
     def find_transaction(self, *, order_id: str) -> dict:
         """GET transactions?orderId= — look up a prior txn (HATEOAS links give the

@@ -16,6 +16,9 @@
   "section_gateway",
   "processor",
   "instruction_id",
+  "save_card",
+  "save_reference",
+  "saved_card",
   "response"
  ],
  "fields": [
@@ -98,6 +101,29 @@
    "read_only": 1
   },
   {
+   "default": "0",
+   "description": "The cashier asked to keep this card for later charges (card on file).",
+   "fieldname": "save_card",
+   "fieldtype": "Check",
+   "label": "Save Card Requested",
+   "read_only": 1
+  },
+  {
+   "description": "The merchant reference the card was saved under at the gateway.",
+   "fieldname": "save_reference",
+   "fieldtype": "Data",
+   "label": "Saved Card Reference",
+   "read_only": 1
+  },
+  {
+   "description": "The card this charge saved, or the saved card it charged.",
+   "fieldname": "saved_card",
+   "fieldtype": "Link",
+   "label": "Saved Card",
+   "options": "Saved Card",
+   "read_only": 1
+  },
+  {
    "fieldname": "response",
    "fieldtype": "Code",
    "label": "Gateway Response",
@@ -108,7 +134,7 @@
  "index_web_pages_for_search": 0,
  "istable": 0,
  "links": [],
- "modified": "2026-10-21 12:00:00.000000",
+ "modified": "2026-10-27 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "Card Terminal Payment",
