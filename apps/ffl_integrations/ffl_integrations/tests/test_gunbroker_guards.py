@@ -213,12 +213,27 @@ class GuardMatrix(FrappeTestCase):
 				self.context["item"]["firearm_type"] = ftype
 				self.assertIsNone(self._refusal())
 
-	def test_05_consigned_in(self):
-		with patch("frappe.db.get_value", return_value=1):
-			self._assert_refused(listings.CONSIGNED_IN)
+	def _consigned(self, consignor):
+		row = frappe._dict(is_consignment=1, consignor=consignor)
+		real = frappe.db.get_value
 
-	def test_05_a_site_without_the_consignment_field_is_unaffected(self):
-		with patch.object(listings, "_has_field", return_value=False):
+		def get_value(doctype, name=None, fieldname=None, *a, **kw):
+			if doctype == "Serial No" and fieldname == ["is_consignment", "consignor"]:
+				return row
+			return real(doctype, name, fieldname, *a, **kw)
+		return patch("frappe.db.get_value", side_effect=get_value)
+
+	def test_05_consigned_without_a_consignor(self):
+		with self._consigned(None):
+			self._assert_refused(listings.CONSIGNOR_MISSING)
+
+	def test_05_a_consigned_gun_with_a_consignor_is_listable(self):
+		with self._consigned("SUP-0001"):
+			self.assertIsNone(self._refusal())
+
+	def test_05_b_a_site_without_the_consignment_field_is_unaffected(self):
+		with patch.object(listings, "_has_field", return_value=False), \
+				self._consigned(None):
 			self.assertIsNone(self._refusal())
 
 	def test_06_uniform_priced_model(self):
