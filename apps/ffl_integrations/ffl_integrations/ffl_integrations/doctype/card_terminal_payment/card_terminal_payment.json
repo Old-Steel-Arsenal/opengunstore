@@ -18,6 +18,7 @@
   "instruction_id",
   "save_card",
   "save_reference",
+  "save_usage",
   "saved_card",
   "response"
  ],
@@ -116,6 +117,13 @@
    "read_only": 1
   },
   {
+   "description": "How the saved card may be charged later: UNSCHEDULED (a balance when due) or RECURRING (an auto-renewing membership).",
+   "fieldname": "save_usage",
+   "fieldtype": "Data",
+   "label": "Saved Card Usage",
+   "read_only": 1
+  },
+  {
    "description": "The card this charge saved, or the saved card it charged.",
    "fieldname": "saved_card",
    "fieldtype": "Link",
@@ -134,7 +142,7 @@
  "index_web_pages_for_search": 0,
  "istable": 0,
  "links": [],
- "modified": "2026-10-27 12:00:00.000000",
+ "modified": "2026-10-27 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "Card Terminal Payment",

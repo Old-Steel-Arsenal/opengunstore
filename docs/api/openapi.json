@@ -1781,6 +1781,206 @@
           }
         }
       },
+      "Membership": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Membership — see docs/api/frappe-rest.md.",
+        "properties": {
+          "customer": {
+            "type": "string",
+            "description": "Customer (Link: Customer)"
+          },
+          "customer_name": {
+            "type": "string",
+            "description": "Customer Name"
+          },
+          "plan": {
+            "type": "string",
+            "description": "Plan (Link: Membership Plan)"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Pending",
+              "Active",
+              "Past Due",
+              "Suspended",
+              "Cancelled",
+              "Expired"
+            ],
+            "description": "Status"
+          },
+          "start_date": {
+            "type": "string",
+            "description": "Member Since"
+          },
+          "current_period_start": {
+            "type": "string",
+            "description": "Current Period Start"
+          },
+          "current_period_end": {
+            "type": "string",
+            "description": "Current Period End"
+          },
+          "company": {
+            "type": "string",
+            "description": "Company (Link: Company)"
+          },
+          "auto_renew": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Auto-renew"
+          },
+          "saved_card": {
+            "type": "string",
+            "description": "Saved Card (Link: Saved Card)"
+          },
+          "grace_until": {
+            "type": "string",
+            "description": "Grace Until"
+          },
+          "last_charge_status": {
+            "type": "string",
+            "description": "Last Charge"
+          },
+          "cancel_at_period_end": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Ends at Period End"
+          },
+          "cancelled_on": {
+            "type": "string",
+            "description": "Cancelled On"
+          },
+          "cancelled_by": {
+            "type": "string",
+            "description": "Cancelled By (Link: User)"
+          },
+          "cancel_reason": {
+            "type": "string",
+            "description": "Cancellation Reason"
+          },
+          "invoices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Membership_Invoice"
+            },
+            "description": "Invoices"
+          }
+        },
+        "required": [
+          "customer",
+          "plan"
+        ]
+      },
+      "Membership_Invoice": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Membership%20Invoice — see docs/api/frappe-rest.md.",
+        "properties": {
+          "sales_invoice": {
+            "type": "string",
+            "description": "Sales Invoice (Link: Sales Invoice)"
+          },
+          "period_start": {
+            "type": "string",
+            "description": "Period Start"
+          },
+          "period_end": {
+            "type": "string",
+            "description": "Period End"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Unpaid",
+              "Paid",
+              "Cancelled"
+            ],
+            "description": "Status"
+          }
+        }
+      },
+      "Membership_Plan": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Membership%20Plan — see docs/api/frappe-rest.md.",
+        "properties": {
+          "plan_name": {
+            "type": "string",
+            "description": "Plan Name"
+          },
+          "active": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Active"
+          },
+          "billing_period": {
+            "type": "string",
+            "enum": [
+              "Monthly",
+              "Yearly"
+            ],
+            "description": "Billing Period"
+          },
+          "price": {
+            "type": "number",
+            "description": "Price per Period"
+          },
+          "item": {
+            "type": "string",
+            "description": "Billed Item (Link: Item)"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description"
+          },
+          "registration_item": {
+            "type": "string",
+            "description": "Registration Item (Link: Item)"
+          },
+          "registration_fee": {
+            "type": "number",
+            "description": "Registration Fee"
+          },
+          "auto_renew_default": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Auto-renew by Default"
+          },
+          "terms_template": {
+            "type": "string",
+            "description": "Membership Terms (Link: Agreement Template)"
+          },
+          "grace_enabled": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Grace Period on Failed Renewal"
+          },
+          "grace_days": {
+            "type": "integer",
+            "description": "Grace Days"
+          }
+        },
+        "required": [
+          "plan_name",
+          "billing_period",
+          "price",
+          "item"
+        ]
+      },
       "POS_Extension": {
         "type": "object",
         "description": "Custom DocType (ffl_core); CRUD via /api/resource/POS%20Extension — see docs/api/frappe-rest.md.",
@@ -2332,6 +2532,10 @@
           "save_reference": {
             "type": "string",
             "description": "Saved Card Reference"
+          },
+          "save_usage": {
+            "type": "string",
+            "description": "Saved Card Usage"
           },
           "saved_card": {
             "type": "string",
@@ -13549,6 +13753,373 @@
         }
       }
     },
+    "/api/method/ffl_core.membership.cancel_membership": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Cancel a membership. By default it runs to the end of the period it is paid for and is not",
+        "description": "renewed. ``end_now`` ends it today: the current invoice's deferred lines get today as their\nservice stop date, so what is still deferred becomes income today. The invoice itself is never\ncancelled; a refund is a credit note.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:524`",
+        "operationId": "ffl_core.membership.cancel_membership",
+        "responses": {
+          "200": {
+            "description": "The membership's panel row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "membership": {
+                    "type": "string",
+                    "description": "Membership name (Active, Past Due or Suspended)."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Why (kept on the membership)."
+                  },
+                  "end_now": {
+                    "description": "1 to end it today instead of at the period end.",
+                    "default": 0
+                  }
+                },
+                "required": [
+                  "membership",
+                  "reason"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.membership.change_card": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Charge a membership's renewals to another of the customer's cards saved for recurring",
+        "description": "charges.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:498`",
+        "operationId": "ffl_core.membership.change_card",
+        "responses": {
+          "200": {
+            "description": "The membership's panel row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "membership": {
+                    "type": "string",
+                    "description": "Membership name."
+                  },
+                  "saved_card": {
+                    "type": "string",
+                    "description": "Saved Card name: the customer's, active, saved for recurring charges."
+                  }
+                },
+                "required": [
+                  "membership",
+                  "saved_card"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.membership.discard_membership": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Drop a Pending membership the customer did not pay for. Its unpaid invoice is cancelled —",
+        "description": "refused once any payment or card charge touched it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:581`",
+        "operationId": "ffl_core.membership.discard_membership",
+        "responses": {
+          "200": {
+            "description": "The membership's panel row (status Cancelled).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "membership": {
+                    "type": "string",
+                    "description": "Membership name (Pending)."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Why (kept on the membership)."
+                  }
+                },
+                "required": [
+                  "membership",
+                  "reason"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.membership.get_memberships": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "A customer's memberships and the plans on sale, for the Customer form's Memberships panel.",
+        "description": "A Pending membership whose invoice has since been paid another way is activated here.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:403`",
+        "operationId": "ffl_core.membership.get_memberships",
+        "responses": {
+          "200": {
+            "description": "{plans: [{name, price, billing_period, registration_fee, auto_renew_default, terms_template}], memberships: [panel rows, live first], cards: the customer's active recurring-use saved cards [{name, card_summary}], can_cancel: whether the caller may cancel}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "customer": {
+                    "type": "string",
+                    "description": "Customer name (document id)."
+                  }
+                },
+                "required": [
+                  "customer"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.membership.invoice_membership": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Build and submit the Pending membership's first Sales Invoice (or hand back the unpaid one",
+        "description": "already made), after the plan's terms are signed. The counter takes payment against it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:223`",
+        "operationId": "ffl_core.membership.invoice_membership",
+        "responses": {
+          "200": {
+            "description": "{sales_invoice, outstanding, customer, auto_renew}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "membership": {
+                    "type": "string",
+                    "description": "Membership name (Pending)."
+                  }
+                },
+                "required": [
+                  "membership"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.membership.set_auto_renew": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Turn a membership's auto-renew on or off. On needs a card saved for recurring charges",
+        "description": "(the membership's own, else the customer's default one); a membership ending at period end\nis a manager's cancellation and stays off.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:456`",
+        "operationId": "ffl_core.membership.set_auto_renew",
+        "responses": {
+          "200": {
+            "description": "The membership's panel row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "membership": {
+                    "type": "string",
+                    "description": "Membership name."
+                  },
+                  "enabled": {
+                    "description": "1 to renew automatically, 0 not to."
+                  }
+                },
+                "required": [
+                  "membership",
+                  "enabled"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.membership.start_membership": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Start selling a membership: the customer's Pending membership of the plan (a Pending one",
+        "description": "already there is picked up again, with the new auto-renew choice).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:165`",
+        "operationId": "ffl_core.membership.start_membership",
+        "responses": {
+          "200": {
+            "description": "The panel row of the membership ({name, plan, status, auto_renew, terms_template, terms_state, ...}).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "customer": {
+                    "type": "string",
+                    "description": "Customer name (document id); not the walk-in customer."
+                  },
+                  "plan": {
+                    "type": "string",
+                    "description": "Membership Plan name; must be active."
+                  },
+                  "auto_renew": {
+                    "description": "1 / 0; blank = the plan's default."
+                  }
+                },
+                "required": [
+                  "customer",
+                  "plan"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.reservations.reserved_counter_serials": {
       "post": {
         "tags": [
@@ -18923,7 +19494,7 @@
           "ffl_integrations"
         ],
         "summary": "Cancel an in-flight terminal charge on a Sales Invoice (race-safe).",
-        "description": "A cancel that races an approval settles the approval instead — the card\nwas charged, so it is recorded and booked, never stranded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1098`",
+        "description": "A cancel that races an approval settles the approval instead — the card\nwas charged, so it is recorded and booked, never stranded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1107`",
         "operationId": "ffl_integrations.payments.api.cancel_sales_invoice_charge",
         "responses": {
           "200": {
@@ -19045,7 +19616,7 @@
           "ffl_integrations"
         ],
         "summary": "Start a card charge on the card processor's terminal against a counter Sales Invoice.",
-        "description": "The counter's card tender for an on-account order (Create Order right\nafter the order books; Pending Order → Record Payment for a balance).\nStarts a charge on the active processor's card device; the frontend polls it with\npoll_sales_invoice_charge(); the approval books a Payment Entry. Reuses\nan in-flight instruction rather than double-charging, and never starts\none while an earlier approval on this invoice is unrecorded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:952`",
+        "description": "The counter's card tender for an on-account order (Create Order right\nafter the order books; Pending Order → Record Payment for a balance).\nStarts a charge on the active processor's card device; the frontend polls it with\npoll_sales_invoice_charge(); the approval books a Payment Entry. Reuses\nan in-flight instruction rather than double-charging, and never starts\none while an earlier approval on this invoice is unrecorded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:957`",
         "operationId": "ffl_integrations.payments.api.charge_sales_invoice",
         "responses": {
           "200": {
@@ -19107,7 +19678,7 @@
           "ffl_integrations"
         ],
         "summary": "Record that a gateway-charged sale's refund was issued in the card processor's portal.",
-        "description": "The manager-level exit for the switched-off refund guard. Deliberately its\nown field plus a timeline entry — never the tender row's ``reference_no``,\nwhich the standalone-terminal flow collects for a different purpose and\nwhich therefore cannot double as this guard's evidence (a guard whose\nevidence another rule force-collects clears itself).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role (_check_manager).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:2205`",
+        "description": "The manager-level exit for the switched-off refund guard. Deliberately its\nown field plus a timeline entry — never the tender row's ``reference_no``,\nwhich the standalone-terminal flow collects for a different purpose and\nwhich therefore cannot double as this guard's evidence (a guard whose\nevidence another rule force-collects clears itself).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role (_check_manager).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:2214`",
         "operationId": "ffl_integrations.payments.api.confirm_out_of_band_refund",
         "responses": {
           "200": {
@@ -19165,7 +19736,7 @@
           "ffl_integrations"
         ],
         "summary": "List the terminals the active card processor's credentials may use (connectivity smoke test).",
-        "description": "A zero-risk connectivity + pairing check (Payroc: the authenticate\nresponse's allowedTerminals).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1131`",
+        "description": "A zero-risk connectivity + pairing check (Payroc: the authenticate\nresponse's allowedTerminals).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1140`",
         "operationId": "ffl_integrations.payments.api.list_terminals",
         "responses": {
           "200": {
@@ -19251,7 +19822,7 @@
           "ffl_integrations"
         ],
         "summary": "Poll a terminal charge started by charge_sales_invoice once.",
-        "description": "IN_PROGRESS → {ok: False} (frontend loops). On approval the record goes\nCHARGED and a Payment Entry books against the invoice; the answer carries\nthe new balance.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1067`",
+        "description": "IN_PROGRESS → {ok: False} (frontend loops). On approval the record goes\nCHARGED and a Payment Entry books against the invoice; the answer carries\nthe new balance.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1076`",
         "operationId": "ffl_integrations.payments.api.poll_sales_invoice_charge",
         "responses": {
           "200": {
@@ -19304,7 +19875,7 @@
           "ffl_integrations"
         ],
         "summary": "Refund a POS return's card portion to the original card(s).",
-        "description": "Referenced refund of the Credit Card portion of a POS RETURN invoice,\nsent to the processor that took each original charge. Firearm returns\nare blocked (bound-book reversal is a separate project). Multi-card\noriginals refund across rows within per-original-card caps.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager-gated refund roles (gate at entry).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1468`",
+        "description": "Referenced refund of the Credit Card portion of a POS RETURN invoice,\nsent to the processor that took each original charge. Firearm returns\nare blocked (bound-book reversal is a separate project). Multi-card\noriginals refund across rows within per-original-card caps.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager-gated refund roles (gate at entry).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1477`",
         "operationId": "ffl_integrations.payments.api.refund_pos_invoice",
         "responses": {
           "200": {
@@ -19359,7 +19930,7 @@
           "ffl_integrations"
         ],
         "summary": "Manager unlock for a return whose automatic card refund armed the",
-        "description": "UNKNOWN-OUTCOME re-refund lock (the amplifier: the\nlock had no product-side unlock, so a locked return died in bench\nconsole).\n\nONLY ``UNKNOWN-OUTCOME`` unlocks — zero slices booked, so a full-amount\nretry is exactly the original entitlement. A ``PARTIAL:*`` sentinel is\nthe ONE record of how much this return already pushed back; clearing it\nre-arms a full-amount retry that the per-ORIGINAL-card caps cannot bound\n(an original with headroom would refund the booked slices again).\nIts residue goes to back-office manual processing.\nA real refund reference means the refund COMPLETED and never unlocks.\n\nThe unlock is an attestation, not a reconciliation: the gateway may\nactually have refunded (rows still show headroom), so the manager must\nverify in the processor's portal FIRST — the reason is required and the whole\naction lands in the document timeline (who/when/why/previous lock),\nmirroring manager_override_4473's audit posture.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager gate (roles per the derived Auth line) + required reason — the reason must record what was verified in the processor's portal.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1843`",
+        "description": "UNKNOWN-OUTCOME re-refund lock (the amplifier: the\nlock had no product-side unlock, so a locked return died in bench\nconsole).\n\nONLY ``UNKNOWN-OUTCOME`` unlocks — zero slices booked, so a full-amount\nretry is exactly the original entitlement. A ``PARTIAL:*`` sentinel is\nthe ONE record of how much this return already pushed back; clearing it\nre-arms a full-amount retry that the per-ORIGINAL-card caps cannot bound\n(an original with headroom would refund the booked slices again).\nIts residue goes to back-office manual processing.\nA real refund reference means the refund COMPLETED and never unlocks.\n\nThe unlock is an attestation, not a reconciliation: the gateway may\nactually have refunded (rows still show headroom), so the manager must\nverify in the processor's portal FIRST — the reason is required and the whole\naction lands in the document timeline (who/when/why/previous lock),\nmirroring manager_override_4473's audit posture.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager gate (roles per the derived Auth line) + required reason — the reason must record what was verified in the processor's portal.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1852`",
         "operationId": "ffl_integrations.payments.api.unlock_refund_lock",
         "responses": {
           "200": {
@@ -19412,7 +19983,7 @@
           "ffl_integrations"
         ],
         "summary": "Reverse an unsettled card charge (back-office; per-card on multi-card).",
-        "description": "Books the gateway reversal on the processor that took the charge (Payroc\nhas no /void: it reverses). Multi-card invoices void PER CARD: pass the\ncharge row's unique_reference when more than one live capture exists.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Refund/void roles (_check_refund_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1155`",
+        "description": "Books the gateway reversal on the processor that took the charge (Payroc\nhas no /void: it reverses). Multi-card invoices void PER CARD: pass the\ncharge row's unique_reference when more than one live capture exists.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Refund/void roles (_check_refund_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1164`",
         "operationId": "ffl_integrations.payments.api.void_pos_invoice",
         "responses": {
           "200": {
@@ -19658,7 +20229,7 @@
           "ffl_integrations"
         ],
         "summary": "Whether the counter may offer \"Save this card\" for this customer, and where the",
-        "description": "customer stands with the authorization (the dialog polls it while the customer signs).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Accounts Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:150`",
+        "description": "customer stands with the authorization (the dialog polls it while the customer signs).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Accounts Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:157`",
         "operationId": "ffl_integrations.payments.saved_cards.card_on_file_offer",
         "responses": {
           "200": {
@@ -19706,7 +20277,7 @@
           "ffl_integrations"
         ],
         "summary": "Charge a customer's saved card against a submitted Sales Invoice (merchant-initiated).",
-        "description": "Refused before the gateway when the card was removed or is another customer's, the invoice\nis not submitted or owes nothing, or the amount exceeds the balance. The approval books a\nPayment Entry exactly like a terminal payment; a decline books nothing. An answer that never\ncame back locks the invoice against another saved-card charge until a later call looks the\ncharge up at the gateway and records it.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:494`",
+        "description": "Refused before the gateway when the card was removed or is another customer's, the invoice\nis not submitted or owes nothing, or the amount exceeds the balance. The approval books a\nPayment Entry exactly like a terminal payment; a decline books nothing. An answer that never\ncame back locks the invoice against another saved-card charge until a later call looks the\ncharge up at the gateway and records it.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:502`",
         "operationId": "ffl_integrations.payments.saved_cards.charge_saved_card",
         "responses": {
           "200": {
@@ -19762,7 +20333,7 @@
           "ffl_integrations"
         ],
         "summary": "A customer's active saved cards — summary, expiry, default — for the Customer form and the",
-        "description": "Charge saved card picker. Never the token.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Accounts Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:279`",
+        "description": "Charge saved card picker. Never the token.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Accounts Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:287`",
         "operationId": "ffl_integrations.payments.saved_cards.list_saved_cards",
         "responses": {
           "200": {
@@ -19810,7 +20381,7 @@
           "ffl_integrations"
         ],
         "summary": "Close an unconfirmed saved-card charge as not charged, after a manager checked the",
-        "description": "processor's portal. Looks it up once more first and records it if the gateway now has it;\nrefused while the charge is younger than the lookup grace period.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:445`",
+        "description": "processor's portal. Looks it up once more first and records it if the gateway now has it;\nrefused while the charge is younger than the lookup grace period.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:453`",
         "operationId": "ffl_integrations.payments.saved_cards.release_saved_card_charge",
         "responses": {
           "200": {
@@ -19863,7 +20434,7 @@
           "ffl_integrations"
         ],
         "summary": "Remove a saved card: the card processor forgets it, then the record turns Removed.",
-        "description": "A gateway failure leaves the card Active and says so. A Removed card can never be charged.\nWhen the default card goes, the newest remaining card becomes the default.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:521`",
+        "description": "A gateway failure leaves the card Active and says so. A Removed card can never be charged.\nWhen the default card goes, the newest remaining card becomes the default.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:529`",
         "operationId": "ffl_integrations.payments.saved_cards.remove_saved_card",
         "responses": {
           "200": {

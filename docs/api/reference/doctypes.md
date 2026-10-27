@@ -514,6 +514,64 @@ Switch the MCP servers that AI assistants (Claude, ChatGPT and other MCP clients
 | `full_url` | Data | Full MCP Server URL |  |  |
 | `full_claude_code` | Data | Claude Code Command (Full) |  |  |
 
+## Membership
+
+app: `ffl_core` · module: FFL Core · roles: Accounts Manager, Accounts User, Sales Manager, Sales User, System Manager
+
+One customer's membership of a plan: its status, current period, renewal card and invoices.
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `customer` | Link | Customer | ✓ | Customer |
+| `customer_name` | Data | Customer Name |  |  |
+| `plan` | Link | Plan | ✓ | Membership Plan |
+| `status` | Select | Status |  | Pending, Active, Past Due, Suspended, Cancelled, Expired |
+| `start_date` | Date | Member Since |  |  |
+| `current_period_start` | Date | Current Period Start |  |  |
+| `current_period_end` | Date | Current Period End |  |  |
+| `company` | Link | Company |  | Company |
+| `auto_renew` | Check | Auto-renew |  |  |
+| `saved_card` | Link | Saved Card |  | Saved Card |
+| `grace_until` | Date | Grace Until |  |  |
+| `last_charge_status` | Small Text | Last Charge |  |  |
+| `cancel_at_period_end` | Check | Ends at Period End |  |  |
+| `cancelled_on` | Date | Cancelled On |  |  |
+| `cancelled_by` | Link | Cancelled By |  | User |
+| `cancel_reason` | Small Text | Cancellation Reason |  |  |
+| `invoices` | Table | Invoices |  | Membership Invoice |
+
+## Membership Invoice
+
+app: `ffl_core` · module: FFL Core · child table
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `sales_invoice` | Link | Sales Invoice |  | Sales Invoice |
+| `period_start` | Date | Period Start |  |  |
+| `period_end` | Date | Period End |  |  |
+| `status` | Select | Status |  | Unpaid, Paid, Cancelled |
+
+## Membership Plan
+
+app: `ffl_core` · module: FFL Core · roles: Accounts Manager, Accounts User, Sales Manager, Sales User, System Manager
+
+A membership a customer can buy: what it costs, how often it bills, and its registration fee.
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `plan_name` | Data | Plan Name | ✓ |  |
+| `active` | Check | Active |  |  |
+| `billing_period` | Select | Billing Period | ✓ | Monthly, Yearly |
+| `price` | Currency | Price per Period | ✓ |  |
+| `item` | Link | Billed Item | ✓ | Item |
+| `description` | Small Text | Description |  |  |
+| `registration_item` | Link | Registration Item |  | Item |
+| `registration_fee` | Currency | Registration Fee |  |  |
+| `auto_renew_default` | Check | Auto-renew by Default |  |  |
+| `terms_template` | Link | Membership Terms |  | Agreement Template |
+| `grace_enabled` | Check | Grace Period on Failed Renewal |  |  |
+| `grace_days` | Int | Grace Days |  |  |
+
 ## POS Extension
 
 app: `ffl_core` · module: FFL Core · roles: System Manager
@@ -691,6 +749,7 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sal
 | `instruction_id` | Data | Instruction ID |  |  |
 | `save_card` | Check | Save Card Requested |  |  |
 | `save_reference` | Data | Saved Card Reference |  |  |
+| `save_usage` | Data | Saved Card Usage |  |  |
 | `saved_card` | Link | Saved Card |  | Saved Card |
 | `response` | Code | Gateway Response |  |  |
 

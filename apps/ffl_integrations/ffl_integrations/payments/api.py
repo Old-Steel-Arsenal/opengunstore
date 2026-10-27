@@ -841,7 +841,7 @@ def cancel_pos_charge(invoice_name: str, instruction_id: str) -> dict:
 TERMINAL_PAYMENT = "Card Terminal Payment"
 _TP_FIELDS = ["name", "sales_invoice", "amount", "status", "instruction_id",
     "unique_reference", "approval_code", "card_summary", "payment_entry", "processor",
-    "save_card", "save_reference", "saved_card"]
+    "save_card", "save_reference", "save_usage", "saved_card"]
 
 
 def _terminal_payments(sales_invoice: str) -> list:
@@ -948,6 +948,11 @@ def _book_terminal_payment(row_name: str, sales_invoice: str, amount: float,
     return booked.get("pe")
 
 
+def _invoice_card_usage(sales_invoice: str) -> str | None:
+    from ffl_core.membership import saved_card_usage
+    return saved_card_usage(sales_invoice)
+
+
 @frappe.whitelist(methods=["POST"])
 def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None = None,
         save_card=0) -> dict:
@@ -992,8 +997,11 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
     if si.docstatus != 1:
         frappe.throw(_("{0} is not a submitted invoice.").format(sales_invoice))
     # Card on file: every gate is checked before any gateway call (the checkbox is not the gate).
+    # The usage agreement comes from the invoice, never the client: an auto-renewing membership's
+    # invoice saves the card for RECURRING charges (ffl_core.membership.saved_card_usage).
     save = _saved_cards().save_request(frappe.db.get_value("Sales Invoice", sales_invoice,
-        "customer"), _processor(None)) if cint(save_card) else None
+        "customer"), _processor(None), usage=_invoice_card_usage(sales_invoice)) \
+        if cint(save_card) else None
     gateway = _gateways()
     active = gateway(None)
 
@@ -1048,7 +1056,8 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
         rec = frappe.get_doc({"doctype": TERMINAL_PAYMENT, "sales_invoice": sales_invoice,
             "amount": amt, "status": "IN_PROGRESS", "instruction_id": iid,
             "processor": active.code,
-            **({"save_card": 1, "save_reference": save["reference"]} if save else {})})
+            **({"save_card": 1, "save_reference": save["reference"], "save_usage": save["usage"]}
+                if save else {})})
         rec.flags.ignore_permissions = True
         rec.insert()
     except Exception:
