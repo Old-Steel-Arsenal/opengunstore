@@ -113,6 +113,20 @@ class CounterOrderAgreements(BuildOrderMixin, FrappeTestCase):
 		self.assertEqual(frappe.db.get_value("Serial No", serial, "status"), "Active")
 		self.assertFalse(self._disp(out["sales_invoice"]))
 
+	def test_an_order_with_no_gun_is_not_held(self):
+		# Only a gun waits on Pending Order's Dispose; an accessory order has no such step.
+		acc = "BO-AGR-ACC"
+		self._item(acc, firearm=False)
+		frappe.db.set_value("Item", acc, "ffl_required_agreement", self.per_customer)
+		customer = self._indiv("BO Agr " + frappe.generate_hash(length=6))
+		payload = {"buyer_type": "individual", "customer": customer, "pos_profile": self.pos,
+			"dispose_now": 1, "tax_exempt": 1, "payment_received": 1, "mode_of_payment": "Cash",
+			"items": [{"item_code": acc, "qty": 1, "rate": 20}]}
+		with patch("frappe.sendmail"):
+			out = manual_order.create_order(payload)
+		self.assertFalse(out["ship_held_for_agreements"])
+		self.assertEqual(frappe.db.get_value("Sales Invoice", out["sales_invoice"], "update_stock"), 1)
+
 	def test_dispose_refuses_until_signed_or_overridden_with_a_comment(self):
 		out, serial, _send = self._order()
 		si_name = out["sales_invoice"]

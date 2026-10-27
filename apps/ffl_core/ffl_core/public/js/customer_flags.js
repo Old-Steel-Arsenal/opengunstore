@@ -437,9 +437,10 @@
 		var cart = window.cur_pos && cur_pos.cart;
 		var c = cart && cart.customer_info && cart.customer_info.customer;
 		if (!c || !msg || msg.customer !== c) return;
+		var name = cart.customer_info.customer_name || c;
 		fetchFlags(c).then(function () {
 			if (cart.customer_info && cart.customer_info.customer === c) cart.update_customer_section();
-			frappe.show_alert({ message: __('{0} signed {1}.', [api.escText(cart.customer_info.customer_name || c),
+			frappe.show_alert({ message: __('{0} signed {1}.', [api.escText(name),
 				api.escText(msg.agreement || '')]), indicator: 'green' }, 7);
 		}, function () { /* the strip is a hint */ });
 	}

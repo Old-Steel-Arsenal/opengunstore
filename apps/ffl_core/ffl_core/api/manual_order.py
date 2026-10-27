@@ -558,7 +558,8 @@ def _create_order(payload, *, shipping_tax_inclusive: int | None = None) -> dict
 	# checks again — so a Dispose & Ship Now is held back to a deferred order.
 	unsigned = agreements.missing_requirements(si)
 	si.flags.ffl_defer_agreements = True
-	ship_held_for_agreements = bool(unsigned and ship_now)
+	# Only a gun waits: Pending Order's Dispose is the step that checks again.
+	ship_held_for_agreements = bool(unsigned and ship_now and has_regulated)
 	if ship_held_for_agreements:
 		ship_now = False
 		frappe.msgprint(_(
