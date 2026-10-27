@@ -19658,7 +19658,7 @@
           "ffl_integrations"
         ],
         "summary": "Whether the counter may offer \"Save this card\" for this customer, and where the",
-        "description": "customer stands with the authorization (the dialog polls it while the customer signs).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Accounts Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:147`",
+        "description": "customer stands with the authorization (the dialog polls it while the customer signs).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Accounts Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:150`",
         "operationId": "ffl_integrations.payments.saved_cards.card_on_file_offer",
         "responses": {
           "200": {
@@ -19706,7 +19706,7 @@
           "ffl_integrations"
         ],
         "summary": "Charge a customer's saved card against a submitted Sales Invoice (merchant-initiated).",
-        "description": "Refused before the gateway when the card was removed or is another customer's, the invoice\nis not submitted or owes nothing, or the amount exceeds the balance. The approval books a\nPayment Entry exactly like a terminal payment; a decline books nothing. An answer that never\ncame back locks the invoice against another saved-card charge until a later call looks the\ncharge up at the gateway and records it.\n\n**Auth (derived from code):** Roles: Sales Manager / Accounts Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:433`",
+        "description": "Refused before the gateway when the card was removed or is another customer's, the invoice\nis not submitted or owes nothing, or the amount exceeds the balance. The approval books a\nPayment Entry exactly like a terminal payment; a decline books nothing. An answer that never\ncame back locks the invoice against another saved-card charge until a later call looks the\ncharge up at the gateway and records it.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:436`",
         "operationId": "ffl_integrations.payments.saved_cards.charge_saved_card",
         "responses": {
           "200": {
@@ -19762,7 +19762,7 @@
           "ffl_integrations"
         ],
         "summary": "A customer's active saved cards — summary, expiry, default — for the Customer form and the",
-        "description": "Charge saved card picker. Never the token.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Accounts Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:276`",
+        "description": "Charge saved card picker. Never the token.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Accounts Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:279`",
         "operationId": "ffl_integrations.payments.saved_cards.list_saved_cards",
         "responses": {
           "200": {
@@ -19810,7 +19810,7 @@
           "ffl_integrations"
         ],
         "summary": "Remove a saved card: the card processor forgets it, then the record turns Removed.",
-        "description": "A gateway failure leaves the card Active and says so. A Removed card can never be charged.\nWhen the default card goes, the newest remaining card becomes the default.\n\n**Auth (derived from code):** Roles: Sales Manager / Accounts Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:460`",
+        "description": "A gateway failure leaves the card Active and says so. A Removed card can never be charged.\nWhen the default card goes, the newest remaining card becomes the default.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:463`",
         "operationId": "ffl_integrations.payments.saved_cards.remove_saved_card",
         "responses": {
           "200": {

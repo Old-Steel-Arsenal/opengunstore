@@ -4,7 +4,7 @@
 // The token never reaches the browser; every rule is server-side, this only lists and asks.
 (function () {
 	const M = 'ffl_integrations.payments.saved_cards.';
-	const MANAGER_ROLES = ['Sales Manager', 'Accounts Manager', 'System Manager'];
+	const MANAGER_ROLES = ['Sales Manager', 'System Manager'];   // saved_cards.MANAGER_ROLES
 	const esc = (s) => frappe.utils.escape_html(s == null ? '' : String(s));
 	const expiry = (mmyy) => (mmyy && mmyy.length === 4 ? `${mmyy.slice(0, 2)}/${mmyy.slice(2)}` : '');
 	const label = (c) => [c.card_summary || c.name, expiry(c.card_expiry), c.is_default ? __('default') : '']

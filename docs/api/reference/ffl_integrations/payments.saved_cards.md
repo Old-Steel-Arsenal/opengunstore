@@ -20,13 +20,13 @@ customer stands with the authorization (the dialog polls it while the customer s
 
 **Returns:** {offer: bool, reason: text when not offered, template, state: signed / expiring / expired / pending / missing, agreement: the copy the state comes from}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:147`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:150`</sub>
 
 ## `charge_saved_card`
 
 `POST /api/method/ffl_integrations.payments.saved_cards.charge_saved_card`
 
-**Auth (derived from code):** Roles: Sales Manager / Accounts Manager / System Manager
+**Auth (derived from code):** Roles: Sales Manager / System Manager
 
 Charge a customer's saved card against a submitted Sales Invoice (merchant-initiated).
 
@@ -44,7 +44,7 @@ charge up at the gateway and records it.
 
 **Returns:** {ok, status, unique_reference, approval_code, amount, payment_entry, outstanding, paid} on approval; {ok: False, status, error} on a decline; resolved=True when an earlier charge was settled instead of a new one.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:433`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:436`</sub>
 
 ## `list_saved_cards`
 
@@ -62,13 +62,13 @@ Charge saved card picker. Never the token.
 
 **Returns:** {cards: [{name, card_summary, card_expiry, is_default, usage, saved_on}], can_manage: whether the caller may charge or remove them}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:276`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:279`</sub>
 
 ## `remove_saved_card`
 
 `POST /api/method/ffl_integrations.payments.saved_cards.remove_saved_card`
 
-**Auth (derived from code):** Roles: Sales Manager / Accounts Manager / System Manager
+**Auth (derived from code):** Roles: Sales Manager / System Manager
 
 Remove a saved card: the card processor forgets it, then the record turns Removed.
 
@@ -82,4 +82,4 @@ When the default card goes, the newest remaining card becomes the default.
 
 **Returns:** {ok: True, status: "Removed"}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:460`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:463`</sub>

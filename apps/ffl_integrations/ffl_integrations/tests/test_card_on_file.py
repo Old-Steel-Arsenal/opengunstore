@@ -569,6 +569,23 @@ class ChargingASavedCard(_CardOnFileBase):
 		client.charge_stored_credential.assert_not_called()
 		self.assertEqual(self._rows(si), [])
 
+	def test_accounts_manager_alone_is_refused_before_the_gateway(self, cc):
+		"""The approval books through record_payment (counter roles): a role that could charge but
+		not book would leave a captured card with no Payment Entry."""
+		client = cc.from_settings.return_value
+		cust = self._customer()
+		card = self._saved_card(cust)
+		si, _ = self._unpaid_order(cust)
+		from ffl_core.tests.test_customer_profile import _user
+		frappe.set_user(_user("cof-accounts@example.com", "Accounts Manager"))
+		self.addCleanup(frappe.set_user, "Administrator")
+		with self.assertRaises(frappe.PermissionError):
+			saved_cards.charge_saved_card(si, card)
+		with self.assertRaises(frappe.PermissionError):
+			saved_cards.remove_saved_card(card, "x")
+		client.charge_stored_credential.assert_not_called()
+		client.delete_credentials.assert_not_called()
+
 	def test_remove_goes_to_the_gateway_first(self, cc):
 		client = cc.from_settings.return_value
 		cust = self._customer()

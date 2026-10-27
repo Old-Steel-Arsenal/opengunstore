@@ -40,6 +40,7 @@ from frappe import _
 from frappe.utils import add_to_date, cint, escape_html, flt, get_datetime, now_datetime
 from frappe.utils.password import get_decrypted_password
 
+from ffl_core.roles import CUSTOMER_MANAGER_ROLES
 from ffl_core.utils import commit as _commit
 from ffl_core.utils import single_flag
 from ffl_integrations.notifications import safe_log_error
@@ -51,8 +52,10 @@ ACTIVE, REMOVED = "Active", "Removed"
 # lazy: every card is saved for UNSCHEDULED use (charge a balance when one is due); RECURRING
 # arrives with membership renewals, which will pass it through save_request.
 DEFAULT_USAGE = "UNSCHEDULED"
-# Who may charge or remove a saved card: the managers who settle balances.
-MANAGER_ROLES = ("Sales Manager", "Accounts Manager", "System Manager")
+# Who may charge or remove a saved card: the counter's managers. Not Accounts Manager alone:
+# the approval books through manual_order.record_payment (COUNTER_ROLES), and a booking refused
+# AFTER the card was charged is exactly the gap a money path must not open.
+MANAGER_ROLES = CUSTOMER_MANAGER_ROLES
 # Who may see a customer's saved cards (summary only — never the token).
 READ_ROLES = ("Sales User", "Sales Manager", "Accounts Manager", "System Manager")
 # A saved-card charge whose answer was lost and that the gateway still does not know after this
