@@ -28,17 +28,30 @@ is what it was.
   deferred to income that day. A membership invoice is never cancelled for a refund: refunds
   are credit notes, made by hand (:func:`refuse_invoice_cancel`).
 
-Renewal charging (Run 2's daily job) and member benefits are not here yet; the fields they need
-(``auto_renew``, ``saved_card``, ``grace_until``, the invoices table) are.
+* **Renewal** (:func:`renew_memberships`, every morning): an auto-renewing membership whose period
+  has ended gets the next period's invoice — from the day after the old period ends, never
+  shifted, ending the day before the next anniversary of the start day (:func:`renewal_period`) —
+  and the saved card is charged for it through the card-on-file service (the
+  ``ffl_membership_charge_saved_card`` hook). Approved: Paid, the period advances, Active.
+  Declined: the invoice is voided (:func:`void_invoice`) and the membership goes Past Due for the
+  plan's grace days, or Suspended at once when the plan has no grace. No chargeable card: no
+  invoice at all. An answer the gateway never gave leaves the invoice and its charge record
+  waiting; the job never charges it again and a manager resolves it from **Needs attention**
+  (Membership Settings). At most one open renewal invoice per membership and period: a retry
+  charges that one.
+* **Member or not** — :func:`is_member`: Active, or Past Due within its grace days.
+
+Member benefits are not here yet.
 """
 from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.utils import add_days, add_months, cint, escape_html, flt, fmt_money, getdate, nowdate
+from frappe.utils import (add_days, add_months, add_to_date, cint, escape_html, flt, fmt_money, getdate,
+	now_datetime, nowdate, strip_html)
 
 from ffl_core.roles import COUNTER_ROLES, CUSTOMER_MANAGER_ROLES
-from ffl_core.utils import commit
+from ffl_core.utils import commit, single_flag
 
 DOCTYPE = "Membership"
 PLAN = "Membership Plan"
@@ -53,6 +66,15 @@ RECURRING = "RECURRING"
 # Read by the Memberships panel: the counter. Cancelling is a manager's decision.
 READ_ROLES = COUNTER_ROLES + ("Accounts User", "Accounts Manager")
 POS_REFUSAL = "Sell memberships from the customer's Memberships panel (Customer form), not the register."
+SETTINGS = "Membership Settings"
+# ffl_integrations answers these (payments/saved_cards.py); with no answer no card is chargeable.
+CHARGE_HOOK = "ffl_membership_charge_saved_card"
+CHARGEABLE_HOOK = "ffl_membership_card_chargeable"
+# A sign-up still unpaid after this many days shows in Needs attention.
+STALE_PENDING_DAYS = 3
+# What one renewal attempt came to (the job's tally; Retry now's answer).
+RENEWED, DECLINED, NO_CARD, UNKNOWN, NOT_STARTED, SUSPENDED_NOW, SKIPPED = (
+	"renewed", "declined", "no_card", "unknown", "not_started", "suspended", "skipped")
 
 
 # ------------------------------------------------------------------ periods and plans
@@ -263,10 +285,13 @@ def _unpaid_row(doc):
 	return None
 
 
-def _make_invoice(doc, plan, start):
-	"""The submitted Sales Invoice for one period from *start*: the plan line, plus the
-	registration line on the customer's first membership of the plan. Both lines carry the
-	service dates and the membership accounts, so ERPNext defers them day by day."""
+def _make_invoice(doc, plan, start, *, end=None, posting=None, renewal=False):
+	"""The submitted Sales Invoice for one period from *start* (to *end*, default
+	:func:`period_end`), posted on *posting* (default *start*): the plan line, plus the registration
+	line on the customer's first membership of the plan — never on a renewal. Both lines carry the
+	service dates and the membership accounts, so ERPNext defers them day by day. A renewal
+	invoice sends no receipt on submit: the card may yet decline it (:func:`settle` sends it once
+	paid)."""
 	from ffl_core.api.manual_order import _apply_default_tax_template
 	from ffl_core.setup import membership as setup
 
@@ -275,13 +300,14 @@ def _make_invoice(doc, plan, start):
 	if not (deferred and income):
 		frappe.throw(_("{0} has no chart of accounts for memberships yet. Run a migrate, then try again.").format(
 			escape_html(company)))
-	end = period_end(start, plan.billing_period)
+	end = getdate(end) if end else period_end(start, plan.billing_period)
+	posting = getdate(posting) if posting else getdate(start)
 	lines = [(plan.item, flt(plan.price))]
-	if plan.registration_item and flt(plan.registration_fee) > 0 and _first_of_plan(doc):
+	if not renewal and plan.registration_item and flt(plan.registration_fee) > 0 and _first_of_plan(doc):
 		lines.append((plan.registration_item, flt(plan.registration_fee)))
 	si = frappe.new_doc("Sales Invoice")
-	si.update({"customer": doc.customer, "company": company, "posting_date": start, "set_posting_time": 1,
-		"due_date": start})
+	si.update({"customer": doc.customer, "company": company, "posting_date": posting, "set_posting_time": 1,
+		"due_date": posting})
 	for item_code, rate in lines:
 		si.append("items", {"item_code": item_code, "qty": 1, "rate": rate})
 	if not cint(frappe.db.get_value("Customer", doc.customer, "is_tax_exempt")):
@@ -292,10 +318,16 @@ def _make_invoice(doc, plan, start):
 		row.update({"qty": 1, "rate": rate, "price_list_rate": rate, "enable_deferred_revenue": 1,
 			"service_start_date": start, "service_end_date": end, "deferred_revenue_account": deferred,
 			"income_account": income})
-	si.due_date = start
+	si.due_date = posting
 	si.flags.ignore_permissions = True
 	si.insert()
-	si.submit()
+	suppressed = frappe.flags.get("ffl_suppress_sale_receipt")
+	if renewal:
+		frappe.flags.ffl_suppress_sale_receipt = True
+	try:
+		si.submit()
+	finally:
+		frappe.flags.ffl_suppress_sale_receipt = suppressed
 	return si
 
 
@@ -329,13 +361,16 @@ def activate_paid_memberships(doc, method=None) -> None:
 
 
 def settle(membership: str) -> bool:
-	"""Activate a Pending membership whose unpaid invoice is now paid. Idempotent; True when
-	this call activated it."""
+	"""Apply the payments that came in: every unpaid invoice row whose invoice now owes nothing turns
+	Paid. A Pending membership turns Active on its first invoice; a renewal invoice moves the
+	period to the one it paid for (from the original due date — never shifted), turns the
+	membership Active again and clears its grace, and its receipt goes out (the renewal invoice
+	sent none on submit). Idempotent; True when this call changed anything."""
 	if not frappe.db.get_value(DOCTYPE, membership, "name", for_update=True):
 		return False
 	doc = frappe.get_doc(DOCTYPE, membership)
-	if doc.status != PENDING:
-		return False
+	changed = False
+	receipts = []
 	for row in doc.get("invoices") or []:
 		if row.status != UNPAID:
 			continue
@@ -343,20 +378,41 @@ def settle(membership: str) -> bool:
 		if not si or si.docstatus != 1 or flt(si.outstanding_amount) > 0.01:
 			continue
 		row.status = PAID
-		doc.update({"status": ACTIVE, "start_date": row.period_start, "current_period_start": row.period_start,
-			"current_period_end": row.period_end, "last_charge_status": _("Paid {0}").format(row.sales_invoice)})
-		if cint(doc.auto_renew):
-			card = _card_saved_by(row.sales_invoice, doc.customer)
-			if card:
-				doc.saved_card = card
-			else:
-				doc.auto_renew = 0
-				doc.last_charge_status = _("Paid {0} without saving a card for recurring charges: auto-renew is "
-					"off.").format(row.sales_invoice)
-		doc.flags.via_membership = True
-		doc.save(ignore_permissions=True)
-		return True
-	return False
+		changed = True
+		if doc.status == PENDING:
+			_activate(doc, row)
+		elif doc.status in (ACTIVE, PAST_DUE, SUSPENDED) and (not doc.current_period_end
+				or getdate(row.period_end) > getdate(doc.current_period_end)):
+			if doc.current_period_end and getdate(row.period_start) > getdate(add_days(doc.current_period_end, 1)):
+				doc.start_date = row.period_start      # a rejoin after suspension: renewals count from here
+			doc.update({"status": ACTIVE, "current_period_start": row.period_start, "current_period_end": row.period_end,
+				"grace_until": None, "last_charge_status": _("Renewed: {0} paid").format(row.sales_invoice)})
+			receipts.append(row.sales_invoice)
+	if not changed:
+		return False
+	doc.flags.via_membership = True
+	doc.save(ignore_permissions=True)
+	if receipts:
+		from ffl_core.receipts import send_sale_receipt
+
+		for name in receipts:
+			send_sale_receipt(frappe.get_doc("Sales Invoice", name))
+	return True
+
+
+def _activate(doc, row) -> None:
+	"""A Pending membership's first invoice is paid: Active from its period, with the card the
+	charge saved (no card saved → auto-renew off: a renewal with no card would only fail)."""
+	doc.update({"status": ACTIVE, "start_date": row.period_start, "current_period_start": row.period_start,
+		"current_period_end": row.period_end, "last_charge_status": _("Paid {0}").format(row.sales_invoice)})
+	if cint(doc.auto_renew):
+		card = _card_saved_by(row.sales_invoice, doc.customer)
+		if card:
+			doc.saved_card = card
+		else:
+			doc.auto_renew = 0
+			doc.last_charge_status = _("Paid {0} without saving a card for recurring charges: auto-renew is "
+				"off.").format(row.sales_invoice)
 
 
 def _card_saved_by(sales_invoice: str, customer: str) -> str | None:
@@ -391,11 +447,18 @@ def _row(doc) -> dict:
 	plan = frappe.db.get_value(PLAN, doc.plan, ["price", "billing_period", "terms_template"], as_dict=True) \
 		or frappe._dict()
 	renewing = cint(doc.auto_renew) and doc.status in (ACTIVE, PAST_DUE) and not cint(doc.cancel_at_period_end)
-	unpaid = _unpaid_row(doc) if doc.status == PENDING else None
-	return {"name": doc.name, "plan": doc.plan, "status": doc.status, "price": flt(plan.price),
+	unpaid = _unpaid_row(doc) if doc.status in LIVE else None
+	overdue = doc.status in (ACTIVE, PAST_DUE, SUSPENDED) and bool(doc.current_period_end) \
+		and getdate(doc.current_period_end) < getdate(nowdate())
+	return {"grace_until": doc.grace_until, "overdue": overdue, "can_retry": overdue
+		and not cint(doc.cancel_at_period_end) and _chargeable(doc),
+		"charge_waiting": bool(unpaid) and _charge_waiting(unpaid.sales_invoice),
+		"name": doc.name, "plan": doc.plan, "status": doc.status, "price": flt(plan.price),
 		"billing_period": plan.billing_period, "start_date": doc.start_date,
 		"current_period_start": doc.current_period_start, "current_period_end": doc.current_period_end,
-		"next_charge_date": add_days(doc.current_period_end, 1) if renewing and doc.current_period_end else None,
+		# An overdue renewal has no "next charge" to show: its date has passed (the row says what is owed).
+		"next_charge_date": add_days(doc.current_period_end, 1) if renewing and doc.current_period_end
+			and not overdue else None,
 		"auto_renew": cint(doc.auto_renew), "saved_card": doc.saved_card, "card_summary": _card_summary(doc.saved_card),
 		"cancel_at_period_end": cint(doc.cancel_at_period_end), "last_charge_status": doc.last_charge_status,
 		"terms_template": plan.terms_template, "terms_state": _terms_state(doc, plan.terms_template)
@@ -408,14 +471,15 @@ def _row(doc) -> dict:
 @frappe.whitelist()
 def get_memberships(customer: str) -> dict:
 	"""A customer's memberships and the plans on sale, for the Customer form's Memberships panel.
-	A Pending membership whose invoice has since been paid another way is activated here.
+	A membership whose invoice has since been paid another way is settled here.
 
 	Args:
 	    customer: Customer name (document id).
 
 	Returns:
 	    {plans: [{name, price, billing_period, registration_fee, auto_renew_default,
-	    terms_template}], memberships: [panel rows, live first], cards: the customer's active
+	    terms_template}], memberships: [panel rows, live first; a row says whether its renewal is
+	    overdue, can be retried on the card, or has a card charge waiting], cards: the customer's active
 	    recurring-use saved cards [{name, card_summary}], can_cancel: whether the caller may
 	    cancel}.
 	"""
@@ -427,7 +491,7 @@ def get_memberships(customer: str) -> dict:
 	rows = []
 	for name in names:
 		doc = frappe.get_doc(DOCTYPE, name)
-		if doc.status == PENDING and _paid_since(doc) and _settle_quietly(name):
+		if doc.status in LIVE and _paid_since(doc) and _settle_quietly(name):
 			doc.reload()
 		rows.append(_row(doc))
 	rows.sort(key=lambda r: r["status"] not in LIVE)
@@ -440,7 +504,7 @@ def get_memberships(customer: str) -> dict:
 
 
 def _paid_since(doc) -> bool:
-	"""A lock-free look: does a Pending membership's unpaid invoice owe nothing now?"""
+	"""A lock-free look: does a membership's unpaid invoice owe nothing now?"""
 	row = _unpaid_row(doc)
 	return bool(row) and flt(frappe.db.get_value("Sales Invoice", row.sales_invoice, "outstanding_amount")) <= 0.01
 
@@ -566,6 +630,7 @@ def cancel_membership(membership: str, reason: str, end_now=0) -> dict:
 	if doc.status not in (ACTIVE, PAST_DUE, SUSPENDED):
 		frappe.throw(_("{0} is {1}: only a running membership can be cancelled.").format(doc.name, _(doc.status)))
 	today = getdate(nowdate())
+	_void_open_renewals(doc, reason)
 	doc.update({"auto_renew": 0, "cancelled_on": today, "cancelled_by": frappe.session.user,
 		"cancel_reason": reason[:1000]})
 	if cint(end_now):
@@ -579,6 +644,22 @@ def cancel_membership(membership: str, reason: str, end_now=0) -> dict:
 	doc.flags.via_membership = True
 	doc.save(ignore_permissions=True)
 	return _row(doc)
+
+
+def _void_open_renewals(doc, reason: str) -> None:
+	"""Cancelling a membership with a renewal invoice nobody paid: that invoice goes too (voided
+	like a declined one). Refused while money or a card charge touched it."""
+	for row in doc.get("invoices") or []:
+		if row.status != UNPAID:
+			continue
+		si = frappe.get_doc("Sales Invoice", row.sales_invoice)
+		if si.docstatus != 1:
+			continue
+		if _touched(si):
+			frappe.throw(_("{0} has a payment or a card charge on it. Finish taking the payment, or resolve the "
+				"card charge, before cancelling the membership.").format(si.name))
+		row.credit_note = void_invoice(si, reason)
+		row.status = CANCELLED
 
 
 def _stop_service(doc, day) -> None:
@@ -625,14 +706,10 @@ def discard_membership(membership: str, reason: str) -> dict:
 			continue
 		si = frappe.get_doc("Sales Invoice", row.sales_invoice)
 		if si.docstatus == 1:
-			touched = flt(si.outstanding_amount) < flt(si.rounded_total or si.grand_total) - 0.005
-			if not touched and frappe.db.exists("DocType", "Card Terminal Payment"):
-				touched = bool(frappe.db.exists("Card Terminal Payment", {"sales_invoice": si.name,
-					"status": ("in", ("IN_PROGRESS", "CHARGED"))}))
-			if touched:
+			if _touched(si):
 				frappe.throw(_("{0} has a payment or a card charge on it. Finish taking the payment, or have a "
 					"manager refund it, instead of dropping the membership.").format(si.name))
-			void_invoice(si, reason)
+			row.credit_note = void_invoice(si, reason)
 		row.status = CANCELLED
 	doc.update({"status": CANCELLED, "auto_renew": 0, "cancelled_on": getdate(nowdate()),
 		"cancelled_by": frappe.session.user, "cancel_reason": reason[:1000]})
@@ -641,12 +718,21 @@ def discard_membership(membership: str, reason: str) -> dict:
 	return _row(doc)
 
 
-def void_invoice(si, reason: str) -> str | None:
+def _touched(si) -> bool:
+	"""Whether any money reached *si* or a card charge on it is captured or still waiting: then it
+	is not voided (cpa: outstanding must equal the total)."""
+	if flt(si.outstanding_amount) < flt(si.rounded_total or si.grand_total) - 0.005:
+		return True
+	return bool(frappe.db.exists("DocType", "Card Terminal Payment") and frappe.db.exists("Card Terminal Payment",
+		{"sales_invoice": si.name, "status": ("in", ("IN_PROGRESS", "CHARGED"))}))
+
+
+def void_invoice(si, reason: str, remarks: str | None = None) -> str | None:
 	"""Undo an unpaid membership invoice. Cancelled outright only while nothing about it has reached
 	the books past its own posting: posted this month and no deferred revenue booked from it yet.
 	Otherwise a cancel would rewrite a booked month, so its service stops today and a full credit
 	note (not deferred, :func:`book_refunds_at_once`) takes it back. Returns the credit note's name,
-	or None when the invoice was cancelled."""
+	or None when the invoice was cancelled. *remarks* replaces the credit note's default remarks."""
 	today = getdate(nowdate())
 	if getdate(si.posting_date) >= today.replace(day=1) and not _deferred_booked(si):
 		si.flags.via_membership = True
@@ -665,7 +751,7 @@ def void_invoice(si, reason: str) -> str | None:
 	# update_outstanding_for_self off: the credit note settles the voided invoice instead of standing
 	# as a separate credit the customer could spend.
 	ret.update({"set_posting_time": 1, "posting_date": today, "update_outstanding_for_self": 0,
-		"remarks": _("Void of unpaid membership invoice {0}: {1}").format(si.name, reason)[:1000]})
+		"remarks": (remarks or _("Void of unpaid membership invoice {0}: {1}").format(si.name, reason))[:1000]})
 	ret.flags.ignore_permissions = True
 	ret.insert()
 	# No "Sale Receipt" email for a void of a sale the customer never paid for (receipts.py).
@@ -712,6 +798,473 @@ def refuse_invoice_cancel(doc, method=None) -> None:
 		frappe.throw(_("{0} is the invoice of membership {1}. To end the membership, cancel it from the customer's "
 			"Memberships panel; to give money back, make a credit note. The invoice itself stays.").format(
 			doc.name, parent), title=_("Membership invoice"))
+
+
+# ------------------------------------------------------------------ renewals
+
+
+def next_period(doc, billing_period: str, today=None):
+	"""The period an overdue renewal bills: the one right after the current period (from the
+	original due date, never shifted — paying within grace), except for a Suspended membership,
+	whose grace is over: it starts again today, so the months it was suspended are not billed."""
+	if doc.status == SUSPENDED:
+		for row in doc.get("invoices") or []:           # one open rejoin invoice at a time (C4)
+			if row.status == UNPAID and doc.current_period_end and row.period_start \
+					and getdate(row.period_start) > getdate(add_days(doc.current_period_end, 1)) \
+					and frappe.db.get_value("Sales Invoice", row.sales_invoice, "docstatus") == 1:
+				return getdate(row.period_start), getdate(row.period_end)
+		start = getdate(today or nowdate())
+		return start, period_end(start, billing_period)
+	return renewal_period(doc, billing_period)
+
+
+def renewal_period(doc, billing_period: str):
+	"""(start, end) of the period after the membership's current one. It starts the day after the
+	current period ends — never shifted, even when paid late — and ends the day before the next
+	anniversary of the start day, counted from ``start_date`` every time: a member who started on
+	the 31st is billed on the last day of a shorter month and on the 31st again after it (chaining
+	from a clamped month end would drift to the 28th for good)."""
+	start = getdate(add_days(doc.current_period_end, 1))
+	anchor = getdate(doc.start_date or doc.current_period_start or start)
+	months = 12 if billing_period == YEARLY else 1
+	k = max(1, ((start.year - anchor.year) * 12 + start.month - anchor.month) // months - 1)
+	while getdate(add_months(anchor, k * months)) <= start:
+		k += 1
+	return start, getdate(add_days(add_months(anchor, k * months), -1))
+
+
+def renewals_enabled() -> bool:
+	"""Membership Settings → Charge renewals automatically (on until a store turns it off)."""
+	return bool(single_flag(SETTINGS, "auto_renew_enabled", default=1))
+
+
+def _reminder_days() -> int:
+	row = frappe.db.sql("select value from `tabSingles` where doctype = %s and field = 'yearly_reminder_days'",
+		(SETTINGS,))
+	return 7 if not row or row[0][0] in (None, "") else cint(row[0][0])
+
+
+def _hook(name: str):
+	"""The card service's function behind *name* (ffl_integrations registers it), or None. Core
+	never imports the payments app: without it no card is chargeable and nothing is charged."""
+	paths = frappe.get_hooks(name)
+	return frappe.get_attr(paths[-1]) if paths else None
+
+
+def _chargeable(doc) -> bool:
+	"""The membership's card can be charged: the customer's, active, saved for recurring charges,
+	and the card service holds a token for it."""
+	if not _usable_card(doc.saved_card, doc.customer):
+		return False
+	check = _hook(CHARGEABLE_HOOK)
+	return bool(check and check(doc.saved_card))
+
+
+def _charge_waiting(sales_invoice: str | None) -> bool:
+	"""A card charge on the invoice is still waiting for the gateway's answer (the card service
+	locks the invoice against another charge until it is looked up)."""
+	return bool(sales_invoice and frappe.db.exists("DocType", "Card Terminal Payment") and frappe.db.exists(
+		"Card Terminal Payment", {"sales_invoice": sales_invoice, "status": "IN_PROGRESS"}))
+
+
+def _last_charge_status(sales_invoice: str) -> str | None:
+	if not frappe.db.exists("DocType", "Card Terminal Payment"):
+		return None
+	return frappe.db.get_value("Card Terminal Payment", {"sales_invoice": sales_invoice}, "status",
+		order_by="creation desc")
+
+
+def _charge_rows(sales_invoice: str) -> int:
+	if not frappe.db.exists("DocType", "Card Terminal Payment"):
+		return 0
+	return frappe.db.count("Card Terminal Payment", {"sales_invoice": sales_invoice})
+
+
+def _open_renewal(doc, start):
+	"""The renewal invoice for the period from *start* that is neither paid nor voided (at most one:
+	a retry charges it instead of making another)."""
+	for row in doc.get("invoices") or []:
+		if row.status == UNPAID and row.period_start and getdate(row.period_start) == getdate(start) \
+				and frappe.db.get_value("Sales Invoice", row.sales_invoice, "docstatus") == 1:
+			return row
+	return None
+
+
+def _waiting_renewal(doc) -> bool:
+	"""Some unpaid renewal invoice of *doc* has a card charge still waiting for the gateway."""
+	return any(r.status == UNPAID and _charge_waiting(r.sales_invoice) for r in doc.get("invoices") or [])
+
+
+def _fmt(day) -> str:
+	return frappe.format_value(getdate(day), {"fieldtype": "Date"})
+
+
+def _save(doc) -> None:
+	doc.flags.via_membership = True
+	doc.save(ignore_permissions=True)
+
+
+def renew_memberships() -> dict:
+	"""Daily, store-local morning: charge the renewals that are due, retry the past-due ones once a
+	day, suspend those whose grace ran out, then send the yearly reminders. Nothing runs with no plan
+	or with Membership Settings → Charge renewals automatically off. Each membership is its own
+	transaction (one failure is logged and leaves the others alone); running it twice the same day
+	tries nobody twice. Returns a tally of the outcomes."""
+	if not frappe.db.count(PLAN) or not renewals_enabled():
+		return {}
+	today = getdate(nowdate())
+	due = frappe.get_all(DOCTYPE, filters={"auto_renew": 1, "status": ("in", (ACTIVE, PAST_DUE)),
+		"current_period_end": ("<", today)}, pluck="name", order_by="current_period_end asc")
+	# Past due with auto-renew since switched off: not charged, but its grace still runs out.
+	lapsing = frappe.get_all(DOCTYPE, filters={"auto_renew": 0, "status": PAST_DUE}, pluck="name")
+	tally: dict = {}
+	for name in due + lapsing:
+		out = _renew_safely(name, today)
+		tally[out] = tally.get(out, 0) + 1
+	tally["reminded"] = send_renewal_reminders(today)
+	return tally
+
+
+def _renew_safely(name: str, today) -> str:
+	# Commit first: the membership's row lock must be the first read of a fresh transaction
+	# (REPEATABLE READ — a lock after a plain read can see a stale snapshot, or fail with 1020).
+	commit()
+	frappe.db.savepoint("membership_renewal")
+	try:
+		out = _renew_one(name, today)
+		commit()
+		return out
+	except Exception:
+		try:
+			frappe.db.rollback(save_point="membership_renewal")
+		except Exception:   # noqa: BLE001 — the card service committed past the savepoint
+			frappe.db.rollback()
+		frappe.log_error(title=f"Membership {name}: renewal failed", message=frappe.get_traceback())
+		commit()
+		return "error"
+
+
+def _renew_one(name: str, today) -> str:
+	if not frappe.db.get_value(DOCTYPE, name, "name", for_update=True):
+		return SKIPPED
+	doc = frappe.get_doc(DOCTYPE, name)
+	if doc.status == PAST_DUE and _waiting_renewal(doc):
+		return UNKNOWN                               # a manager resolves it first (Needs attention)
+	if doc.status == PAST_DUE and (not doc.grace_until or getdate(doc.grace_until) < today):
+		doc.status = SUSPENDED
+		doc.last_charge_status = _("Suspended {0}: the renewal was not paid within the grace days.").format(_fmt(today))
+		_save(doc)
+		return SUSPENDED_NOW
+	if not (cint(doc.auto_renew) and doc.status in (ACTIVE, PAST_DUE) and not cint(doc.cancel_at_period_end)
+			and doc.current_period_end and getdate(doc.current_period_end) < today):
+		return SKIPPED
+	if doc.last_charge_attempt and getdate(doc.last_charge_attempt) >= today:
+		return SKIPPED                               # tried today already
+	return _attempt(doc, frappe.get_doc(PLAN, doc.plan), today)
+
+
+def _attempt(doc, plan, today, *, manual: bool = False) -> str:
+	"""One renewal charge for *doc* (row-locked by the caller): the open renewal invoice of the next
+	period, else a new one (only when there is a card to charge — no card, no invoice), charged on
+	the saved card through the card service. A charge still waiting for the gateway is left alone by
+	the job; a manager's Retry now (``manual``) has the card service look it up — it never charges
+	twice."""
+	start, end = next_period(doc, plan.billing_period, today)
+	row = _open_renewal(doc, start)
+	waiting = bool(row) and _charge_waiting(row.sales_invoice)
+	if waiting and not manual:
+		return UNKNOWN
+	if row and not waiting and flt(frappe.db.get_value("Sales Invoice", row.sales_invoice, "outstanding_amount")) <= 0.01:
+		settle(doc.name)                             # paid some other way since
+		return RENEWED
+	charge = _hook(CHARGE_HOOK)
+	if not charge or (not waiting and not _chargeable(doc)):
+		doc.last_charge_attempt = today
+		_fail(doc, plan, today, _("No card to charge for the renewal from {0}.").format(_fmt(start)))
+		_save(doc)
+		return NO_CARD
+	frappe.db.savepoint("membership_renewal_charge")
+	if not row:
+		si = _make_invoice(doc, plan, start, end=end, posting=today, renewal=True)
+		row = doc.append("invoices", {"sales_invoice": si.name, "period_start": start, "period_end": end,
+			"status": UNPAID})
+	invoice = row.sales_invoice
+	doc.last_charge_attempt = today
+	doc.last_charge_status = _("Charging the card for {0}.").format(invoice)
+	_save(doc)
+	before = _charge_rows(invoice)
+	error = None
+	try:
+		out = charge(invoice, doc.saved_card, None, frappe.session.user)
+	except Exception as e:   # noqa: BLE001 — sorted below by what the card service recorded
+		out, error = None, strip_html(str(e))[:300]
+	# The card service committed on the way (its charge record is durable before the gateway call),
+	# which released the lock: take it again before reading back.
+	frappe.db.get_value(DOCTYPE, doc.name, "name", for_update=True)
+	doc.reload()
+	if out and out.get("ok"):
+		settle(doc.name)
+		doc.reload()
+		if not _open_renewal(doc, start):
+			return RENEWED
+		error = _("only part of the amount was approved")
+	if _charge_waiting(invoice):
+		doc.last_charge_status = _("The card charge for {0} was not confirmed by the gateway. It is not charged "
+			"again: look it up with Retry now (Membership Settings → Needs attention).").format(invoice)
+		_save(doc)
+		return UNKNOWN
+	if not out and not waiting and _charge_rows(invoice) == before and _rollback_to("membership_renewal_charge"):
+		# Refused before any charge record was written — the gateway was never reached (the card
+		# processor is off or not set up: the store's problem, not the card's). Nothing stays booked;
+		# the job tries again tomorrow.
+		doc.reload()
+		doc.last_charge_attempt = today
+		doc.last_charge_status = _("Renewal not charged: {0} It is tried again tomorrow.").format(error or "")
+		_save(doc)
+		return NOT_STARTED
+	if not out and _charge_rows(invoice) > before and _last_charge_status(invoice) == "CANCELED":
+		# The card service reached the processor and it refused the request itself (expired key,
+		# feature off, bad setup) — recorded CANCELED, nothing charged. The store's problem, not the
+		# card's: the invoice is voided and the membership keeps its status; tried again tomorrow.
+		row = next((r for r in doc.invoices if r.sales_invoice == invoice), None)
+		if row and row.status == UNPAID:
+			_void_declined(doc, row, error or "")
+		doc.last_charge_status = _("Renewal not charged: the card processor refused the request ({0}). It is "
+			"tried again tomorrow.").format(error or "")
+		_save(doc)
+		return NOT_STARTED
+	why = error or (out or {}).get("error") or _("Card declined.")
+	row = next((r for r in doc.invoices if r.sales_invoice == invoice), None)
+	if row and row.status == UNPAID:
+		_void_declined(doc, row, why)
+	_fail(doc, plan, today, _("Renewal charge for {0} declined: {1}").format(invoice, why))
+	_save(doc)
+	return DECLINED
+
+
+def _rollback_to(savepoint: str) -> bool:
+	try:
+		frappe.db.rollback(save_point=savepoint)
+		return True
+	except Exception:   # noqa: BLE001 — committed past it: handled as a decline instead
+		return False
+
+
+def _void_declined(doc, row, why: str) -> None:
+	"""Void the renewal invoice of a declined charge (cancelled while nothing about it reached the
+	books past its posting day, else stopped today and taken back by a full credit note:
+	:func:`void_invoice`). One with money on it stays open: the next retry charges what is left. A
+	void that fails is logged and the invoice stays open the same way."""
+	si = frappe.get_doc("Sales Invoice", row.sales_invoice)
+	if si.docstatus != 1 or _touched(si):
+		return
+	frappe.db.savepoint("membership_void")
+	try:
+		row.credit_note = void_invoice(si, why, remarks=_("Void of declined renewal {0}").format(si.name))
+		row.status = CANCELLED
+	except Exception:
+		frappe.db.rollback(save_point="membership_void")
+		frappe.log_error(title=f"Membership {doc.name}: declined renewal {si.name} not voided",
+			message=frappe.get_traceback())
+
+
+def _fail(doc, plan, today, message: str) -> None:
+	"""The renewal was not paid. An Active membership goes Past Due until its period end + the plan's
+	grace days (retried daily meanwhile), or Suspended at once when the plan gives no grace (or the
+	grace is already over). Past Due and Suspended stay as they are: the job suspends when the
+	grace runs out."""
+	if doc.status == ACTIVE:
+		days = cint(plan.grace_days) if cint(plan.grace_enabled) else 0
+		grace = getdate(add_days(doc.current_period_end, days)) if days > 0 else None
+		if grace and grace >= today:
+			doc.status, doc.grace_until = PAST_DUE, grace
+			message += " " + _("Past due: tried again daily until {0}.").format(_fmt(grace))
+		else:
+			doc.status, doc.grace_until = SUSPENDED, None
+			message += " " + _("Suspended.")
+	doc.last_charge_status = message[:1000]
+
+
+def _check_overdue(doc, today) -> None:
+	if doc.status not in (ACTIVE, PAST_DUE, SUSPENDED) or cint(doc.cancel_at_period_end) \
+			or not doc.current_period_end or getdate(doc.current_period_end) >= today:
+		frappe.throw(_("{0} has no renewal due: it is {1}, paid until {2}.").format(doc.name, _(doc.status),
+			_fmt(doc.current_period_end) if doc.current_period_end else "—"))
+
+
+@frappe.whitelist(methods=["POST"])
+def retry_renewal(membership: str) -> dict:
+	"""Charge a membership's saved card now for its overdue renewal (Past Due, Suspended, or Active
+	past its period end). Paid: Active again, the new period starting at the original due date. A
+	card charge still waiting for the gateway's answer is looked up, never sent again.
+
+	Args:
+	    membership: Membership name.
+
+	Returns:
+	    {outcome: renewed / declined / unknown / not_started, message: what happened, row: the
+	    membership's panel row}.
+	"""
+	frappe.only_for(CUSTOMER_MANAGER_ROLES)
+	doc = _locked(membership)
+	today = getdate(nowdate())
+	_check_overdue(doc, today)
+	plan = frappe.get_doc(PLAN, doc.plan)
+	start, _end = next_period(doc, plan.billing_period, today)
+	row = _open_renewal(doc, start)
+	if not (row and _charge_waiting(row.sales_invoice)) and not _chargeable(doc):
+		frappe.throw(_("{0} has no card that can be charged for renewals. Change the card, or take the payment "
+			"at the counter (Take payment on the customer's Memberships panel).").format(
+			escape_html(doc.customer_name or doc.customer)), title=_("No card"))
+	outcome = _attempt(doc, plan, today, manual=True)
+	doc.reload()
+	return {"outcome": outcome, "message": doc.last_charge_status, "row": _row(doc)}
+
+
+@frappe.whitelist(methods=["POST"])
+def invoice_renewal(membership: str) -> dict:
+	"""The overdue renewal's invoice (the open one, else a new one for the next period from the
+	original due date), for the counter to take payment by any tender. Paid: Active again.
+
+	Args:
+	    membership: Membership name (Past Due, Suspended, or Active past its period end).
+
+	Returns:
+	    {sales_invoice, outstanding, customer, auto_renew: 0 (no card charge from this flow)}.
+	"""
+	frappe.only_for(COUNTER_ROLES)
+	doc = _locked(membership)
+	today = getdate(nowdate())
+	_check_overdue(doc, today)
+	plan = frappe.get_doc(PLAN, doc.plan)
+	start, end = next_period(doc, plan.billing_period, today)
+	row = _open_renewal(doc, start)
+	if row and _charge_waiting(row.sales_invoice):
+		frappe.throw(_("A card charge on {0} is waiting for the gateway's answer. A manager looks it up first "
+			"(Retry now); taking another payment now could charge the customer twice.").format(row.sales_invoice),
+			title=_("Charge not confirmed"))
+	if not row:
+		si = _make_invoice(doc, plan, start, end=end, posting=today, renewal=True)
+		row = doc.append("invoices", {"sales_invoice": si.name, "period_start": start, "period_end": end,
+			"status": UNPAID})
+		_save(doc)
+	return {"sales_invoice": row.sales_invoice, "customer": doc.customer, "auto_renew": 0,
+		"outstanding": flt(frappe.db.get_value("Sales Invoice", row.sales_invoice, "outstanding_amount"))}
+
+
+def is_member(customer: str, plan: str | None = None) -> bool:
+	"""Whether *customer* has a membership's benefits today (of *plan*, or of any plan): Active, or
+	Past Due while its grace lasts. Pending, Suspended, Cancelled and Expired do not count."""
+	if not customer:
+		return False
+	filters = {"customer": customer, "status": ("in", (ACTIVE, PAST_DUE))}
+	if plan:
+		filters["plan"] = plan
+	today = getdate(nowdate())
+	return any(r.status == ACTIVE or (r.grace_until and getdate(r.grace_until) >= today)
+		for r in frappe.get_all(DOCTYPE, filters=filters, fields=["status", "grace_until"]))
+
+
+@frappe.whitelist()
+def needs_attention() -> dict:
+	"""Memberships a manager should look at: Past Due, Suspended, a renewal charge the gateway never
+	confirmed, a renewal the job could not charge, and sign-ups still unpaid after a few days.
+
+	Returns:
+	    {renewals_on: whether the daily renewal job runs, rows: [{membership, customer,
+	    customer_name, plan, status, reason, detail, sales_invoice, outstanding, can_retry,
+	    can_cancel, can_drop}]}.
+	"""
+	frappe.only_for(CUSTOMER_MANAGER_ROLES)
+	today = getdate(nowdate())
+	fields = ["name", "status", "current_period_end", "last_charge_attempt"]
+	names = [m.name for m in frappe.get_all(DOCTYPE, filters={"status": ("in", (PAST_DUE, SUSPENDED))},
+		fields=fields, order_by="current_period_end asc")]
+	# Active past its period end: not charged, not confirmed, or the renewal job is switched off.
+	# A charge still waiting for the gateway is listed whatever auto-renew says now.
+	names += [m.name for m in frappe.get_all(DOCTYPE, filters={"status": ACTIVE, "current_period_end": ("<", today)},
+		fields=["name", "auto_renew", "cancel_at_period_end"], order_by="current_period_end asc")
+		if (cint(m.auto_renew) and not cint(m.cancel_at_period_end)) or _waiting_renewal(frappe.get_doc(DOCTYPE, m.name))]
+	stale = add_to_date(now_datetime(), days=-STALE_PENDING_DAYS)
+	names += frappe.get_all(DOCTYPE, filters={"status": PENDING, "creation": ("<", stale)}, pluck="name",
+		order_by="creation asc")
+	rows = []
+	for name in names:
+		doc = frappe.get_doc(DOCTYPE, name)
+		unpaid = _unpaid_row(doc)
+		if doc.status == PENDING and not unpaid:
+			continue
+		waiting = bool(unpaid) and _charge_waiting(unpaid.sales_invoice)
+		if waiting:
+			reason = _("Card charge not confirmed")
+		elif doc.status == PENDING:
+			reason = _("Sign-up not paid since {0}").format(_fmt(doc.creation))
+		elif doc.status == PAST_DUE:
+			reason = _("Past due: retried daily until {0}").format(_fmt(doc.grace_until)) if doc.grace_until \
+				else _("Past due")
+		elif doc.status == SUSPENDED:
+			reason = _("Suspended")
+		elif not doc.last_charge_attempt or getdate(doc.last_charge_attempt) <= getdate(doc.current_period_end):
+			reason = _("Renewal not tried yet")
+		else:
+			reason = _("Renewal not charged")
+		rows.append({"membership": doc.name, "customer": doc.customer, "customer_name": doc.customer_name,
+			"plan": doc.plan, "status": doc.status, "reason": reason, "detail": doc.last_charge_status or "",
+			"sales_invoice": unpaid.sales_invoice if unpaid else None,
+			"outstanding": flt(frappe.db.get_value("Sales Invoice", unpaid.sales_invoice, "outstanding_amount"))
+				if unpaid else 0,
+			"can_retry": doc.status != PENDING and not cint(doc.cancel_at_period_end) and (waiting or _chargeable(doc)),
+			"can_cancel": doc.status in (ACTIVE, PAST_DUE, SUSPENDED) and not waiting,
+			"can_drop": doc.status == PENDING and not waiting})
+	return {"renewals_on": renewals_enabled(), "rows": rows}
+
+
+def send_renewal_reminders(today=None) -> int:
+	"""Email the customer of each auto-renewing Yearly membership once, Membership Settings → yearly
+	reminder days before its renewal charge (0 = no reminders). Monthly renewals send none. Returns
+	how many went out."""
+	days = _reminder_days()
+	if days <= 0:
+		return 0
+	today = getdate(today or nowdate())
+	from ffl_core.store_identity import company_brand
+
+	sent = 0
+	for m in frappe.db.sql(f"""select m.name, m.customer, m.customer_name, m.plan, m.current_period_end,
+			m.saved_card, m.company, m.renewal_reminder_for, p.plan_name, p.price
+		from `tab{DOCTYPE}` m join `tab{PLAN}` p on p.name = m.plan
+		where m.status = %s and m.auto_renew = 1 and m.cancel_at_period_end = 0 and p.billing_period = %s
+			and m.current_period_end >= %s and m.current_period_end < %s""",
+			(ACTIVE, YEARLY, today, add_days(today, days)), as_dict=True):
+		if m.renewal_reminder_for and getdate(m.renewal_reminder_for) == getdate(m.current_period_end):
+			continue
+		email = (frappe.db.get_value("Customer", m.customer, "email_id") or "").strip()
+		if not email:
+			continue
+		try:
+			cur = frappe.get_cached_value("Company", m.company, "default_currency") if m.company else None
+			store = company_brand(m.company).get("name") or ""
+			when = _fmt(add_days(m.current_period_end, 1))
+			plan = escape_html(m.plan_name or m.plan)
+			chargeable = _chargeable(frappe._dict(saved_card=m.saved_card, customer=m.customer))
+			card = escape_html(_card_summary(m.saved_card)) or _("the card on file")
+			frappe.sendmail(recipients=[email], subject=_("Your {0} membership renews on {1}").format(
+				m.plan_name or m.plan, when),
+				message="<p>{0}</p><p>{1}</p><p>{2}</p>".format(
+					_("Hello {0},").format(escape_html(m.customer_name or m.customer)),
+					_("Your {0} membership at {1} renews on {2}. That day {3} is charged to {4}.").format(
+						plan, escape_html(store), when, fmt_money(flt(m.price), currency=cur), card) if chargeable
+					else _("Your {0} membership at {1} renews on {2} ({3}), but there is no card on file we can "
+						"charge. Please visit or call the store before then to keep your membership.").format(
+						plan, escape_html(store), when, fmt_money(flt(m.price), currency=cur)),
+					_("To change the card or stop the renewal, contact the store before then.")),
+				reference_doctype=DOCTYPE, reference_name=m.name, now=False)
+			frappe.db.set_value(DOCTYPE, m.name, "renewal_reminder_for", m.current_period_end, update_modified=False)
+			commit()
+			sent += 1
+		except Exception:
+			frappe.log_error(title=f"Membership {m.name}: renewal reminder not sent", message=frappe.get_traceback())
+	return sent
 
 
 # ------------------------------------------------------------------ daily

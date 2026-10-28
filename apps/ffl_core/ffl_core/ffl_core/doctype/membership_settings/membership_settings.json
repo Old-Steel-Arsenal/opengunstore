@@ -1,0 +1,71 @@
+{
+ "actions": [],
+ "creation": "2026-10-28 12:00:00.000000",
+ "description": "Automatic membership renewals and the memberships that need a manager's attention.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "attention_tab",
+  "attention_html",
+  "renewals_tab",
+  "auto_renew_enabled",
+  "yearly_reminder_days"
+ ],
+ "fields": [
+  {
+   "fieldname": "attention_tab",
+   "fieldtype": "Tab Break",
+   "label": "Needs attention"
+  },
+  {
+   "fieldname": "attention_html",
+   "fieldtype": "HTML",
+   "label": "Needs attention"
+  },
+  {
+   "fieldname": "renewals_tab",
+   "fieldtype": "Tab Break",
+   "label": "Renewals"
+  },
+  {
+   "default": "1",
+   "fieldname": "auto_renew_enabled",
+   "fieldtype": "Check",
+   "label": "Charge renewals automatically",
+   "description": "Every morning, charge the saved card of each auto-renewing membership that is due."
+  },
+  {
+   "default": "7",
+   "fieldname": "yearly_reminder_days",
+   "fieldtype": "Int",
+   "label": "Yearly renewal reminder (days before)",
+   "non_negative": 1,
+   "description": "Email yearly members this many days before their renewal charge. 0 sends no reminder."
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-10-28 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FFL Core",
+ "name": "Membership Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Sales Manager",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

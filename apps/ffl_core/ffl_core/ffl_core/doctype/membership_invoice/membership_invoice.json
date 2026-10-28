@@ -1,7 +1,7 @@
 {
  "actions": [],
  "creation": "2026-10-27 12:00:00.000000",
- "modified": "2026-10-27 12:00:00.000000",
+ "modified": "2026-10-28 12:00:00.000000",
  "modified_by": "Administrator",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -14,7 +14,8 @@
   "sales_invoice",
   "period_start",
   "period_end",
-  "status"
+  "status",
+  "credit_note"
  ],
  "fields": [
   {
@@ -47,6 +48,15 @@
    "default": "Unpaid",
    "read_only": 1,
    "in_list_view": 1
+  },
+  {
+   "fieldname": "credit_note",
+   "fieldtype": "Link",
+   "options": "Sales Invoice",
+   "label": "Credit Note",
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "The credit note that voided this invoice, when cancelling it was not allowed."
   }
  ],
  "states": [],

@@ -308,6 +308,19 @@ def list_saved_cards(customer: str) -> dict:
 # ---------------------------------------------------------------- charging a saved card
 
 
+def card_chargeable(saved_card: str | None) -> bool:
+	"""Whether a saved card can be charged at all: Active and holding its gateway token. A card
+	fact only — whether the processor is reachable today is the charge's own business. Never
+	raises (the membership renewal job asks before it makes an invoice)."""
+	try:
+		if not saved_card or frappe.db.get_value(SAVED_CARD, saved_card, "status") != ACTIVE:
+			return False
+		return bool(get_decrypted_password(SAVED_CARD, saved_card, "token", raise_exception=False))
+	except Exception:  # noqa: BLE001
+		return False
+
+
+
 def _lock_message(label: str) -> str:
 	return _("{0} did not confirm the saved-card charge, so it may or may not have gone through. "
 		"Do not charge this card again and do not take another payment for this amount: click "
