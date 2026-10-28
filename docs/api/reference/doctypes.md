@@ -567,7 +567,7 @@ A membership a customer can buy: what it costs, how often it bills, and its regi
 | `active` | Check | Active |  |  |
 | `billing_period` | Select | Billing Period | ✓ | Monthly, Yearly |
 | `price` | Currency | Price per Period | ✓ |  |
-| `item` | Link | Billed Item | ✓ | Item |
+| `item` | Link | Billed Item |  | Item |
 | `description` | Small Text | Description |  |  |
 | `registration_item` | Link | Registration Item |  | Item |
 | `registration_fee` | Currency | Registration Fee |  |  |
@@ -580,7 +580,7 @@ A membership a customer can buy: what it costs, how often it bills, and its regi
 
 app: `ffl_core` · module: FFL Core · single · roles: Sales Manager, System Manager
 
-Automatic membership renewals and the memberships that need a manager's attention.
+Automatic membership renewals. Members, plans and the memberships that need attention are on the Memberships page.
 
 | field | type | label | reqd | options |
 |---|---|---|---|---|

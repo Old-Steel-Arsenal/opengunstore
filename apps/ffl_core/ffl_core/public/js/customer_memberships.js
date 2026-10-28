@@ -8,6 +8,9 @@
 //   An overdue renewal (Past Due / Suspended / not charged) offers Retry card (managers) and Take
 //   payment (any tender on the renewal invoice); paid, it is Active again from the original due date.
 //   Shown only once the store has an active plan or the customer has a membership.
+//   The actions take a context {customer, customer_name, refresh} instead of the form, and are
+//   window.ffl.memberships — the Memberships page (page/memberships) sells and settles through
+//   the same code. Loaded on every desk page (hooks app_include_js) for that reason.
 (function () {
 	const M = 'ffl_core.membership.';
 	const READ_ROLES = ['Sales User', 'Sales Manager', 'Stock Manager', 'System Manager', 'Accounts User', 'Accounts Manager'];
@@ -39,10 +42,11 @@
 			(out.memberships || []).forEach((m) => $block.find('tbody').append(rowHtml(m, out)));
 			$anchor.siblings('.ffl-memberships').remove();
 			$anchor.after($block);
+			const ctx = { customer, customer_name: frm.doc.customer_name, refresh: () => render(frm) };
 			$block.on('click', '[data-act]', (e) => {
 				const $b = $(e.currentTarget);
 				const m = (out.memberships || []).find((x) => x.name === $b.attr('data-name'));
-				act($b.attr('data-act'), frm, out, m);
+				act($b.attr('data-act'), ctx, m, out);
 			});
 		}, () => { /* nothing to show */ });
 	}
@@ -80,13 +84,16 @@
 			<td class="text-right" style="white-space:nowrap">${buttons}</td></tr>`;
 	}
 
-	async function act(what, frm, out, m) {
-		const refresh = () => render(frm);
+	// what: sell | terms | collect | pay | retry | renew-off | renew-on | card | cancel | drop.
+	// m: the membership ({name, current_period_end, saved_card, terms_template}); out: {plans, cards}.
+	async function act(what, ctx, m, out) {
+		const refresh = ctx.refresh;
+		out = out || {};
 		try {
-			if (what === 'sell') return sell(frm, out);
-			if (what === 'terms') return askTerms(frm, m);
-			if (what === 'collect') return collect(frm, m);
-			if (what === 'pay') return collect(frm, m, 'invoice_renewal');
+			if (what === 'sell') return sell(ctx, out.plans);
+			if (what === 'terms') return askTerms(ctx, m);
+			if (what === 'collect') return collect(ctx, m);
+			if (what === 'pay') return collect(ctx, m, 'invoice_renewal');
 			if (what === 'retry') {
 				const r = await call('retry_renewal', { membership: m.name });
 				frappe.msgprint({ message: esc(r.message || ''), indicator: r.outcome === 'renewed' ? 'green' : 'orange', title: __('Renewal') });
@@ -96,20 +103,22 @@
 				await call('set_auto_renew', { membership: m.name, enabled: what === 'renew-on' ? 1 : 0 });
 				return refresh();
 			}
-			if (what === 'card') return changeCard(frm, out, m);
-			if (what === 'cancel') return cancel(frm, m);
-			if (what === 'drop') return drop(frm, m);
+			if (what === 'card') return changeCard(ctx, out, m);
+			if (what === 'cancel') return cancel(ctx, m);
+			if (what === 'drop') return drop(ctx, m);
 		} catch (e) { refresh(); /* the server message already showed */ }
 	}
 
-	function sell(frm, out) {
-		const plans = out.plans || [];
+	// No ctx.customer (the Memberships page): the dialog asks for the customer too.
+	function sell(ctx, plans) {
+		plans = plans || [];
 		const label = (p) => `${p.name} (${format_currency(p.price)} ${__(p.billing_period === 'Yearly' ? 'per year' : 'per month')})`;
 		const byLabel = {};
 		plans.forEach((p) => { byLabel[label(p)] = p; });
 		const d = new frappe.ui.Dialog({
 			title: __('Sell membership'),
 			fields: [
+				...(ctx.customer ? [] : [{ fieldtype: 'Link', fieldname: 'customer', label: __('Customer'), options: 'Customer', reqd: 1 }]),
 				{ fieldtype: 'Select', fieldname: 'plan', label: __('Plan'), reqd: 1, options: Object.keys(byLabel), default: Object.keys(byLabel)[0],
 					onchange: () => { const p = byLabel[d.get_value('plan')]; if (p) d.set_value('auto_renew', p.auto_renew_default ? 1 : 0); } },
 				{ fieldtype: 'Check', fieldname: 'auto_renew', label: __('Auto-renew'), default: plans.length && plans[0].auto_renew_default ? 1 : 0,
@@ -119,32 +128,34 @@
 			primary_action: async (v) => {
 				const p = byLabel[v.plan];
 				d.hide();
+				const c = ctx.customer ? ctx : Object.assign({}, ctx, { customer: v.customer,
+					customer_name: (await frappe.db.get_value('Customer', v.customer, 'customer_name')).message.customer_name });
 				try {
-					const m = await call('start_membership', { customer: frm.doc.name, plan: p.name, auto_renew: v.auto_renew ? 1 : 0 });
-					if (m.terms_template && !['signed', 'expiring'].includes(m.terms_state)) return askTerms(frm, m);
-					return collect(frm, m);
-				} catch (e) { render(frm); }
+					const m = await call('start_membership', { customer: c.customer, plan: p.name, auto_renew: v.auto_renew ? 1 : 0 });
+					if (m.terms_template && !['signed', 'expiring'].includes(m.terms_state)) return askTerms(c, m);
+					return collect(c, m);
+				} catch (e) { c.refresh(); }
 			},
 		});
 		d.show();
 	}
 
-	function askTerms(frm, m) {
+	function askTerms(ctx, m) {
 		if (!(window.ffl && window.ffl.agreements)) return;
-		render(frm);
-		window.ffl.agreements.request(frm.doc.name, m.terms_template, {
-			customer_name: frm.doc.customer_name, reference_doctype: 'Membership', reference_name: m.name,
-			done: () => render(frm),
+		ctx.refresh();
+		window.ffl.agreements.request(ctx.customer, m.terms_template, {
+			customer_name: ctx.customer_name, reference_doctype: 'Membership', reference_name: m.name,
+			done: ctx.refresh,
 		});
 		frappe.show_alert({ message: __('Once {0} is signed, click Collect payment.', [esc(m.terms_template)]), indicator: 'blue' }, 8);
 	}
 
-	async function collect(frm, m, method) {
+	async function collect(ctx, m, method) {
 		const inv = await call(method || 'invoice_membership', { membership: m.name });
 		const si = inv.sales_invoice;
 		const owed = flt(inv.outstanding);
-		if (owed <= 0.005) return render(frm);
-		if (inv.auto_renew) return chargeAndSave(frm, m, si, owed);
+		if (owed <= 0.005) return ctx.refresh();
+		if (inv.auto_renew) return chargeAndSave(ctx, m, si, owed);
 		const tr = window.ffl && window.ffl.tenderReference;
 		const d = new frappe.ui.Dialog({
 			title: __('Membership payment — {0}', [si]),
@@ -167,7 +178,7 @@
 							args: { sales_invoice: si, mode_of_payment: v.mode, amount: owed, transaction_number: v.transaction_number || '' } });
 					}
 				} catch (e) { /* the server message already showed */ }
-				render(frm);
+				ctx.refresh();
 			},
 		});
 		if (tr && tr.wire) tr.wire(d);
@@ -183,26 +194,26 @@
 		};
 	}
 
-	async function chargeAndSave(frm, m, si, owed) {
+	async function chargeAndSave(ctx, m, si, owed) {
 		const cof = window.ffl && window.ffl.cardOnFile;
-		const offer = terminalLive() && cof ? await cof.offer(frm.doc.name) : null;
+		const offer = terminalLive() && cof ? await cof.offer(ctx.customer) : null;
 		if (!offer) {
 			// The Pending row has no auto-renew switch: offer to drop auto-renew here and take payment.
 			frappe.confirm(__('This store cannot save the card on the terminal right now, so auto-renew cannot be set up. Take this payment without auto-renew?'),
 				async () => {
 					try {
 						await call('set_auto_renew', { membership: m.name, enabled: 0 });
-						await collect(frm, m);
-					} catch (e) { render(frm); }
-				}, () => render(frm));
+						await collect(ctx, m);
+					} catch (e) { ctx.refresh(); }
+				}, ctx.refresh);
 			return;
 		}
-		if (!(await cof.ensureSigned(frm.doc.name, offer, frm.doc.customer_name))) return render(frm);
+		if (!(await cof.ensureSigned(ctx.customer, offer, ctx.customer_name))) return ctx.refresh();
 		await window.ffl.terminalCharge(terminalSpec(si, owed, 1));
-		render(frm);
+		ctx.refresh();
 	}
 
-	function changeCard(frm, out, m) {
+	function changeCard(ctx, out, m) {
 		const cards = out.cards || [];
 		const d = new frappe.ui.Dialog({
 			title: __('Card for renewals'),
@@ -212,13 +223,13 @@
 			primary_action: async (v) => {
 				d.hide();
 				try { await call('change_card', { membership: m.name, saved_card: v.card }); } catch (e) { /* shown */ }
-				render(frm);
+				ctx.refresh();
 			},
 		});
 		d.show();
 	}
 
-	function cancel(frm, m) {
+	function cancel(ctx, m) {
 		const d = new frappe.ui.Dialog({
 			title: __('Cancel membership {0}', [m.name]),
 			fields: [
@@ -230,13 +241,13 @@
 			primary_action: async (v) => {
 				d.hide();
 				try { await call('cancel_membership', { membership: m.name, reason: v.reason, end_now: v.end_now ? 1 : 0 }); } catch (e) { /* shown */ }
-				render(frm);
+				ctx.refresh();
 			},
 		});
 		d.show();
 	}
 
-	function drop(frm, m) {
+	function drop(ctx, m) {
 		const d = new frappe.ui.Dialog({
 			title: __('Drop membership {0}', [m.name]),
 			fields: [{ fieldtype: 'Small Text', fieldname: 'reason', label: __('Reason'), reqd: 1,
@@ -245,11 +256,13 @@
 			primary_action: async (v) => {
 				d.hide();
 				try { await call('discard_membership', { membership: m.name, reason: v.reason }); } catch (e) { /* shown */ }
-				render(frm);
+				ctx.refresh();
 			},
 		});
 		d.show();
 	}
 
+	window.ffl = window.ffl || {};
+	window.ffl.memberships = { act, STATUS_COLOR };
 	frappe.ui.form.on('Customer', { refresh: render });
 })();

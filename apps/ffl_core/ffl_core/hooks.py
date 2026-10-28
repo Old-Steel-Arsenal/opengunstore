@@ -198,6 +198,9 @@ app_include_js = [
 	# (installClassHook) and aamva.js above; customer_quick_entry.js calls it.
 	_hashed("js/customer_flags.js"),
 	_hashed("js/customer_quick_entry.js"),
+	# customer_memberships.js: the Customer form's Memberships panel and ffl.memberships, the
+	# membership actions the Memberships page shares with it (membership.py).
+	_hashed("js/customer_memberships.js"),
 	# ffl.agreements.request: the Request agreement dialog (QR code / email / paper)
 	# the Customer form and the counter panel's agreement chips open.
 	_hashed("js/agreement_actions.js"),
@@ -695,8 +698,7 @@ doc_events = {
 # doctype_js = {"doctype" : "public/js/doctype.js"}
 doctype_js = {
     "Supplier": "public/js/supplier_form.js",
-    # customer_memberships.js: the Memberships panel (sell, cancel, auto-renew; membership.py).
-    "Customer": ["public/js/customer_form.js", "public/js/customer_memberships.js"],
+    "Customer": "public/js/customer_form.js",
     "Item": "public/js/item_form.js",
     "Serial No": "public/js/serial_no.js",
     "Purchase Receipt": "public/js/purchase_receipt.js",
