@@ -720,6 +720,47 @@ def _text_locked(pairs, distributor: str, priorities: dict) -> dict:
 	return {"updated": updated, "total": total}
 
 
+_CASE = "_dc_case"
+
+
+def apply_case_prices(rows, *, distributor: str) -> dict:
+	"""The case-price lane: ``(sku, case_cost, units_per_case)`` for the house's
+	WHOLE catalog (a snapshot: an offer the rows do not name, or name with no case
+	price, is set back to none). ``case_cost`` is per unit. A pair with a case size or
+	price of 0 or below stores as none (0, 0); the last line of a SKU wins; unknown
+	SKUs are ignored. Only ``case_cost`` / ``units_per_case`` are written — no
+	change_seq, no product refresh (a ship-to-store cost, not listing content).
+	-> ``{updated, total}`` (total = distinct SKUs staged) or ``LOCK_SKIPPED``."""
+	return _guarded(distributor, (_CASE,), lambda: _case_locked(rows, distributor))
+
+
+def _case_tuples(rows):
+	for s, cost, per_case in rows:
+		sku = norm_sku(s)
+		if not sku:
+			continue
+		cost, per_case = round(float(cost or 0), 2), int(per_case or 0)
+		yield (sku, cost, per_case) if cost > 0 and per_case > 0 else (sku, 0, 0)
+
+
+def _case_locked(rows, distributor: str) -> dict:
+	_drop_temp(_CASE)
+	frappe.db.sql(f"""CREATE TEMPORARY TABLE `{_CASE}` (
+		`sku` VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+		`case_cost` DECIMAL(12,2) NOT NULL, `units_per_case` INT NOT NULL,
+		PRIMARY KEY (`sku`)) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""")
+	_insert_chunks(_CASE, ("sku", "case_cost", "units_per_case"), _case_tuples(rows), upsert=True)
+	total = int(frappe.db.sql(f"SELECT COUNT(*) FROM `{_CASE}`")[0][0])
+	join = f"dc_offer o LEFT JOIN `{_CASE}` i ON i.sku = o.sku"
+	changed = """o.distributor = %s AND NOT (o.case_cost <=> COALESCE(i.case_cost, 0)
+		AND o.units_per_case <=> COALESCE(i.units_per_case, 0))"""
+	updated = int(frappe.db.sql(f"SELECT COUNT(*) FROM {join} WHERE {changed}", (distributor,))[0][0])
+	if updated:
+		frappe.db.sql(f"""UPDATE {join} SET o.case_cost = COALESCE(i.case_cost, 0),
+			o.units_per_case = COALESCE(i.units_per_case, 0) WHERE {changed}""", (distributor,))
+	return {"updated": updated, "total": total}
+
+
 _RST = "_dc_restriction"
 # GROUP_CONCAT's cap for one SKU's entries while the swap runs (the server
 # default, 1 MiB, would silently truncate a long list into broken JSON).
