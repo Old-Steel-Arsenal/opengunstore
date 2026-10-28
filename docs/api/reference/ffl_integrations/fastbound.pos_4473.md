@@ -150,4 +150,4 @@ Every view is written to Access Log.
 
 **Returns:** None — the response body is the PDF (``Content-Type: application/pdf``, shown inline).
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/pos_4473.py:608`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/pos_4473.py:612`</sub>

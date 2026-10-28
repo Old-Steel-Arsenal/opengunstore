@@ -337,6 +337,14 @@ line prices are worked back from it before tax, in proportion to their current
 subtotals, and the box clears. Shipping is kept as it is, so the total must be
 more than the shipping charge.
 
+**A price below the list price** asks a manager when you click **Create
+Order** (or **Save Changes** on an edit), as on the register: see
+[Lowering a price](pos.md#lowering-a-price). The list price is the gun's own
+price for a firearm (the cheapest gun of the model in stock while the line has
+none), and the Item Price for anything else. Distributor lines (drop-ship and
+ship to store) are priced from the distributor's quote and are not checked. Editing an order keeps the prices
+it already had; only a price lowered in the edit asks.
+
 Below the table sit **Shipping**, a tax preview, and the running **Total**. The
 tax preview reads "Out-of-state — no sales tax" when the ship-to state is not
 your home state, and "Tax exempt — no sales tax" when the exemption is on. An

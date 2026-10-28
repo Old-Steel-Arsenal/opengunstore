@@ -85,3 +85,5 @@ ffl_core.patches.seed_counter_lock_minutes
 ffl_core.patches.seed_enforce_sale_agreements
 # Membership renewals: the Membership Settings link (Needs attention) in the Settings workspace.
 ffl_core.patches.add_membership_settings_workspace_entry
+# Manager approval for lowered prices: off on stores that already ran (a new store starts with it on).
+ffl_core.patches.seed_price_approval_off

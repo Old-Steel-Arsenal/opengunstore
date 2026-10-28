@@ -60,7 +60,7 @@ from ffl_core.reservations import (
 )
 from ffl_core.setup.payments import CHECK_MONEY_ORDER, ZELLE
 
-from ffl_core import agreements, storage
+from ffl_core import agreements, price_approval, storage
 from ffl_core.roles import COUNTER_ROLES
 from ffl_core.compliance.shipping_charge import shipping_tax_inclusive_setting
 from ffl_core.utils import set_missing_values_keeping_taxes
@@ -275,7 +275,9 @@ def create_order(payload) -> dict:
 	        le_excise_exempt?, le_exempt_buyer?, le_exempt_certificate? —
 	            a peace officer's (or their agency's) sale: the excise tax comes
 	            off, sales tax stays; buyer and CDTFA-230-FET certificate required
-	            (compliance.le_excise_exempt)
+	            (compliance.le_excise_exempt),
+	        price_approval? — a manager's approval token for prices below list
+	            (price_approval.approve; needed while FFL Settings asks for one)
 	        } — dict or JSON string.
 
 	Agreements the buyer has not signed yet (FFL Settings › Used Item Agreement,
@@ -297,11 +299,13 @@ def create_order(payload) -> dict:
 	return _create_order(payload)
 
 
-def _create_order(payload, *, shipping_tax_inclusive: int | None = None) -> dict:
+def _create_order(payload, *, shipping_tax_inclusive: int | None = None,
+		prior_rates: dict | None = None) -> dict:
 	"""create_order's body. ``shipping_tax_inclusive`` pins the freight tax
 	basis instead of reading FFL Settings — update_order passes the edited
 	order's own. Never a payload key, so a
-	client cannot re-price the tax."""
+	client cannot re-price the tax. ``prior_rates`` (update_order): the edited
+	order's line prices, which the rebuild keeps without a manager's approval."""
 	payload = _coerce_payload(payload)
 
 	customer = (str(payload.get("customer") or "")).strip()
@@ -462,8 +466,21 @@ def _create_order(payload, *, shipping_tax_inclusive: int | None = None) -> dict
 			"it sales tax would fall back to the in-state rate. Check the address and "
 			"try again."), title=_("Shipping Address Not Saved"))
 
+	# A lowered price needs a manager (price_approval): the page asked one before sending and
+	# passes the approval token, taken once here for both the order and its invoice.
+	token = (str(payload.get("price_approval") or "")).strip()
+	approval = None
+	if token:
+		try:
+			approval = price_approval.take_token(token)
+		except price_approval.PriceApprovalRequired:
+			# Expired, used, or someone else's: worth nothing, but no reason to refuse an order that needs
+			# no approval at all — the validate gate still refuses one that does.
+			frappe.clear_last_message()
+
 	# --- Sales Order -------------------------------------------------------
 	so = frappe.new_doc("Sales Order")
+	price_approval.attach(so, approval, prior_rates)
 	so.company = company
 	so.customer = customer
 	so.delivery_date = frappe.utils.add_days(nowdate(), 7)
@@ -481,7 +498,9 @@ def _create_order(payload, *, shipping_tax_inclusive: int | None = None) -> dict
 		if r.get("storage_location"):
 			# Carried to the invoice and, for a deferred order, to its Delivery Note.
 			line["ffl_storage_location"] = r["storage_location"]
-		so.append("items", line)
+		row = so.append("items", line)
+		if r.get("source") in _ORDERED_SOURCES:
+			price_approval.mark_quoted(row)   # priced from the distributor's quote, not a list price
 	# Destination-based sales tax — unless the customer is tax exempt, in which
 	# case no template is applied (0%). Otherwise apply the company default so an
 	# in-state shipment is taxed; compliance.interstate_tax.apply_interstate_tax
@@ -516,6 +535,7 @@ def _create_order(payload, *, shipping_tax_inclusive: int | None = None) -> dict
 			"and ship-to-store lines ship from the Pending Order queue, drop-ship "
 			"lines ship from the distributor once their order is placed."), alert=True)
 	si = make_sales_invoice(so.name)
+	price_approval.attach(si, approval, prior_rates)
 	si.pos_profile = pos_profile
 	if destination_ffl:
 		si.ffl_destination_ffl = destination_ffl
@@ -3274,7 +3294,9 @@ def update_order(sales_invoice: str, payload, refund_mode: str | None = None,
 		# The rebuild keeps the order's own freight tax basis, whatever FFL
 		# Settings says now.
 		created = _create_order(payload,
-			shipping_tax_inclusive=cint(si.get("ffl_shipping_tax_inclusive")))
+			shipping_tax_inclusive=cint(si.get("ffl_shipping_tax_inclusive")),
+			# The order's own prices carry over; only a price lowered in this edit asks.
+			prior_rates=price_approval.prior_rates(si))
 	finally:
 		frappe.flags.ffl_suppress_sale_receipt = _prev_suppress
 		frappe.flags.ffl_carried_distributor_lines = _prev_carried
@@ -4573,6 +4595,7 @@ def _repin_economics(si, rows: list[dict]) -> None:
 			# reset these on every save, so they must be re-pinned here (the whole
 			# reason this function exists). NEVER _pin_serial — there is no local one.
 			row.delivered_by_supplier = 1
+			price_approval.mark_quoted(row)
 			row.warehouse = None
 			row.dropship_distributor = src.get("dropship_distributor") or ""
 			# Same FIFO trap as ship to store below: while the invoice still reads
@@ -4588,6 +4611,7 @@ def _repin_economics(si, rows: list[dict]) -> None:
 			# arrival hangs its serial (compliance.firearm.is_awaiting_procurement_row).
 			row.delivered_by_supplier = 0
 			row.ffl_to_store_distributor = src.get("to_store_distributor") or ""
+			price_approval.mark_quoted(row)
 			# ERPNext's item-details pass auto-picks a FIFO serial for a stock
 			# firearm row while the invoice still reads update_stock=1 (the
 			# dealer-shipment before_insert default) — some OTHER customer's gun

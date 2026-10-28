@@ -2540,7 +2540,7 @@ class CreateOrderApp {
 		return modes.includes(this._refundModeCtl?.get_value());
 	}
 
-	_submitEdit() {
+	async _submitEdit() {
 		const payload = this._collectPayload();
 		const args = {
 			sales_invoice: this._editing.si,
@@ -2555,6 +2555,9 @@ class CreateOrderApp {
 				return;
 			}
 		}
+		// A price lowered in this edit asks a manager first (price_approval.js).
+		if (!(await ffl.priceApproval.forOrder(payload, this._editing.si))) return;
+		args.payload = JSON.stringify(payload);
 		const $btn = this.$body.find('#btn-submit');
 		$btn.prop('disabled', true).text(__('Saving…'));
 		frappe.call({
@@ -2627,7 +2630,7 @@ class CreateOrderApp {
 
 	// ---------------------------------------------------------------- submit
 
-	_submit() {
+	async _submit() {
 		if (this.lines.some((l) => !l.channel_confirmed)) {
 			this._openPlanner();
 			return;
@@ -2650,6 +2653,8 @@ class CreateOrderApp {
 			payload.payment_received = 0; payload.paid_amount = 0; payload.transaction_number = '';
 			payload.dispose_now = 0;
 		}
+		// A price below list asks a manager first (price_approval.js); cancelled = not sent.
+		if (!(await ffl.priceApproval.forOrder(payload))) return;
 		const $btn = this.$body.find('#btn-submit');
 		$btn.prop('disabled', true).text(__('Creating…'));
 		frappe.call({

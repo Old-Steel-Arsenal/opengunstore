@@ -16,6 +16,7 @@
   "shipping_price_includes_tax",
   "peace_officer_exempt_tax_account",
   "counter_lock_minutes",
+  "require_price_approval",
   "section_gunsmithing",
   "gunsmith_labor_item",
   "column_break_gunsmithing",
@@ -107,6 +108,13 @@
    "default": "5",
    "non_negative": 1,
    "description": "After this long with no touch or key, a counter screen locks and shows the staff list: the same person unlocks with their password, or another signs in. 0 = never."
+  },
+  {
+   "default": "1",
+   "description": "A price lowered at the counter (a line below its list price, a line or invoice discount) saves only once a Sales Manager or System Manager approves it with their counter PIN and a reason. A manager signed in approves their own. Discounts the system gives (pricing rules, sale prices) never ask.",
+   "fieldname": "require_price_approval",
+   "fieldtype": "Check",
+   "label": "Require Manager Approval for Price Reductions"
   },
   {
    "fieldname": "section_gunsmithing",
@@ -241,7 +249,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-24 18:00:00.000000",
+ "modified": "2026-10-28 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "FFL Settings",

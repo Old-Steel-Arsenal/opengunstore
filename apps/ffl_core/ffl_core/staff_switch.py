@@ -144,12 +144,18 @@ def unlock_screen(password: str | None = None, pin: str | None = None) -> dict:
 
 def _check_own_password(password: str | None) -> None:
 	"""The signed-in user's login password, under the unlock limit; a right one turns their PIN back on."""
-	key = frappe.cache.make_key(f"ffl-unlock-fail:{frappe.session.user}")
+	_check_password(frappe.session.user, password)
+
+
+def _check_password(user: str, password: str | None) -> None:
+	"""*user*'s login password, 10 wrong tries per person per 10 minutes; a right one turns their PIN
+	back on. Also a manager approving a price at someone else's counter (price_approval.approve)."""
+	key = frappe.cache.make_key(f"ffl-unlock-fail:{user}")
 	if cint(frappe.cache.get(key)) >= UNLOCK_TRIES:
 		frappe.throw(_("Too many wrong passwords. Wait a few minutes, or pick someone else to sign in."),
 			WrongPassword, title=_("Locked"))
 	try:
-		check_password(frappe.session.user, password or "")
+		check_password(user, password or "")
 	except frappe.AuthenticationError:
 		frappe.cache.set(key, 0, ex=UNLOCK_WINDOW, nx=True)
 		frappe.cache.incrby(key, 1)
@@ -157,7 +163,7 @@ def _check_own_password(password: str | None) -> None:
 		# cookies (app.handle_exception), which would sign the person out for a typo.
 		frappe.throw(_("That password is not right."), WrongPassword, title=_("Locked"))
 	frappe.cache.delete(key)
-	frappe.cache.delete(_pin_fail_key(frappe.session.user))
+	frappe.cache.delete(_pin_fail_key(user))
 
 
 # ------------------------------------------------------------------ counter PIN
