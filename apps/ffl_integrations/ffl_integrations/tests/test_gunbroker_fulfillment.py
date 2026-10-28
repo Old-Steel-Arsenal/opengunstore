@@ -147,11 +147,14 @@ class TestDisposeRetiresAntiquesWithoutADisposition(_FulfillmentCase):
 		detail["orderItemsCollection"][0]["isFFLRequired"] = False
 		return detail
 
-	def _dispose(self, order, cr_details=None, *, issue_result="MAT-STE-0001"):
+	def _dispose(self, order, cr_details=None, *, issue_result="MAT-STE-0001",
+			serial_rows=None):
 		set_values: list[tuple] = []
 		self._patch_order_doc(order)
 		with patch("frappe.db.set_value",
 					side_effect=lambda *a, **k: set_values.append(a)), \
+				patch.object(fulfillment.gb_listings, "serial_state",
+					side_effect=lambda s: frappe._dict((serial_rows or {}).get(s, {}))), \
 				patch.object(fulfillment, "is_own_license", return_value=False), \
 				patch.object(fulfillment, "is_antique_item",
 					side_effect=lambda code: code == ANTIQUE), \
@@ -188,6 +191,43 @@ class TestDisposeRetiresAntiquesWithoutADisposition(_FulfillmentCase):
 		invoice.assert_called_once()
 		self.assertIn(("Serial No", "SN-A1", {"gb_reserved": 0, "gb_order": ""}),
 			set_values, "the GunBroker hold must be released like a disposed gun's")
+
+	def _released(self, set_values, serial):
+		rows = [a[2] for a in set_values if a[:2] == ("Serial No", serial)]
+		self.assertEqual(len(rows), 1, serial)
+		return rows[0]
+
+	def test_the_listing_the_order_bought_leaves_with_the_gun(self):
+		"""Left on the serial, the sweep finds the listing sold with no order
+		holding the gun and flags it "may have sold on GunBroker" — for the
+		regulated gun and the antique alike."""
+		detail = fx.order_detail(extra_items=[fx.order_item(16087231,
+			sku=f"{ANTIQUE}::SN-A1", serial="SN-A1", price=900, ffl_required=False)])
+		order = self._order(detail)
+		set_values = self._dispose(order, serial_rows={
+			"SN-001": {"gb_item_id": "16087230", "gb_item_history": "16000001",
+				"gb_end_pending": 1, "gb_gone_strikes": 2},
+			"SN-A1": {"gb_item_id": "16087231"},
+		})[-1]
+		regulated = self._released(set_values, "SN-001")
+		self.assertEqual(regulated["gb_item_id"], "")
+		self.assertEqual(regulated["gb_item_history"], "16000001,16087230")
+		self.assertEqual(regulated["gb_end_pending"], 0,
+			"an end request for the listing that sold has nothing left to end")
+		self.assertEqual(regulated["gb_gone_strikes"], 0)
+		self.assertEqual((regulated["gb_reserved"], regulated["gb_order"]), (0, ""))
+		antique = self._released(set_values, "SN-A1")
+		self.assertEqual(antique["gb_item_id"], "")
+		self.assertEqual(antique["gb_item_history"], "16087231")
+
+	def test_a_listing_the_order_did_not_buy_is_left_for_the_end_listing_jobs(self):
+		order = self._order(self._antique_detail())
+		order.ffl_received = 0
+		set_values = self._dispose(order, serial_rows={
+			"SN-A1": {"gb_item_id": "99999999", "gb_end_pending": 1}})[-1]
+		self.assertEqual(self._released(set_values, "SN-A1"),
+			{"gb_reserved": 0, "gb_order": ""},
+			"a still-live listing must stay visible so it gets ended")
 
 	def test_a_mixed_order_books_the_regulated_gun_and_issues_the_antique(self):
 		detail = fx.order_detail(extra_items=[fx.order_item(16087231,
