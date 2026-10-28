@@ -12,6 +12,7 @@
   "wish_qty",
   "ack_qty",
   "unit_cost",
+  "case_note",
   "invoiced_unit_cost",
   "ship_method",
   "column_break_line",
@@ -66,6 +67,14 @@
    "fieldtype": "Currency",
    "label": "Unit Cost",
    "in_list_view": 1
+  },
+  {
+   "fieldname": "case_note",
+   "fieldtype": "Data",
+   "label": "Case Price",
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "Shipped to the store, full cases buy at the distributor's case price, and Unit Cost includes it. An estimate: the cost the distributor acknowledges replaces it."
   },
   {
    "fieldname": "invoiced_unit_cost",
@@ -155,7 +164,7 @@
   }
  ],
  "links": [],
- "modified": "2026-07-22 12:00:00",
+ "modified": "2026-10-28 12:00:00",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "Distributor Order Line",

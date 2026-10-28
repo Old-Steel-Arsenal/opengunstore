@@ -35,7 +35,7 @@ _OFFER_FIELDS = ("distributor", "sku", "upc", "manufacturer", "model", "departme
 	"vendor_approval_required", "image_url", "discontinued", "status_flag",
 	"short_description", "mfg_number", "caliber", "long_description", "image_name",
 	"image_url_hires", "weight_lb", "prop65", "ships_ground_only", "signature_required",
-	"product_class")
+	"product_class", "case_cost", "units_per_case")
 _SELECT = ", ".join(f"`{c}`" for c in (*_OFFER_FIELDS, "product_key", "brand_key"))
 _LIVE = f"NOT {store.deleted_sql()}"
 
@@ -50,9 +50,9 @@ def _offer(row) -> dict:
 	for k, v in dict(row).items():
 		if k in BOOL_COLUMNS:
 			out[k] = bool(v)
-		elif k in MONEY_COLUMNS:
+		elif k in MONEY_COLUMNS or k == "case_cost":
 			out[k] = float(v or 0)
-		elif k == "qty":
+		elif k in ("qty", "units_per_case"):
 			out[k] = int(v or 0)
 		elif k == "upc":
 			out[k] = v or None

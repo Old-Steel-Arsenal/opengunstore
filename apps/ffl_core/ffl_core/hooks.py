@@ -495,6 +495,7 @@ doc_events = {
 		# P1: a stale browser doc must not revert the
 		# webhook-owned 4473 fields on a Draft save. Restores them from the DB.
 		"before_save": "ffl_core.compliance.webhook_fields.protect_webhook_4473_fields",
+		"on_trash": "ffl_core.setup.pos_compat.guard_cancelled_delete",
 		"validate": [
 			# Memberships are sold as Sales Invoices only: the merge drops their service dates (membership.py).
 			"ffl_core.membership.refuse_on_pos_invoice",

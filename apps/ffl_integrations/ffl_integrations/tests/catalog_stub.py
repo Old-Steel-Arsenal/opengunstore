@@ -75,6 +75,8 @@ _DEFAULTS = {
 	"long_description": "", "image_name": "", "image_url_hires": "",
 	"weight_lb": 0.0, "prop65": False, "ships_ground_only": False,
 	"signature_required": False,
+	# RSR's full-case price PER UNIT and case size (0 = not sold by the case)
+	"case_cost": 0.0, "units_per_case": 0,
 }
 _BOOL_KEYS = {"ffl_required", "dropship_blocked", "vendor_approval_required",
 	"discontinued", "prop65", "ships_ground_only", "signature_required"}

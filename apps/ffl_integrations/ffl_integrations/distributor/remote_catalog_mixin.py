@@ -34,6 +34,11 @@ def remote_normalised(r: dict) -> dict:
 		# The service's class (`pricing.PRODUCT_CLASSES`) from the house's own
 		# department code — the one class table; the POS keeps none of its own.
 		"product_class": r.get("product_class") or "",
+		# The full-case price, per unit, and the case size (RSR's get-items). Optional:
+		# a service that sends neither (one older than the fields, or a house without
+		# case pricing) reads as no case price.
+		"case_cost": float(r.get("case_cost") or 0),
+		"units_per_case": int(r.get("units_per_case") or 0),
 	}
 
 

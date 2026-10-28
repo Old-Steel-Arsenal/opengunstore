@@ -941,6 +941,7 @@ app: `ffl_integrations` · module: FFL Integrations · child table
 | `wish_qty` | Int | Wish Qty |  |  |
 | `ack_qty` | Int | Ack Qty |  |  |
 | `unit_cost` | Currency | Unit Cost |  |  |
+| `case_note` | Data | Case Price |  |  |
 | `invoiced_unit_cost` | Currency | Invoiced Unit Cost |  |  |
 | `ship_method` | Select | Ship Method |  | Grnd, 2Day, 1Day, Ndas, Prio |
 | `item_status` | Data | Item Status |  |  |
@@ -1083,6 +1084,8 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sal
 | `fee_accrual_je` | Link | Fee Accrual Journal Entry |  | Journal Entry |
 | `ship_carrier` | Select | Carrier |  | , Unknown, FedEx, UPS, USPS |
 | `tracking_number` | Data | Tracking Number |  |  |
+| `shipstation_order_id` | Data | ShipStation Shipment ID |  |  |
+| `shipstation_status` | Data | ShipStation Status |  |  |
 | `shipping_flag_pushed_at` | Datetime | OrderShipped Flag Sent At |  |  |
 | `tracking_pushed_at` | Datetime | Tracking Sent At |  |  |
 | `gb_ship_writeback_pending` | Check | Ship Write-back Pending |  |  |
@@ -1216,6 +1219,8 @@ app: `ffl_integrations` · module: FFL Integrations · single · roles: System M
 | `base_url` | Data | API base URL |  |  |
 | `disable_email` | Check | No confirmation email from Lipsey's |  |  |
 | `dropship_overnight` | Check | Accessory drop-ship orders ship overnight |  |  |
+| `rate_dropship_firearm` | Currency | Drop-ship firearm order |  |  |
+| `rate_dropship_accessory` | Currency | Drop-ship accessory order |  |  |
 | `shipping_polled_through` | Date | Shipping polled through (dealer) |  |  |
 | `dropship_shipping_polled_through` | Date | Shipping polled through (drop-ship) |  |  |
 | `last_shipping_poll_at` | Datetime | Last shipping poll |  |  |

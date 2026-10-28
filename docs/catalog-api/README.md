@@ -55,6 +55,7 @@ cross-house product change feed. A service may keep serving them.
 - **`cost` may be unknown.** `0` (or absent) means *unknown*, never free. Sorting rules treat unknown cost as worst; a UI must render it as "cost unknown", not `$0.00`.
 - **`qty`** is the house's on-hand at last sync — never a reservation. `0` = out of stock.
 - **`product_class`** (`OfferFull`, optional) is the offer's class — one of `Handgun`, `Long Gun`, `Other Firearm`, `NFA`, `Gun Parts`, `Ammunition` and `Accessory` — from the house's own department code. The POS keeps no class table: markup and listing rules that name a class, and the website shipping class, read it. Absent or `''` = no class (a class rule does not match the row).
+- **`case_cost` and `units_per_case`** (`OfferFull`, optional) are the house's full-case price **per unit** (not the case total) and the case size, for a SKU sold by the case (RSR's Direct Connect get-items `DealerCasePrice` / `UnitsPerCase`). The POS uses them only for a line shipped to the store: full cases at `case_cost`, the rest at `cost`, and only when `0 < case_cost < cost`. Absent, null or 0 = not sold by the case.
 - **`category` and `legal` may be null** (not classified). The POS then reads the house's `ffl_required` flag and the offer's `product_class`; only `legal.is_firearm` is read from `legal`.
 - **`map` / `msrp`** `0` = none published. `map_policy` (`OfferFull`) is the manufacturer's policy mark when the house ships one (`M` enforceable MAP, `U` suggested, `''` none); render `''` as "no policy", never as MAP $0.
 - **`ffl_required`** is the house's firearm flag and is authoritative for order splitting. The POS cross-checks it against its own Item and stops for a human on disagreement.
@@ -120,3 +121,7 @@ first. A half-filled Catalog service tab fails closed (no silent fallback).
 On the code side a house is a `DistributorProvider` that mixes in
 `RemoteCatalogMixin` (`code` = the distributor code the service knows); the
 mixin supplies every catalog read, and the provider adds only ordering.
+Freight is the provider's too: `estimate_order_freight` prices one order
+(a house with flat per-order rates returns `freight.flat_rate(...)` over its
+Settings), and every caller (the counter's Fulfillment planner, drop-ship
+sourcing) asks through `ffl_integrations.distributor.freight.estimate_orders`.

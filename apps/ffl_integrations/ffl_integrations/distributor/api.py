@@ -11,8 +11,9 @@ import frappe
 from frappe.utils import cint, flt
 
 from ffl_integrations.distributor import order_state
-from ffl_integrations.distributor import lanes, offers
-from ffl_integrations.distributor.util import dealer_only_part, legal_firearm
+from ffl_integrations.distributor import freight, lanes, offers
+from ffl_integrations.distributor.util import (case_note, case_pricing, dealer_only_part,
+	legal_firearm)
 from ffl_integrations.distributor.base import PlanningError
 from ffl_integrations.distributor.offers import buy_order
 from ffl_integrations.distributor.queue import enqueue_distributor
@@ -366,7 +367,7 @@ def quote(item_code=None, sku=None, distributor=None) -> dict:
 	    {found, sku, upc, item_code, distributor, cost, map, msrp,
 	    suggested_price, qty, restricted_states, fulfillment_mode,
 	    dropship_blocked, vendor_approval_required, ffl_required,
-	    manufacturer, model} — or {found: False, ...} when not in catalog.
+	    manufacturer, model, department} — or {found: False, ...} when not in catalog.
 	    A site with no distributor catalog answers HTTP 417 (CapabilityOff).
 	"""
 	from ffl_integrations.data_service import CATALOG, require
@@ -460,6 +461,7 @@ def quote(item_code=None, sku=None, distributor=None) -> dict:
 		"is_firearm": legal_firearm(row, provider.code),
 		"manufacturer": row.get("manufacturer") or "",
 		"model": row.get("model") or "",
+		"department": row.get("department") or "",
 	}
 
 
@@ -555,7 +557,9 @@ def fulfillment_matrix(lines) -> dict:
 	    {"columns": [distributor, ...], "rows": [{item_code, sku, qty,
 	    local: {in_stock, feasible}, is_firearm, channels: [cell, ...], preselect,
 	    preselect_mode}]} — is_firearm is what the server enforces for the
-	    line's own Item (None without one); cell = {distributor, sku, cost, qty, department,
+	    line's own Item (None without one); cell = {distributor, sku, cost,
+	    store_cost (the per-unit cost shipped to the store: full cases at the
+	    house's case price), case_note? (the case-price hint), qty, department,
 	    mode: "direct"|"to_store" (the house's default), modes: {direct,
 	    to_store: {feasible, reason}}, ffl_required, feasible, reason?} or
 	    {distributor, error: True}.
@@ -677,6 +681,13 @@ def _matrix_cell(provider, dist_name: str, line: dict, qty: int, *,
 	if offers_to_store:
 		cell["modes"]["to_store"] = {"feasible": not (store_block or short),
 			"reason": store_block or short}
+	# Shipped to the shop, full cases buy at the house's case price (RSR); a
+	# drop-ship line always pays the unit cost.
+	priced = case_pricing(qty, cell["cost"], row.get("case_cost"), row.get("units_per_case")) \
+		if cell["modes"].get("to_store", {}).get("feasible") else None
+	cell["store_cost"] = priced["unit_cost"] if priced else cell["cost"]
+	if priced:
+		cell["case_note"] = case_note(priced)
 	cell["feasible"] = any(m["feasible"] for m in cell["modes"].values())
 	# The house's default for this line: drop-ship when it can, else ship to store.
 	cell["mode"] = ("direct" if cell["modes"].get("direct", {}).get("feasible")
@@ -699,7 +710,8 @@ def _matrix_preselect(row: dict):
 	for idx, cell in enumerate(row["channels"]):
 		if not cell.get("feasible"):
 			continue
-		key = (flt(cell.get("cost")), idx)
+		cost = cell.get("store_cost") if cell.get("mode") == "to_store" else cell.get("cost")
+		key = (flt(cost), idx)
 		if best is None or key < best[0]:
 			best = (key, cell["distributor"])
 	return best[1] if best else None
@@ -745,63 +757,7 @@ def fulfillment_freight(lines, options=None) -> dict:
 		lines = frappe.parse_json(lines)
 	if isinstance(options, str):
 		options = frappe.parse_json(options)
-	options = options if isinstance(options, dict) else {}
-	groups: dict = {}
-	for ln in (lines or []):
-		distributor = (ln.get("distributor") or "").strip()
-		sku = (ln.get("sku") or "").strip()
-		if not distributor or not sku:
-			continue
-		# A firearm under the law rides FDS; the house's own ffl_required flag (a
-		# barrel it only sends to dealers) does not make one.
-		house = frappe.get_cached_value("Distributor", distributor, "provider")
-		gun = bool(ln["is_firearm"]) if "is_firearm" in ln else legal_firearm(ln, house)
-		mode = "to_store" if ln.get("mode") == "to_store" else ("fds" if gun else "direct")
-		groups.setdefault((distributor, mode), []).append({
-			"sku": sku, "item_code": ln.get("item_code") or "",
-			"qty": max(1, int(ln.get("qty") or 1)),
-			"unit_cost": flt(ln.get("cost")), "department": ln.get("department") or "",
-			# One flag for both: the firearm-classification cross-check belongs to real ordering, not
-			# to a price estimate.
-			"ffl_required": bool(ln.get("ffl_required")), "is_firearm": gun, "legal_firearm": gun,
-		})
-	orders, total, complete = [], 0.0, True
-	for (distributor, mode), group in sorted(groups.items()):
-		provider = get_provider(frappe.get_cached_doc("Distributor", distributor).provider)
-		try:
-			planned = provider.plan_fulfillment(group, {"mode": mode})
-		except PlanningError:
-			# This house cannot ship these lines this way (it does not run the lane, or
-			# the two firearm classifications disagree). The planner asks for an
-			# estimate, not an order: report it as unpriced and let the operator see
-			# the refusal where they choose the channel.
-			complete = False
-			continue
-		for plan in planned:
-			by_sku = {ln["sku"]: ln for ln in group}
-			priced = [{**by_sku[pl["sku"]], "qty": pl["qty"], "ship_method": pl["ship_method"]}
-				for pl in plan["lines"]]
-			firearm = any(ln.get("is_firearm") for ln in priced)
-			key = delivery_options_key(distributor, plan["order_type"], firearm)
-			chosen = getattr(provider, "delivery_options", lambda _f: None)(firearm)
-			if chosen is None:
-				freight = provider.estimate_order_freight(priced, mode)
-			else:
-				if key in options:
-					chosen = {k: bool((options.get(key) or {}).get(k)) for k in DELIVERY_OPTIONS}
-				freight = provider.estimate_order_freight(priced, mode, options=chosen)
-			if freight is None:
-				complete = False
-			else:
-				total += freight
-			orders.append({
-				"distributor": distributor, "mode": mode, "order_type": plan["order_type"],
-				"line_count": len(priced),
-				"merchandise": round(sum(ln["unit_cost"] * ln["qty"] for ln in priced), 2),
-				"freight": freight,
-				"firearm": firearm, "options_key": key, "options": chosen,
-			})
-	return {"orders": orders, "total": round(total, 2), "complete": complete}
+	return freight.estimate_orders(lines, options)
 
 
 @frappe.whitelist()
@@ -898,6 +854,9 @@ def enrich_line(provider, line: dict) -> dict:
 		"is_firearm": is_firearm,
 		"department": row.get("department") or "",
 		"unit_cost": row.get("cost") or 0,
+		# The case price, for a line that ships to the store (create_do_from_plan).
+		"case_cost": row.get("case_cost") or 0,
+		"units_per_case": row.get("units_per_case") or 0,
 		"description": line.get("description") or row.get("model") or "",
 	}
 
@@ -970,14 +929,20 @@ def create_do_from_plan(dist, plan: dict, enriched_by_sku: dict, *,
 		do.delivery_signature = 1 if delivery_options.get("signature") else 0
 		do.delivery_adult_signature = 1 if delivery_options.get("adult_signature") else 0
 		do.delivery_insurance = 1 if delivery_options.get("insurance") else 0
+	to_store = lanes.stocks_goods(plan["order_type"])
 	for pln in plan["lines"]:
 		src = enriched_by_sku.get(pln["sku"], {})
+		# An estimate either way: the house's acknowledged Cost replaces it on
+		# placement, and its invoice price replaces that.
+		priced = case_pricing(pln["qty"], src.get("unit_cost"), src.get("case_cost"),
+			src.get("units_per_case")) if to_store else None
 		do.append("lines", {
 			"sku": pln["sku"],
 			"item_code": pln.get("item_code") or src.get("item_code"),
 			"description": src.get("description"),
 			"wish_qty": pln["qty"],
-			"unit_cost": src.get("unit_cost") or 0,
+			"unit_cost": priced["unit_cost"] if priced else (src.get("unit_cost") or 0),
+			"case_note": case_note(priced),
 			"ship_method": pln["ship_method"],
 			"line_status": "Pending",
 			"fulfillment": lane or "",
