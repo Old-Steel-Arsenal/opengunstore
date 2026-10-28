@@ -164,7 +164,7 @@ class DistributorProvider(ABC):
 			**destination,
 			"lines": [{
 				"sku": ln["sku"],
-				"item_code": ln.get("item_code") or ln["sku"],
+				"item_code": ln.get("item_code") or "",   # a SKU is not an Item
 				"qty": ln["qty"],
 				"ship_method": self.ship_method_for(ln),
 			} for ln in group],

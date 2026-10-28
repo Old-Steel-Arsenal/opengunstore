@@ -37,6 +37,14 @@
 		window.ffl.payoutProblem = api.payoutProblem;
 		window.ffl.pickupTicketState = api.pickupTicketState;
 		window.ffl.isPaidOnlineTicket = api.isPaidOnlineTicket;
+		// Reloading or leaving with a cart the server has never seen (or unsaved edits to
+		// a draft) drops it: the browser asks first. Clerks reload to see a fresh status.
+		window.addEventListener('beforeunload', function (e) {
+			var pos = window.cur_pos;
+			if (!pos || !pos.frm || !api.cartWouldBeLost(pos.frm.doc)) return;
+			e.preventDefault();
+			e.returnValue = '';
+		});
 	}
 })(function () {
 	'use strict';
@@ -494,7 +502,16 @@
 		return { order: order, carriesMoney: money };
 	}
 
+	// The register's cart is lost on reload: an open, unsaved order holding an item.
+	function cartWouldBeLost(doc) {
+		doc = doc || {};
+		if (parseInt(doc.docstatus, 10)) return false;
+		if (!doc.__islocal && !doc.__unsaved) return false;
+		return (doc.items || []).some(function (r) { return r && r.item_code; });
+	}
+
 	return {
+		cartWouldBeLost: cartWouldBeLost,
 		PAYOUT_METHODS: PAYOUT_METHODS,
 		pickupTicketState: pickupTicketState,
 		isPaidOnlineTicket: isPaidOnlineTicket,

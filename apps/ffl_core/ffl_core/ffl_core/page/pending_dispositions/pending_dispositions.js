@@ -136,6 +136,23 @@ function pdSuggestedUnits(units) {
 	return (units || []).filter((u) => !u.refunded && !u.serial && u.suggested);
 }
 
+// ---- Agreements — PURE KERNEL ----------------------------------------------------
+// What a counter order's sale still needs signed (manual_order._agreement_rows),
+// one row per agreement (per gun for an Each firearm sold one). The kind picks the
+// label and colour; an unsigned one never blocks the card — Dispose may override.
+function pdAgreementKind(a) {
+	if (!a) return 'missing';
+	if (a.signed) return 'signed';
+	if (a.state === 'pending') return a.link_open ? 'sent' : 'link_expired';
+	if (a.state === 'expired') return 'expired';
+	return 'missing';
+}
+
+// "Used Item Agreement, Bill of Sale (SN1)" — the unsigned ones, for a message (escaped).
+function pdAgreementNames(rows) {
+	return (rows || []).map((a) => pdEscape(a.template) + (a.serial_no ? ` (${pdEscape(a.serial_no)})` : '')).join(', ');
+}
+
 // ---- Sections — PURE KERNEL, no DOM / frappe / __() ----
 // The server stamps every row (counter, web, GunBroker) with `stage`; the page
 // groups by it in this order, filters by source, searches, and sorts each
@@ -263,6 +280,15 @@ class PendingDispositionsApp {
 					.ffl-pending-orders .pd-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
 					.ffl-pending-orders .pd-section { margin: 18px 0 8px; font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
 					.ffl-pending-orders .overdue { color: var(--red-600, #dc2626); font-weight: 600; }
+					.ffl-pending-orders .agreements { margin-top: 6px; font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+					.ffl-pending-orders .agreements .agr { padding: 1px 8px; border-radius: 10px; }
+					.ffl-pending-orders .agreements .agr.signed { background: var(--bg-green); color: var(--green-700); }
+					.ffl-pending-orders .agreements .agr.sent { background: var(--bg-yellow); color: var(--yellow-700); }
+					.ffl-pending-orders .agreements .agr.missing, .ffl-pending-orders .agreements .agr.link_expired,
+					.ffl-pending-orders .agreements .agr.expired { background: var(--bg-red); color: var(--red-700); }
+					/* Frappe v15 names the dialog's action .btn-primary, v16 .btn-modal-primary. */
+					.ffl-dispose-unsigned .standard-actions .btn-primary, .ffl-dispose-unsigned .standard-actions .btn-modal-primary { background: var(--red-600, #c62828); border-color: var(--red-600, #c62828); color: #fff; }
+					.ffl-agreement-warning { background: var(--bg-red); color: var(--red-700); border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; font-weight: 500; }
 					.ffl-dispose-summary { line-height: 1.7; }
 					.ffl-dispose-summary ul { margin: 4px 0 0; padding-left: 20px; }
 				</style>
@@ -293,7 +319,66 @@ class PendingDispositionsApp {
 		});
 
 		this.page.set_primary_action(__('Refresh'), () => this._load(), 'refresh');
+		// A customer signing (agreements.submit_signature / a paper copy) updates the
+		// cards waiting on them; opening the page again reloads everything anyway.
+		if (frappe.realtime) {
+			frappe.realtime.doctype_subscribe('Customer Agreement');
+			frappe.realtime.on('customer_agreement_signed', (msg) => this._onAgreementSigned(msg || {}));
+		}
 		this._load();
+	}
+
+	_onAgreementSigned(msg) {
+		(this.rows || []).filter((r) => (KIND[r.source] || 'counter') === 'counter' && r.customer === msg.customer
+			&& (r.agreements || []).length).forEach((r) => this._refreshAgreements(r).then(() => {
+			frappe.show_alert({ message: __('{0} signed {1}.', [frappe.utils.escape_html(r.customer_name || r.customer),
+				pdAgreementNames([{ template: msg.agreement, serial_no: msg.serial_no }])]), indicator: 'green' }, 7);
+		}));
+	}
+
+	// Re-read one counter order's agreements and redraw just its card.
+	_refreshAgreements(row) {
+		return frappe.call({ method: 'ffl_core.api.manual_order.order_agreements',
+			args: { sales_invoice: row.sales_invoice } }).then((r) => {
+			const m = r.message || {};
+			row.agreements = m.rows || [];
+			row.agreements_missing = row.agreements.filter((a) => !a.signed);
+			row.agreement_email = m.email || '';
+			this._redrawCard(row);
+		});
+	}
+
+	_redrawCard(row) {
+		if (!row._$card || !row._$card.closest('body').length) return;
+		const $tmp = $('<div>');
+		const $old = row._$card;
+		this._renderCard(row, $tmp);
+		$old.replaceWith($tmp.children());
+	}
+
+	_resendAgreement(row, a) {
+		const what = pdAgreementNames([a]);
+		const d = new frappe.ui.Dialog({
+			title: __('Resend agreement link'),
+			fields: [
+				{ fieldtype: 'HTML', fieldname: 'note', options: `<div class="text-muted" style="margin-bottom:8px">${__('Emails {0} a new link to sign {1}. The old link stops working.', [frappe.utils.escape_html(row.customer_name || row.customer), what])}</div>` },
+				{ fieldtype: 'Data', fieldname: 'email', options: 'Email', label: __('Email'), reqd: 1, default: row.agreement_email || '' },
+			],
+			primary_action_label: __('Send'),
+			primary_action: (v) => frappe.call({
+				method: 'ffl_core.api.manual_order.resend_order_agreement',
+				args: { sales_invoice: row.sales_invoice, template: a.template, serial_no: a.serial_no || null,
+					email: (v.email || '').trim() },
+				freeze: true, freeze_message: __('Sending…'),
+				callback: (r) => {
+					if (!r.message) return;
+					d.hide();
+					frappe.show_alert({ message: __('Signing link sent to {0}.', [frappe.utils.escape_html(r.message.email)]), indicator: 'green' }, 7);
+					this._refreshAgreements(row);
+				},
+			}),
+		});
+		d.show();
 	}
 
 	_load() {
@@ -525,6 +610,23 @@ class PendingDispositionsApp {
 				? `<span class="badge amber">${row.pickup_invoice
 					? __('In-store pickup · counter order open')
 					: __('In-store pickup')}</span>` : '';
+			// The agreements the gun waits for: signed / sent (until when) / not signed,
+			// each unsigned one with its own Resend. A pill on the name line, not a
+			// blocked stage — Dispose can still go ahead (and says it is recorded).
+			const agreementRows = isCounter ? (row.agreements || []) : [];
+			const agreementBadge = (isCounter && (row.agreements_missing || []).length)
+				? `<span class="badge amber" title="${__('Dispose asks before shipping without it.')}">${__('Awaiting signature')}</span>` : '';
+			const agreementLabels = {
+				signed: () => __('signed'), missing: () => __('not signed'), expired: () => __('signature expired'),
+				link_expired: () => __('link expired'),
+				sent: (a) => __('sent, link open until {0}', [frappe.datetime.str_to_user(a.token_expires)]),
+			};
+			const agreementsStrip = agreementRows.length
+				? `<div class="agreements"><span>${__('Agreements')}:</span>${agreementRows.map((a, i) => {
+					const kind = pdAgreementKind(a);
+					return `<span class="agr ${kind}">${pdAgreementNames([a])} · ${agreementLabels[kind](a)}</span>`
+						+ (a.signed ? '' : `<button class="btn btn-xs btn-default btn-resend-agreement" data-i="${i}">${__('Resend link')}</button>`);
+				}).join('')}</div>` : '';
 			const serialErrorLines = serialErrors.map((e) =>
 				`<div class="serial-error">⚠ ${frappe.utils.escape_html(e.error)}</div>`).join('');
 			// WooCommerce live status + amounts (web rows mirror the WC order).
@@ -615,7 +717,7 @@ class PendingDispositionsApp {
 			const $card = $(`
 				<div class="card">
 					<div>
-						<div class="who">${frappe.utils.escape_html(row.customer_name || row.customer)} ${typeBadge} ${fflBadge} ${payBadge} ${disposedBadge} ${shippedBadge} ${wcStatusBadge} ${gbStatusBadge} ${conflictBadge} ${pickupBadge} ${bannedBadge}</div>
+						<div class="who">${frappe.utils.escape_html(row.customer_name || row.customer)} ${typeBadge} ${fflBadge} ${payBadge} ${disposedBadge} ${shippedBadge} ${wcStatusBadge} ${gbStatusBadge} ${conflictBadge} ${pickupBadge} ${bannedBadge} ${agreementBadge}</div>
 						<div class="meta">
 							${ref}
 							· ${__('to')} ${frappe.utils.escape_html(row.destination_ffl_name || row.destination_ffl
@@ -632,6 +734,7 @@ class PendingDispositionsApp {
 						<div class="serials">${serials}</div>
 						${this._assignUnitsHtml(row)}
 						${legsStrip}
+						${agreementsStrip}
 						${serialErrorLines}
 					</div>
 					<div class="actions">
@@ -650,6 +753,9 @@ class PendingDispositionsApp {
 						${!disposeHint && !row.blocked_reason && pickupBlock ? `<div class="meta">${frappe.utils.escape_html(pickupBlock)}</div>` : ''}
 					</div>
 				</div>`).appendTo($list);
+			row._$card = $card;
+			$card.find('.btn-resend-agreement').on('click', (e) => this._resendAgreement(row,
+				agreementRows[$(e.currentTarget).data('i')]));
 			$card.find('.btn-release').on('click', () => this._releaseLegs(row));
 			$card.find('.pill.leg-do').on('click', (e) => frappe.set_route(
 				'Form', 'Distributor Order', $(e.currentTarget).data('do')));
@@ -1183,6 +1289,20 @@ class PendingDispositionsApp {
 	// row as `stock_lines` for _confirmDispose to read.
 	_startDispose(row) {
 		const kind = KIND[row.source] || 'counter';
+		// Unsigned agreements: read them again (the customer may have just signed),
+		// so the dialog asks about exactly what is still missing.
+		if (kind === 'counter' && (row.agreements_missing || []).length) {
+			frappe.call({ method: 'ffl_core.api.manual_order.order_agreements', args: { sales_invoice: row.sales_invoice },
+				freeze: true, freeze_message: __('Checking the order…') }).then((r) => {
+				const m = r.message || {};
+				row.agreements = m.rows || [];
+				row.agreements_missing = row.agreements.filter((a) => !a.signed);
+				row.agreement_email = m.email || '';
+				this._redrawCard(row);
+				this._confirmDispose(row);
+			});
+			return;
+		}
 		const method = PD_STOCK_LINES_METHOD[kind];
 		if (!method) return this._confirmDispose(row);
 		frappe.call({
@@ -1247,9 +1367,17 @@ class PendingDispositionsApp {
 		// by the next row's dialog and leave the previous handlers pointing at it.
 		const ctx = {};
 		const locFields = pdLocationFields(row.stock_lines);
+		// A counter order whose buyer has not signed what the sale needs: say so in
+		// red, take an optional reason, and dispose with the override (the server
+		// writes who, what and why on the invoice).
+		const unsigned = isCounter ? (row.agreements_missing || []) : [];
 		const d = new frappe.ui.Dialog({
 			title: `${actionLabel} — ${ref}`,
 			fields: [
+				...(unsigned.length ? [
+					{ fieldtype: 'HTML', fieldname: 'agreement_warning', options: `<div class="ffl-agreement-warning">${__('{0} has not signed {1}. Disposing without the signed acknowledgment is recorded on the order. Continue?', [frappe.utils.escape_html(row.customer_name || row.customer), pdAgreementNames(unsigned)])}</div>` },
+					{ fieldtype: 'Small Text', fieldname: 'agreement_reason', label: __('Reason (optional)') },
+				] : []),
 				{ fieldtype: 'HTML', fieldname: 'summary', options: summary },
 				...(locFields.length ? [{
 					fieldtype: 'HTML', fieldname: 'stg_head',
@@ -1267,20 +1395,24 @@ class PendingDispositionsApp {
 					change: () => d.get_primary_btn().prop('disabled', !this._disposeGateOk(d, isCr)),
 				},
 			],
-			primary_action_label: actionLabel,
+			primary_action_label: unsigned.length ? __('Dispose without signature') : actionLabel,
 			primary_action: () => {
 				if (!d.get_value('confirm')) return;
 				if (isCr && !this._crGateOk(d)) return;
 				const method = DISPOSE_METHOD[kind];
 				const args = { [DISPOSE_ARG[kind]]: row[DISPOSE_ARG[kind]] };
 				if (isCr) args.cr_details = this._crDetails(d);
+				if (unsigned.length) {
+					args.override_agreement = 1;
+					args.reason = (d.get_value('agreement_reason') || '').trim();
+				}
 				const picks = pdCollectLocations(locFields, d.get_values(true) || {});
 				if (Object.keys(picks).length) args.locations = JSON.stringify(picks);
 				frappe.call({
 					method, args,
 					freeze: true, freeze_message: __('Disposing…'),
-					// No error branch on purpose: a server throw skips this
-					// callback, so the dialog stays open with everything the
+					// The error branch never closes the dialog: a server throw skips
+					// this callback, so the dialog stays open with everything the
 					// operator typed still in it. The server has already
 					// committed the verification, so a retry re-prefills anyway.
 					callback: (r) => {
@@ -1293,6 +1425,10 @@ class PendingDispositionsApp {
 							this._load();
 						}
 					},
+					// The dialog stays open (see above); only a counter row's agreements are
+					// read again, so a signature that lapsed meanwhile shows up on the card
+					// and the next Dispose asks about it.
+					error: () => { if (isCounter) this._refreshAgreements(row); },
 				});
 			},
 		});
@@ -1302,6 +1438,9 @@ class PendingDispositionsApp {
 		d.show();
 		// Gate the action on the checkbox (and, for C&R, on the fields).
 		d.get_primary_btn().prop('disabled', true);
+		// Red, but still .btn-primary: the checkbox handlers look the button up by
+		// that class on every change (see the front-end invariant test).
+		if (unsigned.length) d.$wrapper.addClass('ffl-dispose-unsigned');
 	}
 
 	// ---- C&R (Type 03) verification block -------------------------------------
@@ -1630,5 +1769,5 @@ class PendingDispositionsApp {
 // browser, where `module` is undefined.
 if (typeof module !== 'undefined' && module.exports) {
 	module.exports = { PD_STAGE_ORDER, PD_PRIMARY, pdMatchesFilter, pdMatchesQuery, pdSections,
-		pdLocationFields, pdCollectLocations, pdEscape };
+		pdLocationFields, pdCollectLocations, pdEscape, pdAgreementKind, pdAgreementNames };
 }

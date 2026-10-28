@@ -43,6 +43,10 @@ The form has three tabs: Store, Compliance and FFL Verification.
 !!! danger "Turning Store Customer ID Numbers off erases data"
     Unticking it and saving erases every stored ID number and date of birth from customer records. Before it saves, the form asks: "Turning this off erases N stored ID number(s) and date(s) of birth. Attached ID copies, change history and deleted records are kept. Continue?" **No** puts the tick back. The erase cannot be undone. A comment on FFL Settings records who did it and how many were erased.
 
+**Require Agreements at Sale.** In the **Sale Agreements** section, on by default. While it is on, a sale at the register or a counter Sales Invoice cannot be submitted until the customer has signed the agreements its items need, and a counter order's Dispose waits for them (see [Pending Order](../selling/pending-orders.md#agreements)). Turn it off and agreements are only offered: nothing is marked required, nothing blocks, and Create Order emails nothing. Sending an agreement by hand, the signing page, paper copies and gunsmith intake authorizations work either way.
+
+**Used Item Agreement.** The agreement every Item marked Used needs, unless the Item or its Item Group names its own. Leave it empty to turn this off. Shown only while Require Agreements at Sale is on.
+
 ## FFL Verification
 
 This tab controls how another dealer's license gets checked against the ATF eZ Check service.

@@ -49,9 +49,12 @@ from ffl_integrations.payments.base import APPROVED, DECLINED
 SETTINGS = "Card On File Settings"
 SAVED_CARD = "Saved Card"
 ACTIVE, REMOVED = "Active", "Removed"
-# lazy: every card is saved for UNSCHEDULED use (charge a balance when one is due); RECURRING
-# arrives with membership renewals, which will pass it through save_request.
+# How a saved card may be charged later (the card networks' usage agreement, fixed when the card is
+# saved): UNSCHEDULED — a balance when one is due — unless the caller says otherwise; a card saved
+# while paying for an auto-renewing membership is RECURRING (fixed amount, fixed period).
 DEFAULT_USAGE = "UNSCHEDULED"
+RECURRING = "RECURRING"
+USAGES = (DEFAULT_USAGE, RECURRING)
 # Who may charge or remove a saved card: the counter's managers. Not Accounts Manager alone:
 # the approval books through manual_order.record_payment (COUNTER_ROLES), and a booking refused
 # AFTER the card was charged is exactly the gap a money path must not open.
@@ -121,12 +124,16 @@ def _refusal(customer: str | None, p) -> str | None:
 	return None
 
 
-def save_request(customer: str | None, p) -> dict:
+def save_request(customer: str | None, p, usage: str | None = None) -> dict:
 	"""The server gate for "Save this card", run by the charge endpoints BEFORE any gateway call.
 
 	Throws unless saving is switched on, ``p`` can keep cards, ``customer`` is a real customer and
 	has signed the card-on-file authorization. Returns the ``save_card`` argument for
-	``CardProcessor.start_charge``: a fresh merchant reference and the usage agreement."""
+	``CardProcessor.start_charge``: a fresh merchant reference and the usage agreement (``usage``,
+	default UNSCHEDULED; never a client's choice — the caller derives it server-side)."""
+	usage = usage or DEFAULT_USAGE
+	if usage not in USAGES:
+		frappe.throw(_("Unknown card usage {0}.").format(escape_html(usage)))
 	why = _refusal(customer, p)
 	if why:
 		frappe.throw(why, title=_("Card not saved"))
@@ -135,7 +142,7 @@ def save_request(customer: str | None, p) -> dict:
 		frappe.throw(_("{0} has not signed {1} yet — the card can only be saved after the "
 			"customer signs it.").format(escape_html(customer), escape_html(template)),
 			title=_("Authorization needed"))
-	return {"reference": _mint_reference(customer), "usage": DEFAULT_USAGE}
+	return {"reference": _mint_reference(customer), "usage": usage}
 
 
 def _mint_reference(customer: str) -> str:
@@ -249,7 +256,8 @@ def _create_saved_card(p, res, token, reference, row_doctype, row, customer, sou
 	doc = frappe.get_doc({
 		"doctype": SAVED_CARD, "customer": customer, "processor": p.code, "token": token,
 		"merchant_reference": reference, "card_summary": res.card_summary or "",
-		"card_expiry": res.card_expiry or "", "usage": DEFAULT_USAGE, "status": ACTIVE,
+		"card_expiry": res.card_expiry or "",
+		"usage": row.get("save_usage") if row.get("save_usage") in USAGES else DEFAULT_USAGE, "status": ACTIVE,
 		"is_default": 0 if has_default else 1, "authorization": consent["agreement"],
 		"source_doctype": source_doctype, "source_name": source_name,
 		"initial_reference": res.unique_reference or "",
@@ -298,6 +306,19 @@ def list_saved_cards(customer: str) -> dict:
 
 
 # ---------------------------------------------------------------- charging a saved card
+
+
+def card_chargeable(saved_card: str | None) -> bool:
+	"""Whether a saved card can be charged at all: Active and holding its gateway token. A card
+	fact only — whether the processor is reachable today is the charge's own business. Never
+	raises (the membership renewal job asks before it makes an invoice)."""
+	try:
+		if not saved_card or frappe.db.get_value(SAVED_CARD, saved_card, "status") != ACTIVE:
+			return False
+		return bool(get_decrypted_password(SAVED_CARD, saved_card, "token", raise_exception=False))
+	except Exception:  # noqa: BLE001
+		return False
+
 
 
 def _lock_message(label: str) -> str:

@@ -20,7 +20,7 @@ customer stands with the authorization (the dialog polls it while the customer s
 
 **Returns:** {offer: bool, reason: text when not offered, template, state: signed / expiring / expired / pending / missing, agreement: the copy the state comes from}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:150`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:157`</sub>
 
 ## `charge_saved_card`
 
@@ -44,7 +44,7 @@ charge up at the gateway and records it.
 
 **Returns:** {ok, status, unique_reference, approval_code, amount, payment_entry, outstanding, paid} on approval; {ok: False, status, error} on a decline; resolved=True when an earlier charge was settled instead of a new one.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:494`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:515`</sub>
 
 ## `list_saved_cards`
 
@@ -62,7 +62,7 @@ Charge saved card picker. Never the token.
 
 **Returns:** {cards: [{name, card_summary, card_expiry, is_default, usage, saved_on}], can_manage: whether the caller may charge or remove them}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:279`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:287`</sub>
 
 ## `release_saved_card_charge`
 
@@ -82,7 +82,7 @@ refused while the charge is younger than the lookup grace period.
 
 **Returns:** {ok: False, status: "CANCELED"} when released; the settle answer when the gateway had it.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:445`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:466`</sub>
 
 ## `remove_saved_card`
 
@@ -102,4 +102,4 @@ When the default card goes, the newest remaining card becomes the default.
 
 **Returns:** {ok: True, status: "Removed"}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:521`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:542`</sub>

@@ -81,6 +81,11 @@ ffl_counter_order_replaced = [
 	"ffl_integrations.distributor.counter.carry_forward_replaced_orders",
 ]
 
+# Membership renewals (ffl_core.membership): the core charges a member's saved card through these,
+# by name, so it never imports this app. Without them no card is chargeable and nothing is charged.
+ffl_membership_charge_saved_card = ["ffl_integrations.payments.saved_cards.run_saved_card_charge"]
+ffl_membership_card_chargeable = ["ffl_integrations.payments.saved_cards.card_chargeable"]
+
 # Apps
 # ------------------
 

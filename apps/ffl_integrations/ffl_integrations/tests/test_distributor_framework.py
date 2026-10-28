@@ -126,6 +126,11 @@ class TestPlanFulfillmentSplit(unittest.TestCase):
 		ln = plans[0]["lines"][0]
 		self.assertEqual((ln["sku"], ln["item_code"], ln["qty"]), ("ACC-9", "ITEM-9", 7))
 
+	def test_plan_line_without_item_code_never_uses_the_sku(self):
+		line = {**_acc(sku="ACC-8"), "item_code": ""}
+		ln = self.provider.plan_fulfillment([line], STOCKING)[0]["lines"][0]
+		self.assertEqual(ln["item_code"], "")
+
 
 def _rehydrate(plan, original_lines):
 	by_sku = {ln["sku"]: ln for ln in original_lines}

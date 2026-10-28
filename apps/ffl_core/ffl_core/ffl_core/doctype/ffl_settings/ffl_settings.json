@@ -30,6 +30,7 @@
   "section_customer_records",
   "store_customer_id_numbers",
   "section_sale_agreements",
+  "enforce_sale_agreements",
   "used_item_agreement_template",
   "tab_verification",
   "section_live_check",
@@ -188,11 +189,19 @@
    "label": "Sale Agreements"
   },
   {
+   "default": "1",
+   "fieldname": "enforce_sale_agreements",
+   "fieldtype": "Check",
+   "label": "Require Agreements at Sale",
+   "description": "A counter sale cannot be submitted until the customer has signed the agreements its items need; off, agreements are only offered and never block a sale."
+  },
+  {
    "fieldname": "used_item_agreement_template",
    "fieldtype": "Link",
    "label": "Used Item Agreement",
    "options": "Agreement Template",
-   "description": "Every Item marked Used needs this agreement signed before a counter sale is submitted, unless the Item or its Item Group names its own. Leave empty to turn this off."
+   "description": "Every Item marked Used needs this agreement signed before a counter sale is submitted, unless the Item or its Item Group names its own. Leave empty to turn this off.",
+   "depends_on": "enforce_sale_agreements"
   },
   {
    "fieldname": "tab_verification",

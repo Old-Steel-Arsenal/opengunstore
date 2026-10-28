@@ -705,3 +705,16 @@ test('pickupTicketState: a ticket, whether this copy carries money, never a retu
 	assert.strictEqual(pickupTicketState({ ...free, ffl_counter_order: '' }), null);
 	assert.strictEqual(pickupTicketState(null), null);
 });
+
+const g = require('../../public/js/pos_tender_guard.js');
+
+test('cartWouldBeLost: only an open, unsaved order with an item', () => {
+	const item = { item_code: 'GUN' };
+	assert.strictEqual(g.cartWouldBeLost({ __islocal: 1, docstatus: 0, items: [item] }), true);
+	assert.strictEqual(g.cartWouldBeLost({ __unsaved: 1, docstatus: 0, items: [item] }), true);
+	assert.strictEqual(g.cartWouldBeLost({ __islocal: 1, docstatus: 0, items: [] }), false);
+	assert.strictEqual(g.cartWouldBeLost({ __islocal: 1, docstatus: 0, items: [{ item_code: '' }] }), false);
+	assert.strictEqual(g.cartWouldBeLost({ docstatus: 0, items: [item] }), false);
+	assert.strictEqual(g.cartWouldBeLost({ __unsaved: 1, docstatus: 1, items: [item] }), false);
+	assert.strictEqual(g.cartWouldBeLost(null), false);
+});

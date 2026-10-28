@@ -1,0 +1,277 @@
+{
+ "actions": [],
+ "creation": "2026-10-27 12:00:00.000000",
+ "modified": "2026-10-28 12:00:00.000000",
+ "modified_by": "Administrator",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "module": "FFL Core",
+ "name": "Membership",
+ "owner": "Administrator",
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "field_order": [
+  "customer",
+  "customer_name",
+  "plan",
+  "status",
+  "column_break_a",
+  "start_date",
+  "current_period_start",
+  "current_period_end",
+  "company",
+  "section_renewal",
+  "auto_renew",
+  "saved_card",
+  "column_break_b",
+  "grace_until",
+  "last_charge_status",
+  "last_charge_attempt",
+  "renewal_reminder_for",
+  "section_cancel",
+  "cancel_at_period_end",
+  "cancelled_on",
+  "cancelled_by",
+  "column_break_c",
+  "cancel_reason",
+  "section_invoices",
+  "invoices"
+ ],
+ "fields": [
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer",
+   "reqd": 1,
+   "in_standard_filter": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "customer_name",
+   "fieldtype": "Data",
+   "label": "Customer Name",
+   "fetch_from": "customer.customer_name",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "plan",
+   "fieldtype": "Link",
+   "label": "Plan",
+   "options": "Membership Plan",
+   "reqd": 1,
+   "in_standard_filter": 1,
+   "in_list_view": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Pending\nActive\nPast Due\nSuspended\nCancelled\nExpired",
+   "default": "Pending",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Pending until the first invoice is paid. Changes only from the customer's Memberships panel."
+  },
+  {
+   "fieldname": "column_break_a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "start_date",
+   "fieldtype": "Date",
+   "label": "Member Since",
+   "read_only": 1
+  },
+  {
+   "fieldname": "current_period_start",
+   "fieldtype": "Date",
+   "label": "Current Period Start",
+   "read_only": 1
+  },
+  {
+   "fieldname": "current_period_end",
+   "fieldtype": "Date",
+   "label": "Current Period End",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_renewal",
+   "fieldtype": "Section Break",
+   "label": "Renewal"
+  },
+  {
+   "fieldname": "auto_renew",
+   "fieldtype": "Check",
+   "label": "Auto-renew",
+   "read_only": 1
+  },
+  {
+   "fieldname": "saved_card",
+   "fieldtype": "Link",
+   "label": "Saved Card",
+   "options": "Saved Card",
+   "read_only": 1,
+   "description": "The card renewals are charged to (saved for recurring charges)."
+  },
+  {
+   "fieldname": "column_break_b",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "grace_until",
+   "fieldtype": "Date",
+   "label": "Grace Until",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_charge_status",
+   "fieldtype": "Small Text",
+   "label": "Last Charge",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_charge_attempt",
+   "fieldtype": "Date",
+   "label": "Last Renewal Attempt",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "The day the renewal job last tried the card (it tries once a day)."
+  },
+  {
+   "fieldname": "renewal_reminder_for",
+   "fieldtype": "Date",
+   "label": "Renewal Reminder Sent For",
+   "read_only": 1,
+   "no_copy": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "section_cancel",
+   "fieldtype": "Section Break",
+   "label": "Cancellation",
+   "collapsible": 1,
+   "depends_on": "eval:doc.cancelled_on || doc.cancel_at_period_end"
+  },
+  {
+   "fieldname": "cancel_at_period_end",
+   "fieldtype": "Check",
+   "label": "Ends at Period End",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cancelled_on",
+   "fieldtype": "Date",
+   "label": "Cancelled On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cancelled_by",
+   "fieldtype": "Link",
+   "label": "Cancelled By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_c",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "cancel_reason",
+   "fieldtype": "Small Text",
+   "label": "Cancellation Reason",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_invoices",
+   "fieldtype": "Section Break",
+   "label": "Invoices"
+  },
+  {
+   "fieldname": "invoices",
+   "fieldtype": "Table",
+   "label": "Invoices",
+   "options": "Membership Invoice",
+   "read_only": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [
+  {
+   "title": "Pending",
+   "color": "Orange"
+  },
+  {
+   "title": "Active",
+   "color": "Green"
+  },
+  {
+   "title": "Past Due",
+   "color": "Orange"
+  },
+  {
+   "title": "Suspended",
+   "color": "Red"
+  },
+  {
+   "title": "Cancelled",
+   "color": "Gray"
+  },
+  {
+   "title": "Expired",
+   "color": "Gray"
+  }
+ ],
+ "autoname": "format:MEM-{YYYY}-{#####}",
+ "naming_rule": "Expression",
+ "title_field": "customer_name",
+ "show_title_field_in_link": 1,
+ "search_fields": "customer_name,plan",
+ "description": "One customer's membership of a plan: its status, current period, renewal card and invoices.",
+ "in_create": 1,
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1
+  },
+  {
+   "role": "Sales Manager",
+   "read": 1,
+   "report": 1,
+   "print": 1
+  },
+  {
+   "role": "Sales User",
+   "read": 1,
+   "report": 1,
+   "print": 1
+  },
+  {
+   "role": "Accounts User",
+   "read": 1,
+   "report": 1
+  },
+  {
+   "role": "Accounts Manager",
+   "read": 1,
+   "report": 1
+  }
+ ],
+ "track_changes": 1
+}
