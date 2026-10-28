@@ -1,7 +1,7 @@
 {
  "actions": [],
  "creation": "2026-10-27 12:00:00.000000",
- "modified": "2026-10-27 12:00:00.000000",
+ "modified": "2026-10-28 12:00:00.000000",
  "modified_by": "Administrator",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -73,8 +73,7 @@
    "fieldtype": "Link",
    "label": "Billed Item",
    "options": "Item",
-   "reqd": 1,
-   "description": "The service item on the invoice: non-stock, one per plan. Saving the plan turns on deferred revenue for it and points it at the Deferred Membership Revenue and Membership Revenue accounts. Whether it is taxed follows the item's own Item Tax Template."
+   "description": "The service item on the invoice: non-stock, one per plan. Left empty, saving the plan makes one. Saving the plan turns on deferred revenue for it and points it at the Deferred Membership Revenue and Membership Revenue accounts. Whether it is taxed follows the item's own Item Tax Template."
   },
   {
    "fieldname": "description",
@@ -91,8 +90,7 @@
    "fieldtype": "Link",
    "label": "Registration Item",
    "options": "Item",
-   "mandatory_depends_on": "eval:doc.registration_fee > 0",
-   "description": "Charged on a customer's first invoice of this plan only, over the same service dates as that first period."
+      "description": "Charged on a customer's first invoice of this plan only, over the same service dates as that first period. Left empty with a fee set, saving the plan makes one."
   },
   {
    "fieldname": "column_break_b",

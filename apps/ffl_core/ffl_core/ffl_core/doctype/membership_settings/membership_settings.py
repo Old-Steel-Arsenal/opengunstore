@@ -1,5 +1,5 @@
-"""Membership Settings: the renewal job's switch, the yearly reminder, and the Needs attention list
-(rendered by the form; rules in ffl_core.membership)."""
+"""Membership Settings: the renewal job's switch and the yearly reminder (rules in ffl_core.membership;
+the Needs attention list is on the Memberships page)."""
 from __future__ import annotations
 
 import frappe

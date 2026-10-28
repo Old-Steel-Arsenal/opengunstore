@@ -37,9 +37,11 @@ is what it was.
   plan's grace days, or Suspended at once when the plan has no grace. No chargeable card: no
   invoice at all. An answer the gateway never gave leaves the invoice and its charge record
   waiting; the job never charges it again and a manager resolves it from **Needs attention**
-  (Membership Settings). At most one open renewal invoice per membership and period: a retry
+  (Memberships page). At most one open renewal invoice per membership and period: a retry
   charges that one.
 * **Member or not** — :func:`is_member`: Active, or Past Due within its grace days.
+* **Memberships page** (Gun Shop sidebar → Customers): :func:`page_overview` (totals, plans, Needs
+  attention) and :func:`page_members` (the member list).
 
 Member benefits are not here yet.
 """
@@ -1172,8 +1174,8 @@ def needs_attention() -> dict:
 
 	Returns:
 	    {renewals_on: whether the daily renewal job runs, rows: [{membership, customer,
-	    customer_name, plan, status, reason, detail, sales_invoice, outstanding, can_retry,
-	    can_cancel, can_drop}]}.
+	    customer_name, plan, status, reason, detail, current_period_end, sales_invoice, outstanding,
+	    can_retry, can_cancel, can_drop}]}.
 	"""
 	frappe.only_for(CUSTOMER_MANAGER_ROLES)
 	today = getdate(nowdate())
@@ -1210,6 +1212,7 @@ def needs_attention() -> dict:
 			reason = _("Renewal not charged")
 		rows.append({"membership": doc.name, "customer": doc.customer, "customer_name": doc.customer_name,
 			"plan": doc.plan, "status": doc.status, "reason": reason, "detail": doc.last_charge_status or "",
+			"current_period_end": doc.current_period_end,
 			"sales_invoice": unpaid.sales_invoice if unpaid else None,
 			"outstanding": flt(frappe.db.get_value("Sales Invoice", unpaid.sales_invoice, "outstanding_amount"))
 				if unpaid else 0,
@@ -1298,3 +1301,106 @@ def agreement_context(doc) -> dict:
 		"period": _(plan.billing_period or ""),
 		"next_charge_date": frappe.format_value(add_days(end, 1), {"fieldtype": "Date"}) if cint(doc.auto_renew) else "",
 		"store_name": company_brand(doc.company).get("name") or ""}
+
+
+# ------------------------------------------------------------------ Memberships page
+
+
+def _monthly(price, billing_period: str) -> float:
+	return flt(price) / 12 if billing_period == YEARLY else flt(price)
+
+
+@frappe.whitelist()
+def page_overview() -> dict:
+	"""Everything the Memberships page shows above the member list, in one round trip.
+
+	Returns:
+	    {plans: [{name, active, billing_period, price, registration_fee, auto_renew_default,
+	    grace_enabled, grace_days, terms_template, description, members}], totals: {active,
+	    monthly, renewing_soon, attention}, attention: the Needs attention answer (managers only,
+	    else null), can_manage: may act on memberships, can_edit_plans: may create and change plans}.
+	    ``monthly`` is what the Active and Past Due members bill per month (a yearly price counts a
+	    twelfth); ``renewing_soon`` counts auto-renewing Active members charged in the next 7 days.
+	"""
+	frappe.only_for(READ_ROLES)
+	plans = frappe.get_all(PLAN, fields=["name", "active", "billing_period", "price", "registration_fee",
+		"auto_renew_default", "grace_enabled", "grace_days", "terms_template", "description"],
+		order_by="active desc, plan_name asc")
+	today = getdate(nowdate())
+	live = frappe.get_all(DOCTYPE, filters={"status": ("in", (ACTIVE, PAST_DUE))}, fields=["plan", "status",
+		"auto_renew", "cancel_at_period_end", "current_period_end"])
+	by_plan = {p.name: p for p in plans}
+	for p in plans:
+		p.members = 0
+	monthly = renewing = 0
+	for m in live:
+		p = by_plan.get(m.plan)
+		if p:
+			p.members += 1
+			monthly += _monthly(p.price, p.billing_period)
+		# Charged the day after the period ends: within the next 7 days.
+		if m.status == ACTIVE and cint(m.auto_renew) and not cint(m.cancel_at_period_end) and m.current_period_end \
+				and add_days(today, -1) <= getdate(m.current_period_end) <= add_days(today, 6):
+			renewing += 1
+	can_manage = bool(set(frappe.get_roles()) & set(CUSTOMER_MANAGER_ROLES))
+	attention = needs_attention() if can_manage else None
+	return {"plans": plans, "attention": attention, "can_manage": can_manage,
+		"can_edit_plans": bool(frappe.has_permission(PLAN, "create")),
+		"totals": {"active": sum(1 for m in live if m.status == ACTIVE), "monthly": flt(monthly, 2),
+			"renewing_soon": renewing, "attention": len(attention["rows"]) if attention else None}}
+
+
+PAGE_SIZE = 50
+
+
+@frappe.whitelist()
+def page_members(plan: str | None = None, status: str | None = None, search: str | None = None,
+		start: int = 0) -> dict:
+	"""One page of the Memberships page's member list, by customer name.
+
+	Args:
+	    plan: Membership Plan name; blank = every plan.
+	    status: Membership status; blank = every status.
+	    search: Part of the customer's name, id or mobile number; blank = everyone.
+	    start: Rows to skip (paging, 50 a page).
+
+	Returns:
+	    {rows: [{name, customer, customer_name, plan, status, next_charge_date, ends_on, auto_renew,
+	    card_summary}], more: whether another page follows}.
+	"""
+	frappe.only_for(READ_ROLES)
+	filters = {}
+	if plan:
+		filters["plan"] = plan
+	if status:
+		filters["status"] = status
+	search = (search or "").strip()
+	if search:
+		like = f"%{search}%"
+		customers = frappe.get_all("Customer", or_filters={"name": ("like", like), "customer_name": ("like", like),
+			"mobile_no": ("like", like)}, pluck="name", limit=500)  # lazy: 500 matching customers, paginate if a store outgrows it
+		if not customers:
+			return {"rows": [], "more": False}
+		filters["customer"] = ("in", customers)
+	found = frappe.get_all(DOCTYPE, filters=filters, fields=["name", "customer", "customer_name", "plan", "status",
+		"auto_renew", "cancel_at_period_end", "current_period_end", "saved_card"],
+		order_by="customer_name asc, name asc", limit_start=cint(start), limit_page_length=PAGE_SIZE + 1)
+	more = len(found) > PAGE_SIZE
+	found = found[:PAGE_SIZE]
+	cards = {}
+	card_names = sorted({m.saved_card for m in found if m.saved_card})
+	if card_names and frappe.db.exists("DocType", "Saved Card"):
+		cards = dict(frappe.get_all("Saved Card", filters={"name": ("in", card_names)},
+			fields=["name", "card_summary"], as_list=True))
+	today = getdate(nowdate())
+	rows = []
+	for m in found:
+		end = getdate(m.current_period_end) if m.current_period_end else None
+		renewing = cint(m.auto_renew) and m.status in (ACTIVE, PAST_DUE) and not cint(m.cancel_at_period_end)
+		rows.append({"name": m.name, "customer": m.customer, "customer_name": m.customer_name, "plan": m.plan,
+			"status": m.status, "auto_renew": cint(m.auto_renew),
+			# An overdue renewal has no next charge to show (Needs attention lists it).
+			"next_charge_date": add_days(end, 1) if renewing and end and end >= today else None,
+			"ends_on": end if cint(m.cancel_at_period_end) and m.status in LIVE else None,
+			"card_summary": cards.get(m.saved_card) or ""})
+	return {"rows": rows, "more": more}

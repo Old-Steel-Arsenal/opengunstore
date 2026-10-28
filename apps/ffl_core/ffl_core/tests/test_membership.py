@@ -6,12 +6,13 @@ deferred revenue processing; nothing is stubbed but the clock (``membership.nowd
 """
 from __future__ import annotations
 
+import random
 from datetime import date
 from unittest.mock import patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
-from frappe.utils import flt, getdate
+from frappe.utils import add_days, flt, getdate, nowdate
 
 from ffl_core import membership as ms
 from ffl_core.api import manual_order
@@ -157,9 +158,13 @@ class PlanRules(_Base):
 				"billing_period": ms.MONTHLY, "price": 5, "item": self.plan.item}).insert(ignore_permissions=True)
 		with self.assertRaises(frappe.ValidationError):        # grace on needs days
 			_plan(grace_enabled=1, grace_days=0)
-		with self.assertRaises(frappe.ValidationError):        # a fee needs its item
-			frappe.get_doc({"doctype": ms.PLAN, "plan_name": _uniq("NoReg"), "billing_period": ms.MONTHLY,
-				"price": 5, "item": _item("X"), "registration_fee": 10}).insert(ignore_permissions=True)
+		fee = frappe.get_doc({"doctype": ms.PLAN, "plan_name": _uniq("NoReg"), "billing_period": ms.MONTHLY,
+			"price": 5, "item": _item("X"), "registration_fee": 10}).insert(ignore_permissions=True)
+		self.assertTrue(fee.registration_item)                  # a fee with no item gets one made
+		with self.assertRaises(frappe.ValidationError):        # a fee item must not be the billed item
+			frappe.get_doc({"doctype": ms.PLAN, "plan_name": _uniq("Same"), "billing_period": ms.MONTHLY,
+				"price": 5, "item": (x := _item("Y")), "registration_fee": 10,
+				"registration_item": x}).insert(ignore_permissions=True)
 		stock = frappe.get_doc({"doctype": "Item", "item_code": _uniq("STK"), "item_group": "Products",
 			"stock_uom": "Nos", "is_stock_item": 1}).insert(ignore_permissions=True)
 		with self.assertRaises(frappe.ValidationError):        # a stock item is not a service
@@ -457,3 +462,98 @@ class Cancel(_Base):
 		self.assertTrue(any(p.name == self.plan.name for p in out["plans"]))
 		frappe.set_user(_user("member-clerk2@example.com", "Sales User"))
 		self.assertFalse(ms.get_memberships(self.customer)["can_cancel"])
+
+
+class PlanItems(_Base):
+	def test_a_plan_without_items_makes_them(self):
+		name = _uniq("Range")
+		plan = frappe.get_doc({"doctype": ms.PLAN, "plan_name": name, "active": 1, "billing_period": ms.MONTHLY,
+			"price": 30, "registration_fee": 25}).insert(ignore_permissions=True)
+		self.assertEqual(plan.item, name)
+		self.assertEqual(plan.registration_item, f"{name} registration fee")
+		item = frappe.get_doc("Item", plan.item)
+		self.assertEqual((item.is_stock_item, item.has_serial_no, item.item_group, item.enable_deferred_revenue),
+			(0, 0, "Service", 1))
+		self.assertEqual(flt(frappe.db.get_value("Item Price", {"item_code": plan.item, "selling": 1},
+			"price_list_rate")), 30)
+		self.assertEqual(flt(frappe.db.get_value("Item Price", {"item_code": plan.registration_item, "selling": 1},
+			"price_list_rate")), 25)
+
+	def test_a_taken_code_gets_a_number_and_a_fee_added_later_gets_its_item(self):
+		name = _uniq("Taken")
+		frappe.get_doc({"doctype": "Item", "item_code": name, "item_name": name, "item_group": "Service",
+			"stock_uom": "Nos", "is_stock_item": 0}).insert(ignore_permissions=True)
+		plan = frappe.get_doc({"doctype": ms.PLAN, "plan_name": name, "active": 1, "billing_period": ms.YEARLY,
+			"price": 300}).insert(ignore_permissions=True)
+		self.assertEqual(plan.item, f"{name} 2")
+		self.assertFalse(plan.registration_item)
+		plan.registration_fee = 50
+		plan.save(ignore_permissions=True)
+		self.assertEqual(plan.registration_item, f"{name} registration fee")
+
+	def test_a_store_naming_items_by_series_links_the_real_item(self):
+		old = frappe.db.get_default("item_naming_by")
+		frappe.db.set_default("item_naming_by", "Naming Series")
+		try:
+			plan = frappe.get_doc({"doctype": ms.PLAN, "plan_name": _uniq("Series"), "active": 1,
+				"billing_period": ms.MONTHLY, "price": 30}).insert(ignore_permissions=True)
+		finally:
+			frappe.db.set_default("item_naming_by", old)
+		self.assertTrue(frappe.db.exists("Item", plan.item))
+		self.assertNotEqual(plan.item, plan.plan_name)                # a series name, not the plan name
+		self.assertEqual(frappe.db.get_value("Item", plan.item, "item_name"), plan.plan_name)
+
+	def test_a_bad_plan_leaves_no_item_behind(self):
+		name = _uniq("Bad")
+		frappe.db.savepoint("bad_plan")
+		with self.assertRaises(frappe.ValidationError):
+			frappe.get_doc({"doctype": ms.PLAN, "plan_name": name, "active": 1, "billing_period": ms.MONTHLY,
+				"price": 30, "grace_enabled": 1, "grace_days": 0}).insert(ignore_permissions=True)
+		frappe.db.rollback(save_point="bad_plan")
+		self.assertFalse(frappe.db.exists("Item", name))
+
+
+class Page(_Base):
+	def test_overview_counts_members_billing_and_renewals(self):
+		monthly = _plan(price=30, fee=0)
+		yearly = _plan(period=ms.YEARLY, price=120, fee=0)
+		before = ms.page_overview()["totals"]
+		a, si = _sell(self.customer, monthly.name, start=nowdate())
+		_pay(si)
+		b, si = _sell(_customer().name, yearly.name, start=nowdate())
+		_pay(si)
+		# Due tomorrow and auto-renewing: counted as renewing soon.
+		frappe.db.set_value(ms.DOCTYPE, a, {"auto_renew": 1, "current_period_end": nowdate()})
+		out = ms.page_overview()
+		t = out["totals"]
+		self.assertEqual(t["active"] - before["active"], 2)
+		self.assertAlmostEqual(t["monthly"] - before["monthly"], 40, places=2)   # 30 + 120 / 12
+		self.assertEqual(t["renewing_soon"] - before["renewing_soon"], 1)
+		self.assertEqual(next(p for p in out["plans"] if p.name == monthly.name).members, 1)
+		self.assertTrue(out["can_manage"] and out["can_edit_plans"])
+		self.assertIsInstance(out["attention"]["rows"], list)
+
+	def test_the_counter_sees_no_attention_list_and_cannot_edit_plans(self):
+		frappe.set_user(_user("member-clerk3@example.com", "Sales User"))
+		out = ms.page_overview()
+		self.assertIsNone(out["attention"])
+		self.assertIsNone(out["totals"]["attention"])
+		self.assertFalse(out["can_manage"] or out["can_edit_plans"])
+
+	def test_member_list_filters_searches_and_shows_the_next_charge(self):
+		plan = _plan(fee=0)
+		phone = "555" + str(random.randint(1000000, 9999999))
+		cust = _customer(mobile_no=phone)
+		m, si = _sell(cust.name, plan.name, start=nowdate())
+		_pay(si)
+		frappe.db.set_value(ms.DOCTYPE, m, "auto_renew", 1)
+		rows = ms.page_members(plan=plan.name)["rows"]
+		self.assertEqual([r["name"] for r in rows], [m])
+		end = frappe.db.get_value(ms.DOCTYPE, m, "current_period_end")
+		self.assertEqual(getdate(rows[0]["next_charge_date"]), getdate(add_days(end, 1)))
+		self.assertEqual([r["name"] for r in ms.page_members(search=phone)["rows"]], [m])
+		self.assertEqual(ms.page_members(plan=plan.name, status=ms.SUSPENDED)["rows"], [])
+		self.assertEqual(ms.page_members(search="no-such-customer-zz")["rows"], [])
+		frappe.db.set_value(ms.DOCTYPE, m, "cancel_at_period_end", 1)
+		row = ms.page_members(plan=plan.name)["rows"][0]
+		self.assertEqual((row["next_charge_date"], getdate(row["ends_on"])), (None, getdate(end)))
