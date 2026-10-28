@@ -1215,6 +1215,8 @@ app: `ffl_integrations` · module: FFL Integrations · single · roles: System M
 | `base_url` | Data | API base URL |  |  |
 | `disable_email` | Check | No confirmation email from Lipsey's |  |  |
 | `dropship_overnight` | Check | Accessory drop-ship orders ship overnight |  |  |
+| `rate_dropship_firearm` | Currency | Drop-ship firearm order |  |  |
+| `rate_dropship_accessory` | Currency | Drop-ship accessory order |  |  |
 | `shipping_polled_through` | Date | Shipping polled through (dealer) |  |  |
 | `dropship_shipping_polled_through` | Date | Shipping polled through (drop-ship) |  |  |
 | `last_shipping_poll_at` | Datetime | Last shipping poll |  |  |

@@ -4418,6 +4418,14 @@
             ],
             "description": "Accessory drop-ship orders ship overnight"
           },
+          "rate_dropship_firearm": {
+            "type": "number",
+            "description": "Drop-ship firearm order"
+          },
+          "rate_dropship_accessory": {
+            "type": "number",
+            "description": "Drop-ship accessory order"
+          },
           "shipping_polled_through": {
             "type": "string",
             "description": "Shipping polled through (dealer)"
@@ -15397,7 +15405,7 @@
           "ffl_integrations"
         ],
         "summary": "Cancel a Distributor Order here (alerts ops when it is still live at the house).",
-        "description": "Cancelling never reaches the distributor, so an order that is live there\n(Placed+) has to be cancelled with the house by phone or email.\nLeft unconfirmed, ops are alerted to arrange that; ``confirmed`` records\nthat the house has already agreed and skips the alert.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1127`",
+        "description": "Cancelling never reaches the distributor, so an order that is live there\n(Placed+) has to be cancelled with the house by phone or email.\nLeft unconfirmed, ops are alerted to arrange that; ``confirmed`` records\nthat the house has already agreed and skips the alert.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1071`",
         "operationId": "ffl_integrations.distributor.api.cancel_order",
         "responses": {
           "200": {
@@ -15558,7 +15566,7 @@
           "ffl_integrations"
         ],
         "summary": "Confirm a Draft Distributor Order: Draft → Queued + enqueue placement.",
-        "description": "Human confirmation (the v1 queue gate); the placement worker is\nidempotent. A counter-sourced drop-ship DO must be fully paid first\n(placement_payment_block); a ship-to-store leg may be placed on a deposit.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1097`",
+        "description": "Human confirmation (the v1 queue gate); the placement worker is\nidempotent. A counter-sourced drop-ship DO must be fully paid first\n(placement_payment_block); a ship-to-store leg may be placed on a deposit.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1041`",
         "operationId": "ffl_integrations.distributor.api.confirm_order",
         "responses": {
           "200": {
@@ -15606,7 +15614,7 @@
           "ffl_integrations"
         ],
         "summary": "Plan + create the Draft Distributor Order(s) for a cart.",
-        "description": "`plan_fulfillment` may split one cart into several orders (no\nfirearm/accessory mixing / H4 >400) — each becomes its own Draft DO. A\nclassification divergence raises (order held for a human). Never\nplaces anything: v1 is a human-confirmed queue.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\n**Permissions:** Distributor order roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:808`",
+        "description": "`plan_fulfillment` may split one cart into several orders (no\nfirearm/accessory mixing / H4 >400) — each becomes its own Draft DO. A\nclassification divergence raises (order held for a human). Never\nplaces anything: v1 is a human-confirmed queue.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\n**Permissions:** Distributor order roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:752`",
         "operationId": "ffl_integrations.distributor.api.create_orders",
         "responses": {
           "200": {
@@ -15817,7 +15825,7 @@
           "ffl_integrations"
         ],
         "summary": "List Distributor Orders, newest-modified first — every house and every",
-        "description": "order type in one list (the Distributor Orders page's tracking tab).\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1191`",
+        "description": "order type in one list (the Distributor Orders page's tracking tab).\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1135`",
         "operationId": "ffl_integrations.distributor.api.list_orders",
         "responses": {
           "200": {
@@ -16002,7 +16010,7 @@
           "ffl_integrations"
         ],
         "summary": "Choose the carrier service for a Draft Distributor Order.",
-        "description": "Only a Draft order may change (Queued and later are at or past the\ndistributor); the code must be one the provider offers for this order.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1030`",
+        "description": "Only a Draft order may change (Queued and later are at or past the\ndistributor); the code must be one the provider offers for this order.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:974`",
         "operationId": "ffl_integrations.distributor.api.set_shipping_service",
         "responses": {
           "200": {
@@ -16055,7 +16063,7 @@
           "ffl_integrations"
         ],
         "summary": "Carrier services the distributor offers for this order, with the",
-        "description": "flat-rate estimate, so the operator can choose before Confirm.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1005`",
+        "description": "flat-rate estimate, so the operator can choose before Confirm.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:949`",
         "operationId": "ffl_integrations.distributor.api.shipping_options",
         "responses": {
           "200": {
@@ -16103,7 +16111,7 @@
           "ffl_integrations"
         ],
         "summary": "Generic ops state transition for a Distributor Order.",
-        "description": "The DO state machine still enforces transition legality.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\n**Permissions:** Distributor order roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1168`",
+        "description": "The DO state machine still enforces transition legality.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\n**Permissions:** Distributor order roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1112`",
         "operationId": "ffl_integrations.distributor.api.transition_order",
         "responses": {
           "200": {

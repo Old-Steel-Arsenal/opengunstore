@@ -207,7 +207,7 @@ class RSRProvider(RemoteCatalogMixin, DistributorProvider):
 		return normalize_shipment(no, self._get_client().get_shipment(no, account), account)[
 			"tracking_numbers"]
 
-	def estimate_order_freight(self, lines: list, mode: str) -> Optional[float]:
+	def estimate_order_freight(self, lines: list, mode: str, options=None) -> Optional[float]:
 		import frappe
 
 		return estimate_freight(lines, mode, frappe.get_cached_doc("RSR Settings"))

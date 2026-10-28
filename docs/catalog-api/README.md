@@ -120,3 +120,7 @@ first. A half-filled Catalog service tab fails closed (no silent fallback).
 On the code side a house is a `DistributorProvider` that mixes in
 `RemoteCatalogMixin` (`code` = the distributor code the service knows); the
 mixin supplies every catalog read, and the provider adds only ordering.
+Freight is the provider's too: `estimate_order_freight` prices one order
+(a house with flat per-order rates returns `freight.flat_rate(...)` over its
+Settings), and every caller (the counter's Fulfillment planner, drop-ship
+sourcing) asks through `ffl_integrations.distributor.freight.estimate_orders`.
