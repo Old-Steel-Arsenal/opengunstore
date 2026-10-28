@@ -872,6 +872,11 @@ def enrich_line(provider, line: dict) -> dict:
 	sku = line.get("sku")
 	row = provider.catalog_row(sku) or {}
 	item_code = line.get("item_code") or ""
+	if not item_code:
+		# A cart line from the cross-house search carries no Item: use the one the
+		# shop already has for this product (by UPC barcode/name, or SKU), else none.
+		from ffl_integrations.distributor.receive_bridge import _local_item
+		item_code = _local_item(sku, row.get("upc") or line.get("upc") or "") or ""
 	our_is_firearm = None
 	if item_code:
 		our_is_firearm = frappe.db.get_value("Item", item_code, "is_firearm")

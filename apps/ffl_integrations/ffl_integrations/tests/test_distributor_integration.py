@@ -121,7 +121,14 @@ class _Base(FrappeTestCase):
 				"manufacturer": "TestArms", "model": "M1"},
 			{"rsr_stock_number": "DC-ACC", "ffl_required": 0, "department_number": "13",
 				"dealer_price": 1, "map_price": 1, "msrp": 1, "quantity": 10},
+			# The shop's Item for this one is named by its UPC, not the house SKU.
+			{"rsr_stock_number": "DC-UPC-ACC", "upc": "000000777001", "ffl_required": 0,
+				"department_number": "13", "dealer_price": 1, "map_price": 1, "msrp": 1,
+				"quantity": 10},
+			{"rsr_stock_number": "DC-NO-ITEM", "ffl_required": 0, "department_number": "13",
+				"dealer_price": 1, "map_price": 1, "msrp": 1, "quantity": 10},
 		])
+		_ensure_item("000000777001", item_group="Ammunition", has_serial_no=0)
 		_ensure_distributor("DC-TEST-SUPPLIER")
 
 	@classmethod
@@ -562,6 +569,22 @@ class TestCreateOrdersEndpoint(_Base):
 			do = frappe.get_doc("Distributor Order", row["name"])
 			self.assertEqual(do.status, "Draft")
 			self.assertEqual(do.docstatus, 0)
+
+
+	def test_search_cart_line_without_item_code_finds_the_upc_item(self):
+		# The restock page's cross-house search sends no item_code; the house SKU
+		# must never stand in for one (it is not an Item → link validation threw).
+		created = dist_api.create_orders(
+			"TEST-DC",
+			json.dumps([
+				{"sku": "DC-UPC-ACC", "item_code": "", "qty": 1},
+				{"sku": "DC-NO-ITEM", "item_code": "", "qty": 1},
+			]),
+			json.dumps({"mode": "stocking"}))
+		self.assertEqual(len(created), 1)
+		do = frappe.get_doc("Distributor Order", created[0]["name"])
+		self.assertEqual({ln.sku: ln.item_code for ln in do.lines},
+			{"DC-UPC-ACC": "000000777001", "DC-NO-ITEM": ""})
 
 
 class TestListOrdersTracking(_Base):
