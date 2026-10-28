@@ -45,6 +45,7 @@ from ffl_core.reservations import (
 	uniform_free_serials,
 )
 from ffl_core.utils import commit as safe_commit
+from ffl_integrations.gunbroker import listings as gb_listings
 from ffl_integrations.gunbroker import mapping as gb_mapping
 from ffl_integrations.gunbroker import orders as gb_orders
 from ffl_integrations.notifications import notify_admins, safe_log_error
@@ -1193,8 +1194,16 @@ def dispose_gb_order(gunbroker_order: str, cr_details=None, locations=None) -> d
 	issued = _issue_stock_units(order, _stock_lines(order), picks)
 
 	for serial in disposed + retired:
-		frappe.db.set_value("Serial No", serial,
-			{"gb_reserved": 0, "gb_order": ""}, update_modified=False)
+		row = gb_listings.serial_state(serial)
+		# The listing leaves with the gun. Left on the serial, the sweep keeps
+		# asking GunBroker about it, finds it sold with no order holding the
+		# gun any more, and raises "may have sold on GunBroker" for a gun that
+		# is already out the door.
+		frappe.db.set_value("Serial No", serial, {
+			"gb_reserved": 0, "gb_order": "", "gb_item_id": "",
+			"gb_item_history": gb_listings._push_history(
+				row.get("gb_item_history"), row.get("gb_item_id")),
+		}, update_modified=False)
 	# ships_direct is the decision just taken, written down for everything
 	# after this point (the invoice's ship-to, its remarks, the card) to read
 	# instead of re-deriving it from the Items.

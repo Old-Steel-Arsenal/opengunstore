@@ -147,11 +147,14 @@ class TestDisposeRetiresAntiquesWithoutADisposition(_FulfillmentCase):
 		detail["orderItemsCollection"][0]["isFFLRequired"] = False
 		return detail
 
-	def _dispose(self, order, cr_details=None, *, issue_result="MAT-STE-0001"):
+	def _dispose(self, order, cr_details=None, *, issue_result="MAT-STE-0001",
+			serial_row=None):
 		set_values: list[tuple] = []
 		self._patch_order_doc(order)
 		with patch("frappe.db.set_value",
 					side_effect=lambda *a, **k: set_values.append(a)), \
+				patch.object(fulfillment.gb_listings, "serial_state",
+					return_value=frappe._dict(serial_row or {})), \
 				patch.object(fulfillment, "is_own_license", return_value=False), \
 				patch.object(fulfillment, "is_antique_item",
 					side_effect=lambda code: code == ANTIQUE), \
@@ -186,8 +189,23 @@ class TestDisposeRetiresAntiquesWithoutADisposition(_FulfillmentCase):
 		self.assertEqual(order.ships_direct, 1, "the invoice reads this, not the Items")
 		self.assertIsNone(order.atf_ffl_record)
 		invoice.assert_called_once()
-		self.assertIn(("Serial No", "SN-A1", {"gb_reserved": 0, "gb_order": ""}),
-			set_values, "the GunBroker hold must be released like a disposed gun's")
+		released = [a[2] for a in set_values if a[:2] == ("Serial No", "SN-A1")]
+		self.assertEqual(len(released), 1)
+		self.assertEqual(
+			{k: released[0][k] for k in ("gb_reserved", "gb_order", "gb_item_id")},
+			{"gb_reserved": 0, "gb_order": "", "gb_item_id": ""},
+			"the GunBroker hold must be released like a disposed gun's")
+
+	def test_the_listing_leaves_with_the_gun(self):
+		"""Left on the serial, the sweep finds the listing sold with no order
+		holding the gun and flags it "may have sold on GunBroker"."""
+		order = self._order(self._antique_detail())
+		order.ffl_received = 0
+		set_values = self._dispose(order, serial_row={
+			"gb_item_id": "1211978244", "gb_item_history": "1211000001"})[-1]
+		self.assertIn(("Serial No", "SN-A1", {
+			"gb_reserved": 0, "gb_order": "", "gb_item_id": "",
+			"gb_item_history": "1211000001,1211978244"}), set_values)
 
 	def test_a_mixed_order_books_the_regulated_gun_and_issues_the_antique(self):
 		detail = fx.order_detail(extra_items=[fx.order_item(16087231,
