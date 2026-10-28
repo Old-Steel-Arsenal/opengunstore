@@ -689,7 +689,13 @@ def _request(customer, template, deliver="qr", replace=0, terminal=None, serial_
 			as_dict=True, for_update=True, order_by="creation desc")
 		if existing and existing.sign_token_hash and existing.token_expires \
 				and get_datetime(existing.token_expires) > now_datetime() and not cint(replace):
-			return {"name": existing.name, "link_open": True, "token_expires": str(existing.token_expires)}
+			# An open copy missing some of these guns stays as it is (the customer may be
+			# signing it); a new copy covers them all.
+			if guns and not {s for s, _p in guns} <= set(frappe.get_all(FIREARM_ROW,
+					filters={"parenttype": DOCTYPE, "parent": existing.name}, pluck="serial_no")):
+				existing = None
+			else:
+				return {"name": existing.name, "link_open": True, "token_expires": str(existing.token_expires)}
 		doc = frappe.get_doc(DOCTYPE, existing.name) if existing else frappe.new_doc(DOCTYPE)
 		doc.update({
 			"customer": customer, "template": template, "template_version": tpl.version or 1,

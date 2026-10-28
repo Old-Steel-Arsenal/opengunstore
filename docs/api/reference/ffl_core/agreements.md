@@ -36,7 +36,7 @@ The Agreements section of the Customer form.
 
 **Returns:** {"rows": [{"name", "template", "serial_no": every gun it covers, comma-separated, "status", "signed_on", "signed_via", "expires_on", "signed_pdf"}] newest first, "can_manage": whether the caller may void or record paper copies}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:828`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:834`</sub>
 
 ## `load_for_signing`
 
@@ -58,7 +58,7 @@ then on carries) the current text.
 
 **Returns:** {"customer_name", "title", "body_html", "store_name", "minors_need_guardian", "minor_by_dob": true / false from the customer's date of birth, or null when the store keeps none (the page then asks)}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:923`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:929`</sub>
 
 ## `record_paper_agreement`
 
@@ -85,7 +85,7 @@ signed scan there is nothing to record.
 
 **Returns:** {"name", "status", "expires_on", "signed_pdf"}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:765`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:771`</sub>
 
 ## `regenerate_signed_pdf`
 
@@ -101,7 +101,7 @@ Build a signed copy's PDF again (when the background job failed).
 
 **Returns:** {"signed_pdf": file URL}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:853`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:859`</sub>
 
 ## `request_agreement`
 
@@ -164,7 +164,7 @@ link and 300 per IP address.
 
 **Returns:** {"signed": true, "store_name"}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:1002`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:1008`</sub>
 
 ## `void_agreement`
 
@@ -184,4 +184,4 @@ reason goes on its timeline.
 
 **Returns:** {"name", "status": "Void"}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:737`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:743`</sub>

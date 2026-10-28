@@ -75,7 +75,7 @@ class CounterOrderAgreements(BuildOrderMixin, FrappeTestCase):
 		self.assertEqual(frappe.db.get_value("Customer Agreement", {"customer": si.customer,
 			"template": self.per_customer}, "status"), "Pending")
 
-	def test_an_unsigned_order_emails_one_copy_per_gun(self):
+	def test_an_unsigned_order_emails_the_gun_its_copy(self):
 		out, serial, send = self._order()
 		self.assertTrue(out["ok"])
 		si = frappe.get_doc("Sales Invoice", out["sales_invoice"])

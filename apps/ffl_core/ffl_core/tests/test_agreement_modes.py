@@ -216,6 +216,19 @@ class EachFirearmSold(_Base):
 		self.assertEqual(frappe.db.get_value("Customer Agreement", r["name"], "reference_name"), si.name)
 		self.assertEqual(frappe.db.count("Customer Agreement", {"customer": self.cust.name, "template": self.tpl.name}), 1)
 
+	def test_an_open_link_missing_a_gun_leaves_it_and_makes_a_copy_for_all(self):
+		code2, serial2 = _gun()
+		first = agreements.request_agreement(self.cust.name, self.tpl.name, "qr", 0, None, self.serial)
+		both = agreements._request(self.cust.name, self.tpl.name, "qr", 0,
+			firearms=[{"serial_no": self.serial}, {"serial_no": serial2}])
+		self.assertNotEqual(both["name"], first["name"])
+		self.assertFalse(both.get("link_open"))
+		self.assertEqual(len(frappe.get_doc("Customer Agreement", first["name"]).firearms), 1)
+		self.assertEqual(sorted(g.serial_no for g in frappe.get_doc("Customer Agreement", both["name"]).firearms),
+			sorted([self.serial, serial2]))
+		# Asking again for the guns the open copy already covers says so instead.
+		self.assertTrue(agreements._request(self.cust.name, self.tpl.name, "qr", 0, serial_no=serial2).get("link_open"))
+
 	def test_the_firearms_placeholder_is_a_table_of_the_guns(self):
 		frappe.db.set_value("Agreement Template", self.tpl.name, "body", "<div>{{ firearms }}</div>")
 		code2, serial2 = _gun()
