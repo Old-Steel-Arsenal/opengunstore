@@ -209,6 +209,8 @@ def _distributor_line(row, was=None) -> bool:
 
 def mark_quoted(row):
 	"""A distributor line our code priced from the distributor's quote (create_order)."""
+	if getattr(row, "flags", None) is None:   # a plain dict row (tests): give it somewhere to keep it
+		row.flags = frappe._dict()
 	row.flags[QUOTED] = True
 	return row
 
