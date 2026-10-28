@@ -87,3 +87,5 @@ ffl_core.patches.seed_enforce_sale_agreements
 ffl_core.patches.add_membership_settings_workspace_entry
 # Manager approval for lowered prices: off on stores that already ran (a new store starts with it on).
 ffl_core.patches.seed_price_approval_off
+# Each firearm sold agreements: the gun of every copy made before one copy could cover several goes on its Firearms table.
+ffl_core.patches.backfill_agreement_firearms

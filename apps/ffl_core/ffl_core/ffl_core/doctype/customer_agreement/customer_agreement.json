@@ -12,6 +12,7 @@
   "template_version",
   "serial_no",
   "item_code",
+  "firearms",
   "status",
   "expires_on",
   "section_signed",
@@ -94,7 +95,7 @@
    "label": "Firearm (Serial No)",
    "read_only": 1,
    "search_index": 1,
-   "description": "For an agreement signed for each firearm sold: the gun it names."
+   "description": "For an agreement signed for each firearm sold: the first gun it names (all of them are under Firearms)."
   },
   {
    "fieldname": "item_code",
@@ -103,6 +104,15 @@
    "label": "Item",
    "read_only": 1,
    "depends_on": "eval:doc.serial_no"
+  },
+  {
+   "fieldname": "firearms",
+   "fieldtype": "Table",
+   "options": "Customer Agreement Firearm",
+   "label": "Firearms",
+   "read_only": 1,
+   "depends_on": "eval:doc.serial_no",
+   "description": "For an agreement signed for each firearm sold: every gun this one signature covers."
   },
   {
    "fieldname": "status",
@@ -298,7 +308,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-17 12:00:00.000000",
+ "modified": "2026-10-28 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Customer Agreement",

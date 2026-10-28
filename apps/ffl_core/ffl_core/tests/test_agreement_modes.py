@@ -7,6 +7,9 @@ needs stock for the guns); the submit / cancel bookkeeping is called the same wa
 """
 from __future__ import annotations
 
+import json
+from unittest.mock import patch
+
 import frappe
 from frappe.utils import add_days, nowdate
 
@@ -176,15 +179,98 @@ class EachFirearmSold(_Base):
 			"attached_to_name": r["name"], "attached_to_field": "signed_pdf"}), 1)
 		self.assertTrue(after)
 
-	def test_the_register_lists_one_row_per_gun_and_never_puts_it_on_the_panel(self):
+	def test_the_register_lists_one_row_for_the_guns_that_need_it_and_never_puts_it_on_the_panel(self):
 		frappe.db.set_value("Agreement Template", self.tpl.name, "show_on_counter_panel", 1)
 		code2, serial2 = _gun()
-		rows = agreements.agreements_for_sale(self.cust.name, [
-			{"item_code": self.code, "serial_no": self.serial, "rate": 400},
-			{"item_code": code2, "serial_no": serial2, "rate": 300}])["rows"]
-		mine = sorted((r["serial_no"], r["required"]) for r in rows if r["template"] == self.tpl.name)
-		self.assertEqual(mine, sorted([(self.serial, True), (serial2, False)]))
+		cart = [{"item_code": self.code, "serial_no": self.serial, "rate": 400},
+			{"item_code": code2, "serial_no": serial2, "rate": 300}]
+		[row] = [r for r in agreements.agreements_for_sale(self.cust.name, cart)["rows"] if r["template"] == self.tpl.name]
+		self.assertEqual((row["required"], row["state"]), (True, "missing"))
+		self.assertEqual([g["serial_no"] for g in row["firearms"]], [self.serial])   # the new gun is not asked for
+		frappe.db.set_value("Item", code2, "ffl_required_agreement", self.tpl.name)
+		[row] = [r for r in agreements.agreements_for_sale(self.cust.name, cart)["rows"] if r["template"] == self.tpl.name]
+		self.assertEqual([g["serial_no"] for g in row["firearms"]], [self.serial, serial2])
 		self.assertNotIn(self.tpl.name, [r["template"] for r in agreements.counter_panel_rows(self.cust.name)])
+
+	def test_one_copy_signs_for_every_gun_of_the_sale(self):
+		code2, serial2 = _gun()
+		frappe.db.set_value("Item", code2, "ffl_required_agreement", self.tpl.name)
+		si = self.sale(name="SINV-AGR-TEST-M")
+		si.append("items", {"item_code": code2, "qty": 1, "rate": 300, "serial_no": serial2})
+		r = agreements.request_agreement(self.cust.name, self.tpl.name, "qr", 1,
+			firearms=[{"serial_no": self.serial, "price": 400}, {"serial_no": serial2, "price": 300}])
+		doc = frappe.get_doc("Customer Agreement", r["name"])
+		self.assertEqual([g.serial_no for g in doc.firearms], [self.serial, serial2])
+		self.assertIn(self.serial, doc.body_snapshot)
+		self.assertIn(serial2, doc.body_snapshot)
+		# Asking again for either gun re-issues that same copy, not a second one.
+		again = agreements.request_agreement(self.cust.name, self.tpl.name, "qr", 1, None, serial2)
+		self.assertEqual(again["name"], r["name"])
+		r = agreements.request_agreement(self.cust.name, self.tpl.name, "qr", 1,
+			firearms=json.dumps([{"serial_no": self.serial, "price": 400}, {"serial_no": serial2, "price": 300}]))
+		self.assertEqual(r["name"], doc.name)
+		with self.assertRaises(agreements.AgreementRequired):
+			agreements.refuse_missing_required(si)
+		self.sign(r["sign_url"].split("#t=", 1)[1])
+		agreements.refuse_missing_required(si)
+		agreements.mark_firearm_agreements_used(si)
+		self.assertEqual(frappe.db.get_value("Customer Agreement", r["name"], "reference_name"), si.name)
+		self.assertEqual(frappe.db.count("Customer Agreement", {"customer": self.cust.name, "template": self.tpl.name}), 1)
+
+	def test_an_open_link_missing_a_gun_leaves_it_and_makes_a_copy_for_all(self):
+		code2, serial2 = _gun()
+		first = agreements.request_agreement(self.cust.name, self.tpl.name, "qr", 0, None, self.serial)
+		both = agreements._request(self.cust.name, self.tpl.name, "qr", 0,
+			firearms=[{"serial_no": self.serial}, {"serial_no": serial2}])
+		self.assertNotEqual(both["name"], first["name"])
+		self.assertFalse(both.get("link_open"))
+		self.assertEqual(len(frappe.get_doc("Customer Agreement", first["name"]).firearms), 1)
+		self.assertEqual(sorted(g.serial_no for g in frappe.get_doc("Customer Agreement", both["name"]).firearms),
+			sorted([self.serial, serial2]))
+		# Asking again for the guns the open copy already covers says so instead.
+		self.assertTrue(agreements._request(self.cust.name, self.tpl.name, "qr", 0, serial_no=serial2).get("link_open"))
+
+	def test_one_copy_per_gun_keeps_a_copy_and_a_row_for_each_gun(self):
+		frappe.db.set_value("Agreement Template", self.tpl.name, "one_copy_per_gun", 1)
+		code2, serial2 = _gun()
+		frappe.db.set_value("Item", code2, "ffl_required_agreement", self.tpl.name)
+		rows = [r for r in agreements.agreements_for_sale(self.cust.name, [
+			{"item_code": self.code, "serial_no": self.serial, "rate": 400},
+			{"item_code": code2, "serial_no": serial2, "rate": 300}])["rows"] if r["template"] == self.tpl.name]
+		self.assertEqual(sorted([g["serial_no"] for g in r["firearms"]] for r in rows), sorted([[self.serial], [serial2]]))
+		with self.assertRaises(frappe.ValidationError):
+			agreements.request_agreement(self.cust.name, self.tpl.name, "qr", 1,
+				firearms=[{"serial_no": self.serial}, {"serial_no": serial2}])
+		si = self.sale()
+		si.append("items", {"item_code": code2, "qty": 1, "rate": 300, "serial_no": serial2})
+		self.cust.db_set("email_id", "per-gun@example.com")
+		with patch("frappe.sendmail") as send:
+			sent = agreements.email_sale_agreements(si, "per-gun@example.com")
+		self.assertEqual([r["state"] for r in sent], ["sent", "sent"])
+		self.assertEqual(send.call_count, 2)
+		self.assertEqual(frappe.db.count("Customer Agreement", {"customer": self.cust.name, "template": self.tpl.name}), 2)
+
+	def test_the_firearms_placeholder_is_a_table_of_the_guns(self):
+		frappe.db.set_value("Agreement Template", self.tpl.name, "body", "<div>{{ firearms }}</div>")
+		code2, serial2 = _gun()
+		r = agreements.request_agreement(self.cust.name, self.tpl.name, "qr", 1,
+			firearms=[{"serial_no": self.serial, "price": 400}, {"serial_no": serial2}])
+		body = frappe.db.get_value("Customer Agreement", r["name"], "body_snapshot")
+		self.assertIn("<table>", body)
+		self.assertIn(f"<td>{serial2}</td>", body)
+		self.assertIn("400.00", body)
+
+	def test_the_backfill_gives_an_old_copy_its_gun(self):
+		from ffl_core.patches import backfill_agreement_firearms
+		r, _ = self.ask()
+		frappe.db.delete("Customer Agreement Firearm", {"parent": r["name"]})
+		self.assertEqual(agreements.agreement_status(self.cust.name, self.tpl.name, serial_no=self.serial)["state"],
+			"missing")
+		backfill_agreement_firearms.execute()
+		backfill_agreement_firearms.execute()
+		self.assertEqual(frappe.db.count("Customer Agreement Firearm", {"parent": r["name"]}), 1)
+		self.assertEqual(agreements.agreement_status(self.cust.name, self.tpl.name, serial_no=self.serial)["state"],
+			"pending")
 
 	def test_a_per_customer_copy_does_not_count_for_a_gun(self):
 		per_customer = agreements.agreement_status(self.cust.name, self.tpl.name)

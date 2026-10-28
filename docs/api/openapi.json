@@ -160,6 +160,14 @@
             ],
             "description": "Signed"
           },
+          "one_copy_per_gun": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "One copy per gun"
+          },
           "show_on_counter_panel": {
             "type": "integer",
             "enum": [
@@ -673,6 +681,13 @@
             "type": "string",
             "description": "Item (Link: Item)"
           },
+          "firearms": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Customer_Agreement_Firearm"
+            },
+            "description": "Firearms"
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -799,6 +814,27 @@
         "required": [
           "customer",
           "template"
+        ]
+      },
+      "Customer_Agreement_Firearm": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Customer%20Agreement%20Firearm — see docs/api/frappe-rest.md.",
+        "properties": {
+          "serial_no": {
+            "type": "string",
+            "description": "Serial No (Link: Serial No)"
+          },
+          "item_code": {
+            "type": "string",
+            "description": "Item (Link: Item)"
+          },
+          "price": {
+            "type": "number",
+            "description": "Price"
+          }
+        },
+        "required": [
+          "serial_no"
         ]
       },
       "Customer_Alert": {
@@ -5657,11 +5693,11 @@
           "ffl_core"
         ],
         "summary": "Every active agreement and where this customer stands, for the register's Agreements button.",
-        "description": "**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/agreements.py:382`",
+        "description": "**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/agreements.py:411`",
         "operationId": "ffl_core.agreements.agreements_for_sale",
         "responses": {
           "200": {
-            "description": "{\"rows\": [{\"template\", \"scope\", \"requirement\", \"required\": whether this sale needs it, \"serial_no\", \"item_code\", \"item_name\", \"rate\", \"state\", \"expires_on\", \"agreement\"}]} — a Per customer template once, an Each firearm sold one once per gun in the cart (or once with no gun when the cart has none, so it can still be seen).",
+            "description": "{\"rows\": [{\"template\", \"scope\", \"requirement\", \"required\": whether this sale needs it, \"state\", \"expires_on\", \"agreement\", \"firearms\"}]} — every template once, except an Each firearm sold one with One copy per gun, once per gun. An Each firearm sold row lists the guns one copy is signed for in \"firearms\": [{\"serial_no\", \"item_code\", \"item_name\", \"rate\", \"state\"}] (the guns the sale needs it for, else every gun in the cart; empty when the cart has none); its \"state\" is signed once every one of them is, pending when the unsigned ones all have a copy out, else missing.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5715,11 +5751,11 @@
           "ffl_core"
         ],
         "summary": "The Agreements section of the Customer form.",
-        "description": "**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/agreements.py:762`",
+        "description": "**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/agreements.py:841`",
         "operationId": "ffl_core.agreements.get_customer_agreements",
         "responses": {
           "200": {
-            "description": "{\"rows\": [{\"name\", \"template\", \"serial_no\", \"status\", \"signed_on\", \"signed_via\", \"expires_on\", \"signed_pdf\"}] newest first, \"can_manage\": whether the caller may void or record paper copies}.",
+            "description": "{\"rows\": [{\"name\", \"template\", \"serial_no\": every gun it covers, comma-separated, \"status\", \"signed_on\", \"signed_via\", \"expires_on\", \"signed_pdf\"}] newest first, \"can_manage\": whether the caller may void or record paper copies}.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5763,7 +5799,7 @@
           "webhooks"
         ],
         "summary": "What the signing page shows for a one-time link (Guest).",
-        "description": "Only the customer's name, the agreement's title and text, and the store's\nname — nothing else about the customer. Every invalid, used, void or\nexpired link gets the same error. 30 calls an hour per link and 600 per IP\naddress. A copy sent before its template's text changed is shown (and from\nthen on carries) the current text.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/agreements.py:852`",
+        "description": "Only the customer's name, the agreement's title and text, and the store's\nname — nothing else about the customer. Every invalid, used, void or\nexpired link gets the same error. 30 calls an hour per link and 600 per IP\naddress. A copy sent before its template's text changed is shown (and from\nthen on carries) the current text.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/agreements.py:936`",
         "operationId": "ffl_core.agreements.load_for_signing",
         "responses": {
           "200": {
@@ -5812,7 +5848,7 @@
           "ffl_core"
         ],
         "summary": "Manager records a copy the customer signed on paper.",
-        "description": "The scan must already be attached to this Customer Agreement; it is made\nprivate and becomes the signed copy. The copy turns Signed via Paper, its\nexpiry counts from the date on the paper, and who recorded it, when, and the\nfile go on the timeline. A missing signature can never be waived: without a\nsigned scan there is nothing to record.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/agreements.py:699`",
+        "description": "The scan must already be attached to this Customer Agreement; it is made\nprivate and becomes the signed copy. The copy turns Signed via Paper, its\nexpiry counts from the date on the paper, and who recorded it, when, and the\nfile go on the timeline. A missing signature can never be waived: without a\nsigned scan there is nothing to record.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/agreements.py:778`",
         "operationId": "ffl_core.agreements.record_paper_agreement",
         "responses": {
           "200": {
@@ -5885,7 +5921,7 @@
           "ffl_core"
         ],
         "summary": "Build a signed copy's PDF again (when the background job failed).",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/agreements.py:782`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/agreements.py:866`",
         "operationId": "ffl_core.agreements.regenerate_signed_pdf",
         "responses": {
           "200": {
@@ -5933,7 +5969,7 @@
           "ffl_core"
         ],
         "summary": "Send a customer an agreement to sign.",
-        "description": "Creates the customer's Pending copy of the template, or re-issues the one\nalready pending (its old link stops working and its text is rendered again).\nWhile that copy still has a working link — the customer may be signing on the\ntablet right now — nothing changes unless ``replace`` is 1: the answer is\n``{\"name\", \"link_open\": True, \"token_expires\"}`` so the counter can ask first.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/agreements.py:539`",
+        "description": "Creates the customer's Pending copy of the template, or re-issues the one\nalready pending (its old link stops working and its text is rendered again).\nWhile that copy still has a working link — the customer may be signing on the\ntablet right now — nothing changes unless ``replace`` is 1: the answer is\n``{\"name\", \"link_open\": True, \"token_expires\"}`` so the counter can ask first.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/agreements.py:588`",
         "operationId": "ffl_core.agreements.request_agreement",
         "responses": {
           "200": {
@@ -5991,7 +6027,7 @@
                       "string",
                       "null"
                     ],
-                    "description": "The gun, for an Each firearm sold template (required there)."
+                    "description": "The gun, for an Each firearm sold template (it or *firearms* is required there)."
                   },
                   "price": {
                     "type": [
@@ -6013,6 +6049,9 @@
                       "null"
                     ],
                     "description": "That record's name; the caller must be able to read it, and the record's ``agreement_context()`` fills the text's placeholders."
+                  },
+                  "firearms": {
+                    "description": "For an Each firearm sold template, several guns signed for at once: [{\"serial_no\", \"price\"}]. One copy covers them all (refused for a template with One copy per gun); a pending copy covering any of them is the one re-issued."
                   }
                 },
                 "required": [
@@ -6031,7 +6070,7 @@
           "webhooks"
         ],
         "summary": "Sign an agreement through a one-time link (Guest).",
-        "description": "Checked before anything is written: the \"I agree\" tick, the typed name, the\ntoken (same error for every invalid one), the signature (a PNG of at most\n500 KB and 2000 px with ink on it) and the age rule. A link opened as a QR\ncode at the counter, or on a paired signing tablet (its device key sent as\n``terminal_secret``; the copy records which tablet), is recorded as signed on\na Tablet, an emailed one as Remote. The link is used up; the signed PDF is built and emailed afterwards.\nWhen the template's text changed after the page was opened, nothing is signed\nand the signer is asked to reload and read the new text. 10 calls an hour per\nlink and 300 per IP address.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/agreements.py:931`",
+        "description": "Checked before anything is written: the \"I agree\" tick, the typed name, the\ntoken (same error for every invalid one), the signature (a PNG of at most\n500 KB and 2000 px with ink on it) and the age rule. A link opened as a QR\ncode at the counter, or on a paired signing tablet (its device key sent as\n``terminal_secret``; the copy records which tablet), is recorded as signed on\na Tablet, an emailed one as Remote. The link is used up; the signed PDF is built and emailed afterwards.\nWhen the template's text changed after the page was opened, nothing is signed\nand the signer is asked to reload and read the new text. 10 calls an hour per\nlink and 300 per IP address.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/agreements.py:1015`",
         "operationId": "ffl_core.agreements.submit_signature",
         "responses": {
           "200": {
@@ -6112,7 +6151,7 @@
           "ffl_core"
         ],
         "summary": "Manager voids a copy (sent by mistake, signed by the wrong person).",
-        "description": "A Pending copy's link stops working. The copy is kept, marked Void, and the\nreason goes on its timeline.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/agreements.py:671`",
+        "description": "A Pending copy's link stops working. The copy is kept, marked Void, and the\nreason goes on its timeline.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/agreements.py:750`",
         "operationId": "ffl_core.agreements.void_agreement",
         "responses": {
           "200": {
@@ -8671,7 +8710,7 @@
           "ffl_core"
         ],
         "summary": "In-stock serials (+ sell/cost price) for the Create Order serial picker.",
-        "description": "Thin pass-through to the canonical firearm helper.\n\nexclude_unavailable=False: this Create Order picker keeps its existing\nbehaviour (the held/consigned exclusion applies to the THREE POS\nfirearm.py pickers, not this alias). The counter's real gate is\n_serial_status at scan-to-add / submit, which already rejects a held gun and\nhonours ignore_invoice for the order being edited.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3680`",
+        "description": "Thin pass-through to the canonical firearm helper.\n\nexclude_unavailable=False: this Create Order picker keeps its existing\nbehaviour (the held/consigned exclusion applies to the THREE POS\nfirearm.py pickers, not this alias). The counter's real gate is\n_serial_status at scan-to-add / submit, which already rejects a held gun and\nhonours ignore_invoice for the order being edited.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3684`",
         "operationId": "ffl_core.api.manual_order.available_serials",
         "responses": {
           "200": {
@@ -8718,7 +8757,7 @@
           "ffl_core"
         ],
         "summary": "Cancel a counter order: cascade documents, refund what was paid.",
-        "description": "The Pending Order page's Cancel Order action. The POS document work\ncommits first — cancel the invoice (its own on_cancel hook cascades the\nFFL/Dealer Transfer dispositions → Material Issue reversal → queued\nFastBound delete), cancel the linked Sales Order(s), and book a refund\nPayment Entry for whatever was actually paid (an at-counter inline payment\nis first restored to its own accounts, since the invoice cancel reversed\nit) — then a best-effort\nShipStation void runs after that commit. Never deletes documents —\ncancelled records stay as the audit trail. Orders carrying a 4473\ndisposition are refused.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:2953`",
+        "description": "The Pending Order page's Cancel Order action. The POS document work\ncommits first — cancel the invoice (its own on_cancel hook cascades the\nFFL/Dealer Transfer dispositions → Material Issue reversal → queued\nFastBound delete), cancel the linked Sales Order(s), and book a refund\nPayment Entry for whatever was actually paid (an at-counter inline payment\nis first restored to its own accounts, since the invoice cancel reversed\nit) — then a best-effort\nShipStation void runs after that commit. Never deletes documents —\ncancelled records stay as the audit trail. Orders carrying a 4473\ndisposition are refused.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:2957`",
         "operationId": "ffl_core.api.manual_order.cancel_order",
         "responses": {
           "200": {
@@ -8785,7 +8824,7 @@
           "ffl_core"
         ],
         "summary": "Bulk, non-throwing serial validation for draft resume / edit prefill.",
-        "description": "Resuming a draft re-checks every parked firearm (drafts don't reserve\nstock, so a gun may have sold in the meantime).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3546`",
+        "description": "Resuming a draft re-checks every parked firearm (drafts don't reserve\nstock, so a gun may have sold in the meantime).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3550`",
         "operationId": "ffl_core.api.manual_order.check_serials_available",
         "responses": {
           "200": {
@@ -8886,7 +8925,7 @@
           "ffl_core"
         ],
         "summary": "Delete a Create Order Draft (missing names are ignored).",
-        "description": "Also the consumed-draft cleanup create_order calls after success.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3659`",
+        "description": "Also the consumed-draft cleanup create_order calls after success.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3663`",
         "operationId": "ffl_core.api.manual_order.delete_order_draft",
         "responses": {
           "200": {
@@ -8994,7 +9033,7 @@
           "ffl_core"
         ],
         "summary": "Scan-to-add for the Create Order page: resolve a firearm serial number",
-        "description": "straight to an order line (canonical serial + item + tag price). Throws\nwith the specific reason when the gun can't be sold — unknown serial, not\nin stock, held by a web order, or already on an open counter order. The\nprice comes from the same available_serials_with_prices pass the serial\ndropdown uses, so both entry paths always quote identically.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3518`",
+        "description": "straight to an order line (canonical serial + item + tag price). Throws\nwith the specific reason when the gun can't be sold — unknown serial, not\nin stock, held by a web order, or already on an open counter order. The\nprice comes from the same available_serials_with_prices pass the serial\ndropdown uses, so both entry paths always quote identically.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3522`",
         "operationId": "ffl_core.api.manual_order.find_serial_for_order",
         "responses": {
           "200": {
@@ -9049,7 +9088,7 @@
           "ffl_core"
         ],
         "summary": "Serve a ship-to-store line from shelf stock instead of waiting for the",
-        "description": "distributor's parcel.\n\nThe line becomes an ordinary local leg: its ship-to-store pin is cleared, a\ngun gets the chosen in-stock serial written on (the counter hold), an\naccessory keeps its quantity for the Delivery Note leg. The Distributor Order\nis NOT cancelled (no cancel API at either house): its line's\n``substituted_qty`` goes up, so the queue stops waiting for it and, when the\nparcel lands, the Receive Goods scan books it as plain restock instead of\nholding it for this order. Refused once the goods have arrived (the line\nalready carries its serial), for a serial that is not an unheld, in-stock\nunit of the item, or for an accessory the shelf cannot cover.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:2363`",
+        "description": "distributor's parcel.\n\nThe line becomes an ordinary local leg: its ship-to-store pin is cleared, a\ngun gets the chosen in-stock serial written on (the counter hold), an\naccessory keeps its quantity for the Delivery Note leg. The Distributor Order\nis NOT cancelled (no cancel API at either house): its line's\n``substituted_qty`` goes up, so the queue stops waiting for it and, when the\nparcel lands, the Receive Goods scan books it as plain restock instead of\nholding it for this order. Refused once the goods have arrived (the line\nalready carries its serial), for a serial that is not an unheld, in-stock\nunit of the item, or for an accessory the shelf cannot cover.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:2367`",
         "operationId": "ffl_core.api.manual_order.fulfill_from_stock",
         "responses": {
           "200": {
@@ -9109,7 +9148,7 @@
           "ffl_core"
         ],
         "summary": "Tax-exempt flag + certificate URL for a customer.",
-        "description": "Lets the Create Order page pre-fill a Business buyer's existing\nexemption.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:4884`",
+        "description": "Lets the Create Order page pre-fill a Business buyer's existing\nexemption.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:4888`",
         "operationId": "ffl_core.api.manual_order.get_customer_tax_status",
         "responses": {
           "200": {
@@ -9157,7 +9196,7 @@
           "ffl_core"
         ],
         "summary": "Load one Create Order Draft for resume.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3640`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3644`",
         "operationId": "ffl_core.api.manual_order.get_order_draft",
         "responses": {
           "200": {
@@ -9205,7 +9244,7 @@
           "ffl_core"
         ],
         "summary": "Reconstruct the create_order payload from an editable pending order.",
-        "description": "The Edit flow's prefill. Same shape _collectPayload/save_order_draft use,\nso the page hydrates it through the existing draft path. tax_exempt is\ndeliberately OMITTED: create_order then falls back to the customer's\nstanding flag, so an edit can never silently re-toggle the exemption.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:2584`",
+        "description": "The Edit flow's prefill. Same shape _collectPayload/save_order_draft use,\nso the page hydrates it through the existing draft path. tax_exempt is\ndeliberately OMITTED: create_order then falls back to the customer's\nstanding flag, so an edit can never silently re-toggle the exemption.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:2588`",
         "operationId": "ffl_core.api.manual_order.get_order_for_edit",
         "responses": {
           "200": {
@@ -9253,7 +9292,7 @@
           "ffl_core"
         ],
         "summary": "Per-item sales-tax rate for the Create Order preview.",
-        "description": "The summed \"On Net Total\" rate of the company's default sales-tax template\nas it applies to each item once ERPNext's Item Tax Template resolution\n(the item's own templates, then its item groups') has overridden the\ntemplate rows — the same rate compliance.shipping_charge._effective_rate\nreads off the saved line. A 0% (or Not Applicable) template gives 0, so\nthe preview shows no goods tax on a service-only order and, like the\nserver, no tax on or inside its shipping.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:4833`",
+        "description": "The summed \"On Net Total\" rate of the company's default sales-tax template\nas it applies to each item once ERPNext's Item Tax Template resolution\n(the item's own templates, then its item groups') has overridden the\ntemplate rows — the same rate compliance.shipping_charge._effective_rate\nreads off the saved line. A 0% (or Not Applicable) template gives 0, so\nthe preview shows no goods tax on a service-only order and, like the\nserver, no tax on or inside its shipping.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:4837`",
         "operationId": "ffl_core.api.manual_order.item_tax_rates",
         "responses": {
           "200": {
@@ -9312,7 +9351,7 @@
           "ffl_core"
         ],
         "summary": "Shared draft list, newest first — shown in the page's Drafts dialog.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3623`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3627`",
         "operationId": "ffl_core.api.manual_order.list_order_drafts",
         "responses": {
           "200": {
@@ -9372,7 +9411,7 @@
           "ffl_core"
         ],
         "summary": "Clear an order from the Pending Order queue without a ShipStation push",
-        "description": "— the escape hatch for a destination FFL that expired AFTER dispose, a\nmisconfigured integration, a label bought outside ShipStation, or a\ndirect order handed over at the counter. Books the Delivery Note leg for\ndeferred non-firearm stock lines (stock + COGS), then stamps\nshipstation_status='Shipped' with no order id (the same convention as the\nlegacy migration stamp), which satisfies the queue's retention rule.\n\nUndisposed firearms no longer refuse — the same as the ShipStation push,\nwhich has always been independent of Dispose. This clears the SHIPPING\nhalf only: no disposition, no FastBound push, and the gun's stock still\nleaves through its disposition's Material Issue, so the row stays on the\nqueue with its Dispose button and the caller is warned\n(warn_undisposed_firearms). The pre-ship payment rule (ship_payment_block\n— the same gate dispose_order and push_shipment share) still applies:\nthis path really moves the non-firearm goods.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:1916`",
+        "description": "— the escape hatch for a destination FFL that expired AFTER dispose, a\nmisconfigured integration, a label bought outside ShipStation, or a\ndirect order handed over at the counter. Books the Delivery Note leg for\ndeferred non-firearm stock lines (stock + COGS), then stamps\nshipstation_status='Shipped' with no order id (the same convention as the\nlegacy migration stamp), which satisfies the queue's retention rule.\n\nUndisposed firearms no longer refuse — the same as the ShipStation push,\nwhich has always been independent of Dispose. This clears the SHIPPING\nhalf only: no disposition, no FastBound push, and the gun's stock still\nleaves through its disposition's Material Issue, so the row stays on the\nqueue with its Dispose button and the caller is warned\n(warn_undisposed_firearms). The pre-ship payment rule (ship_payment_block\n— the same gate dispose_order and push_shipment share) still applies:\nthis path really moves the non-firearm goods.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:1920`",
         "operationId": "ffl_core.api.manual_order.mark_shipped_manually",
         "responses": {
           "200": {
@@ -9468,7 +9507,7 @@
           "ffl_core"
         ],
         "summary": "Unit cost of each Create Order line, for the page's read-only Cost column.",
-        "description": "Display only — nothing here feeds create_order or its checks. Each line is\ncosted through the figure the store already keeps for it: a serial →\nSerial No.purchase_rate (the Sales Report's gun cost); a drop-ship / ship\nto store line → the Distributor Order line's unit_cost on the order being\nedited, else that house's catalog quote (the Fulfillment plan's cost); any\nother store line → its stock valuation, else last purchase rate (the\nfulfilment-options local cost). A line with no house chosen yet, or a gun\nwithout a serial, has no cost to show.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3706`",
+        "description": "Display only — nothing here feeds create_order or its checks. Each line is\ncosted through the figure the store already keeps for it: a serial →\nSerial No.purchase_rate (the Sales Report's gun cost); a drop-ship / ship\nto store line → the Distributor Order line's unit_cost on the order being\nedited, else that house's catalog quote (the Fulfillment plan's cost); any\nother store line → its stock valuation, else last purchase rate (the\nfulfilment-options local cost). A line with no house chosen yet, or a gun\nwithout a serial, has no cost to show.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3710`",
         "operationId": "ffl_core.api.manual_order.order_line_costs",
         "responses": {
           "200": {
@@ -9552,7 +9591,7 @@
           "ffl_core"
         ],
         "summary": "Create an individual (non-dealer) Customer with a primary Contact.",
-        "description": "The Contact carries the receipt email.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3832`",
+        "description": "The Contact carries the receipt email.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3836`",
         "operationId": "ffl_core.api.manual_order.quick_create_individual",
         "responses": {
           "200": {
@@ -9599,7 +9638,7 @@
           "ffl_core"
         ],
         "summary": "Tax preview config for the Create Order page.",
-        "description": "The home state and the default On-Net-Total sales-tax rate, so the page\ncan show the running tax without a round-trip per keystroke. The\nauthoritative tax is still computed server-side at create time from the\nshipping address.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:4792`",
+        "description": "The home state and the default On-Net-Total sales-tax rate, so the page\ncan show the running tax without a round-trip per keystroke. The\nauthoritative tax is still computed server-side at create time from the\nshipping address.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:4796`",
         "operationId": "ffl_core.api.manual_order.quote_config",
         "responses": {
           "200": {
@@ -9757,7 +9796,7 @@
           "ffl_core"
         ],
         "summary": "Fix a misspelled customer name SYSTEM-WIDE (the Edit form's pencil):",
-        "description": "update customer_name, rename the doc when its id mirrors the name\n(ERPNext's default customer naming — rename_doc migrates every link), and\nrefresh the display-name snapshot on the customer's open sales documents.\nCancelled documents keep their historical spelling on purpose. The\nprimary Contact is NOT renamed (out of scope).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3885`",
+        "description": "update customer_name, rename the doc when its id mirrors the name\n(ERPNext's default customer naming — rename_doc migrates every link), and\nrefresh the display-name snapshot on the customer's open sales documents.\nCancelled documents keep their historical spelling on purpose. The\nprimary Contact is NOT renamed (out of scope).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3889`",
         "operationId": "ffl_core.api.manual_order.rename_customer",
         "responses": {
           "200": {
@@ -9851,7 +9890,7 @@
                       "string",
                       "null"
                     ],
-                    "description": "The gun, for an Each firearm sold agreement."
+                    "description": "The gun, for an Each firearm sold agreement (the link covers every gun of the order still unsigned for it, unless it is signed once per gun)."
                   },
                   "email": {
                     "type": [
@@ -9877,7 +9916,7 @@
           "ffl_core"
         ],
         "summary": "Order an unarrived ship-to-store line again from another house.",
-        "description": "A Draft Distributor Order is created for the line at the new house (placed\nfrom the queue's Place order as usual); the old order's line is retired with\n``substituted_qty`` so the queue stops waiting on it and its parcel, if it\nstill comes, is restock. The old order is NOT cancelled at the distributor —\nneither house has a cancel API; the page tells the operator to phone them\nand quotes the web reference.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:2224`",
+        "description": "A Draft Distributor Order is created for the line at the new house (placed\nfrom the queue's Place order as usual); the old order's line is retired with\n``substituted_qty`` so the queue stops waiting on it and its parcel, if it\nstill comes, is restock. The old order is NOT cancelled at the distributor —\nneither house has a cancel API; the page tells the operator to phone them\nand quotes the web reference.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:2228`",
         "operationId": "ffl_core.api.manual_order.resource_line",
         "responses": {
           "200": {
@@ -9935,7 +9974,7 @@
           "ffl_core"
         ],
         "summary": "Record a C&R (Type 03) collector's license and return its ATF FFL Record.",
-        "description": "verify_ffl cannot serve a collector: the ATF's public FFL list contains no\nType 03 licensees at all (that is the whole reason this path exists), so\nthe destination's name, premises and expiry come from a human reading the\nlicense copy at the counter. This is that capture for the Create Order\npage — the same validation the web-order dispose runs\n(compliance.cr_transfer), so the counter cannot accept what the queue\nwould reject.\n\nThe record it upserts is an ordinary destination FFL from here on: the\nship-to, the destination-based sales tax and the FFL Transfer disposition\nall read it the way they read any other.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3781`",
+        "description": "verify_ffl cannot serve a collector: the ATF's public FFL list contains no\nType 03 licensees at all (that is the whole reason this path exists), so\nthe destination's name, premises and expiry come from a human reading the\nlicense copy at the counter. This is that capture for the Create Order\npage — the same validation the web-order dispose runs\n(compliance.cr_transfer), so the counter cannot accept what the queue\nwould reject.\n\nThe record it upserts is an ordinary destination FFL from here on: the\nship-to, the destination-based sales tax and the FFL Transfer disposition\nall read it the way they read any other.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3785`",
         "operationId": "ffl_core.api.manual_order.save_cr_ffl",
         "responses": {
           "200": {
@@ -9982,7 +10021,7 @@
           "ffl_core"
         ],
         "summary": "Park the Create Order page's form state as a shared draft (upsert).",
-        "description": "The create_order payload shape plus display extras, stored as a Create\nOrder Draft; upserts when `name` is passed. The list columns\n(customer/total/title) are derived here from the same items shape\ncreate_order itself consumes. Drafts reserve NOTHING; serials are\nre-validated on resume.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3580`",
+        "description": "The create_order payload shape plus display extras, stored as a Create\nOrder Draft; upserts when `name` is passed. The list columns\n(customer/total/title) are derived here from the same items shape\ncreate_order itself consumes. Drafts reserve NOTHING; serials are\nre-validated on resume.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3584`",
         "operationId": "ffl_core.api.manual_order.save_order_draft",
         "responses": {
           "200": {
@@ -10043,7 +10082,7 @@
           "ffl_core"
         ],
         "summary": "Persist a customer's sales-tax-exempt status (+ optional certificate).",
-        "description": "Checking the exemption is enough to exempt; the certificate is optional\nand, once on file, is attached to the Customer (retrievable any time)\nand reused.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:4908`",
+        "description": "Checking the exemption is enough to exempt; the certificate is optional\nand, once on file, is attached to the Customer (retrievable any time)\nand reused.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:4912`",
         "operationId": "ffl_core.api.manual_order.set_customer_tax_exempt",
         "responses": {
           "200": {
@@ -10102,7 +10141,7 @@
           "ffl_core"
         ],
         "summary": "Edit a pending counter order — the Pending Order page's Edit action.",
-        "description": "Cancels the submitted invoice (+ its Sales Orders) and rebuilds it through\ncreate_order with the edited payload, in ONE transaction: editing is gated\nto undisposed, never-pushed orders, so there are no FastBound/ShipStation/\nstock side effects, and any failure rolls the whole edit back — the\noriginal order survives untouched. Deliberately NO frappe.db.commit()\nanywhere in this flow.\n\nMoney follows the order (_allocate_advances / _rebook_inline_tender);\noverpay refunds the difference (refund_mode required, Zelle also needs\nrefund_reference — same rules as cancel_order). A changed buyer refunds\nthe FULL paid amount to the ORIGINAL customer; the new invoice starts\nunpaid.\n\nGoods a house is already sending follow the order too: those lines must come\nback unchanged (same house, lane and quantity — the price may change) and\ntheir Distributor Orders are re-pointed at the rebuilt invoice instead of\nbeing ordered again. New lines are planned and ordered as usual, so adding an\nitem to an order already placed buys just that item.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3145`",
+        "description": "Cancels the submitted invoice (+ its Sales Orders) and rebuilds it through\ncreate_order with the edited payload, in ONE transaction: editing is gated\nto undisposed, never-pushed orders, so there are no FastBound/ShipStation/\nstock side effects, and any failure rolls the whole edit back — the\noriginal order survives untouched. Deliberately NO frappe.db.commit()\nanywhere in this flow.\n\nMoney follows the order (_allocate_advances / _rebook_inline_tender);\noverpay refunds the difference (refund_mode required, Zelle also needs\nrefund_reference — same rules as cancel_order). A changed buyer refunds\nthe FULL paid amount to the ORIGINAL customer; the new invoice starts\nunpaid.\n\nGoods a house is already sending follow the order too: those lines must come\nback unchanged (same house, lane and quantity — the price may change) and\ntheir Distributor Orders are re-pointed at the rebuilt invoice instead of\nbeing ordered again. New lines are planned and ordered as usual, so adding an\nitem to an order already placed buys just that item.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3149`",
         "operationId": "ffl_core.api.manual_order.update_order",
         "responses": {
           "200": {
@@ -10168,7 +10207,7 @@
           "ffl_core"
         ],
         "summary": "Live-verify an FFL number and upsert the ATF FFL Record.",
-        "description": "Delegates to the eZ Check integration (online verify + address).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3760`",
+        "description": "Delegates to the eZ Check integration (online verify + address).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:3764`",
         "operationId": "ffl_core.api.manual_order.verify_ffl",
         "responses": {
           "200": {

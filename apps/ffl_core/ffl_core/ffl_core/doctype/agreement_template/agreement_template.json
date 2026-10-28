@@ -11,6 +11,7 @@
   "valid_days",
   "requirement",
   "scope",
+  "one_copy_per_gun",
   "show_on_counter_panel",
   "minors_need_guardian",
   "section_body",
@@ -72,7 +73,15 @@
    "options": "Per customer\nEach firearm sold\nPer document",
    "default": "Per customer",
    "in_list_view": 1,
-   "description": "Per customer: one signature covers every visit until it expires. Each firearm sold: a new copy for every gun sold, naming that gun (a no-return agreement). Per document: a copy for one record, signed from that record (a gunsmith work order's intake authorization); never asked for at a sale."
+   "description": "Per customer: one signature covers every visit until it expires. Each firearm sold: a new signed copy for the guns sold, naming them (a no-return agreement); one copy covers every gun of a sale unless One copy per gun is ticked. Per document: a copy for one record, signed from that record (a gunsmith work order's intake authorization); never asked for at a sale."
+  },
+  {
+   "fieldname": "one_copy_per_gun",
+   "fieldtype": "Check",
+   "label": "One copy per gun",
+   "default": "0",
+   "depends_on": "eval:doc.scope==\"Each firearm sold\"",
+   "description": "Ticked: the customer signs a separate copy for each gun. Unticked: one copy, signed once, lists every gun of the sale."
   },
   {
    "fieldname": "show_on_counter_panel",
@@ -98,7 +107,7 @@
    "fieldtype": "Text Editor",
    "label": "Agreement Text",
    "reqd": 1,
-   "description": "Placeholders: {{ customer_name }}, {{ first_name }}, {{ date }}, {{ store_name }}, {{ store_address }}, {{ valid_days }}; for Each firearm sold also {{ item_name }}, {{ manufacturer }}, {{ model }}, {{ caliber }}, {{ serial_no }}, {{ price }}; for a gunsmith work order (Per document) also {{ work_order }}, {{ manufacturer }}, {{ model }}, {{ caliber }}, {{ serial_no }}, {{ firearm_type }}, {{ accessories }}, {{ condition }}, {{ work_requested }}, {{ estimated_cost }}, {{ deposit }}, {{ estimated_completion }}."
+   "description": "Placeholders: {{ customer_name }}, {{ first_name }}, {{ date }}, {{ store_name }}, {{ store_address }}, {{ valid_days }}; for Each firearm sold also {{ item_name }}, {{ manufacturer }}, {{ model }}, {{ caliber }}, {{ serial_no }}, {{ price }} (one copy covers every gun of a sale: with several, each lists them all, and {{ firearms }} is a table of the guns); for a gunsmith work order (Per document) also {{ work_order }}, {{ manufacturer }}, {{ model }}, {{ caliber }}, {{ serial_no }}, {{ firearm_type }}, {{ accessories }}, {{ condition }}, {{ work_requested }}, {{ estimated_cost }}, {{ deposit }}, {{ estimated_completion }}."
   },
   {
    "fieldname": "description",
@@ -109,7 +118,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-17 18:00:00.000000",
+ "modified": "2026-10-28 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Agreement Template",

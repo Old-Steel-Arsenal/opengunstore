@@ -27,7 +27,7 @@
 	{% if signature_uri %}<img src="{{ signature_uri }}"><br>{% endif %}
 	<table class="meta">
 		<tr><td>Participant</td><td><b>{{ doc.customer_name | e }}</b>{% if doc.participant_is_minor %} (under 18){% endif %}</td></tr>
-		{% if doc.serial_no %}<tr><td>Firearm</td><td>{{ (doc.item_code or "") | e }} · serial {{ doc.serial_no | e }}</td></tr>{% endif %}
+		{% for g in doc.firearms or [] %}<tr><td>Firearm</td><td>{{ (g.item_code or "") | e }} · serial {{ g.serial_no | e }}</td></tr>{% else %}{% if doc.serial_no %}<tr><td>Firearm</td><td>{{ (doc.item_code or "") | e }} · serial {{ doc.serial_no | e }}</td></tr>{% endif %}{% endfor %}
 		<tr><td>Signed by</td><td>{{ doc.signer_name | e }}{% if doc.signer_relationship and doc.signer_relationship != "Self" %} — {{ doc.signer_relationship | e }}{% endif %}</td></tr>
 		<tr><td>Signed on</td><td>{{ signed_on }} ({{ doc.signed_via | e }})</td></tr>
 		{% if doc.reference_name and not doc.serial_no %}<tr><td>{{ doc.reference_doctype | e }}</td><td>{{ doc.reference_name | e }}</td></tr>{% elif doc.reference_name %}<tr><td>Invoice / receipt no.</td><td>{{ doc.reference_name | e }} <span class="muted">(recorded by the store after signing)</span></td></tr>{% endif %}
