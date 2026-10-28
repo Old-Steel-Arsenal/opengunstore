@@ -79,7 +79,10 @@ def estimate_orders(lines, options=None) -> dict:
 			chosen = getattr(provider, "delivery_options", lambda _f: None)(firearm)
 			if chosen is not None and key in options:
 				chosen = {k: bool((options.get(key) or {}).get(k)) for k in DELIVERY_OPTIONS}
-			freight = provider.estimate_order_freight(priced, mode, options=chosen)
+			# options= only for a house with delivery options: a provider written to the
+			# older two-argument signature still prices its orders.
+			freight = provider.estimate_order_freight(priced, mode) if chosen is None \
+				else provider.estimate_order_freight(priced, mode, options=chosen)
 			if freight is None:
 				complete = False
 			else:

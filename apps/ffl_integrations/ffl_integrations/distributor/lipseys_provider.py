@@ -319,11 +319,14 @@ class LipseysProvider(RemoteCatalogMixin, DistributorProvider):
 def estimate_freight(lines: list, mode: str, settings) -> Optional[float]:
 	"""Lipsey's freight for ONE order: the Firearms Dropship Program's flat rate per
 	firearm order (adult signature included) or the accessory drop-ship rate per
-	order. Orders shipped to the shop are not estimated (None). Pure over
+	order. Orders shipped to the shop, and accessory orders while they ship
+	overnight (billed at overnight rates), are not estimated (None). Pure over
 	``settings``."""
 	from ffl_integrations.distributor.freight import flat_rate
 	from ffl_integrations.distributor.util import setting_value
 
+	if mode == lanes.DIRECT and settings.get("dropship_overnight"):
+		return None
 	return flat_rate(lines, mode, consumer={
 		"firearm": setting_value(settings, "rate_dropship_firearm", 9.95),
 		"accessory": setting_value(settings, "rate_dropship_accessory", 8.00)})

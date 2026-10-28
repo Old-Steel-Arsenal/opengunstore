@@ -119,6 +119,13 @@ class _FakeProvider:
 		return self.freight(lines, mode)
 
 
+class _OldSignatureProvider(_FakeProvider):
+	"""A provider written to the two-argument estimate signature."""
+
+	def estimate_order_freight(self, lines, mode):
+		return 7.0
+
+
 class FulfillmentFreightEndpoint(unittest.TestCase):
 	def setUp(self):
 		self.providers = {
@@ -159,6 +166,12 @@ class FulfillmentFreightEndpoint(unittest.TestCase):
 		self.assertFalse(out["complete"])
 		self.assertEqual(out["total"], 10.0)
 		self.assertIsNone(next(o for o in out["orders"] if o["distributor"] == "SS")["freight"])
+
+	def test_a_two_argument_provider_still_prices(self):
+		self.providers["OLD"] = _OldSignatureProvider(None)
+		out = dist_api.fulfillment_freight([
+			{"distributor": "OLD", "mode": "direct", "sku": "X", "qty": 1, "cost": 10}])
+		self.assertEqual((out["total"], out["complete"]), (7.0, True))
 
 	def test_lines_without_a_house_or_sku_are_ignored(self):
 		out = dist_api.fulfillment_freight('[{"distributor": "", "sku": "A"}, {"distributor": "RSR"}]')
@@ -252,3 +265,6 @@ class LipseysFreight(unittest.TestCase):
 		self.assertEqual(estimate_freight(gun, "fds", own), 12.0)
 		self.assertEqual(estimate_freight(mag, "direct", own), 0.0)
 		self.assertIsNone(estimate_freight(mag, "to_store", own), "store orders: not estimated")
+		overnight = frappe._dict(dropship_overnight=1)
+		self.assertIsNone(estimate_freight(mag, "direct", overnight), "overnight: not estimated")
+		self.assertEqual(estimate_freight(gun, "fds", overnight), 9.95, "guns are not overnight")
