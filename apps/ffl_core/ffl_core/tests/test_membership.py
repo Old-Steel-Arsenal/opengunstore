@@ -128,6 +128,13 @@ class AccountSetup(SettingsSandbox, FrappeTestCase):
 			self.set_single(AS, "book_deferred_entries_based_on", "Months")
 			_plan()                                                      # another active plan exists
 			self.assertEqual(frappe.db.get_single_value(AS, "book_deferred_entries_based_on"), "Months")
+			frappe.db.sql("update `tabMembership Plan` set active = 0")
+			only = _plan()
+			self.set_single(AS, "book_deferred_entries_based_on", "Months")
+			only.reload()
+			only.description = "edited"
+			only.save(ignore_permissions=True)                           # re-saving the only plan
+			self.assertEqual(frappe.db.get_single_value(AS, "book_deferred_entries_based_on"), "Months")
 		finally:
 			frappe.db.rollback(save_point="plans")
 
@@ -336,6 +343,45 @@ class DeferredRevenue(_Base):
 		self.set_single(AS, "submit_journal_entries", 1)
 		self._process_november()
 		self.assertAlmostEqual(self._recognized(si), 130, places=2)
+
+
+	def test_drop_in_the_same_month_cancels_the_invoice(self):
+		m, si = _sell(self.customer, self.plan.name)
+		with patch("ffl_core.membership.nowdate", return_value="2026-11-20"):
+			ms.discard_membership(m, "walked out")
+		self.assertEqual(frappe.db.get_value("Sales Invoice", si, "docstatus"), 2)
+
+	def test_drop_after_a_booked_month_voids_with_a_credit_note(self):
+		"""Deferred revenue already booked November from the unpaid invoice: cancelling would rewrite
+		November, so service stops and a full, undeferred credit note takes it back."""
+		self.set_single(AS, "book_deferred_entries_based_on", "Days")
+		self.set_single(AS, "book_deferred_entries_via_journal_entry", 0)
+		m, si = _sell(self.customer, self.plan.name)
+		self._process_november()
+		booked = self._recognized(si)
+		self.assertGreater(booked, 0)
+		with patch("ffl_core.membership.nowdate", return_value="2026-12-03"):
+			ms.discard_membership(m, "never paid")
+		doc = frappe.get_doc("Sales Invoice", si)
+		self.assertEqual(doc.docstatus, 1)
+		self.assertEqual({getdate(r.service_stop_date) for r in doc.items}, {date(2026, 12, 3)})
+		self.assertAlmostEqual(flt(doc.outstanding_amount), 0, places=2)
+		ret = frappe.get_doc("Sales Invoice", {"return_against": si, "docstatus": 1})
+		self.assertEqual(getdate(ret.posting_date), date(2026, 12, 3))
+		self.assertEqual({r.enable_deferred_revenue for r in ret.items}, {0})
+		self.assertAlmostEqual(self._recognized(si), booked, places=2)    # November untouched
+		self.assertEqual(frappe.db.get_value(ms.DOCTYPE, m, "status"), ms.CANCELLED)
+
+	def test_credit_note_against_a_membership_invoice_is_not_deferred(self):
+		from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_sales_return
+
+		_m, si = _sell(self.customer, self.plan.name)
+		_pay(si)
+		ret = make_sales_return(si)
+		ret.update({"set_posting_time": 1, "posting_date": "2026-11-20"})
+		ret.insert(ignore_permissions=True)
+		self.assertEqual({r.enable_deferred_revenue for r in ret.items}, {0})
+		self.assertEqual({r.income_account for r in ret.items}, {self.income})
 
 
 class Cancel(_Base):

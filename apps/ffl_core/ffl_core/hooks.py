@@ -308,6 +308,8 @@ doc_events = {
 			# No Desk credit note against a merged invoice holding a negative trade-in
 			# ticket (compliance/trade_in_settlement): first, before core totals it.
 			"ffl_core.compliance.trade_in_settlement.refuse_desk_return_of_negative_ticket",
+			# A credit note against a membership invoice is not deferred (membership.py).
+			"ffl_core.membership.book_refunds_at_once",
 			"ffl_core.compliance.consignment.freeze_consignment_commission",
 			# Locked lines (trade-in credit) pinned to their amount BEFORE core
 			# prices, totals and taxes the rows.

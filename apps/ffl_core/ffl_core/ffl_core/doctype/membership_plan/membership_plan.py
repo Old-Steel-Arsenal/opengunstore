@@ -60,7 +60,9 @@ class MembershipPlan(Document):
 		from ffl_core.membership import sync_plan_item
 
 		sync_plan_item(self)
-		if cint(self.active) and not frappe.db.exists("Membership Plan", {"active": 1, "name": ("!=", self.name)}):
+		before = self.get_doc_before_save()
+		turned_on = cint(self.active) and not (before and cint(before.active))
+		if turned_on and not frappe.db.exists("Membership Plan", {"active": 1, "name": ("!=", self.name)}):
 			from ffl_core.setup.membership import apply_deferred_settings
 
 			changed = apply_deferred_settings()

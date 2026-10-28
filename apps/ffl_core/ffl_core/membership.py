@@ -615,15 +615,67 @@ def discard_membership(membership: str, reason: str) -> dict:
 			if touched:
 				frappe.throw(_("{0} has a payment or a card charge on it. Finish taking the payment, or have a "
 					"manager refund it, instead of dropping the membership.").format(si.name))
-			si.flags.via_membership = True
-			si.flags.ignore_permissions = True
-			si.cancel()
+			void_invoice(si, reason)
 		row.status = CANCELLED
 	doc.update({"status": CANCELLED, "auto_renew": 0, "cancelled_on": getdate(nowdate()),
 		"cancelled_by": frappe.session.user, "cancel_reason": reason[:1000]})
 	doc.flags.via_membership = True
 	doc.save(ignore_permissions=True)
 	return _row(doc)
+
+
+def void_invoice(si, reason: str) -> str | None:
+	"""Undo an unpaid membership invoice. Cancelled outright only while nothing about it has reached
+	the books past its own posting: posted this month and no deferred revenue booked from it yet.
+	Otherwise a cancel would rewrite a booked month, so its service stops today and a full credit
+	note (not deferred, :func:`book_refunds_at_once`) takes it back. Returns the credit note's name,
+	or None when the invoice was cancelled."""
+	today = getdate(nowdate())
+	if getdate(si.posting_date) >= today.replace(day=1) and not _deferred_booked(si):
+		si.flags.via_membership = True
+		si.flags.ignore_permissions = True
+		si.cancel()
+		return None
+	from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_sales_return
+
+	for item in si.items:
+		if cint(item.enable_deferred_revenue) and not item.service_stop_date \
+				and getdate(item.service_start_date) <= today:
+			item.service_stop_date = min(today, getdate(item.service_end_date))
+	si.flags.ignore_permissions = True
+	si.save()
+	ret = make_sales_return(si.name)
+	# update_outstanding_for_self off: the credit note settles the voided invoice instead of standing
+	# as a separate credit the customer could spend.
+	ret.update({"set_posting_time": 1, "posting_date": today, "update_outstanding_for_self": 0,
+		"remarks": _("Void of unpaid membership invoice {0}: {1}").format(si.name, reason)[:1000]})
+	ret.flags.ignore_permissions = True
+	ret.insert()
+	ret.submit()
+	return ret.name
+
+
+def _deferred_booked(si) -> bool:
+	"""Whether month-end deferred processing already booked anything from *si* (GL rows posted
+	against Process Deferred Accounting, or a Journal Entry referencing the invoice)."""
+	if frappe.db.exists("GL Entry", {"voucher_type": "Sales Invoice", "voucher_no": si.name, "is_cancelled": 0,
+			"against_voucher_type": "Process Deferred Accounting"}):
+		return True
+	return bool(frappe.db.sql("""select 1 from `tabJournal Entry Account` c join `tabJournal Entry` p
+		on p.name = c.parent where c.reference_type = 'Sales Invoice' and c.reference_name = %s
+		and p.docstatus = 1 limit 1""", si.name))
+
+
+def book_refunds_at_once(doc, method=None) -> None:
+	"""Sales Invoice before_validate: a credit note against a membership invoice books straight to
+	Membership Revenue, never deferred (the return copies the deferred flag but not the service
+	dates, which ERPNext would refuse; and a refund is not spread over months)."""
+	if not cint(doc.is_return) or not doc.return_against:
+		return
+	if not frappe.db.exists(INVOICE_ROW, {"parenttype": DOCTYPE, "sales_invoice": doc.return_against}):
+		return
+	for row in doc.items:
+		row.enable_deferred_revenue = 0
 
 
 def refuse_invoice_cancel(doc, method=None) -> None:
