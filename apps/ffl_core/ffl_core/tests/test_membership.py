@@ -354,14 +354,25 @@ class DeferredRevenue(_Base):
 	def test_drop_after_a_booked_month_voids_with_a_credit_note(self):
 		"""Deferred revenue already booked November from the unpaid invoice: cancelling would rewrite
 		November, so service stops and a full, undeferred credit note takes it back."""
+		for via_je in (0, 1):
+			with self.subTest(via_journal_entry=via_je):
+				self._drop_after_booking(via_je)
+
+	def _drop_after_booking(self, via_je):
 		self.set_single(AS, "book_deferred_entries_based_on", "Days")
-		self.set_single(AS, "book_deferred_entries_via_journal_entry", 0)
-		m, si = _sell(self.customer, self.plan.name)
+		self.set_single(AS, "book_deferred_entries_via_journal_entry", via_je)
+		self.set_single(AS, "submit_journal_entries", 1)
+		customer = _customer().name
+		frappe.db.set_value("Customer", customer, "email_id", "member-void@example.com")   # receipts would mail
+		m, si = _sell(customer, self.plan.name)
 		self._process_november()
 		booked = self._recognized(si)
 		self.assertGreater(booked, 0)
-		with patch("ffl_core.membership.nowdate", return_value="2026-12-03"):
+		with patch("ffl_core.membership.nowdate", return_value="2026-12-03"), \
+				patch("ffl_core.receipts.frappe.enqueue") as enqueue:
 			ms.discard_membership(m, "never paid")
+		self.assertFalse([c for c in enqueue.call_args_list if "send_sale_receipt" in str(c)])
+		self.assertIsNone(frappe.flags.get("ffl_suppress_sale_receipt"))   # restored
 		doc = frappe.get_doc("Sales Invoice", si)
 		self.assertEqual(doc.docstatus, 1)
 		self.assertEqual({getdate(r.service_stop_date) for r in doc.items}, {date(2026, 12, 3)})

@@ -651,7 +651,13 @@ def void_invoice(si, reason: str) -> str | None:
 		"remarks": _("Void of unpaid membership invoice {0}: {1}").format(si.name, reason)[:1000]})
 	ret.flags.ignore_permissions = True
 	ret.insert()
-	ret.submit()
+	# No "Sale Receipt" email for a void of a sale the customer never paid for (receipts.py).
+	suppressed = frappe.flags.get("ffl_suppress_sale_receipt")
+	frappe.flags.ffl_suppress_sale_receipt = True
+	try:
+		ret.submit()
+	finally:
+		frappe.flags.ffl_suppress_sale_receipt = suppressed
 	return ret.name
 
 
