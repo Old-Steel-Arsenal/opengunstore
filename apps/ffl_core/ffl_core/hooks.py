@@ -308,6 +308,8 @@ doc_events = {
 			# No Desk credit note against a merged invoice holding a negative trade-in
 			# ticket (compliance/trade_in_settlement): first, before core totals it.
 			"ffl_core.compliance.trade_in_settlement.refuse_desk_return_of_negative_ticket",
+			# A credit note against a membership invoice is not deferred (membership.py).
+			"ffl_core.membership.book_refunds_at_once",
 			"ffl_core.compliance.consignment.freeze_consignment_commission",
 			# Locked lines (trade-in credit) pinned to their amount BEFORE core
 			# prices, totals and taxes the rows.
@@ -396,7 +398,11 @@ doc_events = {
 			# Each firearm sold agreements this sale used (agreements.py).
 			"ffl_core.agreements.release_firearm_agreements",
 		],
+		# A membership invoice is never cancelled from the invoice: refunds are credit notes (membership.py).
+		"before_cancel": "ffl_core.membership.refuse_invoice_cancel",
 	},
+	# The payment that settles a membership's invoice makes the membership Active (membership.py).
+	"Payment Entry": {"on_submit": "ffl_core.membership.activate_paid_memberships"},
 	"Sales Order": {
 		# A new order's freight tax basis from FFL Settings.
 		"before_insert": "ffl_core.compliance.shipping_charge.stamp_shipping_tax_basis",
@@ -472,6 +478,8 @@ doc_events = {
 		# webhook-owned 4473 fields on a Draft save. Restores them from the DB.
 		"before_save": "ffl_core.compliance.webhook_fields.protect_webhook_4473_fields",
 		"validate": [
+			# Memberships are sold as Sales Invoices only: the merge drops their service dates (membership.py).
+			"ffl_core.membership.refuse_on_pos_invoice",
 			# No counter sale to a Banned customer without a manager's open override
 			# (customer_flags.refuse_banned_customer; returns and channel mirrors pass).
 			"ffl_core.customer_flags.refuse_banned_customer",
@@ -687,7 +695,8 @@ doc_events = {
 # doctype_js = {"doctype" : "public/js/doctype.js"}
 doctype_js = {
     "Supplier": "public/js/supplier_form.js",
-    "Customer": "public/js/customer_form.js",
+    # customer_memberships.js: the Memberships panel (sell, cancel, auto-renew; membership.py).
+    "Customer": ["public/js/customer_form.js", "public/js/customer_memberships.js"],
     "Item": "public/js/item_form.js",
     "Serial No": "public/js/serial_no.js",
     "Purchase Receipt": "public/js/purchase_receipt.js",
@@ -820,6 +829,9 @@ after_migrate = [
 	# Customer Deposits liability account per company (looked up by name by
 	# the GunBroker cash-basis report).
 	"ffl_core.setup.customer_deposits.ensure",
+	# Deferred Membership Revenue + Membership Revenue per company (accounts only; Accounts
+	# Settings change only when a store saves its first active Membership Plan).
+	"ffl_core.setup.membership.ensure",
 	"ffl_core.setup.consignment.ensure",
 	# Stock at Consignee per company — the account every consignment
 	# warehouse points at (ffl_core.warehouses); core-owned custody primitive.
@@ -958,6 +970,8 @@ scheduler_events = {
 		"ffl_core.storage.sweep_departed",
 	],
 	"daily": [
+		# A membership that does not renew turns Cancelled / Expired after its period (membership.py).
+		"ffl_core.membership.close_ended_memberships",
 		# Self-heal Item.actual_qty (the list-view "Quantity" column) from
 		# Bin — the incremental SLE hook can't recover from a missed entry.
 		"ffl_core.api.item_admin.recompute_all_item_actual_qty",

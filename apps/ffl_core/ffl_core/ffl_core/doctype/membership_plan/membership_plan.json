@@ -1,0 +1,184 @@
+{
+ "actions": [],
+ "creation": "2026-10-27 12:00:00.000000",
+ "modified": "2026-10-27 12:00:00.000000",
+ "modified_by": "Administrator",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "module": "FFL Core",
+ "name": "Membership Plan",
+ "owner": "Administrator",
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "field_order": [
+  "plan_name",
+  "active",
+  "billing_period",
+  "price",
+  "column_break_a",
+  "item",
+  "description",
+  "section_registration",
+  "registration_item",
+  "column_break_b",
+  "registration_fee",
+  "section_renewal",
+  "auto_renew_default",
+  "terms_template",
+  "column_break_c",
+  "grace_enabled",
+  "grace_days"
+ ],
+ "fields": [
+  {
+   "fieldname": "plan_name",
+   "fieldtype": "Data",
+   "label": "Plan Name",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "active",
+   "fieldtype": "Check",
+   "label": "Active",
+   "default": "1",
+   "in_list_view": 1,
+   "description": "Only active plans can be sold. Switching a plan off leaves its members as they are."
+  },
+  {
+   "fieldname": "billing_period",
+   "fieldtype": "Select",
+   "label": "Billing Period",
+   "options": "Monthly\nYearly",
+   "default": "Monthly",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "Monthly: from the start day to the day before the same day next month. Yearly: to the day before the same day next year."
+  },
+  {
+   "fieldname": "price",
+   "fieldtype": "Currency",
+   "label": "Price per Period",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "Saved as the plan item's selling price."
+  },
+  {
+   "fieldname": "column_break_a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "item",
+   "fieldtype": "Link",
+   "label": "Billed Item",
+   "options": "Item",
+   "reqd": 1,
+   "description": "The service item on the invoice: non-stock, one per plan. Saving the plan turns on deferred revenue for it and points it at the Deferred Membership Revenue and Membership Revenue accounts. Whether it is taxed follows the item's own Item Tax Template."
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "section_registration",
+   "fieldtype": "Section Break",
+   "label": "Registration Fee"
+  },
+  {
+   "fieldname": "registration_item",
+   "fieldtype": "Link",
+   "label": "Registration Item",
+   "options": "Item",
+   "mandatory_depends_on": "eval:doc.registration_fee > 0",
+   "description": "Charged on a customer's first invoice of this plan only, over the same service dates as that first period."
+  },
+  {
+   "fieldname": "column_break_b",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "registration_fee",
+   "fieldtype": "Currency",
+   "label": "Registration Fee"
+  },
+  {
+   "fieldname": "section_renewal",
+   "fieldtype": "Section Break",
+   "label": "Renewal"
+  },
+  {
+   "fieldname": "auto_renew_default",
+   "fieldtype": "Check",
+   "label": "Auto-renew by Default",
+   "default": "1",
+   "description": "Pre-ticks Auto-renew when the plan is sold. Auto-renew saves the customer's card for recurring charges."
+  },
+  {
+   "fieldname": "terms_template",
+   "fieldtype": "Link",
+   "label": "Membership Terms",
+   "options": "Agreement Template",
+   "description": "Optional. A Per document agreement the customer signs for each membership before it is invoiced."
+  },
+  {
+   "fieldname": "column_break_c",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "grace_enabled",
+   "fieldtype": "Check",
+   "label": "Grace Period on Failed Renewal",
+   "default": "0",
+   "description": "Off: the first failed renewal charge suspends the membership. On: the charge is retried daily for the grace days, then the membership is suspended."
+  },
+  {
+   "fieldname": "grace_days",
+   "fieldtype": "Int",
+   "label": "Grace Days",
+   "depends_on": "grace_enabled",
+   "mandatory_depends_on": "grace_enabled"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "field:plan_name",
+ "naming_rule": "By fieldname",
+ "title_field": "plan_name",
+ "description": "A membership a customer can buy: what it costs, how often it bills, and its registration fee.",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "Sales Manager",
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "report": 1
+  },
+  {
+   "role": "Sales User",
+   "read": 1
+  },
+  {
+   "role": "Accounts User",
+   "read": 1,
+   "report": 1
+  },
+  {
+   "role": "Accounts Manager",
+   "read": 1,
+   "report": 1
+  }
+ ],
+ "track_changes": 1
+}
