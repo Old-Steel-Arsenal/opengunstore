@@ -258,6 +258,11 @@ class LipseysProvider(RemoteCatalogMixin, DistributorProvider):
 			frappe.db.set_single_value(SETTINGS_DOCTYPE, values)
 		return invoices
 
+	# ---------------------------------------------------------- freight
+
+	def estimate_order_freight(self, lines: list, mode: str, options=None) -> Optional[float]:
+		return estimate_freight(lines, mode, self._get_settings())
+
 	# ---------------------------------------------------------- hub / account
 
 	def account_number(self, account: str) -> str:
@@ -309,6 +314,22 @@ class LipseysProvider(RemoteCatalogMixin, DistributorProvider):
 		items = data.get("items")
 		return {"label": label, "ok": True,
 			"detail": f"Signed in; {len(items) if isinstance(items, list) else 0} items priced."}
+
+
+def estimate_freight(lines: list, mode: str, settings) -> Optional[float]:
+	"""Lipsey's freight for ONE order: the Firearms Dropship Program's flat rate per
+	firearm order (adult signature included) or the accessory drop-ship rate per
+	order. Orders shipped to the shop, and accessory orders while they ship
+	overnight (billed at overnight rates), are not estimated (None). Pure over
+	``settings``."""
+	from ffl_integrations.distributor.freight import flat_rate
+	from ffl_integrations.distributor.util import setting_value
+
+	if mode == lanes.DIRECT and settings.get("dropship_overnight"):
+		return None
+	return flat_rate(lines, mode, consumer={
+		"firearm": setting_value(settings, "rate_dropship_firearm", 9.95),
+		"accessory": setting_value(settings, "rate_dropship_accessory", 8.00)})
 
 
 def get_provider() -> LipseysProvider:

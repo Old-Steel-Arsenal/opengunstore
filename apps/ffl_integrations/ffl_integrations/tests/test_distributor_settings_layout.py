@@ -38,7 +38,7 @@ _SHARED_TABS = [("tab_account", "Account"), ("tab_ordering", "Ordering"),
 TABS = {"rsr_settings": _SHARED_TABS,
 	"sports_south_settings": [*_SHARED_TABS, ("tab_status", "Status")],
 	"lipseys_settings": [("tab_account", "Account"), ("tab_ordering", "Ordering"),
-		("tab_status", "Status")]}
+		("tab_freight", "Freight"), ("tab_status", "Status")]}
 
 # Tab label -> the develop data fields that belong on it.
 EXPECTED = {
@@ -73,6 +73,7 @@ EXPECTED = {
 		"Account": {"ordering_enabled", "customer_number", "dealer_email", "dealer_password",
 			"dropship_email", "dropship_password", "base_url"},
 		"Ordering": {"disable_email", "dropship_overnight"},
+		"Freight": {"rate_dropship_firearm", "rate_dropship_accessory"},
 		"Status": {"shipping_polled_through", "dropship_shipping_polled_through",
 			"last_shipping_poll_at", "last_error"},
 	},

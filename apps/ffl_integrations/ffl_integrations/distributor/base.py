@@ -258,13 +258,14 @@ class DistributorProvider(ABC):
 	def verify_transfer_dealer(self, ffl: str) -> Optional[dict]:
 		return None
 
-	def estimate_order_freight(self, lines: list, mode: str) -> Optional[float]:
-		"""Estimated freight for ONE distributor order (one OrderPlan) — the
-		Fulfillment planner's cost figure. ``lines`` = [{sku, qty, unit_cost,
-		department, is_firearm, ship_method}]; ``mode`` = the plan's ship-context
-		mode (direct / fds / to_store / stocking). None = no estimate available;
-		the invoiced freight always replaces it. A provider whose
-		``delivery_options`` is not None also takes ``options=`` (the chosen set)."""
+	def estimate_order_freight(self, lines: list, mode: str, options=None) -> Optional[float]:
+		"""Estimated freight for ONE distributor order (one OrderPlan), asked through
+		:mod:`.freight`. ``lines`` = [{sku, qty, unit_cost, department, is_firearm,
+		ship_method}]; ``mode`` = the plan's ship-context mode (direct / fds /
+		to_store / stocking); ``options`` = the delivery options chosen for it
+		(passed only to a house whose ``delivery_options`` is not None). None =
+		no estimate available; the invoiced freight always replaces it. A house with
+		flat per-order rates returns ``freight.flat_rate(...)``."""
 		return None
 
 	def delivery_options(self, firearm_order: bool) -> Optional[dict]:

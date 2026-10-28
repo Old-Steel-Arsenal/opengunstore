@@ -11,7 +11,7 @@ import frappe
 from frappe.utils import cint, flt
 
 from ffl_integrations.distributor import order_state
-from ffl_integrations.distributor import lanes, offers
+from ffl_integrations.distributor import freight, lanes, offers
 from ffl_integrations.distributor.util import dealer_only_part, legal_firearm
 from ffl_integrations.distributor.base import PlanningError
 from ffl_integrations.distributor.offers import buy_order
@@ -366,7 +366,7 @@ def quote(item_code=None, sku=None, distributor=None) -> dict:
 	    {found, sku, upc, item_code, distributor, cost, map, msrp,
 	    suggested_price, qty, restricted_states, fulfillment_mode,
 	    dropship_blocked, vendor_approval_required, ffl_required,
-	    manufacturer, model} — or {found: False, ...} when not in catalog.
+	    manufacturer, model, department} — or {found: False, ...} when not in catalog.
 	    A site with no distributor catalog answers HTTP 417 (CapabilityOff).
 	"""
 	from ffl_integrations.data_service import CATALOG, require
@@ -460,6 +460,7 @@ def quote(item_code=None, sku=None, distributor=None) -> dict:
 		"is_firearm": legal_firearm(row, provider.code),
 		"manufacturer": row.get("manufacturer") or "",
 		"model": row.get("model") or "",
+		"department": row.get("department") or "",
 	}
 
 
@@ -745,63 +746,7 @@ def fulfillment_freight(lines, options=None) -> dict:
 		lines = frappe.parse_json(lines)
 	if isinstance(options, str):
 		options = frappe.parse_json(options)
-	options = options if isinstance(options, dict) else {}
-	groups: dict = {}
-	for ln in (lines or []):
-		distributor = (ln.get("distributor") or "").strip()
-		sku = (ln.get("sku") or "").strip()
-		if not distributor or not sku:
-			continue
-		# A firearm under the law rides FDS; the house's own ffl_required flag (a
-		# barrel it only sends to dealers) does not make one.
-		house = frappe.get_cached_value("Distributor", distributor, "provider")
-		gun = bool(ln["is_firearm"]) if "is_firearm" in ln else legal_firearm(ln, house)
-		mode = "to_store" if ln.get("mode") == "to_store" else ("fds" if gun else "direct")
-		groups.setdefault((distributor, mode), []).append({
-			"sku": sku, "item_code": ln.get("item_code") or "",
-			"qty": max(1, int(ln.get("qty") or 1)),
-			"unit_cost": flt(ln.get("cost")), "department": ln.get("department") or "",
-			# One flag for both: the firearm-classification cross-check belongs to real ordering, not
-			# to a price estimate.
-			"ffl_required": bool(ln.get("ffl_required")), "is_firearm": gun, "legal_firearm": gun,
-		})
-	orders, total, complete = [], 0.0, True
-	for (distributor, mode), group in sorted(groups.items()):
-		provider = get_provider(frappe.get_cached_doc("Distributor", distributor).provider)
-		try:
-			planned = provider.plan_fulfillment(group, {"mode": mode})
-		except PlanningError:
-			# This house cannot ship these lines this way (it does not run the lane, or
-			# the two firearm classifications disagree). The planner asks for an
-			# estimate, not an order: report it as unpriced and let the operator see
-			# the refusal where they choose the channel.
-			complete = False
-			continue
-		for plan in planned:
-			by_sku = {ln["sku"]: ln for ln in group}
-			priced = [{**by_sku[pl["sku"]], "qty": pl["qty"], "ship_method": pl["ship_method"]}
-				for pl in plan["lines"]]
-			firearm = any(ln.get("is_firearm") for ln in priced)
-			key = delivery_options_key(distributor, plan["order_type"], firearm)
-			chosen = getattr(provider, "delivery_options", lambda _f: None)(firearm)
-			if chosen is None:
-				freight = provider.estimate_order_freight(priced, mode)
-			else:
-				if key in options:
-					chosen = {k: bool((options.get(key) or {}).get(k)) for k in DELIVERY_OPTIONS}
-				freight = provider.estimate_order_freight(priced, mode, options=chosen)
-			if freight is None:
-				complete = False
-			else:
-				total += freight
-			orders.append({
-				"distributor": distributor, "mode": mode, "order_type": plan["order_type"],
-				"line_count": len(priced),
-				"merchandise": round(sum(ln["unit_cost"] * ln["qty"] for ln in priced), 2),
-				"freight": freight,
-				"firearm": firearm, "options_key": key, "options": chosen,
-			})
-	return {"orders": orders, "total": round(total, 2), "complete": complete}
+	return freight.estimate_orders(lines, options)
 
 
 @frappe.whitelist()

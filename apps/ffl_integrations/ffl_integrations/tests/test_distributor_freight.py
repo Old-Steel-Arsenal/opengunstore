@@ -114,9 +114,16 @@ class _FakeProvider:
 			{"sku": l["sku"], "qty": l["qty"], "ship_method": "Grnd"} for l in group]}
 			for group in (guns, rest) if group]
 
-	def estimate_order_freight(self, lines, mode):
+	def estimate_order_freight(self, lines, mode, options=None):
 		self.calls.append((mode, [l["sku"] for l in lines]))
 		return self.freight(lines, mode)
+
+
+class _OldSignatureProvider(_FakeProvider):
+	"""A provider written to the two-argument estimate signature."""
+
+	def estimate_order_freight(self, lines, mode):
+		return 7.0
 
 
 class FulfillmentFreightEndpoint(unittest.TestCase):
@@ -159,6 +166,12 @@ class FulfillmentFreightEndpoint(unittest.TestCase):
 		self.assertFalse(out["complete"])
 		self.assertEqual(out["total"], 10.0)
 		self.assertIsNone(next(o for o in out["orders"] if o["distributor"] == "SS")["freight"])
+
+	def test_a_two_argument_provider_still_prices(self):
+		self.providers["OLD"] = _OldSignatureProvider(None)
+		out = dist_api.fulfillment_freight([
+			{"distributor": "OLD", "mode": "direct", "sku": "X", "qty": 1, "cost": 10}])
+		self.assertEqual((out["total"], out["complete"]), (7.0, True))
 
 	def test_lines_without_a_house_or_sku_are_ignored(self):
 		out = dist_api.fulfillment_freight('[{"distributor": "", "sku": "A"}, {"distributor": "RSR"}]')
@@ -224,3 +237,34 @@ class FulfillmentFreightDeliveryOptions(unittest.TestCase):
 		self.assertIsNone(rsr["options"])
 		self.assertEqual(rsr["freight"], 10.0)
 		self.assertEqual(self.providers["RSR"].calls, [("direct", ["OPTIC"])])
+
+
+class FlatRate(unittest.TestCase):
+	"""`freight.flat_rate`: one per-order rate by lane family and order kind."""
+
+	def test_by_lane_and_kind(self):
+		from ffl_integrations.distributor.freight import flat_rate
+
+		rates = dict(consumer={"firearm": 9.95, "accessory": 8}, store={"accessory": 0})
+		gun, mag = [{"is_firearm": True, "qty": 3}], [{"is_firearm": False, "qty": 5}]
+		self.assertEqual(flat_rate(gun, "fds", **rates), 9.95, "per order, not per unit")
+		self.assertEqual(flat_rate(mag, "direct", **rates), 8.0)
+		self.assertEqual(flat_rate(mag, "to_store", **rates), 0.0, "a stated 0 is free")
+		self.assertIsNone(flat_rate(gun, "to_store", **rates), "no rate: no estimate")
+		self.assertIsNone(flat_rate(mag, "stocking", consumer=rates["consumer"]))
+
+
+class LipseysFreight(unittest.TestCase):
+	def test_drop_ship_flat_rates_from_settings(self):
+		from ffl_integrations.distributor.lipseys_provider import estimate_freight
+
+		gun, mag = [{"is_firearm": True, "qty": 2}], [{"is_firearm": False, "qty": 1}]
+		self.assertEqual(estimate_freight(gun, "fds", frappe._dict()), 9.95, "defaults")
+		self.assertEqual(estimate_freight(mag, "direct", frappe._dict()), 8.0)
+		own = frappe._dict(rate_dropship_firearm=12, rate_dropship_accessory=0)
+		self.assertEqual(estimate_freight(gun, "fds", own), 12.0)
+		self.assertEqual(estimate_freight(mag, "direct", own), 0.0)
+		self.assertIsNone(estimate_freight(mag, "to_store", own), "store orders: not estimated")
+		overnight = frappe._dict(dropship_overnight=1)
+		self.assertIsNone(estimate_freight(mag, "direct", overnight), "overnight: not estimated")
+		self.assertEqual(estimate_freight(gun, "fds", overnight), 9.95, "guns are not overnight")
