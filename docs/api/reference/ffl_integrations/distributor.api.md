@@ -27,7 +27,7 @@ that the house has already agreed and skips the alert.
 
 **Permissions:** Distributor order/console roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1071`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1072`</sub>
 
 ## `catalog_by_upc`
 
@@ -92,7 +92,7 @@ idempotent. A counter-sourced drop-ship DO must be fully paid first
 
 **Permissions:** Distributor order/console roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1041`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1042`</sub>
 
 ## `create_orders`
 
@@ -117,7 +117,7 @@ places anything: v1 is a human-confirmed queue.
 
 **Permissions:** Distributor order roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:752`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:753`</sub>
 
 ## `ensure_dropship_item`
 
@@ -148,7 +148,7 @@ keeps driving the web listing, web-order routing and stock publishing.
 
 **Permissions:** Counter roles (Sales User / Sales Manager / Stock Manager / System Manager).
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:467`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:468`</sub>
 
 ## `fulfillment_freight`
 
@@ -175,7 +175,7 @@ ffl_required, and this is a display estimate (the invoiced freight wins).
 
 **Permissions:** Counter roles — the planner belongs to Create Order.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:715`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:716`</sub>
 
 ## `fulfillment_matrix`
 
@@ -198,7 +198,7 @@ local column and the rest render normally.
 
 **Permissions:** Open by design — any authenticated desk user; see `search`.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:541`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:542`</sub>
 
 ## `list_orders`
 
@@ -221,7 +221,7 @@ order type in one list (the Distributor Orders page's tracking tab).
 
 **Returns:** [{name, distributor, order_type, account, account_number, status, hold_status, web_ref, total_cost, placed_at, next_poll_at, receive_status, source_doctype, source_name, creation, last_poll_at, invoiced_freight, error}] — plus ``lines`` when asked.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1135`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1136`</sub>
 
 ## `quote`
 
@@ -256,7 +256,7 @@ so it can sit below the listing's website price. Reads the
 | `sku` | — | no | `None` | Distributor SKU (either this or item_code must resolve). |
 | `distributor` | — | no | `None` | Optional Distributor name. |
 
-**Returns:** {found, sku, upc, item_code, distributor, cost, map, msrp, suggested_price, qty, restricted_states, fulfillment_mode, dropship_blocked, vendor_approval_required, ffl_required, manufacturer, model} — or {found: False, ...} when not in catalog. A site with no distributor catalog answers HTTP 417 (CapabilityOff).
+**Returns:** {found, sku, upc, item_code, distributor, cost, map, msrp, suggested_price, qty, restricted_states, fulfillment_mode, dropship_blocked, vendor_approval_required, ffl_required, manufacturer, model, department} — or {found: False, ...} when not in catalog. A site with no distributor catalog answers HTTP 417 (CapabilityOff).
 
 **Permissions:** Open by design — any authenticated desk user; catalog data carries no PII and the counter panel depends on it.
 
@@ -310,7 +310,7 @@ distributor); the code must be one the provider offers for this order.
 
 **Permissions:** Distributor order/console roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:974`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:975`</sub>
 
 ## `shipping_options`
 
@@ -330,7 +330,7 @@ flat-rate estimate, so the operator can choose before Confirm.
 
 **Permissions:** Distributor order/console roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:949`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:950`</sub>
 
 ## `transition_order`
 
@@ -351,4 +351,4 @@ The DO state machine still enforces transition legality.
 
 **Permissions:** Distributor order roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1112`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1113`</sub>

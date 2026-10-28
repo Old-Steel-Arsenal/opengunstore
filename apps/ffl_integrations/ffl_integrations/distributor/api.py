@@ -366,7 +366,7 @@ def quote(item_code=None, sku=None, distributor=None) -> dict:
 	    {found, sku, upc, item_code, distributor, cost, map, msrp,
 	    suggested_price, qty, restricted_states, fulfillment_mode,
 	    dropship_blocked, vendor_approval_required, ffl_required,
-	    manufacturer, model} — or {found: False, ...} when not in catalog.
+	    manufacturer, model, department} — or {found: False, ...} when not in catalog.
 	    A site with no distributor catalog answers HTTP 417 (CapabilityOff).
 	"""
 	from ffl_integrations.data_service import CATALOG, require
@@ -460,6 +460,7 @@ def quote(item_code=None, sku=None, distributor=None) -> dict:
 		"is_firearm": legal_firearm(row, provider.code),
 		"manufacturer": row.get("manufacturer") or "",
 		"model": row.get("model") or "",
+		"department": row.get("department") or "",
 	}
 
 

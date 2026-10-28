@@ -15405,7 +15405,7 @@
           "ffl_integrations"
         ],
         "summary": "Cancel a Distributor Order here (alerts ops when it is still live at the house).",
-        "description": "Cancelling never reaches the distributor, so an order that is live there\n(Placed+) has to be cancelled with the house by phone or email.\nLeft unconfirmed, ops are alerted to arrange that; ``confirmed`` records\nthat the house has already agreed and skips the alert.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1071`",
+        "description": "Cancelling never reaches the distributor, so an order that is live there\n(Placed+) has to be cancelled with the house by phone or email.\nLeft unconfirmed, ops are alerted to arrange that; ``confirmed`` records\nthat the house has already agreed and skips the alert.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1072`",
         "operationId": "ffl_integrations.distributor.api.cancel_order",
         "responses": {
           "200": {
@@ -15566,7 +15566,7 @@
           "ffl_integrations"
         ],
         "summary": "Confirm a Draft Distributor Order: Draft → Queued + enqueue placement.",
-        "description": "Human confirmation (the v1 queue gate); the placement worker is\nidempotent. A counter-sourced drop-ship DO must be fully paid first\n(placement_payment_block); a ship-to-store leg may be placed on a deposit.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1041`",
+        "description": "Human confirmation (the v1 queue gate); the placement worker is\nidempotent. A counter-sourced drop-ship DO must be fully paid first\n(placement_payment_block); a ship-to-store leg may be placed on a deposit.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1042`",
         "operationId": "ffl_integrations.distributor.api.confirm_order",
         "responses": {
           "200": {
@@ -15614,7 +15614,7 @@
           "ffl_integrations"
         ],
         "summary": "Plan + create the Draft Distributor Order(s) for a cart.",
-        "description": "`plan_fulfillment` may split one cart into several orders (no\nfirearm/accessory mixing / H4 >400) — each becomes its own Draft DO. A\nclassification divergence raises (order held for a human). Never\nplaces anything: v1 is a human-confirmed queue.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\n**Permissions:** Distributor order roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:752`",
+        "description": "`plan_fulfillment` may split one cart into several orders (no\nfirearm/accessory mixing / H4 >400) — each becomes its own Draft DO. A\nclassification divergence raises (order held for a human). Never\nplaces anything: v1 is a human-confirmed queue.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\n**Permissions:** Distributor order roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:753`",
         "operationId": "ffl_integrations.distributor.api.create_orders",
         "responses": {
           "200": {
@@ -15669,7 +15669,7 @@
           "ffl_integrations"
         ],
         "summary": "Counter Create Order seam: make sure this catalog SKU has a local Item that",
-        "description": "can carry a drop-ship line — dual-source guard → idempotent promote →\n``dropship_distributor`` stamp — WITHOUT a web listing (that stays Flow B's\n``create_listing``). Closes the gap where an un-promoted SKU produced a\ncounter line with no item_code that ``_validate_items`` then refused.\n\nA WRITE (Item insert + stamp), so unlike search/quote it is role-gated — to\nthe same roles that may ring the counter order itself (manual_order._ROLES).\nAn Item already stamped by ANOTHER distributor is returned as it is, never\nre-homed: the counter line orders from the house it names, while the stamp\nkeeps driving the web listing, web-order routing and stock publishing.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (Sales User / Sales Manager / Stock Manager / System Manager).\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:467`",
+        "description": "can carry a drop-ship line — dual-source guard → idempotent promote →\n``dropship_distributor`` stamp — WITHOUT a web listing (that stays Flow B's\n``create_listing``). Closes the gap where an un-promoted SKU produced a\ncounter line with no item_code that ``_validate_items`` then refused.\n\nA WRITE (Item insert + stamp), so unlike search/quote it is role-gated — to\nthe same roles that may ring the counter order itself (manual_order._ROLES).\nAn Item already stamped by ANOTHER distributor is returned as it is, never\nre-homed: the counter line orders from the house it names, while the stamp\nkeeps driving the web listing, web-order routing and stock publishing.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (Sales User / Sales Manager / Stock Manager / System Manager).\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:468`",
         "operationId": "ffl_integrations.distributor.api.ensure_dropship_item",
         "responses": {
           "200": {
@@ -15728,7 +15728,7 @@
           "ffl_integrations"
         ],
         "summary": "Estimated distributor freight for the Fulfillment planner's CURRENT choice.",
-        "description": "The planner re-asks on every selection change. Lines are grouped exactly as\nthe counter hook will order them — by (distributor, lane) and then the\nprovider's own split (firearms and accessories never share an order) — and\neach resulting order is priced by the provider's freight rules, so a mixed\ndrop-ship + ship-to-store cart is the sum of its real orders. Nothing is\nread from the catalog: the matrix already sent cost / department /\nffl_required, and this is a display estimate (the invoiced freight wins).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles — the planner belongs to Create Order.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:715`",
+        "description": "The planner re-asks on every selection change. Lines are grouped exactly as\nthe counter hook will order them — by (distributor, lane) and then the\nprovider's own split (firearms and accessories never share an order) — and\neach resulting order is priced by the provider's freight rules, so a mixed\ndrop-ship + ship-to-store cart is the sum of its real orders. Nothing is\nread from the catalog: the matrix already sent cost / department /\nffl_required, and this is a display estimate (the invoiced freight wins).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles — the planner belongs to Create Order.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:716`",
         "operationId": "ffl_integrations.distributor.api.fulfillment_freight",
         "responses": {
           "200": {
@@ -15778,7 +15778,7 @@
           "ffl_integrations"
         ],
         "summary": "One-shot batch quote for the Create Order Fulfillment planner.",
-        "description": "Every line × (local stock + each\nenabled distributor). Open read (like search/quote). Column-level\ndegradation — one failing house only greys out its own column; the\nlocal column and the rest render normally.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\n**Permissions:** Open by design — any authenticated desk user; see `search`.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:541`",
+        "description": "Every line × (local stock + each\nenabled distributor). Open read (like search/quote). Column-level\ndegradation — one failing house only greys out its own column; the\nlocal column and the rest render normally.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\n**Permissions:** Open by design — any authenticated desk user; see `search`.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:542`",
         "operationId": "ffl_integrations.distributor.api.fulfillment_matrix",
         "responses": {
           "200": {
@@ -15825,7 +15825,7 @@
           "ffl_integrations"
         ],
         "summary": "List Distributor Orders, newest-modified first — every house and every",
-        "description": "order type in one list (the Distributor Orders page's tracking tab).\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1135`",
+        "description": "order type in one list (the Distributor Orders page's tracking tab).\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1136`",
         "operationId": "ffl_integrations.distributor.api.list_orders",
         "responses": {
           "200": {
@@ -15904,7 +15904,7 @@
         "operationId": "ffl_integrations.distributor.api.quote",
         "responses": {
           "200": {
-            "description": "{found, sku, upc, item_code, distributor, cost, map, msrp, suggested_price, qty, restricted_states, fulfillment_mode, dropship_blocked, vendor_approval_required, ffl_required, manufacturer, model} — or {found: False, ...} when not in catalog. A site with no distributor catalog answers HTTP 417 (CapabilityOff).",
+            "description": "{found, sku, upc, item_code, distributor, cost, map, msrp, suggested_price, qty, restricted_states, fulfillment_mode, dropship_blocked, vendor_approval_required, ffl_required, manufacturer, model, department} — or {found: False, ...} when not in catalog. A site with no distributor catalog answers HTTP 417 (CapabilityOff).",
             "content": {
               "application/json": {
                 "schema": {
@@ -16010,7 +16010,7 @@
           "ffl_integrations"
         ],
         "summary": "Choose the carrier service for a Draft Distributor Order.",
-        "description": "Only a Draft order may change (Queued and later are at or past the\ndistributor); the code must be one the provider offers for this order.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:974`",
+        "description": "Only a Draft order may change (Queued and later are at or past the\ndistributor); the code must be one the provider offers for this order.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:975`",
         "operationId": "ffl_integrations.distributor.api.set_shipping_service",
         "responses": {
           "200": {
@@ -16063,7 +16063,7 @@
           "ffl_integrations"
         ],
         "summary": "Carrier services the distributor offers for this order, with the",
-        "description": "flat-rate estimate, so the operator can choose before Confirm.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:949`",
+        "description": "flat-rate estimate, so the operator can choose before Confirm.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:950`",
         "operationId": "ffl_integrations.distributor.api.shipping_options",
         "responses": {
           "200": {
@@ -16111,7 +16111,7 @@
           "ffl_integrations"
         ],
         "summary": "Generic ops state transition for a Distributor Order.",
-        "description": "The DO state machine still enforces transition legality.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\n**Permissions:** Distributor order roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1112`",
+        "description": "The DO state machine still enforces transition legality.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\n**Permissions:** Distributor order roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1113`",
         "operationId": "ffl_integrations.distributor.api.transition_order",
         "responses": {
           "200": {
