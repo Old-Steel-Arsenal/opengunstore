@@ -8,6 +8,7 @@ needs stock for the guns); the submit / cancel bookkeeping is called the same wa
 from __future__ import annotations
 
 import json
+from unittest.mock import patch
 
 import frappe
 from frappe.utils import add_days, nowdate
@@ -228,6 +229,26 @@ class EachFirearmSold(_Base):
 			sorted([self.serial, serial2]))
 		# Asking again for the guns the open copy already covers says so instead.
 		self.assertTrue(agreements._request(self.cust.name, self.tpl.name, "qr", 0, serial_no=serial2).get("link_open"))
+
+	def test_one_copy_per_gun_keeps_a_copy_and_a_row_for_each_gun(self):
+		frappe.db.set_value("Agreement Template", self.tpl.name, "one_copy_per_gun", 1)
+		code2, serial2 = _gun()
+		frappe.db.set_value("Item", code2, "ffl_required_agreement", self.tpl.name)
+		rows = [r for r in agreements.agreements_for_sale(self.cust.name, [
+			{"item_code": self.code, "serial_no": self.serial, "rate": 400},
+			{"item_code": code2, "serial_no": serial2, "rate": 300}])["rows"] if r["template"] == self.tpl.name]
+		self.assertEqual(sorted([g["serial_no"] for g in r["firearms"]] for r in rows), sorted([[self.serial], [serial2]]))
+		with self.assertRaises(frappe.ValidationError):
+			agreements.request_agreement(self.cust.name, self.tpl.name, "qr", 1,
+				firearms=[{"serial_no": self.serial}, {"serial_no": serial2}])
+		si = self.sale()
+		si.append("items", {"item_code": code2, "qty": 1, "rate": 300, "serial_no": serial2})
+		self.cust.db_set("email_id", "per-gun@example.com")
+		with patch("frappe.sendmail") as send:
+			sent = agreements.email_sale_agreements(si, "per-gun@example.com")
+		self.assertEqual([r["state"] for r in sent], ["sent", "sent"])
+		self.assertEqual(send.call_count, 2)
+		self.assertEqual(frappe.db.count("Customer Agreement", {"customer": self.cust.name, "template": self.tpl.name}), 2)
 
 	def test_the_firearms_placeholder_is_a_table_of_the_guns(self):
 		frappe.db.set_value("Agreement Template", self.tpl.name, "body", "<div>{{ firearms }}</div>")

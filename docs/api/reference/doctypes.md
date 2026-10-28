@@ -39,6 +39,7 @@ The text of a waiver or agreement customers sign.
 | `valid_days` | Int | Valid For (Days) |  |  |
 | `requirement` | Select | Required |  | Optional, Required by item, Required for every sale |
 | `scope` | Select | Signed |  | Per customer, Each firearm sold, Per document |
+| `one_copy_per_gun` | Check | One copy per gun |  |  |
 | `show_on_counter_panel` | Check | Show on Counter Panel |  |  |
 | `minors_need_guardian` | Check | Minors Need a Parent or Guardian |  |  |
 | `body` | Text Editor | Agreement Text | ✓ |  |

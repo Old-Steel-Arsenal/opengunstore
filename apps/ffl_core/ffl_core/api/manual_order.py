@@ -1697,7 +1697,7 @@ def resend_order_agreement(sales_invoice: str, template: str, serial_no: str | N
 	    sales_invoice: Submitted counter-order Sales Invoice.
 	    template: An agreement this order's sale needs.
 	    serial_no: The gun, for an Each firearm sold agreement (the link covers every
-	        gun of the order still unsigned for it).
+	        gun of the order still unsigned for it, unless it is signed once per gun).
 	    email: Send here instead of the order's email (else the customer's).
 
 	Returns:
@@ -1718,7 +1718,8 @@ def resend_order_agreement(sales_invoice: str, template: str, serial_no: str | N
 	if email:
 		frappe.utils.validate_email_address(to, throw=True)
 	# An Each firearm sold one: one copy for every gun of this order still unsigned.
-	needs = [n for n in agreements.missing_requirements(si) if n["template"] == template] if serial_no else []
+	needs = [n for n in agreements.missing_requirements(si) if n["template"] == template] \
+		if serial_no and not frappe.db.get_value("Agreement Template", template, "one_copy_per_gun") else []
 	res = agreements.email_sale_agreements(si, to, needs if need in needs else [need], replace=1)[0]
 	if res["state"] == "failed":
 		frappe.throw(res["error"], title=_("Not sent"))
