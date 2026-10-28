@@ -133,3 +133,41 @@ class TestTheShipmentFollowsTheOrder(_FulfillmentCase):
 			revenue._apply_derived(si, order, "TSA")
 		self.assertEqual(si.shipstation_order_id, "se-777")
 		self.assertEqual(si.shipstation_status, "Pending")
+
+
+class TestATrackingNumberStillFindsTheShipment(_FulfillmentCase):
+	"""A Ship that landed while Dispose was building the invoice leaves the id
+	on the order only; the write-back must still find it."""
+
+	def test_an_order_carrying_the_shipment_is_selected(self):
+		from ffl_integrations.gunbroker import shipping
+
+		rows = [frappe._dict({"name": "A", "sales_invoice": "SI-A",
+			"shipping_flag_pushed_at": None, "tracking_pushed_at": None,
+			"gb_ship_writeback_pending": 0, "shipstation_order_id": "se-777"})]
+		with patch("frappe.get_all", return_value=rows), \
+				patch.object(shipping, "_invoices_with_a_shipment", return_value=set()):
+			self.assertEqual(shipping.pending_writeback_orders(), ["A"])
+
+	def test_the_label_is_read_off_the_orders_shipment(self):
+		from ffl_integrations.gunbroker import shipping
+
+		order = fx.FakeDoc(sales_invoice="SI-A", shipstation_order_id="se-777")
+		client = MagicMock()
+		client.labels_for_shipment.return_value = [
+			{"tracking_number": "1Z999", "carrier_code": "ups"}]
+		with patch("frappe.db.get_value", return_value=None), \
+				patch("ffl_integrations.shipstation.client.ShipStationClient.from_settings",
+					return_value=client):
+			found = shipping._fetch_label(order)
+		client.labels_for_shipment.assert_called_once_with("se-777")
+		self.assertEqual(found[0], "1Z999")
+
+
+class TestThePreviewBeforeDispose(_FulfillmentCase):
+	def test_a_known_dealer_is_read_by_the_licence_gunbroker_sent(self):
+		order = fx.FakeDoc(atf_ffl_record="", ffl_number=DEALER)
+		with patch("frappe.db.get_value",
+				return_value={"street": "900 Dealer Row"}) as get_value:
+			self.assertEqual(fulfillment._ffl_record(order), {"street": "900 Dealer Row"})
+		self.assertEqual(get_value.call_args.args[:2], ("ATF FFL Record", DEALER))

@@ -164,7 +164,7 @@ def pending_writeback_orders() -> list[str]:
 		ORDER_DOCTYPE,
 		filters={"order_status": "Transferred", "sales_invoice": ("is", "set")},
 		fields=["name", "sales_invoice", "shipping_flag_pushed_at",
-			"tracking_pushed_at", "gb_ship_writeback_pending"])
+			"tracking_pushed_at", "gb_ship_writeback_pending", "shipstation_order_id"])
 	outstanding = [
 		row for row in rows
 		if not row.shipping_flag_pushed_at
@@ -173,7 +173,10 @@ def pending_writeback_orders() -> list[str]:
 	]
 	shipped = _invoices_with_a_shipment(
 		[row.sales_invoice for row in outstanding if row.sales_invoice])
-	return [row.name for row in outstanding if row.sales_invoice in shipped]
+	# Or a shipment made before Dispose that the invoice missed (a Ship that
+	# landed while Dispose was building it): the order still carries it.
+	return [row.name for row in outstanding
+		if row.sales_invoice in shipped or (row.shipstation_order_id or "").strip()]
 
 
 def _invoices_with_a_shipment(invoices: list[str]) -> set[str]:
@@ -339,7 +342,7 @@ def _fetch_label(order) -> tuple[str, str, str] | None:
 		ShipStationClient, ShipStationConfigError, ShipStationError)
 
 	shipment_id = frappe.db.get_value("Sales Invoice", order.sales_invoice,
-		"shipstation_order_id")
+		"shipstation_order_id") or (order.get("shipstation_order_id") or "").strip()
 	if not shipment_id:
 		return None
 	try:

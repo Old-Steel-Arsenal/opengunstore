@@ -276,6 +276,14 @@ check('a GunBroker card with a unit still to name renders Ship disabled', () => 
 	assert(/btn-ship" disabled/.test(cards[0]), 'Ship live with a unit that has no gun');
 });
 
+check('a disposed GunBroker card whose invoice failed offers no Ship', () => {
+	// push_gb_shipment only builds off a pending order; this one waits for Create Invoice.
+	const stuck = Object.assign({}, gbRow, { stage: 'ready_ship', channel_stage: 'awaiting_ship', paid: true,
+		disposed: true, needs_disposition: false, sales_invoice: null });
+	const { cards } = render({ gb: [stuck] });
+	assert(!/btn-ship/.test(cards[0]), 'Ship offered with no invoice behind a disposed order');
+});
+
 check('Ship on an undisposed GunBroker card pushes the order, not a null invoice', () => {
 	dialogs.length = 0;
 	calls.length = 0;

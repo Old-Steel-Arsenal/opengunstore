@@ -565,7 +565,10 @@ class PendingDispositionsApp {
 			// A pickup has no destination to ship to — the order leaves over the
 			// counter, so Ship is not offered at all (it used to render disabled).
 			// With an address (or an FFL) the Ship button behaves exactly as before.
-			const canShip = can.ship && row.shipstation_enabled && !row.ship_pushed && !noAddress;
+			// A disposed GunBroker order whose invoice failed to post waits for
+			// Create Invoice: push_gb_shipment only builds off a pending order.
+			const canShip = can.ship && row.shipstation_enabled && !row.ship_pushed && !noAddress
+				&& !(isGb && row.disposed && !row.sales_invoice);
 			// GunBroker: nothing ships before Mark Payment Received.
 			const shipDisabled = row.ffl_expired || blockShipUnpaid || awaitingGoods
 				|| openUnits > 0 || serialErrors.length > 0
@@ -1607,7 +1610,7 @@ class PendingDispositionsApp {
 				<div><b>${__('Recipient')}:</b> ${esc(row.customer_name || row.customer)}</div>
 				${coLine}
 				<div class="text-muted" style="font-size:12px">
-					${esc(p.line1 || '')}${p.line2 ? ', ' + esc(p.line2) : ''}<br>
+					${!p.line1 && row.destination_ffl ? __('Address is read from the licence when this is pushed.') + '<br>' : ''}${esc(p.line1 || '')}${p.line2 ? ', ' + esc(p.line2) : ''}<br>
 					${esc(cityLine)}${p.phone ? ' · ' + esc(p.phone) : ''}${fflLine}
 				</div>
 				<div style="margin-top:8px"><b>${__('Items')}:</b><ul>${items}</ul></div>

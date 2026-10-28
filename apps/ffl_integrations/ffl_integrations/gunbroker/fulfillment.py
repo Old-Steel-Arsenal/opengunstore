@@ -362,10 +362,13 @@ def _serial_lists(order) -> tuple[list[dict], set[str], list[dict]]:
 
 
 def _ffl_record(order) -> dict:
-	if not order.atf_ffl_record:
+	# Before Dispose resolves it, the licence GunBroker sent is the record's name
+	# whenever this store has seen that dealer before (a local read, no eZ Check).
+	name = order.atf_ffl_record or (order.ffl_number or "").strip()
+	if not name:
 		return {}
 	return frappe.db.get_value(
-		"ATF FFL Record", order.atf_ffl_record,
+		"ATF FFL Record", name,
 		["licensee_name", "licensee_dba", "street", "street2", "city", "state",
 			"zip", "phone", "expiry_date"],
 		as_dict=True) or {}
