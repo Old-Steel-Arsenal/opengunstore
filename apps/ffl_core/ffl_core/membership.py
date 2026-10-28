@@ -1200,7 +1200,8 @@ def send_renewal_reminders(today=None) -> int:
 			when = _fmt(add_days(m.current_period_end, 1))
 			plan = escape_html(m.plan_name or m.plan)
 			card = escape_html(_card_summary(m.saved_card)) or _("the card on file")
-			frappe.sendmail(recipients=[email], subject=_("Your {0} membership renews on {1}").format(plan, when),
+			frappe.sendmail(recipients=[email], subject=_("Your {0} membership renews on {1}").format(
+				m.plan_name or m.plan, when),
 				message="<p>{0}</p><p>{1}</p><p>{2}</p>".format(
 					_("Hello {0},").format(escape_html(m.customer_name or m.customer)),
 					_("Your {0} membership at {1} renews on {2}. That day {3} is charged to {4}.").format(
