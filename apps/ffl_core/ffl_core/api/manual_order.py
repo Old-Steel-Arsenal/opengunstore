@@ -469,7 +469,14 @@ def _create_order(payload, *, shipping_tax_inclusive: int | None = None,
 	# A lowered price needs a manager (price_approval): the page asked one before sending and
 	# passes the approval token, taken once here for both the order and its invoice.
 	token = (str(payload.get("price_approval") or "")).strip()
-	approval = price_approval.take_token(token) if token else None
+	approval = None
+	if token:
+		try:
+			approval = price_approval.take_token(token)
+		except price_approval.PriceApprovalRequired:
+			# Expired, used, or someone else's: worth nothing, but no reason to refuse an order that needs
+			# no approval at all — the validate gate still refuses one that does.
+			frappe.clear_last_message()
 
 	# --- Sales Order -------------------------------------------------------
 	so = frappe.new_doc("Sales Order")
@@ -491,7 +498,9 @@ def _create_order(payload, *, shipping_tax_inclusive: int | None = None,
 		if r.get("storage_location"):
 			# Carried to the invoice and, for a deferred order, to its Delivery Note.
 			line["ffl_storage_location"] = r["storage_location"]
-		so.append("items", line)
+		row = so.append("items", line)
+		if r.get("source") in _ORDERED_SOURCES:
+			price_approval.mark_quoted(row)   # priced from the distributor's quote, not a list price
 	# Destination-based sales tax — unless the customer is tax exempt, in which
 	# case no template is applied (0%). Otherwise apply the company default so an
 	# in-state shipment is taxed; compliance.interstate_tax.apply_interstate_tax
@@ -4586,6 +4595,7 @@ def _repin_economics(si, rows: list[dict]) -> None:
 			# reset these on every save, so they must be re-pinned here (the whole
 			# reason this function exists). NEVER _pin_serial — there is no local one.
 			row.delivered_by_supplier = 1
+			price_approval.mark_quoted(row)
 			row.warehouse = None
 			row.dropship_distributor = src.get("dropship_distributor") or ""
 			# Same FIFO trap as ship to store below: while the invoice still reads
@@ -4601,6 +4611,7 @@ def _repin_economics(si, rows: list[dict]) -> None:
 			# arrival hangs its serial (compliance.firearm.is_awaiting_procurement_row).
 			row.delivered_by_supplier = 0
 			row.ffl_to_store_distributor = src.get("to_store_distributor") or ""
+			price_approval.mark_quoted(row)
 			# ERPNext's item-details pass auto-picks a FIFO serial for a stock
 			# firearm row while the invoice still reads update_stock=1 (the
 			# dealer-shipment before_insert default) — some OTHER customer's gun

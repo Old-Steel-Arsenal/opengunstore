@@ -265,8 +265,9 @@ Nothing asks when:
   pick-up as it was opened, a trade-in credit, a web or GunBroker order, a
   return. A price lowered on one of them afterwards asks like any other.
 
-The list price is the gun's own price for a firearm line with a serial, and the
-Item Price of the register's price list for everything else.
+The list price is the gun's own price for a firearm line with a serial, the
+cheapest priced gun of that model in stock for a firearm line with no serial yet,
+and the Item Price of the register's price list for everything else.
 
 The sale keeps who approved, the reason and when, under the invoice discount,
 and its timeline lists each line, list price to approved price.

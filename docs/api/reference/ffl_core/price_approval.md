@@ -28,7 +28,7 @@ taken from the screen. The token is good for 15 minutes, once, for the user who 
 
 **Returns:** {"token", "approver", "approver_name", "expires_in": seconds, "lines", "discount"}.
 
-<sub>`apps/ffl_core/ffl_core/price_approval.py:546`</sub>
+<sub>`apps/ffl_core/ffl_core/price_approval.py:660`</sub>
 
 ## `check`
 
@@ -46,4 +46,4 @@ What a save would need a manager for — the screens ask before saving.
 
 **Returns:** {"needs_approval": bool, "approver": whether the caller approves their own, "lines": [{"idx", "item_code", "item_name", "serial", "list_rate", "rate"}], "discount": {"percentage", "amount"} or None, "approvers": [{"user", "full_name", "image", "has_pin", "pin_off"}] when it needs one}.
 
-<sub>`apps/ffl_core/ffl_core/price_approval.py:492`</sub>
+<sub>`apps/ffl_core/ffl_core/price_approval.py:606`</sub>

@@ -39,3 +39,10 @@ test('approveArgs: the PIN or the password, never both', () => {
 	assert.deepStrictEqual(pa.approveArgs('m@x', 'secret', 'password', 'Other'),
 		{ approver: 'm@x', reason: 'Other', password: 'secret' });
 });
+
+test('checkFailedMessage: says the check failed, with the server reason when there is one', () => {
+	assert.strictEqual(pa.checkFailedMessage('Not permitted'),
+		"Couldn't check the prices for manager approval: Not permitted. Ask a manager to sign in, or try again.");
+	assert.strictEqual(pa.checkFailedMessage(''),
+		"Couldn't check the prices for manager approval. Ask a manager to sign in, or try again.");
+});

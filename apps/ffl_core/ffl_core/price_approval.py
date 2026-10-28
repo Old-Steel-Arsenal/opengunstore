@@ -10,8 +10,9 @@ when they have none) with a reason — ``staff_switch``'s PIN and its lockouts.
 
 * **What asks** — :func:`reductions`, the same answer for the validate gate and the
   screens' check: a line whose rate is under its *floor*. The floor is the line's list
-  price (:func:`list_rate`: a firearm's own price with its sale running, else the Item
-  Price of the document's price list), lowered by any Pricing Rule ERPNext applied to the
+  price (:func:`list_rate`: a firearm's own price with its sale running — the cheapest
+  such gun of the model while the line has no serial yet — else the Item Price of the
+  document's price list), lowered by any Pricing Rule ERPNext applied to the
   line on this save; never above the rate the line was saved at before, nor (an invoice
   line made from a Sales Order line) the rate that line was approved at on the order. So
   raising a price, keeping one, or a discount the system gives asks nothing: only what a
@@ -19,24 +20,31 @@ when they have none) with a reason — ``staff_switch``'s PIN and its lockouts.
   saved and above a transaction Pricing Rule's.
 * **The gate** — :func:`enforce_price_approval` (POS Invoice / Sales Invoice / Sales
   Order validate; the client prompt is a convenience, a REST save meets the same refusal).
-  Approved by: the code that built the document with one (create_order's token,
-  ``doc.flags.ffl_price_approval``), an approval token, or the signed-in manager. Never
-  asked (see :func:`_exempt`): returns and POS consolidation; channel mirrors and invoices
-  an extension books (``channel_invoice.is_fulfilled_elsewhere`` — web, GunBroker, a
-  consignment settlement at cost); counter pickup tickets (pinned to $0); documents our
-  own code prices on purpose (:func:`mark_system_priced`: the transfer ticket, a gunsmith
-  pick-up, membership billing); lines a distributor fills; background jobs, migrate,
-  install and import.
+  Only a save a person sends is judged (:func:`_client_save`): the desk / register save
+  (``savedocs``), ``frappe.client`` writes and the REST document API — or a save our own
+  endpoint opts in (:func:`attach`: Create Order and its edit, whose line prices a clerk
+  types). Every other save — a builder's ticket, a sync, a hook saving another document — is
+  our code's own pricing and is not asked, with or without :func:`mark_system_priced`.
+  Approved by: an approval token, the approval our endpoint took (``doc.flags``), or the
+  signed-in manager. Never asked either (see :func:`_exempt`): returns and POS
+  consolidation; a channel mirror or an invoice an extension books
+  (``channel_invoice.is_fulfilled_elsewhere``) whose claim was already stored — a save
+  cannot buy its way out by setting the field; counter pickup tickets (pinned to $0); lines a
+  distributor fills that our code marked, or that were saved so before; background jobs,
+  migrate, install and import.
 * **The token** — :func:`approve` checks the approver and returns a single-use token,
-  kept 15 minutes in the cache with who approved, why, who asked and what: per item, the
-  lowest rate approved, and the invoice discount. The screen sends it back on the save in
+  kept 15 minutes in the cache with who approved, why, who asked and what: the lowest rate
+  approved per gun (a line carrying one serial) or else per item, and the invoice discount.
+  The screen sends it back on the save in
   ``ffl_price_approval_token`` (a hidden field this gate empties, so it is never stored);
   validate takes it once, for the user who asked for it, and puts it back if the save
   rolls back. A lower rate later needs a new approval; raising one back never does.
 * **The record** — ``ffl_price_approved_by`` / ``ffl_price_approval_reason`` /
   ``ffl_price_approved_on`` on the document, written here only
-  (:func:`guard_approval_fields`; an invoice made from an approved Sales Order takes the
-  order's), and a timeline comment listing each line, list price → approved rate.
+  (:func:`guard_approval_fields`; cleared once nothing on the document is below list any
+  more; an invoice made from an approved Sales Order takes the order's while it still
+  carries a lowered line), and a timeline comment listing each line, list price → approved
+  rate.
 """
 from __future__ import annotations
 
@@ -47,7 +55,7 @@ from frappe import _
 from frappe.utils import cint, escape_html, flt, fmt_money, get_datetime, now_datetime, nowdate
 
 from ffl_core.roles import PRICE_APPROVER_ROLES, PRICE_CHECK_ROLES
-from ffl_core.utils import single_flag
+from ffl_core.utils import single_flag, split_serials
 
 GATED = ("POS Invoice", "Sales Invoice", "Sales Order")
 SETTING = "require_price_approval"
@@ -61,6 +69,13 @@ ORDER = "order"   # what a Create Order token approves (no document yet)
 SYSTEM_PRICED = "ffl_system_priced"   # our own code set these prices on purpose
 APPROVAL = "ffl_price_approval"        # the approval this document is saved under
 PRIOR_RATES = "ffl_prior_rates"        # {(item_code, serial or None): rate} an order edit carries over
+CHECKED = "ffl_price_checked"          # our endpoint saves a person's prices: judge it like a client save
+QUOTED = "ffl_quoted_line"             # row.flags: a distributor line our code priced from the quote
+# The client entry points that save a document a person sent (frappe.desk.form.save / frappe.client).
+_CLIENT_SAVES = frozenset(("frappe.desk.form.save.savedocs", "frappe.client.save", "frappe.client.insert",
+	"frappe.client.insert_many", "frappe.client.set_value", "frappe.client.submit", "frappe.client.bulk_update"))
+_REST_DOCUMENTS = ("/api/resource/", "/api/v2/document/")
+_RPC = ("/api/method/", "/api/v2/method/")
 _COMMENT = "ffl_price_approval_comment"
 _EPS = 1e-9
 
@@ -80,7 +95,9 @@ def is_approver(user: str | None = None) -> bool:
 
 def mark_system_priced(doc):
 	"""Our own builder priced *doc* on purpose (a $0 transfer gun, a gunsmith job's bill): this
-	request's saves of it are not asked. Later saves by a person are, against what was saved."""
+	request's saves of it are not asked. A builder's save is not a client save anyway
+	(:func:`_client_save`); this states it on the document. Later saves by a person are judged
+	against what was saved."""
 	doc.flags[SYSTEM_PRICED] = True
 	return doc
 
@@ -104,44 +121,121 @@ def extend_bootinfo(bootinfo) -> None:
 # ------------------------------------------------------------------ what asks
 
 
-def _exempt(doc) -> bool:
-	"""Documents never asked; see the module docstring."""
+def _exempt(doc, before=None) -> bool:
+	"""Documents never asked; see the module docstring. *before*: the document as stored."""
 	from ffl_core.api.counter_pickup import _is_ticket
-	from ffl_core.compliance.channel_invoice import is_fulfilled_elsewhere
 
 	flags = getattr(doc, "flags", None) or {}
 	return bool(cint(doc.get("is_return")) or cint(doc.get("is_consolidated")) or flags.get(SYSTEM_PRICED)
 		or frappe.flags.in_import or frappe.flags.in_patch or frappe.flags.in_migrate or frappe.flags.in_install
 		or getattr(frappe.local, "job", None)
-		or is_fulfilled_elsewhere(doc)
+		or _stored_claim(doc, before)
 		or (doc.get("doctype") == "POS Invoice" and _is_ticket(doc)))
 
 
-def _serials(row) -> list[str]:
-	return [s.strip() for s in (row.get("serial_no") or "").split("\n") if s.strip()]
+def _stored_claim(doc, before) -> bool:
+	"""A channel mirror or an extension's invoice (``is_fulfilled_elsewhere``) whose claiming field
+	was already stored as it is now. Set or changed in this save it proves nothing: a form or REST
+	save can write it. (Our syncs and builders set it on saves that are not judged at all.)"""
+	from ffl_core.compliance.channel_invoice import (CHANNEL_INVOICE_FIELDS, extension_exclusion_fields,
+		is_fulfilled_elsewhere)
+
+	if before is None or not is_fulfilled_elsewhere(doc):
+		return False
+	claimed = [f for f in CHANNEL_INVOICE_FIELDS + extension_exclusion_fields() if doc.get(f)]
+	return all(before.get(f) == doc.get(f) for f in claimed)
 
 
-def _distributor_line(row) -> bool:
+def _client_save(doc) -> bool:
+	"""Whether this save of *doc* is one a person sent: the desk / register save, a frappe.client
+	write or the REST document API for its doctype — or our endpoint opted in (:func:`attach`)."""
+	from urllib.parse import unquote
+
+	if (getattr(doc, "flags", None) or {}).get(CHECKED):
+		return True
+	request = getattr(frappe.local, "request", None)
+	if request is None:
+		return False
+	path = getattr(request, "path", "") or ""
+	for prefix in _REST_DOCUMENTS:
+		if path.startswith(prefix):
+			return (getattr(request, "method", "") or "").upper() in ("POST", "PUT", "PATCH") \
+				and unquote(path[len(prefix):].split("/")[0]) == doc.doctype
+	form = frappe.local.form_dict or {}
+	cmd = form.get("cmd") or next((path[len(p):] for p in _RPC if path.startswith(p)), "")
+	if cmd.strip("/") not in _CLIENT_SAVES:
+		return False
+	sent = _sent_doctypes(form)
+	return not sent or doc.doctype in sent
+
+
+def _sent_doctypes(form) -> set[str]:
+	"""The doctypes a frappe.client / savedocs request carries (empty when it cannot tell: judged)."""
+	out = set()
+	for key in ("doc", "docs"):
+		value = form.get(key)
+		try:
+			value = frappe.parse_json(value) if isinstance(value, str) else value
+		except Exception:
+			return set()
+		for d in value if isinstance(value, list) else [value]:
+			if isinstance(d, dict) and d.get("doctype"):
+				out.add(d["doctype"])
+	if form.get("doctype"):
+		out.add(form.get("doctype"))
+	return out
+
+
+def _floor_key(item_code: str, serial: str | None) -> str:
+	"""What an approved rate is bound to: the gun for a line carrying one serial (approving one gun's
+	price never covers another gun of the same model Item), else the item."""
+	return f"{item_code}|{serial}" if serial else item_code
+
+
+def _distributor_flags(row) -> tuple:
+	return (cint(row.get("delivered_by_supplier")), (row.get("ffl_to_store_distributor") or "").strip())
+
+
+def _distributor_line(row, was=None) -> bool:
 	"""A line a distributor fills (drop-ship, or ordered in to the store): its counter price comes from
-	the distributor's quote, not from a list price here.
-	# lazy: not checked at all, and delivered_by_supplier is a field a REST save could set; upgrade path:
-	# a floor from the quote's suggested price (distributor.api.quote) for these lines."""
-	return bool(cint(row.get("delivered_by_supplier")) or (row.get("ffl_to_store_distributor") or "").strip())
+	the distributor's quote, not from a list price here. Only when our code marked it so (Create Order,
+	row.flags) or it was already saved so: the two fields are a form's to write.
+	# lazy: such a line is not judged at all; upgrade path: a floor from the quote's suggested price
+	# (distributor.api.quote)."""
+	if (getattr(row, "flags", None) or {}).get(QUOTED):
+		return True
+	return any(_distributor_flags(row)) and was is not None and _distributor_flags(was) == _distributor_flags(row)
+
+
+def mark_quoted(row):
+	"""A distributor line our code priced from the distributor's quote (create_order)."""
+	row.flags[QUOTED] = True
+	return row
 
 
 def list_rate(doc, row, cache: dict | None = None) -> tuple[float, bool]:
 	"""The line's list price and whether it is the gun's own: a firearm line carrying one serial is
 	priced from that serial (``firearm.serial_price_now`` — what the register's picker and Create
-	Order charge), else the Item Price of the document's selling price list for the line's unit
-	(0 when there is none: nothing to lower it from)."""
-	from ffl_core.firearm import is_firearm_item, serial_price_now
+	Order charge), a firearm line without one from the cheapest priced gun of its model in stock,
+	else (or when none is priced) the Item Price of the document's selling price list for the
+	line's unit (0 when there is none: nothing to lower it from)."""
+	from ffl_core.firearm import is_firearm_item, lowest_counter_price, serial_price_now
 
-	serials = _serials(row)
-	if len(serials) == 1 and is_firearm_item(row.item_code):
-		price = serial_price_now(serials[0])
-		if price:
-			return price, True
 	cache = {} if cache is None else cache
+	serials = split_serials(row.get("serial_no"))
+	if is_firearm_item(row.item_code):
+		if len(serials) == 1:
+			price = serial_price_now(serials[0])
+			if price:
+				return price, True
+		else:
+			# No gun picked yet (a Sales Order line never carries one): the cheapest priced gun of
+			# the model in stock — what the register seeds the line with.
+			key = ("lowest", row.item_code)
+			if key not in cache:
+				cache[key] = lowest_counter_price(row.item_code)
+			if cache[key]:
+				return cache[key], False
 	stock_uom = row.get("stock_uom") or frappe.get_cached_value("Item", row.item_code, "stock_uom")
 	uom = row.get("uom") or stock_uom   # a row the screen has not filled in yet sells in stock units
 	key = (row.item_code, uom, flt(row.get("conversion_factor")) or 1)
@@ -211,13 +305,15 @@ def _order_rates(doc) -> dict:
 
 
 def _same_line(was, row) -> bool:
-	return was.item_code == row.item_code and _serials(was) == _serials(row) \
+	return was.item_code == row.item_code \
+		and split_serials(was.get("serial_no")) == split_serials(row.get("serial_no")) \
 		and (was.get("uom") or "") == (row.get("uom") or "")
 
 
-def reductions(doc, before=None) -> dict:
+def reductions(doc, before=None, *, against_list: bool = False) -> dict:
 	"""What in *doc* a person lowered below its floor (module docstring), with *before* the
-	document as saved (None for a new one).
+	document as saved (None for a new one). *against_list*: below the list price at all, whatever
+	was saved or approved before (whether an approval record still means anything).
 
 	Returns:
 	    {"lines": [{"row", "idx", "item_code", "item_name", "serial", "list_rate", "rate"}],
@@ -229,13 +325,16 @@ def reductions(doc, before=None) -> dict:
 	p = rate_precision(doc.get("doctype") or "Sales Invoice")
 	locked = set(locked_items())
 	saved = {r.name: r for r in ((before.get("items") or []) if before else []) if r.get("name")}
-	ordered = _order_rates(doc)
+	ordered = {} if against_list else _order_rates(doc)
 	flags = getattr(doc, "flags", None) or {}
-	prior = flags.get(PRIOR_RATES) or {}
+	prior = {} if against_list else (flags.get(PRIOR_RATES) or {})
 	cache: dict = {}
 	lines = []
 	for row in doc.get("items") or []:
-		if not row.get("item_code") or row.item_code in locked or flt(row.get("qty")) <= 0 or _distributor_line(row):
+		was = saved.get(row.get("name"))
+		was = was if was is not None and _same_line(was, row) else None
+		if not row.get("item_code") or row.item_code in locked or flt(row.get("qty")) <= 0 \
+				or _distributor_line(row, was):
 			continue
 		rate = flt(row.get("rate"), p)
 		listed, own_price = list_rate(doc, row, cache)
@@ -244,14 +343,13 @@ def reductions(doc, before=None) -> dict:
 		rule = _rule_floor(doc, row, listed)
 		if rule is not None:
 			floor = min(floor, flt(rule, p))
-		was = saved.get(row.get("name"))
-		if was is not None and _same_line(was, row):
+		if was is not None and not against_list:
 			floor = min(floor, flt(was.rate, p))
 		# The order line was asked against the same Item Price; a gun's own price it never saw.
 		source = ordered.get(row.get("so_detail"))
 		if source and source[0] == row.item_code and not own_price:
 			floor = min(floor, flt(source[1], p))
-		serials = _serials(row)
+		serials = split_serials(row.get("serial_no"))
 		for key in ((row.item_code, serials[0] if len(serials) == 1 else None), (row.item_code, None)):
 			if key in prior:
 				floor = min(floor, flt(prior[key], p))
@@ -260,7 +358,7 @@ def reductions(doc, before=None) -> dict:
 			lines.append({"row": row.get("name"), "idx": row.get("idx"), "item_code": row.item_code,
 				"item_name": row.get("item_name") or row.item_code, "serial": serials[0] if len(serials) == 1 else None,
 				"list_rate": listed, "rate": rate})
-	return {"lines": lines, "discount": _discount_reduction(doc, before)}
+	return {"lines": lines, "discount": _discount_reduction(doc, None if against_list else before)}
 
 
 def _discount_reduction(doc, before) -> dict | None:
@@ -282,13 +380,22 @@ def _within(d: dict, pct: float, amount: float) -> bool:
 	return flt(d["amount"]) - flt(amount) <= _EPS
 
 
+def _approved_floor(floors: dict, line: dict):
+	"""The rate approved for *line*: its gun's, or its item's. A line with no gun yet (the Sales Order
+	line of a gun the invoice carries) takes the lowest rate approved for any gun of its item."""
+	key = _floor_key(line["item_code"], line["serial"])
+	if key in floors or line["serial"]:
+		return floors.get(key)
+	guns = [v for k, v in floors.items() if k.startswith(line["item_code"] + "|")]
+	return min(guns) if guns else None
+
+
 def _uncovered(found: dict, approval) -> dict:
 	"""What in *found* the approval does not reach (a manager signed in reaches everything)."""
 	if approval.get("all"):
 		return {"lines": [], "discount": None}
 	floors = approval.get("lines") or {}
-	lines = [l for l in found["lines"]
-		if floors.get(l["item_code"]) is None or flt(floors[l["item_code"]]) - l["rate"] > _EPS]
+	lines = [l for l in found["lines"] if (f := _approved_floor(floors, l)) is None or flt(f) - l["rate"] > _EPS]
 	d, ok = found["discount"], approval.get("discount")
 	if d and ok and _within(d, ok.get("percentage"), ok.get("amount")):
 		d = None
@@ -298,16 +405,20 @@ def _uncovered(found: dict, approval) -> dict:
 # ------------------------------------------------------------------ doc events
 
 
-def guard_approval_fields(doc) -> None:
+def guard_approval_fields(doc, before=None) -> None:
 	"""The record fields keep what is stored: only :func:`enforce_price_approval` writes them, so a
 	form or REST save can neither forge an approval nor wipe one. A new invoice made from approved
-	Sales Order lines takes the order's record."""
-	before = None if doc.is_new() else doc.get_doc_before_save()
+	Sales Order lines takes the order's record. Either is dropped once nothing on the document is
+	below its list price any more: it would name an approval of a price no longer there."""
 	source = before
 	if source is None and doc.doctype == "Sales Invoice":
 		orders = list(dict.fromkeys(r.sales_order for r in doc.get("items") or [] if r.get("sales_order")))
 		source = next((row for row in (frappe.db.get_value("Sales Order", so, list(RECORD_FIELDS), as_dict=True)
 			for so in orders) if row and row.get(BY)), None)
+	if source is not None and source.get(BY):
+		below = reductions(doc, against_list=True)
+		if not (below["lines"] or below["discount"]):
+			source = None
 	for field in RECORD_FIELDS:
 		doc.set(field, source.get(field) if source else None)
 
@@ -316,10 +427,11 @@ def enforce_price_approval(doc, method: str | None = None) -> None:
 	"""POS Invoice / Sales Invoice / Sales Order validate: a lowered price saves only approved."""
 	token = (doc.get(TOKEN_FIELD) or "").strip()
 	doc.set(TOKEN_FIELD, None)   # carried in, never stored
-	guard_approval_fields(doc)
-	if not enabled() or _exempt(doc):
+	before = None if doc.is_new() else doc.get_doc_before_save()
+	guard_approval_fields(doc, before)
+	if not enabled() or not _client_save(doc) or _exempt(doc, before):
 		return
-	found = reductions(doc, None if doc.is_new() else doc.get_doc_before_save())
+	found = reductions(doc, before)
 	if not (found["lines"] or found["discount"]):
 		return
 	approval = (take_token(token, doc) if token else None) or doc.flags.get(APPROVAL) or own_approval()
@@ -353,8 +465,10 @@ def own_approval():
 
 
 def attach(doc, approval=None, prior: dict | None = None):
-	"""Our own code saving *doc* for a person: under *approval* (taken once for several documents,
-	create_order's order and invoice) and with *prior* rates an edit carries over."""
+	"""Our own code saving *doc* with prices a person typed (Create Order): judged as a client save,
+	under *approval* (taken once for several documents, the order and its invoice) and with *prior*
+	rates an edit carries over."""
+	doc.flags[CHECKED] = True
 	if approval:
 		doc.flags[APPROVAL] = approval
 	if prior:
@@ -366,7 +480,7 @@ def prior_rates(doc) -> dict:
 	"""{(item_code, serial or None): rate} of an order being edited: its lines keep their prices."""
 	out: dict = {}
 	for row in doc.get("items") or []:
-		serials = _serials(row)
+		serials = split_serials(row.get("serial_no"))
 		if len(serials) == 1:
 			out[(row.item_code, serials[0])] = flt(row.rate)
 		key = (row.item_code, None)
@@ -506,7 +620,7 @@ def check(doc=None, payload=None, sales_invoice: str | None = None) -> dict:
 	frappe.only_for(PRICE_CHECK_ROLES)
 	d, saved, _target_name, _docname = _target(doc, payload, sales_invoice)
 	empty = {"needs_approval": False, "approver": is_approver(), "lines": [], "discount": None, "approvers": []}
-	if not enabled() or (payload is None and _exempt(d)):
+	if not enabled() or (payload is None and _exempt(d, saved)):
 		return empty
 	found = _public(reductions(d, saved))
 	needs = bool(found["lines"] or found["discount"])
@@ -568,14 +682,15 @@ def approve(approver: str, reason: str, pin: str | None = None, password: str | 
 	if not reason:
 		frappe.throw(_("Enter a reason for the lower price."), title=_("Reason required"))
 	d, saved, target, docname = _target(doc, payload, sales_invoice)
-	found = reductions(d, saved) if enabled() and (payload is not None or not _exempt(d)) \
+	found = reductions(d, saved) if enabled() and (payload is not None or not _exempt(d, saved)) \
 		else {"lines": [], "discount": None}
 	if not (found["lines"] or found["discount"]):
 		frappe.throw(_("Nothing on this sale needs a manager's approval."))
 	_check_approver(approver, pin, password)
 	floors: dict = {}
 	for l in found["lines"]:
-		floors[l["item_code"]] = min(floors.get(l["item_code"], l["rate"]), l["rate"])
+		key = _floor_key(l["item_code"], l["serial"])
+		floors[key] = min(floors.get(key, l["rate"]), l["rate"])
 	token = frappe.generate_hash(length=32)
 	frappe.cache.set_value(_TOKEN_KEY + token, {
 		"approver": approver, "reason": reason[:140], "requested_by": frappe.session.user, "target": target,

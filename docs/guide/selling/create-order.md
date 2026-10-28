@@ -340,8 +340,9 @@ more than the shipping charge.
 **A price below the list price** asks a manager when you click **Create
 Order** (or **Save Changes** on an edit), as on the register: see
 [Lowering a price](pos.md#lowering-a-price). The list price is the gun's own
-price for a firearm, and the Item Price for anything else. Distributor lines
-(drop-ship and ship to store) are not checked. Editing an order keeps the prices
+price for a firearm (the cheapest gun of the model in stock while the line has
+none), and the Item Price for anything else. Distributor lines (drop-ship and
+ship to store) are priced from the distributor's quote and are not checked. Editing an order keeps the prices
 it already had; only a price lowered in the edit asks.
 
 Below the table sit **Shipping**, a tax preview, and the running **Total**. The

@@ -1,7 +1,9 @@
 """Manager approval for a lowered price: the gate, the token, the record, and every path left alone.
 
 Site tests on the real doctypes. The gate's documents are really inserted as a clerk (Sales User)
-or a manager (Sales Manager) with FFL Settings → Require Manager Approval for Price Reductions on.
+or a manager (Sales Manager) with FFL Settings → Require Manager Approval for Price Reductions on,
+inside a request that looks like the one that would carry them (:func:`_request`: the desk /
+register save unless a test says otherwise) — the gate judges only saves a person sends.
 The builder paths (Create Order, a gunsmith pick-up, membership billing) run end to end with the
 signed-in user's own approval taken away (``price_approval.is_approver`` → False), so nothing but
 the path's own exemption can let them through. The transfer ticket's is in ffl_integrations
@@ -9,6 +11,8 @@ the path's own exemption can let them through. The transfer ticket's is in ffl_i
 """
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import frappe
@@ -92,8 +96,29 @@ def _comments(doc) -> list[str]:
 		"comment_type": "Comment"}, pluck="content")
 
 
+def _request(test, cmd: str = "frappe.desk.form.save.savedocs", path: str | None = None, method: str = "POST",
+		**form):
+	"""For the rest of the test, saves happen inside this HTTP request: an RPC call of *cmd* (by
+	default the desk / register save), or a request to *path*; *form*: its form_dict."""
+	req = SimpleNamespace(path=path or f"/api/method/{cmd}", method=method, host="localhost", headers={},
+		url="http://localhost", scheme="http", host_url="http://localhost/", args={}, cookies={})
+	had, old = hasattr(frappe.local, "request"), getattr(frappe.local, "request", None)
+	frappe.local.request = req
+
+	def restore():
+		if had:
+			frappe.local.request = old
+		elif hasattr(frappe.local, "request"):
+			del frappe.local.request
+
+	test.addCleanup(restore)
+	form_patch = patch.dict(frappe.local.form_dict, {"cmd": None if path else cmd, **form})
+	form_patch.start()
+	test.addCleanup(form_patch.stop)
+
+
 class _On(SettingsSandbox, FrappeTestCase):
-	"""The switch on, the staff in place, signed back in as Administrator afterwards."""
+	"""The switch on, the staff in place, saves sent from the desk, signed back in as Administrator afterwards."""
 
 	def setUp(self):
 		frappe.set_user("Administrator")
@@ -101,6 +126,7 @@ class _On(SettingsSandbox, FrappeTestCase):
 		self.set_single("FFL Settings", pa.SETTING, 1)
 		_staff()
 		_priced_item()
+		_request(self)
 
 
 class Wiring(FrappeTestCase):
@@ -315,6 +341,53 @@ class Gate(_On):
 		self.assertEqual(frappe.db.get_value("Sales Order", so.name, [pa.BY, pa.REASON]),
 			(MANAGER, "Manager's own price"), "nor wipe one")
 
+	def test_the_record_goes_once_nothing_is_below_list(self):
+		frappe.set_user(MANAGER)
+		so = _so(rate=80)
+		so.insert()
+		self.assertEqual(so.get(pa.BY), MANAGER)
+		frappe.set_user(CLERK)
+		so = frappe.get_doc("Sales Order", so.name)
+		so.flags.ignore_permissions = True
+		so.items[0].rate = PRICE
+		so.save()
+		self.assertFalse(frappe.db.get_value("Sales Order", so.name, pa.BY), "approved price is gone")
+
+	def test_an_invoice_takes_the_orders_record_only_while_it_still_carries_the_lowered_price(self):
+		from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
+
+		frappe.set_user(MANAGER)
+		so = _so(rate=80)
+		so.insert()
+		so.submit()
+		frappe.set_user("Administrator")
+		with patch("ffl_core.price_approval.is_approver", return_value=False):
+			si = make_sales_invoice(so.name)
+			si.flags.ignore_permissions = True
+			si.items[0].rate = PRICE
+			si.insert()
+		self.assertFalse(si.get(pa.BY))
+
+	def test_a_gun_line_with_no_serial_is_priced_from_the_cheapest_gun_in_stock(self):
+		code = "_Test PA Gun SO"
+		if not frappe.db.exists("Item", code):
+			frappe.get_doc({"doctype": "Item", "item_code": code, "item_name": code, "item_group": "All Item Groups",
+				"stock_uom": "Nos", "is_stock_item": 1, "has_serial_no": 1, "is_firearm": 1,
+				"uniform_sell_price": 0}).insert(ignore_permissions=True)
+		for price in (900, 1200, 0):
+			serial = "PA-SO-" + frappe.generate_hash(length=8).upper()
+			frappe.get_doc({"doctype": "Serial No", "serial_no": serial, "item_code": code, "company": _company()}
+				).insert(ignore_permissions=True)
+			frappe.db.set_value("Serial No", serial, {"sell_price": price, "status": "Active"})
+		frappe.set_user(CLERK)
+		so = _so(rate=100)
+		so.items[0].item_code = code
+		with self.assertRaisesRegex(pa.PriceApprovalRequired, r"900\.00 → \$ 100\.00"):
+			so.insert()
+		so = _so(rate=900)
+		so.items[0].item_code = code
+		so.insert()   # the cheapest gun's price: nothing asks
+
 	def test_a_pricing_rule_discount_asks_nothing(self):
 		rule = frappe.get_doc({"doctype": "Pricing Rule", "title": "_Test PA rule " + frappe.generate_hash(length=6),
 			"apply_on": "Item Code", "items": [{"item_code": ITEM}], "selling": 1, "price_or_product_discount": "Price",
@@ -412,6 +485,40 @@ class ListPrice(_On):
 		self.assertEqual(pa.list_rate(doc, row), (0, False), "an un-priced gun has nothing to lower")
 
 
+class GunFloors(_On):
+	"""An approval for one gun's price never covers another gun of the same model Item."""
+
+	def _gun(self, code: str) -> str:
+		serial = "PA-GF-" + frappe.generate_hash(length=8).upper()
+		frappe.get_doc({"doctype": "Serial No", "serial_no": serial, "item_code": code, "company": _company()}
+			).insert(ignore_permissions=True)
+		frappe.db.set_value("Serial No", serial, "sell_price", 900)
+		return serial
+
+	def test_approving_gun_a_does_not_cover_a_cut_on_gun_b(self):
+		code = "_Test PA Gun"
+		if not frappe.db.exists("Item", code):
+			frappe.get_doc({"doctype": "Item", "item_code": code, "item_name": code, "item_group": "All Item Groups",
+				"stock_uom": "Nos", "is_stock_item": 1, "has_serial_no": 1, "is_firearm": 1,
+				"uniform_sell_price": 0}).insert(ignore_permissions=True)
+		a, b = self._gun(code), self._gun(code)
+		si = _si(rate=PRICE)
+		si.set("items", [{"item_code": code, "qty": 1, "rate": 500, "serial_no": a, "uom": "Nos"},
+			{"item_code": code, "qty": 1, "rate": 900, "serial_no": b, "uom": "Nos"}])
+		with patch("ffl_core.price_approval.is_approver", return_value=False):
+			out = _approve(si)
+			self.assertEqual([(l["serial"], l["rate"]) for l in out["lines"]], [(a, 500)])
+			si.items[1].rate = 500   # the same cut on gun B, same model Item
+			si.set(pa.TOKEN_FIELD, out["token"])
+			with self.assertRaisesRegex(pa.PriceApprovalRequired, "Lower than the manager approved"):
+				pa.enforce_price_approval(si)
+			frappe.db.after_rollback.run()   # the refused save rolls back: the token comes back
+			si.items[1].rate = 900
+			si.set(pa.TOKEN_FIELD, out["token"])
+			pa.enforce_price_approval(si)
+			self.assertEqual(si.get(pa.BY), MANAGER)
+
+
 class LeftAlone(_On):
 	"""Each path the owner listed as never asked: a clerk's save with a price under list goes through."""
 
@@ -431,18 +538,40 @@ class LeftAlone(_On):
 		self._gate(_si(rate=10, is_return=1))
 		self._gate(_si(rate=10, is_consolidated=1))
 
-	def test_web_and_gunbroker_mirrors(self):
+	@staticmethod
+	def _stored(doc, **fields):
+		"""*doc* as a later save of a stored document whose stored copy carries *fields*."""
+		doc.set("__islocal", 0)
+		doc.name = doc.name or "PA-STORED"
+		doc._doc_before_save = frappe._dict(doctype=doc.doctype, items=[], **fields)
+		return doc
+
+	def test_web_and_gunbroker_mirrors_whose_claim_was_stored(self):
 		for field in ("woo_online_order", "gunbroker_order"):
 			if not frappe.get_meta("Sales Invoice").get_field(field):
 				continue
-			si = _si(rate=10)
-			si.set(field, "PA-MIRROR")
-			pa.enforce_price_approval(si)
+			self._gate(self._stored(_si(rate=10, **{field: "PA-MIRROR"}), **{field: "PA-MIRROR"}))
+			# Set in this save, by a clerk: proves nothing.
+			with self.assertRaises(pa.PriceApprovalRequired):
+				pa.enforce_price_approval(_si(rate=1, **{field: "PA-MIRROR"}))
+			with self.assertRaises(pa.PriceApprovalRequired):
+				pa.enforce_price_approval(self._stored(_si(rate=1, **{field: "PA-OTHER"}), **{field: "PA-MIRROR"}))
+
+	def test_a_clerk_inserting_a_web_invoice_with_a_one_dollar_line_is_refused(self):
+		if not frappe.get_meta("Sales Invoice").get_field("woo_online_order"):
+			self.skipTest("ffl_woo_sync not installed")
+		frappe.set_user("Administrator")
+		with patch("ffl_core.price_approval.is_approver", return_value=False):
+			si = _si(rate=1, woo_online_order="PA-WOO-FORGED")
+			si.flags.ignore_links = True
+			with self.assertRaises(pa.PriceApprovalRequired):
+				si.insert()
 
 	def test_an_invoice_an_extension_books_a_consignment_settlement_at_cost(self):
-		si = _si(rate=10, po_no="CONO-TEST")
 		with patch("ffl_core.compliance.channel_invoice.extension_exclusion_fields", return_value=("po_no",)):
-			self._gate(si)
+			self._gate(self._stored(_si(rate=10, po_no="CONO-TEST"), po_no="CONO-TEST"))
+			with self.assertRaises(pa.PriceApprovalRequired):
+				pa.enforce_price_approval(_si(rate=10, po_no="CONO-TEST"))
 
 	def test_a_counter_pickup_ticket(self):
 		inv = frappe.get_doc({"doctype": "POS Invoice", "customer": _customer().name, "ffl_counter_order": "SINV-PA",
@@ -458,13 +587,34 @@ class LeftAlone(_On):
 			si.append("items", {"item_code": code, "qty": 1, "rate": -50})
 		self._gate(si)
 
-	def test_a_line_a_distributor_fills(self):
+	def test_a_line_a_distributor_fills_marked_by_our_code_or_saved_so(self):
 		si = _si(rate=10)
-		si.items[0].delivered_by_supplier = 1
+		pa.mark_quoted(si.items[0])
 		self._gate(si)
+		for field, value in (("delivered_by_supplier", 1), ("ffl_to_store_distributor", "RSR")):
+			si = _si(rate=10)
+			si.items[0].set(field, value)
+			si.items[0].name = "PA-ROW"
+			si.items[0].uom = "Nos"
+			self._stored(si)
+			si._doc_before_save["items"] = [frappe._dict(name="PA-ROW", item_code=ITEM, uom="Nos", rate=10,
+				**{field: value})]
+			self._gate(si)
+
+	def test_a_clerk_setting_the_drop_ship_flag_on_a_new_line_is_refused(self):
+		supplier = "_Test PA Supplier"
+		if not frappe.db.exists("Supplier", supplier):
+			frappe.get_doc({"doctype": "Supplier", "supplier_name": supplier, "supplier_group": "All Supplier Groups"}
+				).insert(ignore_permissions=True)
+		so = _so(rate=10)
+		so.items[0].delivered_by_supplier = 1
+		so.items[0].supplier = supplier
+		with self.assertRaises(pa.PriceApprovalRequired):
+			so.insert()
 		si = _si(rate=10)
 		si.items[0].ffl_to_store_distributor = "RSR"
-		self._gate(si)
+		with self.assertRaises(pa.PriceApprovalRequired):
+			pa.enforce_price_approval(si)
 
 	def test_background_jobs_migrate_import_and_our_own_builders(self):
 		with patch.object(frappe.local, "job", frappe._dict(method="x"), create=True):
@@ -473,6 +623,47 @@ class LeftAlone(_On):
 			with patch.dict(frappe.flags, {flag: True}):
 				self._gate(_si(rate=10))
 		self._gate(pa.mark_system_priced(_si(rate=10)))
+
+
+class WhoSaves(_On):
+	"""Only a save a person sends is judged; our code's own saves are not, marker or no marker."""
+
+	def setUp(self):
+		super().setUp()
+		frappe.set_user(CLERK)
+
+	def test_a_builder_saving_inside_a_clerks_request_is_not_judged(self):
+		_request(self, "ffl_core.api.counter_pickup.open_pickup_invoice")   # any of our endpoints
+		so = _so(rate=10)
+		so.insert()
+		self.assertFalse(so.get(pa.BY))
+		with patch.object(frappe.local, "request", None):   # no request at all: bench / a hook
+			_so(rate=10).insert()
+
+	def test_the_desk_save_and_frappe_client_insert_are(self):
+		from frappe.client import insert
+		from frappe.desk.form.save import savedocs
+
+		doc = _so(rate=10).as_dict()
+		_request(self, "frappe.desk.form.save.savedocs", doc=json.dumps(doc), action="Save")
+		with self.assertRaises(pa.PriceApprovalRequired):
+			savedocs(json.dumps(doc), "Save")
+		_request(self, "frappe.client.insert", doc=json.dumps(doc))
+		with self.assertRaises(pa.PriceApprovalRequired):
+			insert(json.dumps(doc))
+
+	def test_the_rest_document_api_is_and_only_for_its_doctype(self):
+		_request(self, path="/api/resource/Sales Order")
+		with self.assertRaises(pa.PriceApprovalRequired):
+			_so(rate=10).insert()
+		_request(self, path="/api/v2/document/Customer", method="PUT")
+		_so(rate=10).insert()   # a REST write to another doctype: a hook saving this order is ours
+		_request(self, path="/api/resource/Sales Order", method="GET")
+		_so(rate=10).insert()
+
+	def test_a_savedocs_of_another_doctype_does_not_judge_this_one(self):
+		_request(self, "frappe.desk.form.save.savedocs", doc=json.dumps({"doctype": "Customer"}))
+		_so(rate=10).insert()
 
 
 # ------------------------------------------------------------------ builders, end to end
@@ -496,8 +687,10 @@ class GunsmithPickup(SettingsSandbox, _GunsmithBase):
 		_price("_Test GW Part", 60)   # the job charges 40 for the part
 		_no_own_approval(self)
 		job = _ready(_job(self.cust), [("_Test GW Part", 40)])
+		_request(self, "ffl_core.gunsmith.open_pickup")
 		pick = frappe.get_doc("POS Invoice", gunsmith.open_pickup(job.name)["pos_invoice"])
 		self.assertEqual([flt(r.rate) for r in pick.items], [40])
+		_request(self)   # the register saving it
 		pick.items[0].rate = 30
 		pick.flags.ignore_permissions = True
 		with self.assertRaises(pa.PriceApprovalRequired):
@@ -519,6 +712,7 @@ class MembershipBilling(_MembershipBase):
 		for item in (self.plan.item, self.plan.registration_item):
 			_price(item, 999)
 		_no_own_approval(self)
+		_request(self, "ffl_core.membership.invoice_membership")
 		_m, si = _sell(self.customer, self.plan.name)
 		self.assertEqual(frappe.db.get_value("Sales Invoice", si, "docstatus"), 1)
 		self.assertFalse(frappe.db.get_value("Sales Invoice", si, pa.BY))
@@ -585,9 +779,26 @@ class CreateOrder(SettingsSandbox, BuildOrderMixin, FrappeTestCase):
 		self.assertFalse(pa.check(payload=payload)["needs_approval"])
 		self.assertTrue(manual_order.create_order(payload)["ok"])
 
+	def test_a_dead_token_never_stops_an_order_that_needs_no_approval(self):
+		from ffl_core.api import manual_order
+
+		used = pa.approve(MANAGER, REASON, pin=PIN, payload=self._payload(700))["token"]
+		pa.take_token(used)
+		for token in ("0" * 32, used):   # expired / never issued, and already used
+			self.setUp()   # a gun of its own for each order
+			payload = self._payload(1000)
+			payload["price_approval"] = token
+			self.assertTrue(manual_order.create_order(payload)["ok"])
+		self.setUp()
+		payload = self._payload(700)
+		payload["price_approval"] = used
+		with self.assertRaises(pa.PriceApprovalRequired):   # one that needs it is still refused
+			manual_order.create_order(payload)
+
 	def test_an_order_token_is_not_good_on_a_form(self):
 		payload = self._payload(700)
 		token = pa.approve(MANAGER, REASON, pin=PIN, payload=payload)["token"]
+		_request(self)
 		so = _so(rate=80)
 		so.set(pa.TOKEN_FIELD, token)
 		with self.assertRaisesRegex(pa.PriceApprovalRequired, "another sale"):

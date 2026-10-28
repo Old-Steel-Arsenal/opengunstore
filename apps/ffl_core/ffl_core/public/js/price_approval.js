@@ -49,6 +49,13 @@
 		return rows;
 	}
 
+	// What the screen says when the check itself failed: the save stops rather than meet the
+	// server's refusal with no dialog. `detail` is the server's message, when there is one.
+	function checkFailedMessage(detail) {
+		return "Couldn't check the prices for manager approval" + (detail ? ': ' + detail : '')
+			+ '. Ask a manager to sign in, or try again.';
+	}
+
 	// approve()'s arguments: the PIN or the password, never both.
 	function approveArgs(approver, secret, mode, reason) {
 		var out = { approver: approver, reason: reason };
@@ -57,7 +64,7 @@
 	}
 
 	return { REASONS: REASONS, OTHER: OTHER, shouldAsk: shouldAsk, reasonText: reasonText,
-		summaryRows: summaryRows, approveArgs: approveArgs };
+		summaryRows: summaryRows, approveArgs: approveArgs, checkFailedMessage: checkFailedMessage };
 });
 
 (function fflPriceApprovalWire() {
@@ -69,7 +76,7 @@
 	var on = function () { return !!(frappe.boot && frappe.boot.ffl_price_approval); };
 
 	// A plain POST: frappe.call's error pop-up would sit over the dialog, so the dialog shows it.
-	function post(method, args) {
+	function post(method, args, fallback) {
 		return fetch('/api/method/' + method, {
 			method: 'POST', credentials: 'same-origin',
 			headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Frappe-CSRF-Token': frappe.csrf_token },
@@ -77,7 +84,7 @@
 		}).then(function (r) {
 			return r.json().catch(function () { return {}; }).then(function (body) {
 				if (r.status === 429) throw new Error(__('Too many tries. Wait a few minutes.'));
-				if (!r.ok) throw new Error((ffl.staffSwitch && ffl.staffSwitch.serverMessage(body)) || __('That PIN is not right.'));
+				if (!r.ok) throw new Error((ffl.staffSwitch && ffl.staffSwitch.serverMessage(body)) || fallback || '');
 				return body.message;
 			});
 		});
@@ -115,7 +122,7 @@
 					if (!reason) return error(__('Give a reason (Other needs the details).'));
 					error('');
 					d.get_primary_btn().prop('disabled', true);
-					post(M + 'approve', Object.assign(api.approveArgs(v.approver, v.secret, authMode, reason), request))
+					post(M + 'approve', Object.assign(api.approveArgs(v.approver, v.secret, authMode, reason), request), __('That PIN is not right.'))
 						.then(function (m) {
 							done = true;
 							d.hide();
@@ -165,33 +172,41 @@
 		});
 	}
 
-	// Form validate (POS checkout too): ask before a save that lowers a price.
+	// The check, as a plain POST: a failure is shown by us (checkFailedMessage), not as frappe's pop-up.
+	function check(args) {
+		return post(M + 'check', args).catch(function (err) {
+			frappe.msgprint({ title: __('Manager approval'), indicator: 'red',
+				message: esc(__(api.checkFailedMessage(err && err.message))) });
+			throw err;
+		});
+	}
+
+	// Form validate (POS checkout too): ask before a save that lowers a price. A check that fails
+	// stops the save with the reason.
 	function guardForm(frm) {
 		if (!on() || frm.doc.docstatus !== 0 || cint(frm.doc.is_return)) return;
-		return frappe.call({ method: M + 'check', args: { doc: frm.doc } }).then(function (r) {
-			var res = r && r.message;
+		return check({ doc: frm.doc }).then(function (res) {
 			if (!api.shouldAsk(res)) return;
 			return ask(res, { doc: frm.doc }).then(function (token) {
 				if (!token) { frappe.validated = false; return; }
 				frm.doc[TOKEN_FIELD] = token;
 			});
-		}, function () { /* the server still refuses an unapproved price */ });
+		}, function () { frappe.validated = false; });
 	}
 
-	// Create Order / an order edit: true to go on (payload.price_approval set when one was given).
+	// Create Order / an order edit: true to go on (payload.price_approval set when one was given);
+	// false when cancelled or the check failed (said so already).
 	function forOrder(payload, salesInvoice) {
 		delete payload.price_approval;
 		if (!on()) return Promise.resolve(true);
-		return frappe.call({ method: M + 'check',
-			args: { payload: JSON.stringify(payload), sales_invoice: salesInvoice || undefined } }).then(function (r) {
-			var res = r && r.message;
+		return check({ payload: payload, sales_invoice: salesInvoice || undefined }).then(function (res) {
 			if (!api.shouldAsk(res)) return true;
 			return ask(res, { payload: payload, sales_invoice: salesInvoice || undefined }).then(function (token) {
 				if (!token) return false;
 				payload.price_approval = token;
 				return true;
 			});
-		});
+		}, function () { return false; });
 	}
 
 	['POS Invoice', 'Sales Invoice', 'Sales Order'].forEach(function (dt) {
