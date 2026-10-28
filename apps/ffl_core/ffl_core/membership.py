@@ -427,7 +427,7 @@ def get_memberships(customer: str) -> dict:
 	rows = []
 	for name in names:
 		doc = frappe.get_doc(DOCTYPE, name)
-		if doc.status == PENDING and settle(name):
+		if doc.status == PENDING and _paid_since(doc) and _settle_quietly(name):
 			doc.reload()
 		rows.append(_row(doc))
 	rows.sort(key=lambda r: r["status"] not in LIVE)
@@ -437,6 +437,23 @@ def get_memberships(customer: str) -> dict:
 			fields=["name", "card_summary"], order_by="is_default desc, creation desc")
 	return {"plans": plans, "memberships": rows, "cards": cards,
 		"can_cancel": bool(set(frappe.get_roles()) & set(CUSTOMER_MANAGER_ROLES))}
+
+
+def _paid_since(doc) -> bool:
+	"""A lock-free look: does a Pending membership's unpaid invoice owe nothing now?"""
+	row = _unpaid_row(doc)
+	return bool(row) and flt(frappe.db.get_value("Sales Invoice", row.sales_invoice, "outstanding_amount")) <= 0.01
+
+
+def _settle_quietly(name: str) -> bool:
+	"""The panel's catch-up activation. A write racing it (the same membership changed a moment
+	ago) only means the panel shows it Pending until the next look; the read never fails."""
+	try:
+		frappe.db.savepoint("membership_panel_settle")
+		return settle(name)
+	except frappe.QueryDeadlockError:
+		frappe.db.rollback(save_point="membership_panel_settle")
+		return False
 
 
 # ------------------------------------------------------------------ renewal settings

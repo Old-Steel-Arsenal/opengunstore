@@ -24,7 +24,7 @@ cancelled; a refund is a credit note.
 
 **Returns:** The membership's panel row.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:530`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:547`</sub>
 
 ## `change_card`
 
@@ -43,7 +43,7 @@ charges.
 
 **Returns:** The membership's panel row.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:504`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:521`</sub>
 
 ## `discard_membership`
 
@@ -62,7 +62,7 @@ refused once any payment or card charge touched it.
 
 **Returns:** The membership's panel row (status Cancelled).
 
-<sub>`apps/ffl_core/ffl_core/membership.py:587`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:604`</sub>
 
 ## `get_memberships`
 
@@ -118,7 +118,7 @@ is a manager's cancellation and stays off.
 
 **Returns:** The membership's panel row.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:462`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:479`</sub>
 
 ## `start_membership`
 

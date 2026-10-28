@@ -173,9 +173,15 @@
 		const cof = window.ffl && window.ffl.cardOnFile;
 		const offer = terminalLive() && cof ? await cof.offer(frm.doc.name) : null;
 		if (!offer) {
-			frappe.msgprint({ title: __('Auto-renew needs a saved card'), indicator: 'orange',
-				message: __('This store cannot save the card on the terminal right now. Turn auto-renew off on the membership to take payment another way.') });
-			return render(frm);
+			// The Pending row has no auto-renew switch: offer to drop auto-renew here and take payment.
+			frappe.confirm(__('This store cannot save the card on the terminal right now, so auto-renew cannot be set up. Take this payment without auto-renew?'),
+				async () => {
+					try {
+						await call('set_auto_renew', { membership: m.name, enabled: 0 });
+						await collect(frm, m);
+					} catch (e) { render(frm); }
+				}, () => render(frm));
+			return;
 		}
 		if (!(await cof.ensureSigned(frm.doc.name, offer, frm.doc.customer_name))) return render(frm);
 		await window.ffl.terminalCharge(terminalSpec(si, owed, 1));
