@@ -279,6 +279,7 @@ class MembershipRenewal(_CardOnFileBase):
 				self.assertEqual(ms.renew_memberships().get(ms.UNKNOWN), 1)
 		self.assertEqual(client.charge_stored_credential.call_count, 1)
 		self.assertEqual(len(self._renewals(m)), 1)
+		ms.set_auto_renew(m, 0)                          # still listed: the charge is unresolved
 		with _on("2026-12-17"):
 			att = next(r for r in ms.needs_attention()["rows"] if r["membership"] == m)
 			self.assertEqual((att["reason"], att["sales_invoice"], att["can_retry"], att["can_cancel"]),

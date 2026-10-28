@@ -808,7 +808,7 @@ def next_period(doc, billing_period: str, today=None):
 	if doc.status == SUSPENDED:
 		for row in doc.get("invoices") or []:           # one open rejoin invoice at a time (C4)
 			if row.status == UNPAID and doc.current_period_end and row.period_start \
-					and getdate(row.period_start) > getdate(doc.current_period_end) \
+					and getdate(row.period_start) > getdate(add_days(doc.current_period_end, 1)) \
 					and frappe.db.get_value("Sales Invoice", row.sales_invoice, "docstatus") == 1:
 				return getdate(row.period_start), getdate(row.period_end)
 		start = getdate(today or nowdate())
@@ -1179,8 +1179,10 @@ def needs_attention() -> dict:
 	names = [m.name for m in frappe.get_all(DOCTYPE, filters={"status": ("in", (PAST_DUE, SUSPENDED))},
 		fields=fields, order_by="current_period_end asc")]
 	# Active past its period end: not charged, not confirmed, or the renewal job is switched off.
-	names += frappe.get_all(DOCTYPE, filters={"status": ACTIVE, "auto_renew": 1, "cancel_at_period_end": 0,
-		"current_period_end": ("<", today)}, pluck="name", order_by="current_period_end asc")
+	# A charge still waiting for the gateway is listed whatever auto-renew says now.
+	names += [m.name for m in frappe.get_all(DOCTYPE, filters={"status": ACTIVE, "current_period_end": ("<", today)},
+		fields=["name", "auto_renew", "cancel_at_period_end"], order_by="current_period_end asc")
+		if (cint(m.auto_renew) and not cint(m.cancel_at_period_end)) or _waiting_renewal(frappe.get_doc(DOCTYPE, m.name))]
 	stale = add_to_date(now_datetime(), days=-STALE_PENDING_DAYS)
 	names += frappe.get_all(DOCTYPE, filters={"status": PENDING, "creation": ("<", stale)}, pluck="name",
 		order_by="creation asc")
