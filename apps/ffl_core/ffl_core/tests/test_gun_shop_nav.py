@@ -113,7 +113,7 @@ class TestShippedSidebar(FrappeTestCase):
 				current.append(i["label"])
 		self.assertEqual(sections, {
 			"Sales": ["Orders", "POS invoices", "Create order", "Gunsmith work orders", "Cash drawer", "Card payments", "Sales report"],
-			"Customers": ["Customers", "Agreements", "Agreement templates", "Signing tablets"],
+			"Customers": ["Customers", "Memberships", "Agreements", "Agreement templates", "Signing tablets"],
 			"Compliance": ["4473 records", "Acquisitions", "Dispositions", "Transfer pickups", "Firearms in stock"],
 			"Inventory": ["Items", "Serial numbers", "Stock on hand", "Inventory count", "Storage locations"],
 			"Purchasing": ["Distributor orders", "Receive goods", "Suppliers"],

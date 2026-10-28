@@ -173,7 +173,7 @@ class LegalFlagPassThrough(unittest.TestCase):
 			return [{"order_type": "Procure To Store", "lines": [
 				{"sku": ln["sku"], "qty": ln["qty"], "ship_method": "Grnd"} for ln in lines]}]
 
-		def estimate_order_freight(self, lines, mode):
+		def estimate_order_freight(self, lines, mode, options=None):
 			return 10.0
 
 	def _patch(self, provider, **extra):

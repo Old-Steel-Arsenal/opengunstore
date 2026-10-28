@@ -60,6 +60,7 @@ Local mode is **experimental**: it is meant for a new self-hosted store, and liv
 | RSR | deleted | with the catalog | |
 | RSR | quantity | every 15 minutes | |
 | RSR | restrictions | every 2 hours, heavy | an unchanged file is skipped |
+| RSR | case_price | daily | full-case price per unit and case size from Direct Connect get-items (dealer account); skipped while RSR Settings has the API off or no dealer login, and in RSR's 3–5am ET maintenance window |
 | Sports South | quantity | every 15 minutes | incremental from the server's own time; when the buffer is idle, the full on-hand list at most every 30 minutes |
 | Sports South | snapshot | weekly full rebuild, heavy | a row missing from it is marked discontinued; a free-disk check of about 900 MiB before each large download |
 | Sports South | catalog | daily changes with a one-day overlap, after the first snapshot | |

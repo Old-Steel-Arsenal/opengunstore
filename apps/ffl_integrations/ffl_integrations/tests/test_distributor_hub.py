@@ -358,7 +358,7 @@ class HubLocalCatalog(FrappeTestCase):
 			out = hub.overview()
 		row = next(r for r in out["distributors"] if r["name"] == self.LOCAL_RSR)
 		self.assertEqual([ln["lane"] for ln in row["catalog_lanes"]["lanes"]],
-			["catalog", "deleted", "quantity", "restrictions"])
+			["catalog", "deleted", "quantity", "restrictions", "case_price"])
 		self.assertTrue(out["can_sync_now"])
 
 	def test_sync_now_is_system_manager_only_and_local_only(self):

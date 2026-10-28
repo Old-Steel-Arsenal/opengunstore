@@ -30,6 +30,15 @@ The form has three tabs: Store, Compliance and FFL Verification.
 
 **Peace-Officer Exempt Tax Account.** California stores only. The account the 11% firearm and ammunition excise tax is booked to. Once it is set, Create Order and the register offer the peace-officer exemption, which takes that tax off a sale and keeps sales tax (see [Build and ship an order](../selling/create-order.md#peace-officer-excise-exemption-california)). Leave it blank and nothing is offered. A store whose company address is not in California cannot set it.
 
+**Require Manager Approval for Price Reductions.** On for a new store; a store
+that already ran before this setting came keeps it off until a manager turns it
+on. While it is on, a price lowered below the list price at the register, on
+Create Order or on a Sales Invoice, Sales Order or POS Invoice form, an
+invoice discount, or a return, saves only once a Sales Manager or System Manager approves it
+with their counter PIN and a reason. A manager signed in approves their own.
+Discounts the system gives (pricing rules, sale prices) never ask. See
+[Point of Sale](../selling/pos.md#lowering-a-price).
+
 ## Compliance
 
 **Paper 4473 Mode.** Tick this when 4473s and background checks are handled outside this system, on paper and by phone or the FBI portal. This is the normal setup once FastBound is switched off. At the counter the **FastBound 4473** button is replaced by **Record Paper 4473**. Confirming that button books this order's bound book disposition for every gun on the ticket, stamped with who ticked it and when, and the sale can then complete. The recordkeeping duty does not change: the paper 4473 must still be filled in and filed exactly as before. This setting only tells the register not to wait for FastBound. It takes effect on the next page load, so reload any till that is already open or it keeps acting on the old setting. Everything recorded this way appears on the [Hand-Asserted 4473 Dispositions report](../reports/index.md), and the sale's 4473 shows on [4473 records](../compliance/4473-records.md) with the source **Paper / override**.

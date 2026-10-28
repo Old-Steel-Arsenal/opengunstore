@@ -177,3 +177,46 @@ def setting_value(settings, key, default) -> float:
 	silently replace it."""
 	value = getattr(settings, key, None)
 	return float(default if value in (None, "") else value)
+
+
+def case_pricing(qty, unit_cost, case_cost, units_per_case) -> dict | None:
+	"""A ship-to-store line bought by the full case: ``qty`` units at ``unit_cost``,
+	where the house sells ``units_per_case`` units a case at ``case_cost`` A UNIT
+	(RSR's DealerCasePrice is the per-unit price of a full case, not the case's total).
+
+	Only full cases take the case price; the rest of the line stays at the unit
+	cost. None when the house has no case price for it (no case size, a case price
+	of 0, or one not below the unit cost) — the line then costs ``unit_cost``.
+
+	-> ``{units_per_case, case_cost, cases, to_fill, line_cost, unit_cost}``:
+	``cases`` the full cases in the line, ``to_fill`` the units that would fill the
+	next one (0 when the line is whole cases), ``line_cost`` the line's total and
+	``unit_cost`` the per-unit figure a Distributor Order line stores (both rounded
+	to cents). An estimate: the house's order acknowledgement and invoice replace it."""
+	n = int(units_per_case or 0)
+	c = float(case_cost or 0)
+	u = float(unit_cost or 0)
+	q = int(qty or 0)
+	if n <= 0 or q <= 0 or not 0 < c < u:
+		return None
+	cases = q // n
+	rest = q - cases * n
+	line_cost = round(cases * n * c + rest * u, 2)
+	return {"units_per_case": n, "case_cost": round(c, 2), "cases": cases,
+		"to_fill": n - rest if rest else 0, "line_cost": line_cost,
+		"unit_cost": round(line_cost / q, 2)}
+
+
+def case_note(priced: dict | None) -> str:
+	"""The operator's one-line hint for a ``case_pricing`` answer ("" for None):
+	"Case of 50 at $7.83 each — 20 more fill a case", "2 cases at $7.83 each", or
+	"2 cases at $7.83 each — 30 more fill another" (the price is per unit, as the
+	house quotes it)."""
+	if not priced:
+		return ""
+	cases, more = priced["cases"], priced["to_fill"]
+	price = f"${priced['case_cost']:,.2f} each"
+	if not cases:
+		return f"Case of {priced['units_per_case']} at {price} — {more} more fill a case"
+	head = f"{cases} case{'s' if cases > 1 else ''} at {price}"
+	return f"{head} — {more} more fill another" if more else head

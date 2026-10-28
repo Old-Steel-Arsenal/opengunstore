@@ -41,6 +41,32 @@ register needs **Sales User** or **Sales Manager** on top of whatever else it
 holds. Accounts User and Accounts Manager are on that list for the same reason —
 ERPNext put them there, not because bookkeeping needs the register.
 
+### What a counter clerk can do on the register
+
+A login with only **Sales User** (plus Stock User for stock counts), or
+**Sales Manager** together with **Sales User**, can run the register from start
+to finish without any Accounts role:
+
+- open the shift, sell and take payment, print the receipt, return a sale
+  and close the shift (the closing posts the day's sales);
+- delete a draft order with **Delete Order**. Deleting a cancelled invoice is
+  for a Sales Manager or System Manager.
+
+ERPNext's own permissions stop short of this, so the system adds the missing
+ones when it is installed or updated. They cover only the register:
+creating and submitting POS Invoices, POS Opening Entries and POS Closing
+Entries, and, because posting a closing creates the day's Sales Invoice under
+the person who closed, creating and submitting that Sales Invoice.
+
+A clerk still cannot cancel or amend a submitted sale or a closing, delete a
+posted sale, or create a Journal Entry or Payment Entry, and has no access to
+the ledger. Undoing a posted sale is a return, not a cancellation.
+
+A **Sales Manager** also needs **Sales User** to run the register, the same
+rule as for a trade-in: ERPNext gives Sales Manager no access to items, accounts
+or serial-number records, and this system does not copy those to it. The
+standard role profiles always pair them.
+
 ## What each report requires
 
 | Report | Roles |
@@ -111,6 +137,13 @@ click them, regardless of which page you are on:
 - Ringing up accessories that a paid web order is waiting on. A counter clerk is
   refused; a manager can ring the sale and the invoice notes it. See
   [Point of Sale](../selling/pos.md).
+- **Approving a lower price or a return.** While FFL Settings asks for it, a
+  price a clerk lowers below the list price, an invoice discount, or a return,
+  saves only once a
+  **Sales Manager** or **System Manager** picks themselves in the
+  **Manager approval needed** dialog and types their counter PIN (or password)
+  and a reason. A manager signed in is never asked. See
+  [Point of Sale](../selling/pos.md#lowering-a-price).
 
 Closing an open register shift by hand outside the register is **Sales
 Manager**, **Stock Manager** or **System Manager**. See

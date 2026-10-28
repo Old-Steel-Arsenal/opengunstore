@@ -1,32 +1,14 @@
 {
  "actions": [],
  "creation": "2026-10-28 12:00:00.000000",
- "description": "Automatic membership renewals and the memberships that need a manager's attention.",
+ "description": "Automatic membership renewals. Members, plans and the memberships that need attention are on the Memberships page.",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "attention_tab",
-  "attention_html",
-  "renewals_tab",
   "auto_renew_enabled",
   "yearly_reminder_days"
  ],
  "fields": [
-  {
-   "fieldname": "attention_tab",
-   "fieldtype": "Tab Break",
-   "label": "Needs attention"
-  },
-  {
-   "fieldname": "attention_html",
-   "fieldtype": "HTML",
-   "label": "Needs attention"
-  },
-  {
-   "fieldname": "renewals_tab",
-   "fieldtype": "Tab Break",
-   "label": "Renewals"
-  },
   {
    "default": "1",
    "fieldname": "auto_renew_enabled",
@@ -45,7 +27,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-28 12:00:00.000000",
+ "modified": "2026-10-29 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Membership Settings",

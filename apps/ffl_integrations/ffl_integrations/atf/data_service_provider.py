@@ -73,19 +73,24 @@ class DataServiceProvider:
 		)
 
 
-def search_remote(query: str, limit: int = 20) -> list[dict]:
+def search_remote(query: str, limit: int = 20, *, zip_code: str | None = None,
+		radius_miles: float = 10) -> list[dict]:
 	"""Full-listing typeahead against the service (82k rows vs the local
 	landed cache). Returns rows in the local search()'s dict shape, each
 	flagged _remote — callers merge with local rows and fall back to
-	local-only when this raises EZCheckUnavailable."""
+	local-only when this raises EZCheckUnavailable. With ``zip_code`` it is
+	the service's geo search: dealers within ``radius_miles`` of that ZIP."""
 	q = (query or "").strip()
-	if not q:
+	zip5 = (zip_code or "").strip()[:5]
+	if not q and not zip5:
 		return []
 	digits = sum(1 for ch in q if ch.isdigit())
 	payload: dict = {"limit": limit}
-	if digits >= 9:
+	if zip5:
+		payload.update(zip=zip5, radius_miles=radius_miles)
+	if q and digits >= 9:
 		payload["license_number"] = q
-	else:
+	elif q:
 		payload["name"] = q
 
 	data = _post("/v1/ffl/search", payload, timeout=SEARCH_TIMEOUT_SECONDS)

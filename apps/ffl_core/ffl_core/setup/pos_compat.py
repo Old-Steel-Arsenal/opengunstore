@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import frappe
+from frappe import _
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 from ffl_core.roles import COUNTER_ROLES
@@ -123,8 +124,7 @@ _ROLE_GRANTS_KEY = "ffl_role_grants_done"  # "doctype|role" of every grant below
 #     Bundle, an ERPNext-internal write the framework checks against the SESSION user whatever flags the
 #     document carries; stock ERPNext gives Sales User select only there. The bundle gets what Stock User
 #     has, short of cancel and delete. Sales User already has the rest the receipt checks (Item read, Account
-#     select) from stock ERPNext; Sales Manager is given nothing, so Item and Account keep their stock rules
-#     (no Custom DocPerm). (The new Item's selling price needs no grant: firearm_intake._create_item makes no
+#     select) from stock ERPNext; Sales Manager is given nothing. (The new Item's selling price needs no grant: firearm_intake._create_item makes no
 #     Item Price, per-gun priced firearms carry none -- item_hooks.sync_standard_selling_price.)
 # add_missing: what to make of a site with Custom DocPerm on the doctype but no level-0 row for the
 # role. False where the stock rules give the role a row (POS Invoice): someone removed it, leave it.
@@ -141,8 +141,52 @@ ROLE_GRANTS = (
 )
 
 
+_REGISTER_GRANTS_KEY = "ffl_register_grants_done"  # same record as _ROLE_GRANTS_KEY, for REGISTER_GRANTS
+# What a counter login holding only Sales User (+ Stock User), or only Sales Manager, needs to run the register
+# end to end. ERPNext v16 gives Sales User read on POS Invoice and nothing on POS Opening Entry, POS Closing
+# Entry or Sales Invoice; Sales Manager gets no write on POS Invoice and no Item, Account, POS Settings or Stock
+# Settings access. Every real login used to hold Accounts User as well, so the gap never showed. Each row is the
+# least a register step needs (test_counter_register_perms walks the loop and fails without any one of them);
+# none gives cancel, amend, Journal Entry, Payment Entry or the ledger.
+#   POS Invoice write create submit  -- checkout saves, then submits, the sale (and a return)
+#   POS Invoice delete               -- Recent Orders > Delete Order on a DRAFT; Frappe never deletes a submitted
+#                                       document, and cancel stays closed. It would also delete a CANCELLED
+#                                       invoice, so guard_cancelled_delete (on_trash) keeps that to managers.
+#                                       The recycle bin mirrors this right.
+#                                       (The receipt needs no grant: printview takes read OR print.)
+#   POS Opening Entry read write create submit -- the Create POS Opening Entry dialog; write too, because
+#                                       submitting a closing re-saves the opening to mark it Closed
+#   POS Closing Entry read write create submit -- Close the POS
+#   Sales Invoice read write create submit -- read: Recent Orders lists Sales Invoices beside POS Invoices
+#                                       (get_past_order_list errors without it). create / write / submit:
+#                                       consolidating the sales (the closing's job, and the immediate merge of
+#                                       a firearm sale) creates and submits the Sales Invoice as the SESSION
+#                                       user, and ERPNext does not lift the permission check there. There is
+#                                       no narrower grant: Custom DocPerm cannot say "only from a merge".
+#   POS Profile read                 -- the opening dialog fills its payment rows with frappe.client.get and the
+#                                       item grid waits on get_value("selling_price_list"); the select
+#                                       CASHIER_GRANTS gave only passes the server-side checks
+# Not given, on purpose: what Sales User already has from ERPNext (Item, Account, POS Settings, Stock Settings,
+# Serial and Batch Bundle) is not copied to Sales Manager, which would turn those doctypes into Custom DocPerm on
+# every site. A Sales Manager runs the register as Sales Manager + Sales User, as for the trade-in
+# (roles.TRADE_IN_ROLES); the role profiles always pair them.
+# No if_owner: the register is one shared shift (api/pos_session), so another clerk's opening and sales are
+# read and closed here. Sales Manager already has the full POS Opening / Closing Entry rows. add_missing is
+# False where the stock rules give the role a row, True where they give it none.
+REGISTER_GRANTS = (
+	("POS Invoice", "Sales User", ("write", "create", "delete", "submit"), False),
+	("POS Invoice", "Sales Manager", ("write", "create", "delete", "submit"), False),
+	("POS Opening Entry", "Sales User", ("read", "write", "create", "submit"), True),
+	("POS Closing Entry", "Sales User", ("read", "write", "create", "submit"), True),
+	("POS Profile", "Sales User", ("read",), False),
+	("POS Profile", "Sales Manager", ("read",), False),
+	("Sales Invoice", "Sales User", ("read", "write", "create", "submit"), True),
+	("Sales Invoice", "Sales Manager", ("read", "write", "create", "submit"), True),
+)
+
+
 def ensure_role_grants() -> None:
-	"""after_install / after_migrate: the permissions in ROLE_GRANTS, each dealt with once.
+	"""after_install / after_migrate: the permissions in ROLE_GRANTS and REGISTER_GRANTS, each dealt with once.
 
 	Same route and caveats as ensure_cashier_pos_profile_select above, through the same writer (_grant):
 	Role Permissions Manager's own Custom DocPerm, the stock rows copied first so no other role's rule is
@@ -152,9 +196,26 @@ def ensure_role_grants() -> None:
 	an existing row only gains them. Once per (doctype, role): a rule an administrator removes after
 	the grant stays removed. Once a doctype has Custom DocPerm rows, ERPNext's later changes to its
 	stock rules no longer reach the site; check_perm_drift reports them.
+
+	REGISTER_GRANTS has its own record: POS Invoice / Sales User was dealt with (for report) before it existed.
 	"""
-	handled = _get_list(_ROLE_GRANTS_KEY)
-	for doctype, role, ptypes, add_missing in ROLE_GRANTS:
+	_apply_grants(ROLE_GRANTS, _ROLE_GRANTS_KEY)
+	_apply_grants(REGISTER_GRANTS, _REGISTER_GRANTS_KEY)
+
+
+def guard_cancelled_delete(doc, method: str | None = None) -> None:
+	"""POS Invoice on_trash: a cancelled invoice (docstatus 2) is deleted by a manager only.
+
+	REGISTER_GRANTS gives the counter delete so a clerk can drop a draft (Delete Order); Frappe itself refuses
+	only a submitted invoice, so the same right would let a clerk erase a cancelled one. Drafts stay open."""
+	if doc.docstatus == 2 and not {"Sales Manager", "System Manager"} & set(frappe.get_roles()):
+		frappe.throw(_("Only a Sales Manager or System Manager can delete a cancelled POS Invoice."),
+			frappe.PermissionError)
+
+
+def _apply_grants(grants: tuple, record_key: str) -> None:
+	handled = _get_list(record_key)
+	for doctype, role, ptypes, add_missing in grants:
 		key = f"{doctype}|{role}"
 		if key in handled or not frappe.db.exists("Role", role) or not frappe.db.exists("DocType", doctype):
 			continue
@@ -167,18 +228,19 @@ def ensure_role_grants() -> None:
 		if not rows and custom and not add_missing:
 			continue
 		_grant(doctype, role, ptypes, existing=bool(rows))
-	_set_list(_ROLE_GRANTS_KEY, handled)
+	_set_list(record_key, handled)
 
 
 # The doctypes check_perm_drift compares: the ones this module turns into Custom DocPerm for a real need (the
-# counter's POS Profile select, the trade-in's stock bundle). POS Invoice / FFL Acquisition grants predate it.
-_DRIFT_DOCTYPES = ("POS Profile", "Serial and Batch Bundle")
+# counter's POS Profile select, the trade-in's stock bundle, the register's loop). FFL Acquisition grants predate it.
+_DRIFT_DOCTYPES = ("POS Profile", "Serial and Batch Bundle", "POS Invoice", "POS Opening Entry",
+	"POS Closing Entry", "Sales Invoice")
 
 
 def _our_grants() -> dict[tuple[str, str], set[str]]:
-	"""{(doctype, role): permissions} this module adds, read off CASHIER_GRANTS and ROLE_GRANTS."""
+	"""{(doctype, role): permissions} this module adds, read off CASHIER_GRANTS, ROLE_GRANTS and REGISTER_GRANTS."""
 	ours: dict[tuple[str, str], set[str]] = {}
-	for doctype, role, ptypes, *_add_missing in CASHIER_GRANTS + ROLE_GRANTS:
+	for doctype, role, ptypes, *_add_missing in CASHIER_GRANTS + ROLE_GRANTS + REGISTER_GRANTS:
 		ours.setdefault((doctype, role), set()).update(ptypes)
 	return ours
 
@@ -220,10 +282,13 @@ def check_perm_drift() -> None:
 			granted = ours.get((doctype, role))
 			if granted and (level, owner) == (0, 0):
 				stock = [s for s in shipped if s[:3] == row[:3]]
-				if not stock and flags == tuple(int(f in granted) for f in _PERM_FLAGS):
-					continue  # a row we made, on a role ERPNext ships nothing for
-				if len(stock) == 1 and flags == tuple(1 if f in granted else v for f, v in zip(_PERM_FLAGS, stock[0][3])):
-					row = stock[0]  # our permissions, added to ERPNext's own rule
+				have = {f for f, v in zip(_PERM_FLAGS, flags) if v}
+				if not stock and have <= granted:
+					continue  # a row we made, on a role ERPNext ships nothing for (a grant not made yet is no drift)
+				if len(stock) == 1:
+					shipped_flags = {f for f, v in zip(_PERM_FLAGS, stock[0][3]) if v}
+					if have >= shipped_flags and have - shipped_flags <= granted:
+						row = stock[0]  # our permissions, added to ERPNext's own rule
 			compared.append(row)
 
 		def describe(row, n):

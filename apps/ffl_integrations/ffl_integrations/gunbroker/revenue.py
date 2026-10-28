@@ -509,6 +509,12 @@ def _apply_derived(si, order, company: str) -> None:
 	fvf, doc_fee = _line_fees(order)
 	si.gb_final_value_fee = fvf
 	si.gb_ffl_doc_fee = doc_fee
+	# Ship pressed before Dispose: the shipment was made against the order, and
+	# from here on everything (the queue, the tracking write-back) reads it off
+	# the invoice.
+	if (order.get("shipstation_order_id") or "").strip() and not (si.get("shipstation_order_id") or "").strip():
+		si.shipstation_order_id = order.shipstation_order_id
+		si.shipstation_status = order.shipstation_status or "Pending"
 
 
 def _buyer_ship_address(customer: str, order) -> str | None:

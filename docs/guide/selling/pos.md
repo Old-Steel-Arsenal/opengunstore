@@ -234,6 +234,54 @@ If the cart cannot land on the exact cents, the register says **Landed on …, n
 register's POS Profile, and it does nothing on a pickup ticket, because the money
 for a pickup is on its order.
 
+## Lowering a price
+
+While **Require Manager Approval for Price Reductions** is on in
+[FFL Settings](../settings/ffl-settings.md), a price below the list price needs a
+manager: a line price typed lower, a line discount, **Charge exactly** landing
+under the list prices, or an invoice discount.
+
+1. Change the price as usual and click **Checkout**.
+2. The **Manager approval needed** dialog lists each lowered line, list price
+   and new price.
+3. The manager picks their name under **Manager**, types their counter PIN, and
+   picks a **Reason** (**Other** needs the **Details**). A manager without a PIN,
+   or whose PIN is off after five wrong tries, types their password; **Use
+   password instead** switches.
+4. Click **Approve**. The sale saves and the register moves on to payment.
+
+A wrong PIN shows under the field and the dialog stays open. **Cancel** stops the
+save and leaves the cart as it was.
+
+Nothing asks when:
+
+- a **Sales Manager** or **System Manager** is signed in. The sale records them as
+  the approver;
+- the price is at or above the list price, or a pricing rule or a sale price
+  brought it down;
+- the line was already saved at that price. Lowering it again asks again;
+  raising it never does;
+- the system set the price: a pickup ticket, a transfer ticket or a gunsmith
+  pick-up as it was opened, a trade-in credit, a web or GunBroker order. A
+  price lowered on one of them afterwards asks like any other.
+
+The list price is the gun's own price for a firearm line with a serial, the
+cheapest priced gun of that model in stock for a firearm line with no serial yet,
+and the Item Price of the register's price list for everything else.
+
+The sale keeps who approved, the reason and when, under the invoice discount,
+and its timeline lists each line, list price to approved price.
+
+### Returns
+
+While the same setting is on, a return needs a manager too: money or credit
+goes back to the customer. At **Checkout** on the return the same dialog lists
+what comes back and the refund; the manager approves with their PIN and a
+reason, and the return saves. The approval covers that return up to the refund
+it showed: adding more to it asks again. A manager signed in is not asked, and
+the return records them. Returns the system makes itself (a web or GunBroker
+refund, a gunsmith deposit refund as it is opened) are not asked.
+
 ## Trade-in lines are locked
 
 A trade-in credit line comes only from the **Trade-in** button, and its amount
@@ -301,4 +349,8 @@ customer. For cards, Zelle, split payments and refunds, see
 | **This POS Profile does not allow rate changes.** | **Charge exactly** needs Allow Rate Change | A manager turns it on in the POS Profile |
 | **This is a pickup ticket for … — the money is on that order.** | **Charge exactly** on a pickup ticket | Collect the balance on the order instead |
 | **Landed on …, not …** | **Charge exactly** could not hit the cents | Adjust one line's price by hand |
+| **Manager approval needed** — "Ask a manager to approve this price: …" | A price is below its list price and nobody approved it | A manager approves it in the dialog, or put the price back |
+| **Lower than the manager approved — ask again** | The price went lower after the manager approved | Ask the manager again |
+| **This price approval has expired or was used. Ask a manager again.** | Approvals last 15 minutes and are good for one save | Save again: the dialog asks again |
+| **That PIN is not right. N tries left.** / **Use the password: the PIN is off.** | A wrong PIN; five turn the PIN off | Type the right PIN, or the password |
 | **The store pays the customer** | A payout ticket has a payment amount, no method or no reference | Set every payment to 0, pick how the customer is paid, add the reference |

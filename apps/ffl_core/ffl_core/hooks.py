@@ -165,6 +165,8 @@ extend_bootinfo = [
 	"ffl_core.store_identity.extend_bootinfo",
 	# The peace-officer exempt excise account, for the register's LE Exempt button.
 	"ffl_core.compliance.le_excise_exempt.extend_bootinfo",
+	# Whether this user's screens ask a manager before saving a lowered price (price_approval.py).
+	"ffl_core.price_approval.extend_bootinfo",
 ]
 
 
@@ -198,11 +200,17 @@ app_include_js = [
 	# (installClassHook) and aamva.js above; customer_quick_entry.js calls it.
 	_hashed("js/customer_flags.js"),
 	_hashed("js/customer_quick_entry.js"),
+	# customer_memberships.js: the Customer form's Memberships panel and ffl.memberships, the
+	# membership actions the Memberships page shares with it (membership.py).
+	_hashed("js/customer_memberships.js"),
 	# ffl.agreements.request: the Request agreement dialog (QR code / email / paper)
 	# the Customer form and the counter panel's agreement chips open.
 	_hashed("js/agreement_actions.js"),
 	# Switch staff from the sidebar's bottom-left corner, and the idle lock screen.
 	_hashed("js/staff_switch.js"),
+	# A lowered price asks a manager (PIN + reason) before the save: POS, the three forms, Create
+	# Order (price_approval.py). Needs staff_switch.js above (authMode / serverMessage).
+	_hashed("js/price_approval.js"),
 ]
 
 doc_events = {
@@ -282,6 +290,8 @@ doc_events = {
 		],
 	},
 	"Sales Invoice": {
+		# The timeline comment of a price approval the save recorded (price_approval.py).
+		"on_update": "ffl_core.price_approval.post_approval_comment",
 		# Units a web order is waiting on are not the counter's to sell (a counter
 		# order that ships from the shelf; web orders' own invoices are skipped).
 		"before_submit": [
@@ -319,6 +329,8 @@ doc_events = {
 			# No counter sale to a Banned customer without a manager's open override
 			# (customer_flags.refuse_banned_customer; returns and channel mirrors pass).
 			"ffl_core.customer_flags.refuse_banned_customer",
+			# A price a person lowered saves only with a manager's approval (price_approval.py).
+			"ffl_core.price_approval.enforce_price_approval",
 			# Owner policy: consignment guns are never returnable — block before
 			# any other validation bothers running. See the function's own
 			# docstring for why this fires on every validate, not just submit.
@@ -404,12 +416,16 @@ doc_events = {
 	# The payment that settles a membership's invoice makes the membership Active (membership.py).
 	"Payment Entry": {"on_submit": "ffl_core.membership.activate_paid_memberships"},
 	"Sales Order": {
+		# The timeline comment of a price approval the save recorded (price_approval.py).
+		"on_update": "ffl_core.price_approval.post_approval_comment",
 		# A new order's freight tax basis from FFL Settings.
 		"before_insert": "ffl_core.compliance.shipping_charge.stamp_shipping_tax_basis",
 		"validate": [
 			# No counter sale to a Banned customer without a manager's open override
 			# (customer_flags.refuse_banned_customer; returns and channel mirrors pass).
 			"ffl_core.customer_flags.refuse_banned_customer",
+			# A price a person lowered saves only with a manager's approval (price_approval.py).
+			"ffl_core.price_approval.enforce_price_approval",
 			"ffl_core.compliance.firearm.require_serial_for_firearm",
 			"ffl_core.compliance.interstate_tax.apply_interstate_tax",
 			# Keep after apply_interstate_tax — see the Sales Invoice note above.
@@ -450,6 +466,8 @@ doc_events = {
 		"on_update": "ffl_core.setup.locked_lines.on_price_list_update",
 	},
 	"POS Invoice": {
+		# The timeline comment of a price approval the save recorded (price_approval.py).
+		"on_update": "ffl_core.price_approval.post_approval_comment",
 		# Same ordering reason as the Sales Invoice entry above.
 		"before_validate": [
 			# Counter pickup ticket: $0 on every save, refusing items the order did
@@ -477,12 +495,15 @@ doc_events = {
 		# P1: a stale browser doc must not revert the
 		# webhook-owned 4473 fields on a Draft save. Restores them from the DB.
 		"before_save": "ffl_core.compliance.webhook_fields.protect_webhook_4473_fields",
+		"on_trash": "ffl_core.setup.pos_compat.guard_cancelled_delete",
 		"validate": [
 			# Memberships are sold as Sales Invoices only: the merge drops their service dates (membership.py).
 			"ffl_core.membership.refuse_on_pos_invoice",
 			# No counter sale to a Banned customer without a manager's open override
 			# (customer_flags.refuse_banned_customer; returns and channel mirrors pass).
 			"ffl_core.customer_flags.refuse_banned_customer",
+			# A price a person lowered saves only with a manager's approval (price_approval.py).
+			"ffl_core.price_approval.enforce_price_approval",
 			# Owner policy: consignment guns are never returnable — block before
 			# any other validation bothers running. See the function's own
 			# docstring for why this fires on every validate, not just submit.
@@ -695,8 +716,7 @@ doc_events = {
 # doctype_js = {"doctype" : "public/js/doctype.js"}
 doctype_js = {
     "Supplier": "public/js/supplier_form.js",
-    # customer_memberships.js: the Memberships panel (sell, cancel, auto-renew; membership.py).
-    "Customer": ["public/js/customer_form.js", "public/js/customer_memberships.js"],
+    "Customer": "public/js/customer_form.js",
     "Item": "public/js/item_form.js",
     "Serial No": "public/js/serial_no.js",
     "Purchase Receipt": "public/js/purchase_receipt.js",
@@ -792,6 +812,9 @@ after_install = [
 	"ffl_core.setup.shipping_charge.ensure_shipping_tax_switch",
 	# Same for the idle counter lock's 5-minute default (staff_switch).
 	"ffl_core.staff_switch.ensure_lock_default",
+	# Manager approval for lowered prices: its fields, and the switch ON for a new store.
+	"ffl_core.setup.price_approval.ensure",
+	"ffl_core.price_approval.ensure_default",
 	# Cash drawer: the two POS Closing Entry fields (accounts wait for a company, at after_migrate).
 	"ffl_core.setup.cash_drawer.ensure_fields_only",
 ]
@@ -869,6 +892,8 @@ after_migrate = [
 	# Cash drawer: POS Closing Entry fields + Cash Over/Short and
 	# Operating Bank per company, default bank account filled when empty.
 	"ffl_core.setup.cash_drawer.ensure",
+	# Manager approval for lowered prices: the record + token fields (setup/price_approval).
+	"ffl_core.setup.price_approval.ensure",
 ]
 
 # Uninstallation

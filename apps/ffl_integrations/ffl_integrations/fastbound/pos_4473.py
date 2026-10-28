@@ -526,6 +526,10 @@ def start_transfer_for_pos_invoice(
 		doc.customer = customer
 
 	doc.is_ffl_transfer = 1
+	# The customer's own gun at $0 and the transfer fee are this flow's prices, not a discount: the
+	# manager price approval leaves this request's saves alone (later edits at the register are asked).
+	from ffl_core.price_approval import mark_system_priced
+	mark_system_priced(doc)
 	# Reusing a restored/parked transfer: don't re-add a gun already on it (a
 	# serial can't be transferred twice) and don't stack a second fee line —
 	# otherwise re-opening the dialog from Recent Orders duplicates the gun + fee.

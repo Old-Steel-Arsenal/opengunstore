@@ -338,6 +338,7 @@ app: `ffl_core` · module: FFL Core · single · roles: System Manager
 | `shipping_price_includes_tax` | Check | Shipping Price Includes Sales Tax |  |  |
 | `peace_officer_exempt_tax_account` | Link | Peace-Officer Exempt Tax Account |  | Account |
 | `counter_lock_minutes` | Int | Lock Idle Screen After (minutes) |  |  |
+| `require_price_approval` | Check | Require Manager Approval for Price Reductions |  |  |
 | `gunsmith_labor_item` | Link | Gunsmith Labor Item |  | Item |
 | `gunsmith_agreement_template` | Link | Intake Authorization |  | Agreement Template |
 | `paper_4473_mode` | Check | Paper 4473 Mode |  |  |
@@ -567,7 +568,7 @@ A membership a customer can buy: what it costs, how often it bills, and its regi
 | `active` | Check | Active |  |  |
 | `billing_period` | Select | Billing Period | ✓ | Monthly, Yearly |
 | `price` | Currency | Price per Period | ✓ |  |
-| `item` | Link | Billed Item | ✓ | Item |
+| `item` | Link | Billed Item |  | Item |
 | `description` | Small Text | Description |  |  |
 | `registration_item` | Link | Registration Item |  | Item |
 | `registration_fee` | Currency | Registration Fee |  |  |
@@ -580,7 +581,7 @@ A membership a customer can buy: what it costs, how often it bills, and its regi
 
 app: `ffl_core` · module: FFL Core · single · roles: Sales Manager, System Manager
 
-Automatic membership renewals and the memberships that need a manager's attention.
+Automatic membership renewals. Members, plans and the memberships that need attention are on the Memberships page.
 
 | field | type | label | reqd | options |
 |---|---|---|---|---|
@@ -940,6 +941,7 @@ app: `ffl_integrations` · module: FFL Integrations · child table
 | `wish_qty` | Int | Wish Qty |  |  |
 | `ack_qty` | Int | Ack Qty |  |  |
 | `unit_cost` | Currency | Unit Cost |  |  |
+| `case_note` | Data | Case Price |  |  |
 | `invoiced_unit_cost` | Currency | Invoiced Unit Cost |  |  |
 | `ship_method` | Select | Ship Method |  | Grnd, 2Day, 1Day, Ndas, Prio |
 | `item_status` | Data | Item Status |  |  |
@@ -1082,6 +1084,8 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sal
 | `fee_accrual_je` | Link | Fee Accrual Journal Entry |  | Journal Entry |
 | `ship_carrier` | Select | Carrier |  | , Unknown, FedEx, UPS, USPS |
 | `tracking_number` | Data | Tracking Number |  |  |
+| `shipstation_order_id` | Data | ShipStation Shipment ID |  |  |
+| `shipstation_status` | Data | ShipStation Status |  |  |
 | `shipping_flag_pushed_at` | Datetime | OrderShipped Flag Sent At |  |  |
 | `tracking_pushed_at` | Datetime | Tracking Sent At |  |  |
 | `gb_ship_writeback_pending` | Check | Ship Write-back Pending |  |  |
@@ -1215,6 +1219,8 @@ app: `ffl_integrations` · module: FFL Integrations · single · roles: System M
 | `base_url` | Data | API base URL |  |  |
 | `disable_email` | Check | No confirmation email from Lipsey's |  |  |
 | `dropship_overnight` | Check | Accessory drop-ship orders ship overnight |  |  |
+| `rate_dropship_firearm` | Currency | Drop-ship firearm order |  |  |
+| `rate_dropship_accessory` | Currency | Drop-ship accessory order |  |  |
 | `shipping_polled_through` | Date | Shipping polled through (dealer) |  |  |
 | `dropship_shipping_polled_through` | Date | Shipping polled through (drop-ship) |  |  |
 | `last_shipping_poll_at` | Datetime | Last shipping poll |  |  |

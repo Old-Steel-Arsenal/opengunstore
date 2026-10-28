@@ -24,6 +24,11 @@
   "disable_email",
   "column_order_options",
   "dropship_overnight",
+  "tab_freight",
+  "section_freight",
+  "rate_dropship_firearm",
+  "column_freight",
+  "rate_dropship_accessory",
   "tab_status",
   "section_status",
   "shipping_polled_through",
@@ -146,6 +151,34 @@
    "description": "On: accessory drop-ship orders ask Lipsey's for overnight shipping, at overnight rates."
   },
   {
+   "fieldname": "tab_freight",
+   "fieldtype": "Tab Break",
+   "label": "Freight"
+  },
+  {
+   "fieldname": "section_freight",
+   "fieldtype": "Section Break",
+   "label": "Freight estimates",
+   "description": "Drop-ship flat rates per order, used to estimate freight; Lipsey's invoiced freight always wins."
+  },
+  {
+   "fieldname": "rate_dropship_firearm",
+   "fieldtype": "Currency",
+   "label": "Drop-ship firearm order",
+   "default": "9.95",
+   "description": "Adult signature included."
+  },
+  {
+   "fieldname": "column_freight",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "rate_dropship_accessory",
+   "fieldtype": "Currency",
+   "label": "Drop-ship accessory order",
+   "default": "8"
+  },
+  {
    "fieldname": "tab_status",
    "fieldtype": "Tab Break",
    "label": "Status"
@@ -191,7 +224,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-15 15:00:00",
+ "modified": "2026-10-28 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "Lipseys Settings",

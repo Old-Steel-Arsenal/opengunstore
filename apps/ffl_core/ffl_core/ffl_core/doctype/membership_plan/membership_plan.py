@@ -7,14 +7,36 @@ from frappe.model.document import Document
 from frappe.utils import cint, escape_html, flt
 
 
+def _make_item(name: str) -> str:
+	"""A non-stock service item named *name* (a free code: "name", then "name 2", ...); saving the
+	plan then points it at the membership accounts and sets its price (membership.sync_plan_item).
+	Its tax follows the store's default, like any other service item."""
+	from ffl_core.setup.tax import SERVICE_GROUP
+
+	if not frappe.db.exists("Item Group", SERVICE_GROUP):
+		from ffl_core.setup.item_groups import ensure as ensure_item_groups
+		ensure_item_groups()
+	code, n = name.strip()[:130], 1
+	while frappe.db.exists("Item", code):
+		n += 1
+		code = f"{name.strip()[:126]} {n}"
+	# The Item's own name, not *code*: a store naming items by series gets a series name.
+	return frappe.get_doc({"doctype": "Item", "item_code": code, "item_name": code, "item_group": SERVICE_GROUP,
+		"stock_uom": "Nos", "is_stock_item": 0, "has_serial_no": 0, "is_sales_item": 1, "is_purchase_item": 0,
+		"include_item_in_manufacturing": 0, "description": code}).insert(ignore_permissions=True).name
+
+
 class MembershipPlan(Document):
 	def validate(self):
 		if flt(self.price) <= 0:
 			frappe.throw(_("Set the price per period."))
 		if flt(self.registration_fee) < 0:
 			frappe.throw(_("The registration fee cannot be negative."))
+		# A store does not make the billed items by hand: an empty one is made here.
+		if not self.item:
+			self.item = _make_item(self.plan_name)
 		if flt(self.registration_fee) > 0 and not self.registration_item:
-			frappe.throw(_("Pick the item the registration fee is billed as."))
+			self.registration_item = _make_item(_("{0} registration fee").format(self.plan_name))
 		if self.registration_item and self.registration_item == self.item:
 			frappe.throw(_("The registration fee needs its own item, not the plan's billed item."))
 		for code in filter(None, (self.item, self.registration_item)):

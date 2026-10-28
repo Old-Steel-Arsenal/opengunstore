@@ -242,7 +242,7 @@ The manifest's claim is not enough on its own while packages are unsigned. The l
 
 ### 13.1 The stable surface
 
-Extensions may depend on: the hooks in §5.1, the core named hooks, `ffl_core.extensions.*`, `ffl_core.roles.*`, `ffl_core.workspace_shortcuts.ensure_shortcut` / `remove_shortcut`, `ffl_core.setup.sidebar.mirror_gun_shop_sidebar`, `ffl_core.utils.single_flag`, the core endpoints documented in the POS API reference, `ffl_integrations.distributor.base.DistributorProvider`, and `ffl_integrations.payments.base` (`CardProcessor`, `CardResult`, `CardProcessorError`, for a card processor registered through `gunshop_card_processors`). Everything else is internal.
+Extensions may depend on: the hooks in §5.1, the core named hooks, `ffl_core.extensions.*`, `ffl_core.roles.*`, `ffl_core.workspace_shortcuts.ensure_shortcut` / `remove_shortcut`, `ffl_core.setup.sidebar.mirror_gun_shop_sidebar`, `ffl_core.utils.single_flag`, the core endpoints documented in the POS API reference, `ffl_integrations.distributor.base.DistributorProvider`, `ffl_integrations.distributor.freight.estimate_orders` (distributor freight estimates), and `ffl_integrations.payments.base` (`CardProcessor`, `CardResult`, `CardProcessorError`, for a card processor registered through `gunshop_card_processors`). Everything else is internal.
 
 ## 14. Quality gates
 

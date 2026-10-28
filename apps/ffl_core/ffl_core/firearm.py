@@ -928,6 +928,41 @@ def effective_serial_price(serial_no: str) -> float:
 	) or 0)
 
 
+_ITEM_PRICE_FIELDS = ["uniform_sell_price", "standard_rate", "sale_price", "sale_from", "sale_to"]
+_SERIAL_PRICE_FIELDS = ["sell_price", "sale_sell_price", "sale_from", "sale_to"]
+
+
+def counter_price(item, serial, on=None) -> float | None:
+	"""What the counter charges for one gun: its regular price (:func:`_serial_sell_price`) with
+	its sale running. *item* carries ``_ITEM_PRICE_FIELDS``, *serial* ``_SERIAL_PRICE_FIELDS``.
+	None when un-priced. The one rule behind the register's picker
+	(:func:`available_serials_with_prices`) and the price approval's list price."""
+	regular = _serial_sell_price(item.get("uniform_sell_price"), item.get("standard_rate"), serial.get("sell_price"))
+	return _apply_sale(regular, *_serial_sale_fields(item.get("uniform_sell_price"), item.get("sale_price"),
+		item.get("sale_from"), item.get("sale_to"), serial.get("sale_sell_price"), serial.get("sale_from"),
+		serial.get("sale_to")), on)
+
+
+def serial_price_now(serial_no: str, on=None) -> float:
+	""":func:`counter_price` of one Serial No; 0.0 when the gun is un-priced or unknown."""
+	sn = frappe.db.get_value("Serial No", serial_no, ["item_code", *_SERIAL_PRICE_FIELDS], as_dict=True)
+	if not sn or not sn.item_code:
+		return 0.0
+	item = frappe.db.get_value("Item", sn.item_code, _ITEM_PRICE_FIELDS, as_dict=True) or frappe._dict()
+	return float(counter_price(item, sn, on) or 0)
+
+
+def lowest_counter_price(item_code: str, on=None) -> float:
+	"""The cheapest priced gun of *item_code* in stock (Active serials), by :func:`counter_price`;
+	0.0 when none is priced — a firearm line that has not picked its gun yet."""
+	item = frappe.db.get_value("Item", item_code, _ITEM_PRICE_FIELDS, as_dict=True)
+	if not item:
+		return 0.0
+	prices = [p for p in (counter_price(item, sn, on) for sn in frappe.get_all("Serial No",
+		filters={"item_code": item_code, "status": "Active"}, fields=_SERIAL_PRICE_FIELDS)) if p]
+	return float(min(prices)) if prices else 0.0
+
+
 def _serial_dealer_price(uniform_sell_price, dealer_price, dealer_sell_price) -> float | None:
 	"""Resolve a Serial No's dealer price: uniform-priced items use the Item's
 	dealer_price; per-serial items use Serial No.dealer_sell_price. 0/NULL → None
@@ -1354,16 +1389,12 @@ def available_serials_with_prices(item_codes: list[str] | str,
 	for code, serials in by_code.items():
 		meta = items_meta.get(code) or {}
 		for s in serials:
-			regular = _serial_sell_price(
-				meta.get("uniform_sell_price"), meta.get("standard_rate"), s["sell_price"])
-			# Active-sale overlay (same two-level rule as the regular price):
-			# this is THE spot that makes a sale real at the counter — every
-			# POS surface prices from this normalised sell_price.
-			serial_sale = s.pop("_sale")
-			s["sell_price"] = _apply_sale(regular, *_serial_sale_fields(
-				meta.get("uniform_sell_price"),
-				meta.get("sale_price"), meta.get("sale_from"), meta.get("sale_to"),
-				*serial_sale))
+			# Regular price + active-sale overlay (counter_price): this is THE spot
+			# that makes a sale real at the counter — every POS surface prices
+			# from this normalised sell_price.
+			sale_sell_price, sale_from, sale_to = s.pop("_sale")
+			s["sell_price"] = counter_price(meta, {"sell_price": s["sell_price"],
+				"sale_sell_price": sale_sell_price, "sale_from": sale_from, "sale_to": sale_to})
 	# Sort each code's serials by sell_price asc; None goes last (un-priced).
 	for code in by_code:
 		by_code[code].sort(key=lambda s: (s["sell_price"] is None, s["sell_price"] or 0))

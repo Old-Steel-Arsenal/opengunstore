@@ -19,6 +19,12 @@ worker):
                        content hash) is not even parsed. A file far smaller than
                        the last one loaded is refused unless the run is forced
                        (from bench: never Sync now), which loads it with a warning
+  case_price           the full-case price (per unit) and case size of every SKU,
+                       from Direct Connect get-items on the dealer account (no feed
+                       file carries them), when its last success is older than
+                       CASE_PRICE_STALE (24 h). Skipped — no run recorded — while the
+                       API is off or has no dealer login, and inside RSR's 3–5am ET
+                       maintenance window; it writes only once every page arrived
 
 Credentials: RSR Settings › Catalog feed (ftp_host, ftp_port, ftp_username,
 ftp_password, key_dealer, ftps_skip_verify). The server's TLS certificate is
@@ -56,6 +62,11 @@ SKIP_VERIFY_LABEL = "Skip TLS certificate check"  # RSR Settings.ftps_skip_verif
 
 CATALOG_STALE = timedelta(hours=2)
 RESTRICTIONS_STALE = timedelta(hours=2)
+CASE_PRICE_STALE = timedelta(hours=24)
+# lazy: get-items' page cap is not documented; 1000 rows a call is ~70 calls for the
+# whole book. Advance by what each page returned, so a lower server cap still pages.
+CASE_PAGE_SIZE = 1000
+CASE_MAX_PAGES = 1000  # a server that keeps answering short pages cannot loop forever
 
 FILES = {
 	"catalog": "rsrinventory-new.txt",
@@ -307,11 +318,16 @@ class FtpsTransport:
 
 class RsrDriver(sync.Driver):
 	label = "RSR"
-	feed_stale = {"quantity": 5400, "catalog": 21600, "deleted": 21600, "restrictions": 21600}
+	feed_stale = {"quantity": 5400, "catalog": 21600, "deleted": 21600, "restrictions": 21600,
+		"case_price": 172800}
 
-	def __init__(self, code: str = CODE, transport=None):
+	def __init__(self, code: str = CODE, transport=None, items_client=None):
 		self.code = code
 		self.transport = transport  # None: FtpsTransport over RSR Settings (tests pass a fake)
+		# The Direct Connect client the case_price lane pages get-items with. None: the
+		# dealer account in RSR Settings — unless a feed transport was passed in (a
+		# test, a bench probe), which never reaches the live API by default.
+		self.items_client = items_client
 		self._lanes = (
 			sync.Lane("catalog", gate=lambda run: run.due("catalog", CATALOG_STALE),
 				run=self._catalog, heavy=True, timeout=sync.HEAVY_TIMEOUT_SECONDS),
@@ -319,6 +335,11 @@ class RsrDriver(sync.Driver):
 			sync.Lane("quantity", gate=lambda run: True, run=self._quantity),
 			sync.Lane("restrictions", gate=lambda run: run.due("restrictions", RESTRICTIONS_STALE),
 				run=self._restrictions, heavy=True, timeout=sync.HEAVY_TIMEOUT_SECONDS),
+			# Not heavy: network-bound and one small UPDATE, and a lane that is never
+			# attempted (the API not set up) must not pin RSR first in the heavy slot's
+			# fairness order. The longer timeout is for paging the whole book.
+			sync.Lane("case_price", gate=self._case_price_due, run=self._case_price,
+				timeout=sync.HEAVY_TIMEOUT_SECONDS),
 		)
 
 	def lanes(self):
@@ -394,6 +415,92 @@ class RsrDriver(sync.Driver):
 		return self._fetch("restrictions", lambda p: store.load_restrictions(
 			rsr_feed.iter_restrictions(p), rsr_feed.file_content_hash(p), distributor=self.code,
 			mode="snapshot", force=run.tick.force))
+
+	# ------------------------------------------------------------ case prices
+
+	def _api_client(self):
+		"""The get-items client, or None when the lane has no API to read: Direct
+		Connect off, or no dealer login saved."""
+		if self.items_client is not None or self.transport is not None:
+			return self.items_client
+		from ffl_integrations.rsr.api_client import RSRClient, RSRConfig
+
+		config = RSRConfig.from_settings()
+		if not (config.api_enabled and config.dealer_account and config.dealer_password):
+			return None
+		return RSRClient(config)
+
+	def _case_price_due(self, run) -> bool:
+		"""Not configured or inside the maintenance window: skipped, not failed (no run
+		recorded; the next tick asks again). Otherwise the usual 24-hour gate."""
+		client = self._api_client()
+		if client is None or client._in_maintenance_window():
+			return False
+		run.state["items_client"] = client
+		return run.due("case_price", CASE_PRICE_STALE)
+
+	def _case_price(self, run) -> dict:
+		client = run.state.get("items_client") or self._api_client()
+		if client is None:  # the API was switched off after the gate
+			raise FeedUnavailable("RSR Direct Connect is off or has no dealer login (RSR Settings)")
+		# Every page first, then one write: a run cut short (the maintenance window
+		# starting mid-way, a network error) writes nothing.
+		rows = fetch_case_prices(client)
+		return store.apply_case_prices(rows, distributor=self.code)
+
+
+def _case_money(value) -> float:
+	"""A get-items money string ("7.83", maybe "$7.83") -> float; blank or
+	unreadable reads as 0 = no case price (the line then keeps its unit cost)."""
+	try:
+		return float(str(value if value is not None else "").replace("$", "").replace(",", "").strip() or 0)
+	except ValueError:
+		return 0.0
+
+
+def _case_units(value) -> int:
+	try:
+		return int(float(str(value if value is not None else "").strip() or 0))
+	except ValueError:
+		return 0
+
+
+def case_price_row(item: dict) -> tuple:
+	"""One get-items item -> ``(sku, case_cost, units_per_case)``. DealerCasePrice is
+	the per-unit price of a full case (live 2026-10-28: a box of 20 at DealerPrice 7.99
+	is DealerCasePrice 7.83 with UnitsPerCase 50), not the case total; UnitsPerCase
+	"0" or a missing price means the SKU is not sold by the case."""
+	return (str(item.get("SKU") or "").strip(), _case_money(item.get("DealerCasePrice")),
+		_case_units(item.get("UnitsPerCase")))
+
+
+def fetch_case_prices(client) -> list:
+	"""Page get-items (dealer account) through the whole book -> case_price_row per
+	item. Raises FeedUnavailable on an API error and FeedFormatError when the pages
+	do not add up to TotalFound (an empty book included), so a partial read never
+	reaches the store."""
+	from ffl_integrations.rsr.api_client import RSRError
+
+	rows, offset, total = [], 0, None
+	for _page in range(CASE_MAX_PAGES):
+		try:
+			data = client.get_items({"Limit": CASE_PAGE_SIZE, "Offset": offset}, account="dealer")
+		except RSRError as exc:
+			raise FeedUnavailable(f"RSR get-items failed at offset {offset}: {exc}") from None
+		data = data if isinstance(data, dict) else {}
+		try:
+			total = int(data.get("TotalFound"))
+		except (TypeError, ValueError):
+			raise sync.FeedFormatError("RSR get-items answered without a TotalFound") from None
+		items = data.get("Items") if isinstance(data.get("Items"), list) else []
+		rows.extend(case_price_row(i) for i in items if isinstance(i, dict))
+		offset += len(items)
+		if offset >= total or not items:
+			break
+	if not total or offset < total:
+		raise sync.FeedFormatError(f"RSR get-items returned {offset} of {total or 0} items; "
+			"case prices left as they were")
+	return rows
 
 
 DRIVER = sync.register(RsrDriver())
