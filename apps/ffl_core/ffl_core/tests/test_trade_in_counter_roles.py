@@ -286,7 +286,7 @@ class CounterRoleGrantRows(FrappeTestCase):
 		from ffl_core.setup import pos_compat
 		from ffl_core.tests.test_pos_profile_cashier_perm import _isolate
 
-		_isolate(self, self.DOCTYPES, (pos_compat._ROLE_GRANTS_KEY,))
+		_isolate(self, self.DOCTYPES, (pos_compat._ROLE_GRANTS_KEY, pos_compat._REGISTER_GRANTS_KEY))
 		self.stock = {d: self._rows("DocPerm", d) for d in self.DOCTYPES}
 		pos_compat.ensure_role_grants()
 
