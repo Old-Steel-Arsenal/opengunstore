@@ -43,6 +43,7 @@ from frappe import _
 from frappe.utils import cint, escape_html, flt, fmt_money, now_datetime, nowdate
 
 from ffl_core.pos_draft import open_shift, profile_defaults
+from ffl_core.price_approval import mark_system_priced
 from ffl_core.roles import COUNTER_ROLES
 from ffl_core.setup import gunsmith as setup
 from ffl_core.setup.customer_deposits import deposit_account
@@ -611,6 +612,9 @@ def _pickup(doc) -> dict:
 		"description": (r.description or (labor_desc if r.item_code == labor else "") or None), LINK_FIELD: doc.name}
 		for r in doc.lines]
 	inv = _new_invoice(doc, items)
+	# The job's charges are the bill the work order set: no manager price approval for them here
+	# (price_approval.mark_system_priced); a lower price at the register asks as any other.
+	mark_system_priced(inv)
 	inv.calculate_taxes_and_totals()
 	release = min(held, flt(inv.rounded_total) or flt(inv.grand_total))
 	if release > _TOL:

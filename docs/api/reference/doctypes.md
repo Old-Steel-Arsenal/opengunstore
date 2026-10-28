@@ -338,6 +338,7 @@ app: `ffl_core` · module: FFL Core · single · roles: System Manager
 | `shipping_price_includes_tax` | Check | Shipping Price Includes Sales Tax |  |  |
 | `peace_officer_exempt_tax_account` | Link | Peace-Officer Exempt Tax Account |  | Account |
 | `counter_lock_minutes` | Int | Lock Idle Screen After (minutes) |  |  |
+| `require_price_approval` | Check | Require Manager Approval for Price Reductions |  |  |
 | `gunsmith_labor_item` | Link | Gunsmith Labor Item |  | Item |
 | `gunsmith_agreement_template` | Link | Intake Authorization |  | Agreement Template |
 | `paper_4473_mode` | Check | Paper 4473 Mode |  |  |

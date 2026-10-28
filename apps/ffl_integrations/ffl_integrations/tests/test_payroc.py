@@ -1633,13 +1633,14 @@ class RefundUnlock(FrappeTestCase):
         back — unlocking it re-arms a full-amount retry the per-original-card
         caps cannot bound. It must never unlock."""
         ret = self._locked_return(lock="PARTIAL:RF-1,RF-2")
+        before = self._comments(ret)
         with self.assertRaises(frappe.ValidationError) as ctx:
             unlock_refund_lock(ret, reason="verified RF-1/RF-2 in portal")
         self.assertIn("cannot be released", str(ctx.exception))
         self.assertEqual(cp.call_count, 0)
         self.assertEqual(frappe.db.get_value(
             "POS Invoice", ret, "card_refund_reference"), "PARTIAL:RF-1,RF-2")
-        self.assertFalse(self._comments(ret))   # refused = no audit comment
+        self.assertEqual(self._comments(ret), before)   # refused = no audit comment
 
     def test_unlock_refuses_real_refund_reference(self):
         ret = self._locked_return(lock="RF-REAL-123")

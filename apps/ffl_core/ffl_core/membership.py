@@ -52,6 +52,7 @@ from frappe import _
 from frappe.utils import (add_days, add_months, add_to_date, cint, escape_html, flt, fmt_money, getdate,
 	now_datetime, nowdate, strip_html)
 
+from ffl_core.price_approval import mark_system_priced
 from ffl_core.roles import COUNTER_ROLES, CUSTOMER_MANAGER_ROLES
 from ffl_core.utils import commit, single_flag
 
@@ -322,6 +323,8 @@ def _make_invoice(doc, plan, start, *, end=None, posting=None, renewal=False):
 			"income_account": income})
 	si.due_date = posting
 	si.flags.ignore_permissions = True
+	# The plan's own price: never a lowered one for the manager price approval to ask about.
+	mark_system_priced(si)
 	si.insert()
 	suppressed = frappe.flags.get("ffl_suppress_sale_receipt")
 	if renewal:

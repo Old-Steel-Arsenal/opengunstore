@@ -49,7 +49,7 @@ picker to render a price-first dropdown.
 
 **Returns:** {item_code: [{"serial", "sell_price", "purchase_rate"}, ...]}, sorted by sell_price ascending.
 
-<sub>`apps/ffl_core/ffl_core/firearm.py:1282`</sub>
+<sub>`apps/ffl_core/ffl_core/firearm.py:1297`</sub>
 
 ## `firearm_items_in`
 
@@ -87,7 +87,7 @@ receive_goods.get_receive_sources for reading FFL Settings.
 
 **Returns:** {"fee_item": <service Item code>, "fee_amount": <default fee>}.
 
-<sub>`apps/ffl_core/ffl_core/firearm.py:1425`</sub>
+<sub>`apps/ffl_core/ffl_core/firearm.py:1440`</sub>
 
 ## `in_stock_firearm_serials`
 
@@ -114,7 +114,7 @@ warehouse receives, which is the opposite of the point.
 
 **Returns:** [{serial, item_code, item_name, sell_price}], ordered item then serial.
 
-<sub>`apps/ffl_core/ffl_core/firearm.py:1484`</sub>
+<sub>`apps/ffl_core/ffl_core/firearm.py:1499`</sub>
 
 ## `pos_pricing_summary`
 
@@ -133,7 +133,7 @@ the checkout gate.
 
 **Returns:** {code: {"is_firearm": bool, "uniform": 0|1, "n": <active serials>, "min": float|None, "max": float|None}}. min/max range over the normalised per-serial prices (uniform mode → standard_rate; 0 → None un-priced, excluded from min/max). Non-firearm / unknown codes come back with n=0 so the frontend can cache the negative.
 
-<sub>`apps/ffl_core/ffl_core/firearm.py:1374`</sub>
+<sub>`apps/ffl_core/ffl_core/firearm.py:1389`</sub>
 
 ## `toggle_serial_service_need`
 

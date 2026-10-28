@@ -928,6 +928,21 @@ def effective_serial_price(serial_no: str) -> float:
 	) or 0)
 
 
+def serial_price_now(serial_no: str, on=None) -> float:
+	"""What the counter charges for this gun today: :func:`effective_serial_price` with its sale
+	running — the price the register's serial picker and Create Order put on the line
+	(:func:`available_serials_with_prices`). 0.0 when the gun is un-priced or unknown."""
+	sn = frappe.db.get_value("Serial No", serial_no,
+		["item_code", "sell_price", "sale_sell_price", "sale_from", "sale_to"], as_dict=True)
+	if not sn or not sn.item_code:
+		return 0.0
+	item = frappe.db.get_value("Item", sn.item_code,
+		["uniform_sell_price", "standard_rate", "sale_price", "sale_from", "sale_to"], as_dict=True) or frappe._dict()
+	regular = _serial_sell_price(item.get("uniform_sell_price"), item.get("standard_rate"), sn.sell_price)
+	return float(_apply_sale(regular, *_serial_sale_fields(item.get("uniform_sell_price"), item.get("sale_price"),
+		item.get("sale_from"), item.get("sale_to"), sn.sale_sell_price, sn.sale_from, sn.sale_to), on) or 0)
+
+
 def _serial_dealer_price(uniform_sell_price, dealer_price, dealer_sell_price) -> float | None:
 	"""Resolve a Serial No's dealer price: uniform-priced items use the Item's
 	dealer_price; per-serial items use Serial No.dealer_sell_price. 0/NULL → None
