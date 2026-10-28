@@ -432,7 +432,6 @@ class Check(_On):
 		self.assertFalse(pa.check(doc=_so(rate=PRICE).as_dict())["needs_approval"])
 		frappe.set_user("Administrator")   # a clerk has no Sales Invoice rights
 		with patch("ffl_core.price_approval.is_approver", return_value=False):
-			self.assertFalse(pa.check(doc=_si(rate=80, is_return=1).as_dict())["needs_approval"])
 			self.assertTrue(pa.check(doc=_si(rate=80).as_dict())["needs_approval"])
 
 	def test_a_saved_draft_is_judged_against_what_it_saved(self):
@@ -534,9 +533,9 @@ class LeftAlone(_On):
 		with self.assertRaises(pa.PriceApprovalRequired):
 			pa.enforce_price_approval(_si(rate=10))
 
-	def test_returns_and_pos_consolidation(self):
-		self._gate(_si(rate=10, is_return=1))
+	def test_pos_consolidation_sales_and_returns(self):
 		self._gate(_si(rate=10, is_consolidated=1))
+		self._gate(_si(rate=10, is_consolidated=1, is_return=1, grand_total=-10))
 
 	@staticmethod
 	def _stored(doc, **fields):
@@ -623,6 +622,73 @@ class LeftAlone(_On):
 			with patch.dict(frappe.flags, {flag: True}):
 				self._gate(_si(rate=10))
 		self._gate(pa.mark_system_priced(_si(rate=10)))
+
+
+class Returns(_On):
+	"""Owner decision: a return a person sends asks a manager too (money or credit going back)."""
+
+	def setUp(self):
+		super().setUp()
+		_no_own_approval(self)   # signed in as Administrator for Sales Invoice rights, but no manager
+
+	def _return(self):
+		from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_sales_return
+
+		with patch("ffl_core.price_approval.is_approver", return_value=True):
+			si = _si(rate=PRICE)
+			si.items[0].qty = 2
+			si.insert()
+			si.submit()
+		ret = make_sales_return(si.name)
+		ret.flags.ignore_permissions = True
+		ret.items[0].qty = -1   # one of the two comes back
+		ret.run_method("calculate_taxes_and_totals")
+		return ret
+
+	def test_a_clerks_return_needs_a_manager_then_saves_and_submits(self):
+		ret = self._return()
+		with self.assertRaisesRegex(pa.PriceApprovalRequired, "approve this return"):
+			self._return().insert()
+		res = pa.check(doc=ret.as_dict())
+		self.assertTrue(res["needs_approval"])
+		self.assertEqual((res["refund"]["total"], res["refund"]["lines"][0]["item_code"]), (PRICE, ITEM))
+		out = _approve(ret)
+		ret.set(pa.TOKEN_FIELD, out["token"])
+		ret.insert()
+		ret.submit()   # saved as approved: the submit asks nothing
+		self.assertEqual(frappe.db.get_value("Sales Invoice", ret.name, [pa.BY, pa.REASON]), (MANAGER, REASON))
+		[comment] = _comments(ret)
+		self.assertIn("Return approved", comment)
+		self.assertIn(ITEM, comment)
+
+	def test_the_approval_covers_that_return_up_to_its_refund(self):
+		ret = self._return()
+		token = _approve(ret)["token"]
+		ret.items[0].qty = -2   # more going back than the manager saw
+		ret.run_method("calculate_taxes_and_totals")
+		ret.set(pa.TOKEN_FIELD, token)
+		with self.assertRaisesRegex(pa.PriceApprovalRequired, "More back than the manager approved"):
+			ret.insert()
+
+	def test_a_managers_own_return_is_recorded(self):
+		with patch("ffl_core.price_approval.is_approver", return_value=True):
+			ret = self._return()
+			ret.insert()
+		self.assertEqual(frappe.db.get_value("Sales Invoice", ret.name, [pa.BY, pa.REASON]),
+			("Administrator", "Manager's own return"))
+		self.assertEqual(len(_comments(ret)), 1)
+
+	def test_consolidation_web_refunds_and_our_own_code_are_not_asked(self):
+		ret = self._return()
+		_request(self, "ffl_woo_sync.woocommerce.refunds.apply_refund")   # a sync / our code builds it
+		ret.insert()
+		self.assertFalse(ret.get(pa.BY))
+		_request(self)   # the register saving a web order's return whose claim was stored
+		stored = self._return()
+		LeftAlone._stored(stored, woo_online_order="PA-WOO")
+		stored.woo_online_order = "PA-WOO"
+		pa.enforce_price_approval(stored)
+		self.assertFalse(stored.get(pa.BY))
 
 
 class WhoSaves(_On):

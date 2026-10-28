@@ -33,8 +33,8 @@ The form has three tabs: Store, Compliance and FFL Verification.
 **Require Manager Approval for Price Reductions.** On for a new store; a store
 that already ran before this setting came keeps it off until a manager turns it
 on. While it is on, a price lowered below the list price at the register, on
-Create Order or on a Sales Invoice, Sales Order or POS Invoice form, or an
-invoice discount, saves only once a Sales Manager or System Manager approves it
+Create Order or on a Sales Invoice, Sales Order or POS Invoice form, an
+invoice discount, or a return, saves only once a Sales Manager or System Manager approves it
 with their counter PIN and a reason. A manager signed in approves their own.
 Discounts the system gives (pricing rules, sale prices) never ask. See
 [Point of Sale](../selling/pos.md#lowering-a-price).

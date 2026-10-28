@@ -46,3 +46,11 @@ test('checkFailedMessage: says the check failed, with the server reason when the
 	assert.strictEqual(pa.checkFailedMessage(''),
 		"Couldn't check the prices for manager approval. Ask a manager to sign in, or try again.");
 });
+
+test('summaryRows: a return lists what goes back, then the refund', () => {
+	const rows = pa.summaryRows({ lines: [], discount: null, refund: { total: 107, lines: [
+		{ item_code: 'H', item_name: 'Holster', qty: 2, amount: 80 },
+		{ item_code: 'G', item_name: 'Model 10', serial: 'SN1', qty: 1, amount: 20 }] } });
+	assert.deepStrictEqual(rows.map((r) => [r.what, r.to, r.kind]), [
+		['Holster ×2', 80, 'returned'], ['Model 10 (SN1)', 20, 'returned'], ['Refund', 107, 'refund']]);
+});

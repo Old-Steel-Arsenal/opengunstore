@@ -3,7 +3,7 @@
 //
 // • POS Invoice / Sales Invoice / Sales Order (the register's Checkout and Complete Order, and
 //   the desk forms): on validate the document goes to price_approval.check; when a price below
-//   list (or an invoice discount) needs approval, one dialog: the manager picks themselves,
+//   list (or an invoice discount), or a return, needs approval, one dialog: the manager picks themselves,
 //   types their counter PIN (or password: "Use password instead", or when they have no PIN)
 //   and a reason → price_approval.approve → a single-use token rides the save in
 //   ffl_price_approval_token. A wrong PIN shows under the field; the dialog stays.
@@ -46,6 +46,14 @@
 		});
 		var d = res && res.discount;
 		if (d) rows.push({ what: 'Invoice discount', from: null, to: d.percentage ? d.percentage + '%' : d.amount, kind: 'discount' });
+		var r = res && res.refund;
+		if (r) {
+			(r.lines || []).forEach(function (l) {
+				rows.push({ what: (l.item_name || l.item_code) + (l.serial ? ' (' + l.serial + ')' : '')
+					+ (l.qty && l.qty !== 1 ? ' ×' + l.qty : ''), from: null, to: l.amount, kind: 'returned' });
+			});
+			rows.push({ what: 'Refund', from: null, to: r.total, kind: 'refund' });
+		}
 		return rows;
 	}
 
@@ -157,13 +165,17 @@
 			}
 			var table = api.summaryRows(res).map(function (r) {
 				var money = function (v) { return typeof v === 'number' ? format_currency(v) : esc(v); };
-				return '<tr><td>' + esc(r.kind === 'discount' ? __(r.what) : r.what) + '</td><td class="text-right text-muted">'
-					+ (r.from == null ? '' : money(r.from)) + '</td><td class="text-right"><b>' + money(r.to) + '</b></td></tr>';
+				var bold = r.kind === 'returned' ? '' : '<b>';
+				return '<tr><td>' + esc(r.kind === 'discount' || r.kind === 'refund' ? __(r.what) : r.what) + '</td><td class="text-right text-muted">'
+					+ (r.from == null ? '' : money(r.from)) + '</td><td class="text-right">' + bold + money(r.to)
+					+ (bold ? '</b>' : '') + '</td></tr>';
 			}).join('');
+			var isReturn = !!res.refund;
 			d.fields_dict.lines.$wrapper.html('<p class="text-muted" style="margin-bottom:6px">'
-				+ esc(__('These prices are lower than the list price. A manager approves them with their PIN.')) + '</p>'
-				+ '<table class="table table-sm"><thead><tr><th></th><th class="text-right">' + esc(__('List')) + '</th><th class="text-right">'
-				+ esc(__('Now')) + '</th></tr></thead><tbody>' + table + '</tbody></table>'
+				+ esc(isReturn ? __('This return gives money back. A manager approves it with their PIN.')
+					: __('These prices are lower than the list price. A manager approves them with their PIN.')) + '</p>'
+				+ '<table class="table table-sm"><thead><tr><th></th><th class="text-right">' + esc(isReturn ? '' : __('List'))
+				+ '</th><th class="text-right">' + esc(isReturn ? __('Back') : __('Now')) + '</th></tr></thead><tbody>' + table + '</tbody></table>'
 				+ (users.length ? '' : '<div class="text-danger small">' + esc(__('No manager is set up to approve prices.')) + '</div>'));
 			d.fields_dict.secret.$input && d.fields_dict.secret.$input.attr({ autocomplete: 'off', inputmode: 'numeric' });
 			d.onhide = function () { if (!done) resolve(null); };
@@ -184,7 +196,7 @@
 	// Form validate (POS checkout too): ask before a save that lowers a price. A check that fails
 	// stops the save with the reason.
 	function guardForm(frm) {
-		if (!on() || frm.doc.docstatus !== 0 || cint(frm.doc.is_return)) return;
+		if (!on() || frm.doc.docstatus !== 0) return;
 		return check({ doc: frm.doc }).then(function (res) {
 			if (!api.shouldAsk(res)) return;
 			return ask(res, { doc: frm.doc }).then(function (token) {

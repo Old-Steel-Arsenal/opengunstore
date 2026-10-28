@@ -14520,12 +14520,12 @@
         "tags": [
           "ffl_core"
         ],
-        "summary": "A manager approves the lowered prices of a sale before it is saved.",
-        "description": "The approver picks themselves and types their own counter PIN, or their password when they\nhave no PIN (or it is off). What is approved is worked out here from the same document, never\ntaken from the screen. The token is good for 15 minutes, once, for the user who asked.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/price_approval.py:660`",
+        "summary": "A manager approves the lowered prices of a sale, or a return, before it is saved.",
+        "description": "The approver picks themselves and types their own counter PIN, or their password when they\nhave no PIN (or it is off). What is approved is worked out here from the same document, never\ntaken from the screen. The token is good for 15 minutes, once, for the user who asked.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/price_approval.py:701`",
         "operationId": "ffl_core.price_approval.approve",
         "responses": {
           "200": {
-            "description": "{\"token\", \"approver\", \"approver_name\", \"expires_in\": seconds, \"lines\", \"discount\"}.",
+            "description": "{\"token\", \"approver\", \"approver_name\", \"expires_in\": seconds, \"lines\", \"discount\", \"refund\"}.",
             "content": {
               "application/json": {
                 "schema": {
@@ -14601,11 +14601,11 @@
           "ffl_core"
         ],
         "summary": "What a save would need a manager for — the screens ask before saving.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/price_approval.py:606`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/price_approval.py:645`",
         "operationId": "ffl_core.price_approval.check",
         "responses": {
           "200": {
-            "description": "{\"needs_approval\": bool, \"approver\": whether the caller approves their own, \"lines\": [{\"idx\", \"item_code\", \"item_name\", \"serial\", \"list_rate\", \"rate\"}], \"discount\": {\"percentage\", \"amount\"} or None, \"approvers\": [{\"user\", \"full_name\", \"image\", \"has_pin\", \"pin_off\"}] when it needs one}.",
+            "description": "{\"needs_approval\": bool, \"approver\": whether the caller approves their own, \"lines\": [{\"idx\", \"item_code\", \"item_name\", \"serial\", \"list_rate\", \"rate\"}], \"discount\": {\"percentage\", \"amount\"} or None, \"refund\": a return's {\"total\", \"lines\": [{\"item_code\", \"item_name\", \"serial\", \"qty\", \"amount\"}]} or None, \"approvers\": [{\"user\", \"full_name\", \"image\", \"has_pin\", \"pin_off\"}] when it needs one}.",
             "content": {
               "application/json": {
                 "schema": {

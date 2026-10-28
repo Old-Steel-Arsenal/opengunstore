@@ -26,8 +26,10 @@ when they have none) with a reason — ``staff_switch``'s PIN and its lockouts.
   types). Every other save — a builder's ticket, a sync, a hook saving another document — is
   our code's own pricing and is not asked, with or without :func:`mark_system_priced`.
   Approved by: an approval token, the approval our endpoint took (``doc.flags``), or the
-  signed-in manager. Never asked either (see :func:`_exempt`): returns and POS
-  consolidation; a channel mirror or an invoice an extension books
+  signed-in manager. **Returns** (owner decision 2026-10-28): a return a person sends that gives
+  more back than it did as saved asks the same way — the dialog lists the returned lines and the
+  refund; one approval covers that return up to its refund total. Never asked either (see
+  :func:`_exempt`): POS consolidation; a channel mirror or an invoice an extension books
   (``channel_invoice.is_fulfilled_elsewhere``) whose claim was already stored — a save
   cannot buy its way out by setting the field; counter pickup tickets (pinned to $0); lines a
   distributor fills that our code marked, or that were saved so before; background jobs,
@@ -126,7 +128,7 @@ def _exempt(doc, before=None) -> bool:
 	from ffl_core.api.counter_pickup import _is_ticket
 
 	flags = getattr(doc, "flags", None) or {}
-	return bool(cint(doc.get("is_return")) or cint(doc.get("is_consolidated")) or flags.get(SYSTEM_PRICED)
+	return bool(cint(doc.get("is_consolidated")) or flags.get(SYSTEM_PRICED)
 		or frappe.flags.in_import or frappe.flags.in_patch or frappe.flags.in_migrate or frappe.flags.in_install
 		or getattr(frappe.local, "job", None)
 		or _stored_claim(doc, before)
@@ -324,6 +326,9 @@ def reductions(doc, before=None, *, against_list: bool = False) -> dict:
 	from ffl_core.compliance.locked_lines import rate_precision
 	from ffl_core.setup.locked_lines import locked_items
 
+	if cint(doc.get("is_return")):
+		# Money or credit going back: the whole return asks (owner decision), not its prices.
+		return {"lines": [], "discount": None, "refund": _returned(doc, None if against_list else before)}
 	p = rate_precision(doc.get("doctype") or "Sales Invoice")
 	locked = set(locked_items())
 	saved = {r.name: r for r in ((before.get("items") or []) if before else []) if r.get("name")}
@@ -360,7 +365,27 @@ def reductions(doc, before=None, *, against_list: bool = False) -> dict:
 			lines.append({"row": row.get("name"), "idx": row.get("idx"), "item_code": row.item_code,
 				"item_name": row.get("item_name") or row.item_code, "serial": serials[0] if len(serials) == 1 else None,
 				"list_rate": listed, "rate": rate})
-	return {"lines": lines, "discount": _discount_reduction(doc, None if against_list else before)}
+	return {"lines": lines, "discount": _discount_reduction(doc, None if against_list else before),
+		"refund": None}
+
+
+def _refund_total(doc) -> float:
+	return abs(flt(doc.get("grand_total"), 2))
+
+
+def _returned(doc, before) -> dict | None:
+	"""A return that gives more back than it did as saved: {"total", "lines": [{"item_code",
+	"item_name", "serial", "qty", "amount"}]}, or None."""
+	total = _refund_total(doc)
+	if total - (_refund_total(before) if before else 0.0) <= _EPS:
+		return None
+	return {"total": total, "lines": [{"item_code": r.item_code, "item_name": r.get("item_name") or r.item_code,
+		"serial": (split_serials(r.get("serial_no")) or [None])[0], "qty": abs(flt(r.get("qty"))),
+		"amount": abs(flt(r.get("amount"), 2))} for r in doc.get("items") or [] if r.get("item_code")]}
+
+
+def _any(found: dict) -> bool:
+	return bool(found["lines"] or found["discount"] or found.get("refund"))
 
 
 def _discount_reduction(doc, before) -> dict | None:
@@ -395,13 +420,16 @@ def _approved_floor(floors: dict, line: dict):
 def _uncovered(found: dict, approval) -> dict:
 	"""What in *found* the approval does not reach (a manager signed in reaches everything)."""
 	if approval.get("all"):
-		return {"lines": [], "discount": None}
+		return {"lines": [], "discount": None, "refund": None}
 	floors = approval.get("lines") or {}
 	lines = [l for l in found["lines"] if (f := _approved_floor(floors, l)) is None or flt(f) - l["rate"] > _EPS]
 	d, ok = found["discount"], approval.get("discount")
 	if d and ok and _within(d, ok.get("percentage"), ok.get("amount")):
 		d = None
-	return {"lines": lines, "discount": d}
+	r = found.get("refund")
+	if r and approval.get("refund") is not None and r["total"] - flt(approval["refund"]) <= _EPS:
+		r = None
+	return {"lines": lines, "discount": d, "refund": r}
 
 
 # ------------------------------------------------------------------ doc events
@@ -419,7 +447,7 @@ def guard_approval_fields(doc, before=None) -> None:
 			for so in orders) if row and row.get(BY)), None)
 	if source is not None and source.get(BY):
 		below = reductions(doc, against_list=True)
-		if not (below["lines"] or below["discount"]):
+		if not _any(below):
 			source = None
 	for field in RECORD_FIELDS:
 		doc.set(field, source.get(field) if source else None)
@@ -434,15 +462,17 @@ def enforce_price_approval(doc, method: str | None = None) -> None:
 	if not enabled() or not _client_save(doc) or _exempt(doc, before):
 		return
 	found = reductions(doc, before)
-	if not (found["lines"] or found["discount"]):
+	if not _any(found):
 		return
-	approval = (take_token(token, doc) if token else None) or doc.flags.get(APPROVAL) or own_approval()
+	approval = (take_token(token, doc) if token else None) or doc.flags.get(APPROVAL) or own_approval(doc)
 	if not approval:
-		frappe.throw(_describe(doc, found, _("Ask a manager to approve this price: {0}.")),
+		frappe.throw(_describe(doc, found, _("Ask a manager to approve this return: {0}.") if found["refund"]
+			else _("Ask a manager to approve this price: {0}.")),
 			PriceApprovalRequired, title=_("Manager approval needed"))
 	left = _uncovered(found, approval)
-	if left["lines"] or left["discount"]:
-		frappe.throw(_describe(doc, left, _("Lower than the manager approved — ask again: {0}.")),
+	if _any(left):
+		frappe.throw(_describe(doc, left, _("More back than the manager approved — ask again: {0}.") if left["refund"]
+			else _("Lower than the manager approved — ask again: {0}.")),
 			PriceApprovalRequired, title=_("Manager approval needed"))
 	doc.flags[APPROVAL] = approval
 	doc.set(BY, approval["approver"])
@@ -459,11 +489,12 @@ def post_approval_comment(doc, method: str | None = None) -> None:
 		doc.add_comment("Comment", text)
 
 
-def own_approval():
-	"""A manager signed in approves their own price."""
+def own_approval(doc=None):
+	"""A manager signed in approves their own price, or return."""
 	if not is_approver():
 		return None
-	return frappe._dict(approver=frappe.session.user, reason=_("Manager's own price"), all=True)
+	reason = _("Manager's own return") if doc is not None and cint(doc.get("is_return")) else _("Manager's own price")
+	return frappe._dict(approver=frappe.session.user, reason=reason, all=True)
 
 
 def attach(doc, approval=None, prior: dict | None = None):
@@ -508,12 +539,18 @@ def _describe(doc, found, template: str) -> str:
 	parts = [_line_text(doc, l) for l in found["lines"]]
 	if found["discount"]:
 		parts.append(_discount_text(doc, found["discount"]))
+	if found.get("refund"):
+		r = found["refund"]
+		parts.append(_("return of {0}, {1} back").format(", ".join(
+			escape_html(l["item_name"]) + (f" ({escape_html(l['serial'])})" if l["serial"] else "")
+			+ (f" ×{flt(l['qty']):g}" if flt(l["qty"]) != 1 else "") for l in r["lines"]), _money(doc, r["total"])))
 	return template.format("; ".join(parts))
 
 
 def _comment_text(doc, approval, found) -> str:
 	who = frappe.utils.get_fullname(approval["approver"]) or approval["approver"]
-	return _describe(doc, found, _("Price approved by {0} ({1}): {{0}}.").format(
+	what = _("Return approved") if found.get("refund") else _("Price approved")
+	return _describe(doc, found, (what + " " + _("by {0} ({1}): {{0}}.")).format(
 		escape_html(who), escape_html(approval["reason"])))
 
 
@@ -601,7 +638,7 @@ def _order_doc(payload, sales_invoice: str | None = None):
 
 def _public(found: dict) -> dict:
 	return {"lines": [{k: v for k, v in l.items() if k != "row"} for l in found["lines"]],
-		"discount": found["discount"]}
+		"discount": found["discount"], "refund": found.get("refund")}
 
 
 @frappe.whitelist()
@@ -617,15 +654,17 @@ def check(doc=None, payload=None, sales_invoice: str | None = None) -> dict:
 	    {"needs_approval": bool, "approver": whether the caller approves their own,
 	    "lines": [{"idx", "item_code", "item_name", "serial", "list_rate", "rate"}],
 	    "discount": {"percentage", "amount"} or None,
+	    "refund": a return's {"total", "lines": [{"item_code", "item_name", "serial", "qty", "amount"}]} or None,
 	    "approvers": [{"user", "full_name", "image", "has_pin", "pin_off"}] when it needs one}.
 	"""
 	frappe.only_for(PRICE_CHECK_ROLES)
 	d, saved, _target_name, _docname = _target(doc, payload, sales_invoice)
-	empty = {"needs_approval": False, "approver": is_approver(), "lines": [], "discount": None, "approvers": []}
+	empty = {"needs_approval": False, "approver": is_approver(), "lines": [], "discount": None, "refund": None,
+		"approvers": []}
 	if not enabled() or (payload is None and _exempt(d, saved)):
 		return empty
 	found = _public(reductions(d, saved))
-	needs = bool(found["lines"] or found["discount"])
+	needs = _any(found)
 	return {**empty, **found, "needs_approval": needs,
 		"approvers": approvers() if needs and not empty["approver"] else []}
 
@@ -661,7 +700,7 @@ def _check_approver(approver: str, pin: str | None, password: str | None) -> Non
 @frappe.whitelist(methods=["POST"])
 def approve(approver: str, reason: str, pin: str | None = None, password: str | None = None, doc=None,
 		payload=None, sales_invoice: str | None = None) -> dict:
-	"""A manager approves the lowered prices of a sale before it is saved.
+	"""A manager approves the lowered prices of a sale, or a return, before it is saved.
 
 	The approver picks themselves and types their own counter PIN, or their password when they
 	have no PIN (or it is off). What is approved is worked out here from the same document, never
@@ -677,7 +716,7 @@ def approve(approver: str, reason: str, pin: str | None = None, password: str | 
 	    sales_invoice: With *payload*: the order it edits.
 
 	Returns:
-	    {"token", "approver", "approver_name", "expires_in": seconds, "lines", "discount"}.
+	    {"token", "approver", "approver_name", "expires_in": seconds, "lines", "discount", "refund"}.
 	"""
 	frappe.only_for(PRICE_CHECK_ROLES)
 	reason = (reason or "").strip()
@@ -686,7 +725,7 @@ def approve(approver: str, reason: str, pin: str | None = None, password: str | 
 	d, saved, target, docname = _target(doc, payload, sales_invoice)
 	found = reductions(d, saved) if enabled() and (payload is not None or not _exempt(d, saved)) \
 		else {"lines": [], "discount": None}
-	if not (found["lines"] or found["discount"]):
+	if not _any(found):
 		frappe.throw(_("Nothing on this sale needs a manager's approval."))
 	_check_approver(approver, pin, password)
 	floors: dict = {}
@@ -697,6 +736,7 @@ def approve(approver: str, reason: str, pin: str | None = None, password: str | 
 	frappe.cache.set_value(_TOKEN_KEY + token, {
 		"approver": approver, "reason": reason[:140], "requested_by": frappe.session.user, "target": target,
 		"docname": docname, "lines": floors, "discount": found["discount"],
+		"refund": found["refund"]["total"] if found.get("refund") else None,
 		"expires": str(now_datetime() + timedelta(seconds=TOKEN_TTL)),
 	}, expires_in_sec=TOKEN_TTL)
 	return {"token": token, "approver": approver, "approver_name": frappe.utils.get_fullname(approver),

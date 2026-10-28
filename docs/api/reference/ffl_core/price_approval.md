@@ -10,7 +10,7 @@ Source: `apps/ffl_core/ffl_core/price_approval.py` · 2 endpoint(s)
 
 **Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager
 
-A manager approves the lowered prices of a sale before it is saved.
+A manager approves the lowered prices of a sale, or a return, before it is saved.
 
 The approver picks themselves and types their own counter PIN, or their password when they
 have no PIN (or it is off). What is approved is worked out here from the same document, never
@@ -26,9 +26,9 @@ taken from the screen. The token is good for 15 minutes, once, for the user who 
 | `payload` | — | no | `None` | Or a Create Order payload. |
 | `sales_invoice` | string \| null | no | `None` | With *payload*: the order it edits. |
 
-**Returns:** {"token", "approver", "approver_name", "expires_in": seconds, "lines", "discount"}.
+**Returns:** {"token", "approver", "approver_name", "expires_in": seconds, "lines", "discount", "refund"}.
 
-<sub>`apps/ffl_core/ffl_core/price_approval.py:660`</sub>
+<sub>`apps/ffl_core/ffl_core/price_approval.py:701`</sub>
 
 ## `check`
 
@@ -44,6 +44,6 @@ What a save would need a manager for — the screens ask before saving.
 | `payload` | — | no | `None` | Or a Create Order payload (create_order's shape). |
 | `sales_invoice` | string \| null | no | `None` | With *payload*: the order it edits (its lines keep their prices). |
 
-**Returns:** {"needs_approval": bool, "approver": whether the caller approves their own, "lines": [{"idx", "item_code", "item_name", "serial", "list_rate", "rate"}], "discount": {"percentage", "amount"} or None, "approvers": [{"user", "full_name", "image", "has_pin", "pin_off"}] when it needs one}.
+**Returns:** {"needs_approval": bool, "approver": whether the caller approves their own, "lines": [{"idx", "item_code", "item_name", "serial", "list_rate", "rate"}], "discount": {"percentage", "amount"} or None, "refund": a return's {"total", "lines": [{"item_code", "item_name", "serial", "qty", "amount"}]} or None, "approvers": [{"user", "full_name", "image", "has_pin", "pin_off"}] when it needs one}.
 
-<sub>`apps/ffl_core/ffl_core/price_approval.py:606`</sub>
+<sub>`apps/ffl_core/ffl_core/price_approval.py:645`</sub>

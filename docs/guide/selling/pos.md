@@ -262,8 +262,8 @@ Nothing asks when:
 - the line was already saved at that price. Lowering it again asks again;
   raising it never does;
 - the system set the price: a pickup ticket, a transfer ticket or a gunsmith
-  pick-up as it was opened, a trade-in credit, a web or GunBroker order, a
-  return. A price lowered on one of them afterwards asks like any other.
+  pick-up as it was opened, a trade-in credit, a web or GunBroker order. A
+  price lowered on one of them afterwards asks like any other.
 
 The list price is the gun's own price for a firearm line with a serial, the
 cheapest priced gun of that model in stock for a firearm line with no serial yet,
@@ -271,6 +271,16 @@ and the Item Price of the register's price list for everything else.
 
 The sale keeps who approved, the reason and when, under the invoice discount,
 and its timeline lists each line, list price to approved price.
+
+### Returns
+
+While the same setting is on, a return needs a manager too: money or credit
+goes back to the customer. At **Checkout** on the return the same dialog lists
+what comes back and the refund; the manager approves with their PIN and a
+reason, and the return saves. The approval covers that return up to the refund
+it showed: adding more to it asks again. A manager signed in is not asked, and
+the return records them. Returns the system makes itself (a web or GunBroker
+refund, a gunsmith deposit refund as it is opened) are not asked.
 
 ## Trade-in lines are locked
 

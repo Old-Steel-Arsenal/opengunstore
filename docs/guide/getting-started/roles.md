@@ -111,8 +111,9 @@ click them, regardless of which page you are on:
 - Ringing up accessories that a paid web order is waiting on. A counter clerk is
   refused; a manager can ring the sale and the invoice notes it. See
   [Point of Sale](../selling/pos.md).
-- **Approving a lower price.** While FFL Settings asks for it, a price a clerk
-  lowers below the list price, or an invoice discount, saves only once a
+- **Approving a lower price or a return.** While FFL Settings asks for it, a
+  price a clerk lowers below the list price, an invoice discount, or a return,
+  saves only once a
   **Sales Manager** or **System Manager** picks themselves in the
   **Manager approval needed** dialog and types their counter PIN (or password)
   and a reason. A manager signed in is never asked. See
