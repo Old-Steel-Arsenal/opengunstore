@@ -76,8 +76,11 @@ three; the fourth is on you.
   its shipped DocPerm rows wholesale: the first one written froze POS Profile's 16.50 rows on
   the site, so later ERPNext rule changes stop reaching it. `ensure_role_grants` does the same
   to the `ROLE_GRANTS` doctypes it writes (Serial and Batch Bundle for the trade-in; POS
-  Invoice / FFL Acquisition where needed). `check_perm_drift` (after_migrate) compares, for
-  POS Profile and Serial and Batch Bundle (`_DRIFT_DOCTYPES`), the two tables as multisets
+  Invoice / FFL Acquisition where needed) and to `REGISTER_GRANTS` (what a login holding
+  only Sales User or only Sales Manager needs to run the register end to end; recorded
+  separately in DefaultValue `ffl_register_grants_done`; `test_counter_register_perms` walks
+  the whole loop as such users). `check_perm_drift` (after_migrate) compares, for
+  the doctypes in `_DRIFT_DOCTYPES`, the two tables as multisets
   (our own grants left out) and raises one Error Log +
   System Manager ToDo per distinct difference ("<DocType> permissions differ from ERPNext
   (<digest>)"; digests kept in DefaultValue `ffl_pos_profile_perm_drift_seen`, so an Error

@@ -287,13 +287,27 @@ class RoleGrantDoctypesDrift(FrappeTestCase):
 		return role
 
 	def test_covers_pos_profile_and_the_bundle_and_our_grants_come_from_the_data(self):
-		self.assertEqual(pos_compat._DRIFT_DOCTYPES, ("POS Profile", "Serial and Batch Bundle"))
+		self.assertEqual(pos_compat._DRIFT_DOCTYPES, ("POS Profile", "Serial and Batch Bundle", "POS Invoice",
+			"POS Opening Entry", "POS Closing Entry", "Sales Invoice", "Account", "Item", "Stock Settings", "POS Settings"))
+		counter = {"write", "create", "delete", "submit"}
+		entry = {"read", "write", "create", "submit"}
 		self.assertEqual(pos_compat._our_grants(), {
 			**{("POS Profile", role): {"select"} for role in COUNTER_ROLES},
-			("POS Invoice", "Sales User"): {"report"},
+			("POS Profile", "Sales User"): {"select", "read"},
+			("POS Profile", "Sales Manager"): {"select", "read"},
+			("POS Invoice", "Sales User"): {"report"} | counter,
+			("POS Invoice", "Sales Manager"): counter,
 			("FFL Acquisition", "Sales User"): {"read", "report"},
 			("FFL Acquisition", "Sales Manager"): {"read", "report"},
 			("Serial and Batch Bundle", "Sales User"): {"read", "write", "create", "submit"},
+			("POS Opening Entry", "Sales User"): entry,
+			("POS Closing Entry", "Sales User"): entry,
+			("Sales Invoice", "Sales User"): entry,
+			("Sales Invoice", "Sales Manager"): entry,
+			("Account", "Sales Manager"): {"select"},
+			("Item", "Sales Manager"): {"read"},
+			("Stock Settings", "Sales Manager"): {"read"},
+			("POS Settings", "Sales Manager"): {"read"},
 		})
 
 	def test_our_own_grant_rows_are_no_drift(self):
@@ -317,12 +331,14 @@ class RoleGrantDoctypesDrift(FrappeTestCase):
 		self.assertEqual(len(todos), 1)
 
 	def test_a_doctype_outside_the_list_is_not_compared(self):
-		"""POS Invoice is Custom DocPerm now (its report grant), but its grants predate the drift check."""
-		self.assertTrue(frappe.db.exists("Custom DocPerm", {"parent": "POS Invoice"}))
-		before = len(self._logs("POS Invoice"))
-		self._ship("POS Invoice")
+		"""FFL Acquisition's grants predate the drift check: frozen into Custom DocPerm, it is still not compared."""
+		from frappe.permissions import setup_custom_perms
+
+		setup_custom_perms("FFL Acquisition")
+		before = len(self._logs("FFL Acquisition"))
+		self._ship("FFL Acquisition")
 		pos_compat.check_perm_drift()
-		self.assertEqual(len(self._logs("POS Invoice")), before)
+		self.assertEqual(len(self._logs("FFL Acquisition")), before)
 
 	def test_a_rule_an_admin_widened_is_reported(self):
 		"""Our row with a flag we never grant (delete on the bundle) is a difference, not our grant."""
