@@ -963,6 +963,12 @@ scheduler_events = {
 		"*/15 * * * *": [
 			"ffl_core.api.pos_consolidate.reconsolidate_stuck_pos_invoices",
 		],
+		# Membership renewals at 7 AM store-local (site timezone): charge the saved cards that are
+		# due, retry past-due ones once a day, suspend when the grace runs out, yearly reminders
+		# (membership.py). Morning, so a decline reaches the staff the same day.
+		"0 7 * * *": [
+			"ffl_core.membership.renew_memberships",
+		],
 	},
 	"hourly": [
 		# Backstop for the Stock Ledger Entry hook: clear the storage location of any

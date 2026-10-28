@@ -1,7 +1,7 @@
 {
  "actions": [],
  "creation": "2026-10-27 12:00:00.000000",
- "modified": "2026-10-27 12:00:00.000000",
+ "modified": "2026-10-28 12:00:00.000000",
  "modified_by": "Administrator",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -26,6 +26,8 @@
   "column_break_b",
   "grace_until",
   "last_charge_status",
+  "last_charge_attempt",
+  "renewal_reminder_for",
   "section_cancel",
   "cancel_at_period_end",
   "cancelled_on",
@@ -138,6 +140,22 @@
    "fieldtype": "Small Text",
    "label": "Last Charge",
    "read_only": 1
+  },
+  {
+   "fieldname": "last_charge_attempt",
+   "fieldtype": "Date",
+   "label": "Last Renewal Attempt",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "The day the renewal job last tried the card (it tries once a day)."
+  },
+  {
+   "fieldname": "renewal_reminder_for",
+   "fieldtype": "Date",
+   "label": "Renewal Reminder Sent For",
+   "read_only": 1,
+   "no_copy": 1,
+   "hidden": 1
   },
   {
    "fieldname": "section_cancel",

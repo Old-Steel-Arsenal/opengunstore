@@ -535,6 +535,8 @@ One customer's membership of a plan: its status, current period, renewal card an
 | `saved_card` | Link | Saved Card |  | Saved Card |
 | `grace_until` | Date | Grace Until |  |  |
 | `last_charge_status` | Small Text | Last Charge |  |  |
+| `last_charge_attempt` | Date | Last Renewal Attempt |  |  |
+| `renewal_reminder_for` | Date | Renewal Reminder Sent For |  |  |
 | `cancel_at_period_end` | Check | Ends at Period End |  |  |
 | `cancelled_on` | Date | Cancelled On |  |  |
 | `cancelled_by` | Link | Cancelled By |  | User |
@@ -551,6 +553,7 @@ app: `ffl_core` · module: FFL Core · child table
 | `period_start` | Date | Period Start |  |  |
 | `period_end` | Date | Period End |  |  |
 | `status` | Select | Status |  | Unpaid, Paid, Cancelled |
+| `credit_note` | Link | Credit Note |  | Sales Invoice |
 
 ## Membership Plan
 
@@ -572,6 +575,17 @@ A membership a customer can buy: what it costs, how often it bills, and its regi
 | `terms_template` | Link | Membership Terms |  | Agreement Template |
 | `grace_enabled` | Check | Grace Period on Failed Renewal |  |  |
 | `grace_days` | Int | Grace Days |  |  |
+
+## Membership Settings
+
+app: `ffl_core` · module: FFL Core · single · roles: Sales Manager, System Manager
+
+Automatic membership renewals and the memberships that need a manager's attention.
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `auto_renew_enabled` | Check | Charge renewals automatically |  |  |
+| `yearly_reminder_days` | Int | Yearly renewal reminder (days before) |  |  |
 
 ## POS Extension
 

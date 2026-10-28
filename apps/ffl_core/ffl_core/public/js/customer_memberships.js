@@ -5,6 +5,8 @@
 //   Sales Invoice → payment the counter's usual way. With auto-renew on the card is charged on the
 //   terminal and saved for recurring charges (card-on-file gates apply); untick auto-renew to take
 //   any other tender. The membership turns Active once its invoice is paid (server side).
+//   An overdue renewal (Past Due / Suspended / not charged) offers Retry card (managers) and Take
+//   payment (any tender on the renewal invoice); paid, it is Active again from the original due date.
 //   Shown only once the store has an active plan or the customer has a membership.
 (function () {
 	const M = 'ffl_core.membership.';
@@ -59,7 +61,13 @@
 			const renew = m.cancel_at_period_end ? __('Ends {0}', [date(m.current_period_end)])
 				: m.next_charge_date ? __('Next charge {0}', [date(m.next_charge_date)]) + (m.card_summary ? ` · ${esc(m.card_summary)}` : '')
 					: m.auto_renew ? '' : __('Auto-renew off');
-			detail = [period, renew].filter(Boolean).join(' · ');
+			const owed = m.overdue && m.unpaid_invoice ? __('Invoice {0}: {1} to pay', [esc(m.unpaid_invoice), format_currency(m.outstanding)]) : '';
+			const grace = m.status === 'Past Due' && m.grace_until ? __('Grace until {0}', [date(m.grace_until)]) : '';
+			detail = [period, renew, grace, owed].filter(Boolean).join(' · ');
+			if (m.overdue && !m.cancel_at_period_end) {
+				if (out.can_cancel && (m.can_retry || m.charge_waiting)) buttons += btn('retry', m.charge_waiting ? __('Look up card charge') : __('Retry card'));
+				if (!m.charge_waiting) buttons += btn('pay', __('Take payment'));
+			}
 			if (['Active', 'Past Due', 'Suspended'].includes(m.status)) {
 				if (!m.cancel_at_period_end) buttons += m.auto_renew ? btn('renew-off', __('Turn auto-renew off')) : btn('renew-on', __('Turn auto-renew on'));
 				if ((out.cards || []).length) buttons += btn('card', __('Change card'));
@@ -78,6 +86,12 @@
 			if (what === 'sell') return sell(frm, out);
 			if (what === 'terms') return askTerms(frm, m);
 			if (what === 'collect') return collect(frm, m);
+			if (what === 'pay') return collect(frm, m, 'invoice_renewal');
+			if (what === 'retry') {
+				const r = await call('retry_renewal', { membership: m.name });
+				frappe.msgprint({ message: esc(r.message || ''), indicator: r.outcome === 'renewed' ? 'green' : 'orange', title: __('Renewal') });
+				return refresh();
+			}
 			if (what === 'renew-off' || what === 'renew-on') {
 				await call('set_auto_renew', { membership: m.name, enabled: what === 'renew-on' ? 1 : 0 });
 				return refresh();
@@ -125,8 +139,8 @@
 		frappe.show_alert({ message: __('Once {0} is signed, click Collect payment.', [esc(m.terms_template)]), indicator: 'blue' }, 8);
 	}
 
-	async function collect(frm, m) {
-		const inv = await call('invoice_membership', { membership: m.name });
+	async function collect(frm, m, method) {
+		const inv = await call(method || 'invoice_membership', { membership: m.name });
 		const si = inv.sales_invoice;
 		const owed = flt(inv.outstanding);
 		if (owed <= 0.005) return render(frm);
