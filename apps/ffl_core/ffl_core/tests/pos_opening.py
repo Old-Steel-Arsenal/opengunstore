@@ -18,6 +18,28 @@ def close_stale_pos_openings() -> None:
 			frappe.db.set_value("POS Opening Entry", row.name, "status", "Closed", update_modified=False)
 
 
+def ensure_pos_profile(company: str, name: str = "FFL Test") -> str:
+	"""A POS Profile ``name`` on the test company, made when the site has none: a module run alone on a fresh site
+	(CI re-runs a failed module by itself) must not depend on another module having created it. Cash only, no
+	taxes; the company's standard test accounts (abbreviation FT)."""
+	if frappe.db.exists("POS Profile", name):
+		return name
+	mop = frappe.get_doc("Mode of Payment", "Cash")
+	if not any(r.company == company for r in mop.accounts):
+		mop.append("accounts", {"company": company, "default_account": "Cash - FT"})
+		mop.save(ignore_permissions=True)
+	account = lambda **f: frappe.db.get_value("Account", {"company": company, "is_group": 0, **f})  # noqa: E731
+	frappe.get_doc({
+		"doctype": "POS Profile", "name": name, "company": company, "warehouse": "Stores - FT",
+		"currency": "USD", "customer_group": "All Customer Groups", "territory": "All Territories",
+		"selling_price_list": "Standard Selling",
+		"write_off_account": account(account_name=("like", "Write Off%")), "write_off_cost_center": "Main - FT",
+		"income_account": account(account_name="Sales"), "expense_account": account(account_type="Expense Account"),
+		"payments": [{"mode_of_payment": "Cash", "default": 1}],
+	}).insert(ignore_permissions=True)
+	return name
+
+
 def todays_pos_opening(company: str, pos_profile: str = "FFL Test") -> str:
 	"""The session user's Open POS Opening Entry on ``pos_profile``, started today: reused, or opened.
 

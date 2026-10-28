@@ -183,8 +183,8 @@ class RegisterGuard(_Base):
 		ms.refuse_on_pos_invoice(frappe._dict(items=[frappe._dict(item_code=_item("OTHER"))]))   # no raise
 
 	def test_real_pos_invoice_is_refused_at_validate(self):
-		from ffl_core.tests.pos_opening import todays_pos_opening
-		profile = "FFL Test"
+		from ffl_core.tests.pos_opening import ensure_pos_profile, todays_pos_opening
+		profile = ensure_pos_profile(COMPANY)
 		todays_pos_opening(COMPANY, profile)
 		inv = frappe.get_doc({"doctype": "POS Invoice", "company": COMPANY, "pos_profile": profile,
 			"customer": self.customer, "items": [{"item_code": self.plan.item, "qty": 1, "rate": 30}]})
