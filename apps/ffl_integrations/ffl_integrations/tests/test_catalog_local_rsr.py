@@ -1289,10 +1289,11 @@ class TestRsrSettingsFeed(FrappeTestCase):
 		self._save("feeduser", "")  # nothing saved: not an error, just no login
 		self.assertIsNone(rsr.credentials())
 
-	def test_shipped_driver_registers_with_the_four_lanes(self):
+	def test_shipped_driver_registers_with_the_five_lanes(self):
 		self.assertIs(sync.load_drivers()["rsr"], rsr.DRIVER)
 		self.assertEqual([(ln.name, ln.heavy) for ln in rsr.DRIVER.lanes()],
-			[("catalog", True), ("deleted", False), ("quantity", False), ("restrictions", True)])
+			[("catalog", True), ("deleted", False), ("quantity", False), ("restrictions", True),
+				("case_price", False)])
 		self.assertEqual(rsr.DRIVER.lane("catalog").timeout, sync.HEAVY_TIMEOUT_SECONDS)
 		self.assertEqual(rsr.DRIVER.lane("deleted").follows, "catalog")
 

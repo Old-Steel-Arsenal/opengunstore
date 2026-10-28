@@ -882,6 +882,12 @@ class CreateOrderApp {
 		this._renderPlannerGrid();
 	}
 
+	// The cell's unit cost on a mode: shipped to the store, full cases buy at the
+	// house's case price (store_cost); a drop-ship line pays the unit cost.
+	_planCost(cell, mode) {
+		return flt(mode === 'to_store' && cell.store_cost != null ? cell.store_cost : cell.cost);
+	}
+
 	_planCell(i) {
 		const sel = this._planSel[i];
 		if (!sel || sel === 'local') return null;
@@ -957,7 +963,8 @@ class CreateOrderApp {
 				// The reason is what the clerk needs to read — for a To-Store brand it
 				// names the manufacturer restriction (e.g. "Ruger: Sports South does not
 				// fulfil this manufacturer — ship to store only").
-				const why = c.reason ? `<div class="helper">${esc(c.reason)}</div>` : '';
+				const why = (c.reason ? `<div class="helper">${esc(c.reason)}</div>` : '')
+					+ (c.case_note ? `<div class="helper">${__('Ship to store')}: ${esc(c.case_note)}</div>` : '');
 				// Only the ways this house can ever ship get a button: a greyed-out one
 				// means "not for this line"; a missing one means the house has no such
 				// lane at all (fulfillment_matrix leaves the key out).
@@ -966,7 +973,7 @@ class CreateOrderApp {
 					.filter((mode) => c.modes[mode])
 					.map((mode) => btn(mode, labels[mode])).join('');
 				cells += `<td class="${cls}" data-i="${i}" data-ch="${esc(c.distributor)}">`
-					+ `${format_currency(flt(c.cost))} · ${__('qty')} ${cint(c.qty)}`
+					+ `${format_currency(this._planCost(c, picked ? this._planMode[i] : c.mode))} · ${__('qty')} ${cint(c.qty)}`
 					+ `<div class="plan-modes">${buttons}</div>${why}</td>`;
 			});
 			body += `<tr><td style="text-align:left">${l.is_firearm ? `<span class="firearm-mark">${__('Firearm')}</span>` : ''}${esc(l.item_name)} ×${l.qty}</td>${localCell}${cells}</tr>`;
@@ -980,7 +987,7 @@ class CreateOrderApp {
 			if (sel === 'local') { legNames.add(__('Local')); return; }
 			const cell = this._planCell(i);
 			if (cell) {
-				dsCost += flt(cell.cost) * l.qty;
+				dsCost += this._planCost(cell, this._planMode[i]) * l.qty;
 				legNames.add(`${sel} ${this._planMode[i] === 'to_store' ? __('ship to store') : __('dropship')}`);
 			}
 		});
@@ -1070,7 +1077,7 @@ class CreateOrderApp {
 			if (!cell) return;
 			// No item_code: Apply fills it in, and the estimate must still match after.
 			out.push({ distributor: cell.distributor, mode: this._planMode[i], sku: cell.sku,
-				qty: l.qty, cost: flt(cell.cost),
+				qty: l.qty, cost: this._planCost(cell, this._planMode[i]),
 				department: cell.department || '', ffl_required: cell.ffl_required ? 1 : 0,
 				is_firearm: (cell.is_firearm ?? cell.ffl_required) ? 1 : 0 });
 		});
@@ -1158,7 +1165,7 @@ class CreateOrderApp {
 				const own = (matrix.rows[i] || {}).is_firearm;
 				l.is_firearm = !!(own ?? cell.is_firearm ?? cell.ffl_required);
 				l.channel = 'to_store'; l.channel_confirmed = true;
-				l.distributor = sel; l.cost = flt(cell.cost) || null;
+				l.distributor = sel; l.cost = this._planCost(cell, this._planMode[i]) || null;
 				continue;
 			}
 			// ensure: dual-source guard → idempotent promote → dropship_distributor stamp.
@@ -1178,7 +1185,7 @@ class CreateOrderApp {
 				l.sku = cell.sku;
 				l.is_firearm = !!(m.is_firearm ?? cell.is_firearm ?? cell.ffl_required);
 				l.channel = toStore ? 'to_store' : 'dropship'; l.channel_confirmed = true;
-				l.distributor = sel; l.cost = flt(cell.cost) || null;
+				l.distributor = sel; l.cost = this._planCost(cell, this._planMode[i]) || null;
 			} catch (e) {
 				failures.push(`${l.item_name} — ${__('setup failed')}`);
 			}

@@ -35,6 +35,8 @@ class NormalizedRow(TypedDict):
 	# per-item read (optional provider method `blocked_states`), not bulk data.
 	image_url: str
 	discontinued: bool      # P3: provider dropped the product (≠ qty 0 / out of stock)
+	case_cost: float        # full-case price PER UNIT (0 = none); ship-to-store only
+	units_per_case: int     # units in a full case (0 = not sold by the case)
 
 
 class OrderPlan(TypedDict):

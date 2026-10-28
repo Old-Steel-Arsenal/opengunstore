@@ -68,6 +68,9 @@ def _cols(defs) -> str:
 	return ",\n\t".join(f"`{name}` {ddl}" for name, ddl in defs)
 
 
+# dc_offer's case_cost (the full-case price PER UNIT) and units_per_case sit outside
+# OFFER_COLUMNS: no feed file carries them (RSR's get-items does, through
+# store.apply_case_prices), so a catalog load never writes or compares them.
 TABLES = {
 	"dc_offer": f"""CREATE TABLE IF NOT EXISTS `dc_offer` (
 	`distributor` VARCHAR(32) {_BIN} NOT NULL,
@@ -75,6 +78,8 @@ TABLES = {
 	{_cols(OFFER_COLUMNS)},
 	{_cols(DERIVED_COLUMNS)},
 	`change_seq` BIGINT NOT NULL DEFAULT 0,
+	`case_cost` DECIMAL(12,2) NOT NULL DEFAULT 0,
+	`units_per_case` INT NOT NULL DEFAULT 0,
 	`qty_updated_at` DATETIME(6) NULL,
 	`created_at` DATETIME(6) NOT NULL,
 	`updated_at` DATETIME(6) NOT NULL,

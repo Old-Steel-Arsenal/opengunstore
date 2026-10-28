@@ -940,6 +940,7 @@ app: `ffl_integrations` · module: FFL Integrations · child table
 | `wish_qty` | Int | Wish Qty |  |  |
 | `ack_qty` | Int | Ack Qty |  |  |
 | `unit_cost` | Currency | Unit Cost |  |  |
+| `case_note` | Data | Case Price |  |  |
 | `invoiced_unit_cost` | Currency | Invoiced Unit Cost |  |  |
 | `ship_method` | Select | Ship Method |  | Grnd, 2Day, 1Day, Ndas, Prio |
 | `item_status` | Data | Item Status |  |  |

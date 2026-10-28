@@ -27,7 +27,7 @@ that the house has already agreed and skips the alert.
 
 **Permissions:** Distributor order/console roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1072`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1092`</sub>
 
 ## `catalog_by_upc`
 
@@ -48,7 +48,7 @@ from the catalog instead of typed.
 
 **Permissions:** Open read for any signed-in desk user (same as `search`).
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:223`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:224`</sub>
 
 ## `check_availability`
 
@@ -70,7 +70,7 @@ and the counter uses it. Do not add a gate.
 
 **Permissions:** Open by design — any authenticated desk user; see `search`.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:311`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:312`</sub>
 
 ## `confirm_order`
 
@@ -92,7 +92,7 @@ idempotent. A counter-sourced drop-ship DO must be fully paid first
 
 **Permissions:** Distributor order/console roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1042`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1062`</sub>
 
 ## `create_orders`
 
@@ -117,7 +117,7 @@ places anything: v1 is a human-confirmed queue.
 
 **Permissions:** Distributor order roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:753`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:764`</sub>
 
 ## `ensure_dropship_item`
 
@@ -148,7 +148,7 @@ keeps driving the web listing, web-order routing and stock publishing.
 
 **Permissions:** Counter roles (Sales User / Sales Manager / Stock Manager / System Manager).
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:468`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:469`</sub>
 
 ## `fulfillment_freight`
 
@@ -175,7 +175,7 @@ ffl_required, and this is a display estimate (the invoiced freight wins).
 
 **Permissions:** Counter roles — the planner belongs to Create Order.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:716`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:727`</sub>
 
 ## `fulfillment_matrix`
 
@@ -194,11 +194,11 @@ local column and the rest render normally.
 |---|---|---|---|---|
 | `lines` | — | yes | — | [{"item_code": str?, "sku": str?, "upc": str?, "qty": int}] — list or JSON string. A line with only ``upc`` (an "API" pick whose house is not chosen yet) resolves per column by UPC. |
 
-**Returns:** {"columns": [distributor, ...], "rows": [{item_code, sku, qty, local: {in_stock, feasible}, is_firearm, channels: [cell, ...], preselect, preselect_mode}]} — is_firearm is what the server enforces for the line's own Item (None without one); cell = {distributor, sku, cost, qty, department, mode: "direct"|"to_store" (the house's default), modes: {direct, to_store: {feasible, reason}}, ffl_required, feasible, reason?} or {distributor, error: True}.
+**Returns:** {"columns": [distributor, ...], "rows": [{item_code, sku, qty, local: {in_stock, feasible}, is_firearm, channels: [cell, ...], preselect, preselect_mode}]} — is_firearm is what the server enforces for the line's own Item (None without one); cell = {distributor, sku, cost, store_cost (the per-unit cost shipped to the store: full cases at the house's case price), case_note? (the case-price hint), qty, department, mode: "direct"|"to_store" (the house's default), modes: {direct, to_store: {feasible, reason}}, ffl_required, feasible, reason?} or {distributor, error: True}.
 
 **Permissions:** Open by design — any authenticated desk user; see `search`.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:542`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:543`</sub>
 
 ## `list_orders`
 
@@ -221,7 +221,7 @@ order type in one list (the Distributor Orders page's tracking tab).
 
 **Returns:** [{name, distributor, order_type, account, account_number, status, hold_status, web_ref, total_cost, placed_at, next_poll_at, receive_status, source_doctype, source_name, creation, last_poll_at, invoiced_freight, error}] — plus ``lines`` when asked.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1136`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1156`</sub>
 
 ## `quote`
 
@@ -260,7 +260,7 @@ so it can sit below the listing's website price. Reads the
 
 **Permissions:** Open by design — any authenticated desk user; catalog data carries no PII and the counter panel depends on it.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:334`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:335`</sub>
 
 ## `search`
 
@@ -288,7 +288,7 @@ or an out-of-range limit never reaches the transport at all.
 
 **Permissions:** Open read for any signed-in desk user (load-bearing, see above).
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:186`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:187`</sub>
 
 ## `set_shipping_service`
 
@@ -310,7 +310,7 @@ distributor); the code must be one the provider offers for this order.
 
 **Permissions:** Distributor order/console roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:975`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:995`</sub>
 
 ## `shipping_options`
 
@@ -330,7 +330,7 @@ flat-rate estimate, so the operator can choose before Confirm.
 
 **Permissions:** Distributor order/console roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:950`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:970`</sub>
 
 ## `transition_order`
 
@@ -351,4 +351,4 @@ The DO state machine still enforces transition legality.
 
 **Permissions:** Distributor order roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1113`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1133`</sub>

@@ -1942,6 +1942,25 @@
             "title": "Product Class",
             "default": "",
             "description": "Handgun / Long Gun / Other Firearm / Ammunition / Accessory, from this distributor's own department code — the one class table; a client keeps none of its own."
+          },
+          "case_cost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Cost",
+            "default": null,
+            "description": "The full-case price PER UNIT (not the case total), when the house sells this SKU by the case; null or 0 when it does not. Optional."
+          },
+          "units_per_case": {
+            "type": "integer",
+            "title": "Units Per Case",
+            "default": 0,
+            "description": "Units in a full case; 0 when the SKU is not sold by the case. Optional."
           }
         },
         "required": [
@@ -3454,6 +3473,25 @@
           "weight_lb": {
             "title": "Weight Lb",
             "type": "number"
+          },
+          "case_cost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Cost",
+            "default": null,
+            "description": "The full-case price PER UNIT (not the case total), when the house sells this SKU by the case; null or 0 when it does not. Optional."
+          },
+          "units_per_case": {
+            "type": "integer",
+            "title": "Units Per Case",
+            "default": 0,
+            "description": "Units in a full case; 0 when the SKU is not sold by the case. Optional."
           }
         },
         "required": [
