@@ -370,7 +370,7 @@ class DistributorOrdersApp {
 				const r = await call('ffl_integrations.distributor.api.create_orders', {
 					distributor: house,
 					lines: JSON.stringify(lines.map((c) => ({
-						sku: chosen(c).sku, item_code: c.item_code, qty: c.qty,
+						sku: chosen(c).sku, item_code: c.item_code, upc: c.upc, qty: c.qty,
 						description: c.item_name, is_firearm: c.is_firearm,
 					}))),
 					ship_context: JSON.stringify({ mode: 'stocking' }),

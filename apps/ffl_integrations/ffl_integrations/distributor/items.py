@@ -206,6 +206,41 @@ def _record_force_override(item_code, distributor, reason) -> None:
 		dedup_key=f"dist_force_dual_source_{item_code}", window_minutes=1440)
 
 
+def local_item(sku: str, upc: str) -> str | None:
+	"""An Item the shop already has for this product: the one carrying the UPC as a
+	barcode, or named by the UPC, or by the SKU."""
+	from ffl_integrations.rsr.promote import barcode_owner
+
+	for code in (barcode_owner(upc), upc, sku):
+		if code and frappe.db.exists("Item", code):
+			return code
+	return None
+
+
+def catalog_item(provider, sku: str, upc: str) -> tuple:
+	"""``(item_code, reason)`` from the house's catalog: the row by SKU, else by UPC,
+	promoted through the house's own promoter — idempotent, and it stamps nothing on
+	the Item (an order or a receipt says nothing about who drop-ships it); a newly
+	made Item gets our optimized copy. ``item_code`` None carries the reason."""
+	from frappe.utils import get_datetime, now_datetime
+
+	from ffl_integrations.distributor import offers
+
+	promote = getattr(provider, "promote_to_item", None)
+	if not callable(promote):
+		return None, "the house cannot promote catalog rows to Items"
+	row = offers.catalog_row(provider, sku=sku, upc=upc or None)
+	if not row:
+		return None, "not in the house's catalog"
+	started = now_datetime()
+	item_code = (promote(row.get("sku") or sku, {}) or {}).get("item_code")
+	if not item_code:
+		return None, "the catalog promotion returned no Item"
+	if get_datetime(frappe.db.get_value("Item", item_code, "creation")) >= started:
+		_apply_product_copy(item_code)
+	return item_code, ""
+
+
 def _promote(provider, sku, spec, is_firearm) -> str:
 	"""Reuse the provider's promotion (RSR: `rsr.promote.promote_to_item`, which
 	already writes MAP/MSRP/cost/brand/images — DIVERGENCE-2).

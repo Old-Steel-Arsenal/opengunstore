@@ -41,7 +41,7 @@ Pure helpers (``_receivable_lines`` / ``_assert_serial_counts`` /
 from __future__ import annotations
 
 import frappe
-from frappe.utils import add_days, get_datetime, now_datetime, nowdate
+from frappe.utils import add_days, nowdate
 
 from ffl_core.firearm import _is_firearm_row
 from ffl_core.utils import commit as safe_commit  # no-op inside the test transaction
@@ -804,40 +804,12 @@ def _locked_invoice(invoice_name: str, extra_codes=(), index=None):
 	return inv, lines
 
 
-def _local_item(sku: str, upc: str) -> str | None:
-	"""An Item the shop already has for this product when the house's catalog does not
-	answer: the one carrying the UPC as a barcode, or named by the UPC, or by the SKU."""
-	from ffl_integrations.rsr.promote import barcode_owner
-
-	for code in (barcode_owner(upc), upc, sku):
-		if code and frappe.db.exists("Item", code):
-			return code
-	return None
-
-
 def _resolve_line_item(provider, line) -> tuple:
-	"""``(item_code, reason)`` from the house's catalog: the row by SKU, else by the
-	line's UPC, promoted through the house's own promoter — idempotent, and it stamps
-	nothing on the Item (a receipt says nothing about who drop-ships it); a newly made
-	Item gets our optimized copy. ``item_code`` None carries the reason. Remote calls
-	happen here — never call it while holding the invoice locks."""
-	from ffl_integrations.distributor import offers
-	from ffl_integrations.distributor.items import _apply_product_copy
+	"""``(item_code, reason)`` from the house's catalog — see ``items.catalog_item``.
+	Remote calls happen here — never call it while holding the invoice locks."""
+	from ffl_integrations.distributor.items import catalog_item
 
-	promote = getattr(provider, "promote_to_item", None)
-	if not callable(promote):
-		return None, "the house cannot promote catalog rows to Items"
-	sku, upc = (line.sku or "").strip(), (line.upc or "").strip()
-	row = offers.catalog_row(provider, sku=sku, upc=upc or None)
-	if not row:
-		return None, "not in the house's catalog"
-	started = now_datetime()
-	item_code = (promote(row.get("sku") or sku, {}) or {}).get("item_code")
-	if not item_code:
-		return None, "the catalog promotion returned no Item"
-	if get_datetime(frappe.db.get_value("Item", item_code, "creation")) >= started:
-		_apply_product_copy(item_code)
-	return item_code, ""
+	return catalog_item(provider, (line.sku or "").strip(), (line.upc or "").strip())
 
 
 _CATALOG_UNREADABLE = "the catalog could not be read"
@@ -859,6 +831,8 @@ def _resolve_lines(inv, lines, only=None) -> tuple:
 	``item_code`` yet: ``({line name: item_code}, {line name: reason})``. The house's
 	catalog first, then an Item the shop already has; each line under its own
 	savepoint, so one failing line cannot poison the rest. No locks held."""
+	from ffl_integrations.distributor.items import local_item
+
 	provider = None
 	resolved, reasons = {}, {}
 	for ln in lines:
@@ -879,7 +853,7 @@ def _resolve_lines(inv, lines, only=None) -> tuple:
 			frappe.log_error(title=f"Invoice line item lookup failed: {ln.sku}",
 				message=frappe.get_traceback())
 			code, reason = None, f"{_CATALOG_UNREADABLE} ({type(exc).__name__})"
-		code = code or _local_item((ln.sku or "").strip(), (ln.upc or "").strip())
+		code = code or local_item((ln.sku or "").strip(), (ln.upc or "").strip())
 		if code:
 			resolved[ln.name] = code
 		else:
