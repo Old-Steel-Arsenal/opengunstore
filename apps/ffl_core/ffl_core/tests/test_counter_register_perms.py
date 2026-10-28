@@ -1,4 +1,4 @@
-"""A counter login holding only Sales User (+ Stock User), or only Sales Manager, can run the register end to end.
+"""A counter login holding only Sales User (+ Stock User), or Sales Manager + Sales User, can run the register end to end.
 
 ERPNext v16 gives Sales User read on POS Invoice and nothing on POS Opening Entry, POS Closing Entry or Sales
 Invoice, and Sales Manager no write on POS Invoice: every real login used to carry Accounts User as well, so
@@ -31,10 +31,10 @@ class CounterRegisterLoop(ShiftFixtures):
 	@classmethod
 	def setUpClass(cls):
 		super().setUpClass()
-		# The "Counter Sales" role profile is Sales User + Stock User; the manager holds no Accounts role.
+		# The "Counter Sales" role profile is Sales User + Stock User; a manager is Sales Manager + Sales User. Neither holds an Accounts role.
 		cls.users = {
 			"Sales User + Stock User": _user("crp-clerk@example.com", "Sales User", "Stock User"),
-			"Sales Manager": _user("crp-manager@example.com", "Sales Manager"),
+			"Sales Manager + Sales User": _user("crp-manager@example.com", "Sales Manager", "Sales User"),
 		}
 		if not frappe.db.exists("Item", ITEM):
 			frappe.get_doc({"doctype": "Item", "item_code": ITEM, "item_name": ITEM, "item_group": "All Item Groups",
@@ -247,6 +247,25 @@ class CounterRegisterLoop(ShiftFixtures):
 					frappe.db.rollback(save_point="crp_draft")
 					frappe.db.sql("UPDATE `tabPOS Opening Entry` SET status = 'Closed' WHERE status = 'Open'")
 
+	def test_only_a_manager_deletes_a_cancelled_invoice(self):
+		"""The delete grant is for drafts: Frappe stops a submitted invoice, guard_cancelled_delete a cancelled one."""
+		clerk, manager = self.users["Sales User + Stock User"], self.users["Sales Manager + Sales User"]
+		self._open(clerk)
+		sales = [self._sell(clerk) for _ in range(3)]
+		frappe.set_user("Administrator")
+		for name in sales:
+			frappe.get_doc("POS Invoice", name).cancel()
+		frappe.set_user(clerk)
+		with self.assertRaises(frappe.PermissionError):
+			frappe.delete_doc("POS Invoice", sales[0])
+		self.assertTrue(frappe.db.exists("POS Invoice", sales[0]))
+		frappe.set_user(manager)
+		frappe.delete_doc("POS Invoice", sales[1])
+		self.assertFalse(frappe.db.exists("POS Invoice", sales[1]))
+		frappe.set_user("Administrator")
+		frappe.delete_doc("POS Invoice", sales[2])
+		self.assertFalse(frappe.db.exists("POS Invoice", sales[2]))
+
 	def test_the_books_stay_closed(self):
 		"""The counter roles gain the register's doctypes and nothing near the ledger."""
 		closed = (
@@ -261,7 +280,7 @@ class CounterRegisterLoop(ShiftFixtures):
 		for label, user in self.users.items():
 			frappe.set_user(user)
 			for doctype, ptype in closed:
-				if label == "Sales Manager" and (doctype, ptype) in (
+				if "Sales Manager" in label and (doctype, ptype) in (
 						("POS Opening Entry", "cancel"), ("POS Closing Entry", "cancel")):
 					continue  # ERPNext's own rows for Sales Manager, untouched
 				self.assertFalse(frappe.has_permission(doctype, ptype), f"{label}: {ptype} {doctype} must stay closed")

@@ -304,14 +304,11 @@ class CounterRoleGrantRows(FrappeTestCase):
 		stock.pop(("Sales User", 0, 0))
 		self.assertEqual(site, stock, "every other role's rule (Sales Manager's select-only row too) came across unchanged")
 
-	def test_item_and_account_keep_sales_users_stock_rules(self):
-		"""The trade-in grants nothing on Item or Account. The only rows made there are Sales Manager's, for the
-		register (pos_compat.REGISTER_GRANTS); Sales User's are ERPNext's."""
+	def test_item_and_account_keep_their_stock_rules(self):
+		"""Nothing is granted on Item or Account, so neither is turned into Custom DocPerm."""
 		for doctype in ("Item", "Account"):
 			with self.subTest(doctype=doctype):
-				site = {k: v for k, v in self._rows("Custom DocPerm", doctype).items() if k[0] != "Sales Manager"}
-				stock = {k: v for k, v in self.stock[doctype].items() if k[0] != "Sales Manager"}
-				self.assertEqual(site, stock)
+				self.assertFalse(frappe.db.exists("Custom DocPerm", {"parent": doctype}))
 
 	def test_a_sales_manager_only_user_gets_nothing_from_the_trade_in(self):
 		frappe.set_user(SALES_MANAGER)

@@ -43,13 +43,14 @@ ERPNext put them there, not because bookkeeping needs the register.
 
 ### What a counter clerk can do on the register
 
-A login with only **Sales User** (plus Stock User for stock counts), or only
-**Sales Manager**, can run the register from start to finish without any
-Accounts role:
+A login with only **Sales User** (plus Stock User for stock counts), or
+**Sales Manager** together with **Sales User**, can run the register from start
+to finish without any Accounts role:
 
 - open the shift, sell and take payment, print the receipt, return a sale
   and close the shift (the closing posts the day's sales);
-- delete a draft order with **Delete Order**.
+- delete a draft order with **Delete Order**. Deleting a cancelled invoice is
+  for a Sales Manager or System Manager.
 
 ERPNext's own permissions stop short of this, so the system adds the missing
 ones when it is installed or updated. They cover only the register:
@@ -61,10 +62,10 @@ A clerk still cannot cancel or amend a submitted sale or a closing, delete a
 posted sale, or create a Journal Entry or Payment Entry, and has no access to
 the ledger. Undoing a posted sale is a return, not a cancellation.
 
-A **Sales Manager** who does not also hold **Sales User** can ring sales of
-ordinary stock. Selling a serialized item (every firearm) also needs
-**Sales User**, because ERPNext's serial-number records are open to that role
-only.
+A **Sales Manager** also needs **Sales User** to run the register, the same
+rule as for a trade-in: ERPNext gives Sales Manager no access to items, accounts
+or serial-number records, and this system does not copy those to it. The
+standard role profiles always pair them.
 
 ## What each report requires
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import frappe
+from frappe import _
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 from ffl_core.roles import COUNTER_ROLES
@@ -123,8 +124,7 @@ _ROLE_GRANTS_KEY = "ffl_role_grants_done"  # "doctype|role" of every grant below
 #     Bundle, an ERPNext-internal write the framework checks against the SESSION user whatever flags the
 #     document carries; stock ERPNext gives Sales User select only there. The bundle gets what Stock User
 #     has, short of cancel and delete. Sales User already has the rest the receipt checks (Item read, Account
-#     select) from stock ERPNext; Sales Manager is given nothing here (REGISTER_GRANTS gives it Item read and
-#     Account select for the register, not for this). (The new Item's selling price needs no grant: firearm_intake._create_item makes no
+#     select) from stock ERPNext; Sales Manager is given nothing. (The new Item's selling price needs no grant: firearm_intake._create_item makes no
 #     Item Price, per-gun priced firearms carry none -- item_hooks.sync_standard_selling_price.)
 # add_missing: what to make of a site with Custom DocPerm on the doctype but no level-0 row for the
 # role. False where the stock rules give the role a row (POS Invoice): someone removed it, leave it.
@@ -150,7 +150,9 @@ _REGISTER_GRANTS_KEY = "ffl_register_grants_done"  # same record as _ROLE_GRANTS
 # none gives cancel, amend, Journal Entry, Payment Entry or the ledger.
 #   POS Invoice write create submit  -- checkout saves, then submits, the sale (and a return)
 #   POS Invoice delete               -- Recent Orders > Delete Order on a DRAFT; Frappe never deletes a submitted
-#                                       document, and cancel stays closed. The recycle bin mirrors this right.
+#                                       document, and cancel stays closed. It would also delete a CANCELLED
+#                                       invoice, so guard_cancelled_delete (on_trash) keeps that to managers.
+#                                       The recycle bin mirrors this right.
 #                                       (The receipt needs no grant: printview takes read OR print.)
 #   POS Opening Entry read write create submit -- the Create POS Opening Entry dialog; write too, because
 #                                       submitting a closing re-saves the opening to mark it Closed
@@ -164,11 +166,10 @@ _REGISTER_GRANTS_KEY = "ffl_register_grants_done"  # same record as _ROLE_GRANTS
 #   POS Profile read                 -- the opening dialog fills its payment rows with frappe.client.get and the
 #                                       item grid waits on get_value("selling_price_list"); the select
 #                                       CASHIER_GRANTS gave only passes the server-side checks
-#   Sales Manager only, rows ERPNext gives Sales User already: Account select (the sale's receivable account,
-#                                       party.account_perm_check), Item read, Stock Settings read, POS Settings
-#                                       read (the page's own reads)
-# Not given, on purpose: Serial and Batch Bundle to Sales Manager, so a Sales Manager who is not also Sales User
-# cannot ring a serialized item (a firearm); roles.TRADE_IN_ROLES rests on the same gap.
+# Not given, on purpose: what Sales User already has from ERPNext (Item, Account, POS Settings, Stock Settings,
+# Serial and Batch Bundle) is not copied to Sales Manager, which would turn those doctypes into Custom DocPerm on
+# every site. A Sales Manager runs the register as Sales Manager + Sales User, as for the trade-in
+# (roles.TRADE_IN_ROLES); the role profiles always pair them.
 # No if_owner: the register is one shared shift (api/pos_session), so another clerk's opening and sales are
 # read and closed here. Sales Manager already has the full POS Opening / Closing Entry rows. add_missing is
 # False where the stock rules give the role a row, True where they give it none.
@@ -177,10 +178,6 @@ REGISTER_GRANTS = (
 	("POS Invoice", "Sales Manager", ("write", "create", "delete", "submit"), False),
 	("POS Opening Entry", "Sales User", ("read", "write", "create", "submit"), True),
 	("POS Closing Entry", "Sales User", ("read", "write", "create", "submit"), True),
-	("Account", "Sales Manager", ("select",), True),
-	("Item", "Sales Manager", ("read",), True),
-	("Stock Settings", "Sales Manager", ("read",), True),
-	("POS Settings", "Sales Manager", ("read",), True),
 	("POS Profile", "Sales User", ("read",), False),
 	("POS Profile", "Sales Manager", ("read",), False),
 	("Sales Invoice", "Sales User", ("read", "write", "create", "submit"), True),
@@ -206,6 +203,16 @@ def ensure_role_grants() -> None:
 	_apply_grants(REGISTER_GRANTS, _REGISTER_GRANTS_KEY)
 
 
+def guard_cancelled_delete(doc, method: str | None = None) -> None:
+	"""POS Invoice on_trash: a cancelled invoice (docstatus 2) is deleted by a manager only.
+
+	REGISTER_GRANTS gives the counter delete so a clerk can drop a draft (Delete Order); Frappe itself refuses
+	only a submitted invoice, so the same right would let a clerk erase a cancelled one. Drafts stay open."""
+	if doc.docstatus == 2 and not {"Sales Manager", "System Manager"} & set(frappe.get_roles()):
+		frappe.throw(_("Only a Sales Manager or System Manager can delete a cancelled POS Invoice."),
+			frappe.PermissionError)
+
+
 def _apply_grants(grants: tuple, record_key: str) -> None:
 	handled = _get_list(record_key)
 	for doctype, role, ptypes, add_missing in grants:
@@ -227,7 +234,7 @@ def _apply_grants(grants: tuple, record_key: str) -> None:
 # The doctypes check_perm_drift compares: the ones this module turns into Custom DocPerm for a real need (the
 # counter's POS Profile select, the trade-in's stock bundle, the register's loop). FFL Acquisition grants predate it.
 _DRIFT_DOCTYPES = ("POS Profile", "Serial and Batch Bundle", "POS Invoice", "POS Opening Entry",
-	"POS Closing Entry", "Sales Invoice", "Account", "Item", "Stock Settings", "POS Settings")
+	"POS Closing Entry", "Sales Invoice")
 
 
 def _our_grants() -> dict[tuple[str, str], set[str]]:
