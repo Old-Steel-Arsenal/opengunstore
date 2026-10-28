@@ -27,7 +27,7 @@ that the house has already agreed and skips the alert.
 
 **Permissions:** Distributor order/console roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1120`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1126`</sub>
 
 ## `catalog_by_upc`
 
@@ -92,7 +92,7 @@ idempotent. A counter-sourced drop-ship DO must be fully paid first
 
 **Permissions:** Distributor order/console roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1090`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1096`</sub>
 
 ## `create_orders`
 
@@ -221,7 +221,7 @@ order type in one list (the Distributor Orders page's tracking tab).
 
 **Returns:** [{name, distributor, order_type, account, account_number, status, hold_status, web_ref, total_cost, placed_at, next_poll_at, receive_status, source_doctype, source_name, creation, last_poll_at, invoiced_freight, error}] — plus ``lines`` when asked.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1184`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1190`</sub>
 
 ## `quote`
 
@@ -310,7 +310,7 @@ distributor); the code must be one the provider offers for this order.
 
 **Permissions:** Distributor order/console roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1023`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1029`</sub>
 
 ## `shipping_options`
 
@@ -330,7 +330,7 @@ flat-rate estimate, so the operator can choose before Confirm.
 
 **Permissions:** Distributor order/console roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:998`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1004`</sub>
 
 ## `transition_order`
 
@@ -351,4 +351,4 @@ The DO state machine still enforces transition legality.
 
 **Permissions:** Distributor order roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1161`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1167`</sub>

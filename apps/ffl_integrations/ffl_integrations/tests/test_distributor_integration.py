@@ -127,8 +127,16 @@ class _Base(FrappeTestCase):
 				"quantity": 10},
 			{"rsr_stock_number": "DC-NO-ITEM", "ffl_required": 0, "department_number": "13",
 				"dealer_price": 1, "map_price": 1, "msrp": 1, "quantity": 10},
+			# The shop's Item for this one carries the UPC only as a barcode.
+			{"rsr_stock_number": "DC-BC-ACC", "upc": "000000777018", "ffl_required": 0,
+				"department_number": "13", "dealer_price": 1, "map_price": 1, "msrp": 1,
+				"quantity": 10},
 		])
 		_ensure_item("000000777001", item_group="Ammunition", has_serial_no=0)
+		_ensure_item("DC-BC-LOCAL", item_group="Ammunition", has_serial_no=0,
+			barcodes=[{"barcode": "000000777018", "barcode_type": "UPC"}])
+		# Named by a UPC the catalog does not carry: only the page's own UPC finds it.
+		_ensure_item("000000777025", item_group="Ammunition", has_serial_no=0)
 		_ensure_distributor("DC-TEST-SUPPLIER")
 
 	@classmethod
@@ -570,21 +578,33 @@ class TestCreateOrdersEndpoint(_Base):
 			self.assertEqual(do.status, "Draft")
 			self.assertEqual(do.docstatus, 0)
 
-
-	def test_search_cart_line_without_item_code_finds_the_upc_item(self):
-		# The restock page's cross-house search sends no item_code; the house SKU
-		# must never stand in for one (it is not an Item → link validation threw).
-		created = dist_api.create_orders(
-			"TEST-DC",
-			json.dumps([
-				{"sku": "DC-UPC-ACC", "item_code": "", "qty": 1},
-				{"sku": "DC-NO-ITEM", "item_code": "", "qty": 1},
-			]),
+	def _order_items(self, lines):
+		created = dist_api.create_orders("TEST-DC", json.dumps(lines),
 			json.dumps({"mode": "stocking"}))
 		self.assertEqual(len(created), 1)
 		do = frappe.get_doc("Distributor Order", created[0]["name"])
-		self.assertEqual({ln.sku: ln.item_code for ln in do.lines},
-			{"DC-UPC-ACC": "000000777001", "DC-NO-ITEM": ""})
+		return {ln.sku: ln.item_code for ln in do.lines}
+
+	def test_search_cart_line_without_item_code_uses_the_shops_item(self):
+		# The restock page's cross-house search sends no item_code; the house SKU
+		# must never stand in for one (it is not an Item → link validation threw).
+		got = self._order_items([
+			{"sku": "DC-UPC-ACC", "item_code": "", "qty": 1},
+			{"sku": "DC-BC-ACC", "item_code": "", "qty": 1},
+			{"sku": "DC-ACC", "item_code": "", "upc": "000000777025", "qty": 1},
+		])
+		self.assertEqual(got, {"DC-UPC-ACC": "000000777001", "DC-BC-ACC": "DC-BC-LOCAL",
+			"DC-ACC": "000000777025"})
+
+	def test_search_cart_line_with_no_local_item_promotes_one_from_the_catalog(self):
+		# An order line without an Item could never be received against: the
+		# catalog promoter makes it, as invoice receiving does.
+		from ffl_integrations.distributor.items import local_item
+
+		self.assertIsNone(local_item("DC-NO-ITEM", ""))
+		code = self._order_items([{"sku": "DC-NO-ITEM", "item_code": "", "qty": 1}])["DC-NO-ITEM"]
+		self.assertTrue(code)
+		self.assertTrue(frappe.db.exists("Item", code))
 
 
 class TestListOrdersTracking(_Base):
