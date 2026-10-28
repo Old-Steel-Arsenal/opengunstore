@@ -12,7 +12,7 @@
 // The counter panel's agreement chips (customer_flags.js) and the Customer form's
 // Agreements section open request(). ffl.agreements.forSale(frm) — the register's
 // Agreements button: every active agreement for this customer and cart, each
-// Each firearm sold one once per gun, with a Send per row.
+// Each firearm sold one once for all its guns (one copy, one signature), with a Send per row.
 (function () {
 	if (typeof window === 'undefined' || typeof module === 'object') return;
 	window.ffl = window.ffl || {};
@@ -40,13 +40,13 @@
 
 	// The pending copy may still have a working link — the customer could be signing
 	// on the tablet right now. Ask before a new link cancels it.
-	// extra: {serial_no, price} for an agreement signed for each firearm sold;
+	// extra: {firearms: [{serial_no, price}]} for an agreement signed for each firearm sold;
 	// {reference_doctype, reference_name} for one signed for a record (Per document).
 	function send(customer, template, deliver, replace, terminal, extra) {
 		extra = extra || {};
 		return frappe.call({ method: M + 'request_agreement', freeze: true,
 			args: { customer: customer, template: template, deliver: deliver, replace: replace ? 1 : 0, terminal: terminal || null,
-				serial_no: extra.serial_no || null, price: extra.price || null,
+				firearms: extra.firearms ? JSON.stringify(extra.firearms) : null,
 				reference_doctype: extra.reference_doctype || null, reference_name: extra.reference_name || null } })
 			.then(function (r) {
 				var m = r.message || {};
@@ -78,9 +78,10 @@
 		var done = opts.done || function () {};
 		var manager = isManager();
 		var who = opts.customer_name || customer;
-		// One gun's copy of an Each firearm sold agreement, or one record's copy of a Per
+		// The guns' copy of an Each firearm sold agreement, or one record's copy of a Per
 		// document one: the template and what it is for are fixed.
-		var extra = opts.serial_no ? { serial_no: opts.serial_no, price: opts.price }
+		var guns = opts.firearms || [];
+		var extra = guns.length ? { firearms: guns.map(function (g) { return { serial_no: g.serial_no, price: g.rate }; }) }
 			: opts.reference_name ? { reference_doctype: opts.reference_doctype, reference_name: opts.reference_name } : null;
 		return frappe.call({ method: 'ffl_core.signing_terminal.list_terminals' })
 			.then(function (r) { return (r.message || []).filter(function (t) { return t.paired; }); },
@@ -99,8 +100,8 @@
 				fields.push({ fieldtype: 'HTML', fieldname: 'record', options: '<p>' + __('For {0} {1}',
 					[esc(__(extra.reference_doctype)), '<b>' + esc(extra.reference_name) + '</b>']) + '</p>' });
 			} else if (extra) {
-				fields.push({ fieldtype: 'HTML', fieldname: 'gun', options: '<p>' + __('For the firearm {0}', ['<b>'
-					+ esc((opts.item_name ? opts.item_name + ' · ' : '') + __('serial {0}', [opts.serial_no])) + '</b>']) + '</p>' });
+				fields.push({ fieldtype: 'HTML', fieldname: 'gun', options: '<p>' + __('For the firearms:') + '</p><ul>'
+					+ guns.map(function (g) { return '<li><b>' + esc(gunLabel(g)) + '</b></li>'; }).join('') + '</ul>' });
 			}
 			if (tablets) {
 				fields.push({ fieldtype: 'Select', fieldname: 'terminal', label: __('Signing tablet'),
@@ -207,6 +208,8 @@
 			.map(function (r) { return { item_code: r.item_code, serial_no: r.serial_no || '', rate: r.rate || 0 }; });
 	}
 
+	function gunLabel(g) { return (g.item_name || g.item_code ? (g.item_name || g.item_code) + ' · ' : '') + __('serial {0}', [g.serial_no]); }
+
 	var STATE = {
 		signed: [__('Signed'), 'green'], expiring: [__('Expires soon'), 'yellow'], pending: [__('Sent, not signed'), 'yellow'],
 		expired: [__('Expired'), 'orange'], missing: [__('Not signed'), 'gray'],
@@ -231,10 +234,13 @@
 				var html = rows.map(function (row, i) {
 					var st = STATE[row.state] || STATE.missing;
 					var done = row.state === 'signed' || row.state === 'expiring';
-					var gun = row.serial_no ? '<div class="small text-muted">' + esc((row.item_name || row.item_code || '') + ' · ' + __('serial {0}', [row.serial_no])) + '</div>'
+					var guns = row.firearms || [];
+					var gun = guns.length ? guns.map(function (g) {
+						return '<div class="small text-muted">' + esc(gunLabel(g)) + (g.state === 'signed' ? ' · ' + esc(__('Signed')) : '') + '</div>';
+					}).join('')
 						: (row.scope === 'Each firearm sold' ? '<div class="small text-muted">' + __('Signed for each firearm sold; no gun with a serial in the cart yet.') + '</div>' : '');
 					var needs = row.required ? ' <span class="indicator-pill red">' + __('This sale needs it') + '</span>' : '';
-					var act = (row.scope === 'Each firearm sold' && !row.serial_no) || done ? ''
+					var act = (row.scope === 'Each firearm sold' && !guns.length) || done ? ''
 						: '<button class="btn btn-xs btn-primary" data-ffl-send="' + i + '">' + __('Send') + '</button>';
 					return '<div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid var(--border-color)">'
 						+ '<div><b>' + esc(row.template) + '</b>' + needs + gun + '</div>'
@@ -243,8 +249,9 @@
 				d.fields_dict.rows.$wrapper.html(html);
 				d.fields_dict.rows.$wrapper.find('[data-ffl-send]').on('click', function () {
 					var row = rows[+$(this).attr('data-ffl-send')];
-					request(customer, row.template, { customer_name: frm.doc.customer_name, serial_no: row.serial_no,
-						price: row.rate, item_name: row.item_name, done: load });
+					// One copy for every gun of this agreement not signed yet.
+					request(customer, row.template, { customer_name: frm.doc.customer_name, done: load,
+						firearms: (row.firearms || []).filter(function (g) { return g.state !== 'signed'; }) });
 				});
 			});
 		};
@@ -274,14 +281,15 @@
 			frappe.call({ method: M + 'agreements_for_sale', args: { customer: customer, items: cartOf(frm),
 				sale: frm.doc.__islocal ? null : frm.doc.name } }).then(function (r) {
 				var fresh = ((r.message || {}).rows || []).filter(function (row) {
-					var key = customer + '|' + row.template + '|' + (row.serial_no || '');
+					var key = customer + '|' + row.template + '|' + (row.firearms || []).map(function (g) { return g.serial_no; }).join(',');
 					if (!row.required || row.state === 'signed' || row.state === 'expiring' || prompted[key]) return false;
 					prompted[key] = true;
 					return true;
 				});
 				if (!fresh.length) return;
 				var list = fresh.map(function (row) {
-					return '<li><b>' + esc(row.template) + '</b>' + (row.serial_no ? ' — ' + esc((row.item_name || '') + ' · ' + row.serial_no) : '') + '</li>';
+					var guns = (row.firearms || []).filter(function (g) { return g.state !== 'signed'; });
+					return '<li><b>' + esc(row.template) + '</b>' + (guns.length ? ' — ' + esc(guns.map(gunLabel).join('; ')) : '') + '</li>';
 				}).join('');
 				frappe.confirm('<p>' + __('This sale needs:') + '</p><ul>' + list + '</ul><p>' + __('Open Agreements to send them?') + '</p>',
 					function () { forSale(frm); });

@@ -43,12 +43,14 @@ class CounterOrderAgreements(BuildOrderMixin, FrappeTestCase):
 		frappe.db.set_value("Item", cls.used, "is_used", 1)
 		cls.pos = frappe.db.get_value("POS Profile", {"company": cls.company, "disabled": 0}, "name")
 
-	def _order(self, *, dispose_now=0, email="buyer", paid=1, item=None):
-		serial = self._stocked_serial("BOAGR" + frappe.generate_hash(length=8).upper(), item_code=item or self.gun)
+	def _order(self, *, dispose_now=0, email="buyer", paid=1, item=None, guns=1):
+		serials = [self._stocked_serial("BOAGR" + frappe.generate_hash(length=8).upper(), item_code=item or self.gun)
+			for _i in range(guns)]
+		serial = serials[0] if guns == 1 else serials
 		customer = self._indiv("BO Agr " + frappe.generate_hash(length=6))
 		payload = {"buyer_type": "individual", "customer": customer, "pos_profile": self.pos,
 			"destination_ffl": DEST_FFL, "dispose_now": dispose_now, "tax_exempt": 1,
-			"items": [{"item_code": item or self.gun, "qty": 1, "rate": 650, "serials": [serial]}]}
+			"items": [{"item_code": item or self.gun, "qty": 1, "rate": 650, "serials": [s]} for s in serials]}
 		if paid:
 			payload.update(payment_received=1, mode_of_payment="Cash")
 		if email:
@@ -88,6 +90,22 @@ class CounterOrderAgreements(BuildOrderMixin, FrappeTestCase):
 		self.assertEqual((copy.serial_no, copy.delivery_channel), (serial, "Email"))
 		self.assertIn("650", frappe.db.get_value("Customer Agreement", copy.name, "body_snapshot"),
 			"the copy names the gun's price on this order")
+
+	def test_two_guns_email_one_copy_for_both(self):
+		out, serials, send = self._order(guns=2)
+		self.assertTrue(out["ok"])
+		self.assertEqual(sorted((a["serial_no"], a["state"]) for a in out["agreements"]),
+			sorted((s, "sent") for s in serials))
+		self.assertEqual(send.call_count, 1)
+		si = frappe.get_doc("Sales Invoice", out["sales_invoice"])
+		copy = self._pending_copy(si)
+		self.assertEqual(sorted(g.serial_no for g in frappe.get_doc("Customer Agreement", copy.name).firearms),
+			sorted(serials))
+		# Resending for one gun re-issues the same copy, still covering both.
+		with patch("frappe.sendmail"):
+			manual_order.resend_order_agreement(si.name, self.per_gun, serials[1])
+		self.assertEqual(frappe.db.count("Customer Agreement", {"customer": si.customer, "template": self.per_gun}), 1)
+		self.assertEqual(len(frappe.get_doc("Customer Agreement", copy.name).firearms), 2)
 
 	def test_no_email_still_books_the_order_and_says_so(self):
 		out, _serial, send = self._order(email=None)

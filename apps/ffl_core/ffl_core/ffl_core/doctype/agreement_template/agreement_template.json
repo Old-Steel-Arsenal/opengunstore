@@ -98,7 +98,7 @@
    "fieldtype": "Text Editor",
    "label": "Agreement Text",
    "reqd": 1,
-   "description": "Placeholders: {{ customer_name }}, {{ first_name }}, {{ date }}, {{ store_name }}, {{ store_address }}, {{ valid_days }}; for Each firearm sold also {{ item_name }}, {{ manufacturer }}, {{ model }}, {{ caliber }}, {{ serial_no }}, {{ price }}; for a gunsmith work order (Per document) also {{ work_order }}, {{ manufacturer }}, {{ model }}, {{ caliber }}, {{ serial_no }}, {{ firearm_type }}, {{ accessories }}, {{ condition }}, {{ work_requested }}, {{ estimated_cost }}, {{ deposit }}, {{ estimated_completion }}."
+   "description": "Placeholders: {{ customer_name }}, {{ first_name }}, {{ date }}, {{ store_name }}, {{ store_address }}, {{ valid_days }}; for Each firearm sold also {{ item_name }}, {{ manufacturer }}, {{ model }}, {{ caliber }}, {{ serial_no }}, {{ price }} (one copy covers every gun of a sale: with several, each lists them all, and {{ firearms }} is a table of the guns); for a gunsmith work order (Per document) also {{ work_order }}, {{ manufacturer }}, {{ model }}, {{ caliber }}, {{ serial_no }}, {{ firearm_type }}, {{ accessories }}, {{ condition }}, {{ work_requested }}, {{ estimated_cost }}, {{ deposit }}, {{ estimated_completion }}."
   },
   {
    "fieldname": "description",

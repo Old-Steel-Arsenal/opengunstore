@@ -206,6 +206,7 @@ One customer's copy of an agreement: requested, signed (on a tablet, by a link o
 | `template_version` | Int | Agreement Version |  |  |
 | `serial_no` | Link | Firearm (Serial No) |  | Serial No |
 | `item_code` | Link | Item |  | Item |
+| `firearms` | Table | Firearms |  | Customer Agreement Firearm |
 | `status` | Select | Status |  | Pending, Signed, Void, Expired |
 | `expires_on` | Date | Expires On |  |  |
 | `signed_on` | Datetime | Signed On |  |  |
@@ -229,6 +230,16 @@ One customer's copy of an agreement: requested, signed (on a tablet, by a link o
 | `reference_doctype` | Link | Reference Type |  | DocType |
 | `reference_name` | Dynamic Link | Reference |  | reference_doctype |
 | `body_snapshot` | Long Text | Text |  |  |
+
+## Customer Agreement Firearm
+
+app: `ffl_core` · module: FFL Core · child table
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `serial_no` | Link | Serial No | ✓ | Serial No |
+| `item_code` | Link | Item |  | Item |
+| `price` | Currency | Price |  |  |
 
 ## Customer Alert
 

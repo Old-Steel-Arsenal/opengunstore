@@ -18,9 +18,9 @@ Every active agreement and where this customer stands, for the register's Agreem
 | `items` | list | str | no | `None` | The cart: [{"item_code", "serial_no", "rate"}] (serial_no may hold several, one per line). |
 | `sale` | string \| null | no | `None` | The POS Invoice, once saved. |
 
-**Returns:** {"rows": [{"template", "scope", "requirement", "required": whether this sale needs it, "serial_no", "item_code", "item_name", "rate", "state", "expires_on", "agreement"}]} — a Per customer template once, an Each firearm sold one once per gun in the cart (or once with no gun when the cart has none, so it can still be seen).
+**Returns:** {"rows": [{"template", "scope", "requirement", "required": whether this sale needs it, "state", "expires_on", "agreement", "firearms"}]} — every template once. An Each firearm sold one lists the guns one copy is signed for in "firearms": [{"serial_no", "item_code", "item_name", "rate", "state"}] (the guns the sale needs it for, else every gun in the cart; empty when the cart has none); its "state" is signed once every one of them is, pending when the unsigned ones all have a copy out, else missing.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:382`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:411`</sub>
 
 ## `get_customer_agreements`
 
@@ -34,9 +34,9 @@ The Agreements section of the Customer form.
 |---|---|---|---|---|
 | `customer` | string | yes | — | Customer name (document id). |
 
-**Returns:** {"rows": [{"name", "template", "serial_no", "status", "signed_on", "signed_via", "expires_on", "signed_pdf"}] newest first, "can_manage": whether the caller may void or record paper copies}.
+**Returns:** {"rows": [{"name", "template", "serial_no": every gun it covers, comma-separated, "status", "signed_on", "signed_via", "expires_on", "signed_pdf"}] newest first, "can_manage": whether the caller may void or record paper copies}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:762`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:828`</sub>
 
 ## `load_for_signing`
 
@@ -58,7 +58,7 @@ then on carries) the current text.
 
 **Returns:** {"customer_name", "title", "body_html", "store_name", "minors_need_guardian", "minor_by_dob": true / false from the customer's date of birth, or null when the store keeps none (the page then asks)}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:852`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:923`</sub>
 
 ## `record_paper_agreement`
 
@@ -85,7 +85,7 @@ signed scan there is nothing to record.
 
 **Returns:** {"name", "status", "expires_on", "signed_pdf"}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:699`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:765`</sub>
 
 ## `regenerate_signed_pdf`
 
@@ -101,7 +101,7 @@ Build a signed copy's PDF again (when the background job failed).
 
 **Returns:** {"signed_pdf": file URL}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:782`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:853`</sub>
 
 ## `request_agreement`
 
@@ -124,14 +124,15 @@ tablet right now — nothing changes unless ``replace`` is 1: the answer is
 | `deliver` | string | no | `'qr'` | ``tablet`` — send the link to a paired signing tablet (``terminal``; ``ffl_core.signing_terminal``), which opens it by itself once the request commits (a caller that never commits sends nothing); ``qr`` — return the signing link and a QR code for the counter; ``email`` — email the link to the customer (refused when the customer has no email address); ``none`` — only create the Pending copy (a manager then records a paper copy on it). |
 | `replace` | integer | no | `0` | 1 to re-issue even though the pending copy's link still works. |
 | `terminal` | string \| null | no | `None` | Signing Terminal name, for ``tablet``; must be active and paired. |
-| `serial_no` | string \| null | no | `None` | The gun, for an Each firearm sold template (required there). |
+| `serial_no` | string \| null | no | `None` | The gun, for an Each firearm sold template (it or *firearms* is required there). |
 | `price` | number \| null | no | `None` | The gun's price in this sale, for the text's ``{{ price }}``. |
 | `reference_doctype` | string \| null | no | `None` | For a Per document template (required there): the record's DocType. |
 | `reference_name` | string \| null | no | `None` | That record's name; the caller must be able to read it, and the record's ``agreement_context()`` fills the text's placeholders. |
+| `firearms` | list | str | no | `None` | For an Each firearm sold template, several guns signed for at once: [{"serial_no", "price"}]. One copy covers them all; a pending copy covering any of them is the one re-issued. |
 
 **Returns:** {"name": the Customer Agreement, "deliver", "token_expires"} plus, for ``qr``, "sign_url" and "qr_svg" (an SVG data URI); for ``email``, "email". The link itself is never stored.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:539`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:583`</sub>
 
 ## `submit_signature`
 
@@ -163,7 +164,7 @@ link and 300 per IP address.
 
 **Returns:** {"signed": true, "store_name"}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:931`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:1002`</sub>
 
 ## `void_agreement`
 
@@ -183,4 +184,4 @@ reason goes on its timeline.
 
 **Returns:** {"name", "status": "Void"}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:671`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:737`</sub>
