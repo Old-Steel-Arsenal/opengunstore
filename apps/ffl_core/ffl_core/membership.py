@@ -383,6 +383,8 @@ def settle(membership: str) -> bool:
 			_activate(doc, row)
 		elif doc.status in (ACTIVE, PAST_DUE, SUSPENDED) and (not doc.current_period_end
 				or getdate(row.period_end) > getdate(doc.current_period_end)):
+			if doc.current_period_end and getdate(row.period_start) > getdate(add_days(doc.current_period_end, 1)):
+				doc.start_date = row.period_start      # a rejoin after suspension: renewals count from here
 			doc.update({"status": ACTIVE, "current_period_start": row.period_start, "current_period_end": row.period_end,
 				"grace_until": None, "last_charge_status": _("Renewed: {0} paid").format(row.sales_invoice)})
 			receipts.append(row.sales_invoice)
@@ -799,6 +801,21 @@ def refuse_invoice_cancel(doc, method=None) -> None:
 # ------------------------------------------------------------------ renewals
 
 
+def next_period(doc, billing_period: str, today=None):
+	"""The period an overdue renewal bills: the one right after the current period (from the
+	original due date, never shifted — paying within grace), except for a Suspended membership,
+	whose grace is over: it starts again today, so the months it was suspended are not billed."""
+	if doc.status == SUSPENDED:
+		for row in doc.get("invoices") or []:           # one open rejoin invoice at a time (C4)
+			if row.status == UNPAID and doc.current_period_end and row.period_start \
+					and getdate(row.period_start) > getdate(doc.current_period_end) \
+					and frappe.db.get_value("Sales Invoice", row.sales_invoice, "docstatus") == 1:
+				return getdate(row.period_start), getdate(row.period_end)
+		start = getdate(today or nowdate())
+		return start, period_end(start, billing_period)
+	return renewal_period(doc, billing_period)
+
+
 def renewal_period(doc, billing_period: str):
 	"""(start, end) of the period after the membership's current one. It starts the day after the
 	current period ends — never shifted, even when paid late — and ends the day before the next
@@ -848,6 +865,13 @@ def _charge_waiting(sales_invoice: str | None) -> bool:
 		"Card Terminal Payment", {"sales_invoice": sales_invoice, "status": "IN_PROGRESS"}))
 
 
+def _last_charge_status(sales_invoice: str) -> str | None:
+	if not frappe.db.exists("DocType", "Card Terminal Payment"):
+		return None
+	return frappe.db.get_value("Card Terminal Payment", {"sales_invoice": sales_invoice}, "status",
+		order_by="creation desc")
+
+
 def _charge_rows(sales_invoice: str) -> int:
 	if not frappe.db.exists("DocType", "Card Terminal Payment"):
 		return 0
@@ -862,6 +886,11 @@ def _open_renewal(doc, start):
 				and frappe.db.get_value("Sales Invoice", row.sales_invoice, "docstatus") == 1:
 			return row
 	return None
+
+
+def _waiting_renewal(doc) -> bool:
+	"""Some unpaid renewal invoice of *doc* has a card charge still waiting for the gateway."""
+	return any(r.status == UNPAID and _charge_waiting(r.sales_invoice) for r in doc.get("invoices") or [])
 
 
 def _fmt(day) -> str:
@@ -917,6 +946,8 @@ def _renew_one(name: str, today) -> str:
 	if not frappe.db.get_value(DOCTYPE, name, "name", for_update=True):
 		return SKIPPED
 	doc = frappe.get_doc(DOCTYPE, name)
+	if doc.status == PAST_DUE and _waiting_renewal(doc):
+		return UNKNOWN                               # a manager resolves it first (Needs attention)
 	if doc.status == PAST_DUE and (not doc.grace_until or getdate(doc.grace_until) < today):
 		doc.status = SUSPENDED
 		doc.last_charge_status = _("Suspended {0}: the renewal was not paid within the grace days.").format(_fmt(today))
@@ -936,7 +967,7 @@ def _attempt(doc, plan, today, *, manual: bool = False) -> str:
 	the saved card through the card service. A charge still waiting for the gateway is left alone by
 	the job; a manager's Retry now (``manual``) has the card service look it up — it never charges
 	twice."""
-	start, end = renewal_period(doc, plan.billing_period)
+	start, end = next_period(doc, plan.billing_period, today)
 	row = _open_renewal(doc, start)
 	waiting = bool(row) and _charge_waiting(row.sales_invoice)
 	if waiting and not manual:
@@ -987,6 +1018,17 @@ def _attempt(doc, plan, today, *, manual: bool = False) -> str:
 		doc.reload()
 		doc.last_charge_attempt = today
 		doc.last_charge_status = _("Renewal not charged: {0} It is tried again tomorrow.").format(error or "")
+		_save(doc)
+		return NOT_STARTED
+	if not out and _charge_rows(invoice) > before and _last_charge_status(invoice) == "CANCELED":
+		# The card service reached the processor and it refused the request itself (expired key,
+		# feature off, bad setup) — recorded CANCELED, nothing charged. The store's problem, not the
+		# card's: the invoice is voided and the membership keeps its status; tried again tomorrow.
+		row = next((r for r in doc.invoices if r.sales_invoice == invoice), None)
+		if row and row.status == UNPAID:
+			_void_declined(doc, row, error or "")
+		doc.last_charge_status = _("Renewal not charged: the card processor refused the request ({0}). It is "
+			"tried again tomorrow.").format(error or "")
 		_save(doc)
 		return NOT_STARTED
 	why = error or (out or {}).get("error") or _("Card declined.")
@@ -1066,7 +1108,7 @@ def retry_renewal(membership: str) -> dict:
 	today = getdate(nowdate())
 	_check_overdue(doc, today)
 	plan = frappe.get_doc(PLAN, doc.plan)
-	start, _end = renewal_period(doc, plan.billing_period)
+	start, _end = next_period(doc, plan.billing_period, today)
 	row = _open_renewal(doc, start)
 	if not (row and _charge_waiting(row.sales_invoice)) and not _chargeable(doc):
 		frappe.throw(_("{0} has no card that can be charged for renewals. Change the card, or take the payment "
@@ -1093,7 +1135,7 @@ def invoice_renewal(membership: str) -> dict:
 	today = getdate(nowdate())
 	_check_overdue(doc, today)
 	plan = frappe.get_doc(PLAN, doc.plan)
-	start, end = renewal_period(doc, plan.billing_period)
+	start, end = next_period(doc, plan.billing_period, today)
 	row = _open_renewal(doc, start)
 	if row and _charge_waiting(row.sales_invoice):
 		frappe.throw(_("A card charge on {0} is waiting for the gateway's answer. A manager looks it up first "
@@ -1136,10 +1178,9 @@ def needs_attention() -> dict:
 	fields = ["name", "status", "current_period_end", "last_charge_attempt"]
 	names = [m.name for m in frappe.get_all(DOCTYPE, filters={"status": ("in", (PAST_DUE, SUSPENDED))},
 		fields=fields, order_by="current_period_end asc")]
-	# Active past its period end after the job tried it (not charged, or not confirmed).
-	names += [m.name for m in frappe.get_all(DOCTYPE, filters={"status": ACTIVE, "current_period_end": ("<", today),
-		"last_charge_attempt": ("is", "set")}, fields=fields, order_by="current_period_end asc")
-		if getdate(m.last_charge_attempt) > getdate(m.current_period_end)]
+	# Active past its period end: not charged, not confirmed, or the renewal job is switched off.
+	names += frappe.get_all(DOCTYPE, filters={"status": ACTIVE, "auto_renew": 1, "cancel_at_period_end": 0,
+		"current_period_end": ("<", today)}, pluck="name", order_by="current_period_end asc")
 	stale = add_to_date(now_datetime(), days=-STALE_PENDING_DAYS)
 	names += frappe.get_all(DOCTYPE, filters={"status": PENDING, "creation": ("<", stale)}, pluck="name",
 		order_by="creation asc")
@@ -1159,6 +1200,8 @@ def needs_attention() -> dict:
 				else _("Past due")
 		elif doc.status == SUSPENDED:
 			reason = _("Suspended")
+		elif not doc.last_charge_attempt or getdate(doc.last_charge_attempt) <= getdate(doc.current_period_end):
+			reason = _("Renewal not tried yet")
 		else:
 			reason = _("Renewal not charged")
 		rows.append({"membership": doc.name, "customer": doc.customer, "customer_name": doc.customer_name,
@@ -1199,13 +1242,17 @@ def send_renewal_reminders(today=None) -> int:
 			store = company_brand(m.company).get("name") or ""
 			when = _fmt(add_days(m.current_period_end, 1))
 			plan = escape_html(m.plan_name or m.plan)
+			chargeable = _chargeable(frappe._dict(saved_card=m.saved_card, customer=m.customer))
 			card = escape_html(_card_summary(m.saved_card)) or _("the card on file")
 			frappe.sendmail(recipients=[email], subject=_("Your {0} membership renews on {1}").format(
 				m.plan_name or m.plan, when),
 				message="<p>{0}</p><p>{1}</p><p>{2}</p>".format(
 					_("Hello {0},").format(escape_html(m.customer_name or m.customer)),
 					_("Your {0} membership at {1} renews on {2}. That day {3} is charged to {4}.").format(
-						plan, escape_html(store), when, fmt_money(flt(m.price), currency=cur), card),
+						plan, escape_html(store), when, fmt_money(flt(m.price), currency=cur), card) if chargeable
+					else _("Your {0} membership at {1} renews on {2} ({3}), but there is no card on file we can "
+						"charge. Please visit or call the store before then to keep your membership.").format(
+						plan, escape_html(store), when, fmt_money(flt(m.price), currency=cur)),
 					_("To change the card or stop the renewal, contact the store before then.")),
 				reference_doctype=DOCTYPE, reference_name=m.name, now=False)
 			frappe.db.set_value(DOCTYPE, m.name, "renewal_reminder_for", m.current_period_end, update_modified=False)

@@ -392,3 +392,71 @@ class MembershipRenewal(_CardOnFileBase):
 			self.assertEqual(ms.renew_memberships().get(ms.RENEWED), 1)
 		self.assertEqual(self._doc(m).status, ms.ACTIVE)
 		self.assertEqual(client.charge_stored_credential.call_count, 1)
+
+	def test_a_processor_refusal_after_the_record_is_not_a_decline(self, cc):
+		"""The processor refuses the request itself (expired key, feature off) after the charge record
+		exists: recorded CANCELED, nothing charged — the store's problem, so the member keeps its status
+		and the invoice is voided; tomorrow it is tried again."""
+		from ffl_integrations.payments.base import CardProcessorError
+
+		client = cc.from_settings.return_value
+		self._approve_all(client)
+		m, _card = self._member()
+		with _on("2026-12-15"), patch("ffl_integrations.payroc.adapter.PayrocProcessor.charge_stored",
+				side_effect=CardProcessorError("401 Unauthorized", outcome_known=True)):
+			self.assertEqual(ms.renew_memberships().get(ms.NOT_STARTED), 1)
+		(row,) = self._renewals(m)
+		self.assertEqual(frappe.db.get_value(api.TERMINAL_PAYMENT, {"sales_invoice": row.sales_invoice}, "status"),
+			"CANCELED")
+		self.assertEqual((row.status, frappe.db.get_value("Sales Invoice", row.sales_invoice, "docstatus")),
+			(ms.CANCELLED, 2))
+		doc = self._doc(m)
+		self.assertEqual(doc.status, ms.ACTIVE)
+		self.assertIn("refused the request", doc.last_charge_status)
+		with _on("2026-12-16"):
+			self.assertEqual(ms.renew_memberships().get(ms.RENEWED), 1)
+
+	def test_a_suspended_member_who_pays_starts_again_today(self, cc):
+		"""Grace over: paying later bills a fresh period from today, not the months it was suspended,
+		and the next renewal counts from that day."""
+		client = cc.from_settings.return_value
+		self._decline_all(client)
+		m, _card = self._member()
+		with _on("2026-12-15"):
+			ms.renew_memberships()
+		self.assertEqual(self._doc(m).status, ms.SUSPENDED)
+		with _on("2027-03-20"):
+			inv = ms.invoice_renewal(m)
+			self.assertEqual(ms.invoice_renewal(m)["sales_invoice"], inv["sales_invoice"])   # one open at a time
+			si = frappe.get_doc("Sales Invoice", inv["sales_invoice"])
+			self.assertEqual({(getdate(r.service_start_date), getdate(r.service_end_date)) for r in si.items},
+				{(date(2027, 3, 20), date(2027, 4, 19))})
+			_pay(si.name)
+		doc = self._doc(m)
+		self.assertEqual((doc.status, getdate(doc.start_date), getdate(doc.current_period_end)),
+			(ms.ACTIVE, date(2027, 3, 20), date(2027, 4, 19)))
+		calls = client.charge_stored_credential.call_count
+		with _on("2027-03-21"):
+			ms.renew_memberships()                       # nothing back-billed
+		self.assertEqual(client.charge_stored_credential.call_count, calls)
+
+	def test_a_charge_waiting_for_its_answer_holds_off_suspension(self, cc):
+		client = cc.from_settings.return_value
+		self._decline_all(client)
+		m, _card = self._member(plan=self.grace_plan)
+		with _on("2026-12-15"):
+			ms.renew_memberships()                       # declined: Past Due until 12-17
+		client.charge_stored_credential.side_effect = requests.exceptions.ReadTimeout("read timed out")
+		with _on("2026-12-16"):
+			self.assertEqual(ms.renew_memberships().get(ms.UNKNOWN), 1)
+		with _on("2026-12-19"):
+			self.assertEqual(ms.renew_memberships().get(ms.UNKNOWN), 1)
+		self.assertEqual(self._doc(m).status, ms.PAST_DUE)
+
+	def test_overdue_members_are_listed_with_renewals_switched_off(self, cc):
+		m, _card = self._member()
+		frappe.db.set_single_value(ms.SETTINGS, "auto_renew_enabled", 0)
+		with _on("2026-12-20"):
+			self.assertEqual(ms.renew_memberships(), {})
+			att = next(r for r in ms.needs_attention()["rows"] if r["membership"] == m)
+		self.assertEqual(att["reason"], "Renewal not tried yet")

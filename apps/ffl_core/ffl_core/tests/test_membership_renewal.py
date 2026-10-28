@@ -141,7 +141,7 @@ class RenewalJob(_Base):
 		self.assertEqual(frappe.db.get_value(ms.DOCTYPE, second, "status"), ms.PAST_DUE)
 		self.assertTrue(frappe.db.exists("Error Log", {"method": f"Membership {first}: renewal failed"}))
 
-	def test_counter_payment_on_a_suspended_membership_restores_it_from_the_due_date(self):
+	def test_counter_payment_on_a_suspended_membership_starts_a_new_period_that_day(self):
 		m = self._active()
 		with _on("2026-12-15"):
 			ms.renew_memberships()
@@ -154,8 +154,10 @@ class RenewalJob(_Base):
 			self.assertEqual([c.kwargs["name"] for c in enqueue.call_args_list if "send_sale_receipt" in str(c)],
 				[inv["sales_invoice"]])                 # sent once paid, not at submit
 			row = next(r for r in ms.get_memberships(self.customer)["memberships"] if r["name"] == m)
+		# Grace was over (Suspended): the suspended days are not billed; the period starts on the
+		# payment day and renewals count from it.
 		self.assertEqual((row["status"], row["current_period_start"], row["current_period_end"]),
-			(ms.ACTIVE, date(2026, 12, 15), date(2027, 1, 14)))
+			(ms.ACTIVE, date(2026, 12, 20), date(2027, 1, 19)))
 		si = frappe.get_doc("Sales Invoice", inv["sales_invoice"])
 		self.assertEqual((getdate(si.posting_date), len(si.items)), (date(2026, 12, 20), 1))   # no registration line
 
