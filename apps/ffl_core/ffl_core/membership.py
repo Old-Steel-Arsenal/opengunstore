@@ -1378,7 +1378,7 @@ def page_members(plan: str | None = None, status: str | None = None, search: str
 	if search:
 		like = f"%{search}%"
 		customers = frappe.get_all("Customer", or_filters={"name": ("like", like), "customer_name": ("like", like),
-			"mobile_no": ("like", like)}, pluck="name", limit=500)
+			"mobile_no": ("like", like)}, pluck="name", limit=500)  # lazy: 500 matching customers, paginate if a store outgrows it
 		if not customers:
 			return {"rows": [], "more": False}
 		filters["customer"] = ("in", customers)

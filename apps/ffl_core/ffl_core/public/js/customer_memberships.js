@@ -128,9 +128,12 @@
 			primary_action: async (v) => {
 				const p = byLabel[v.plan];
 				d.hide();
-				const c = ctx.customer ? ctx : Object.assign({}, ctx, { customer: v.customer,
-					customer_name: (await frappe.db.get_value('Customer', v.customer, 'customer_name')).message.customer_name });
+				let c = ctx;
 				try {
+					if (!ctx.customer) {
+						const r = await frappe.db.get_value('Customer', v.customer, 'customer_name');
+						c = Object.assign({}, ctx, { customer: v.customer, customer_name: r.message.customer_name });
+					}
 					const m = await call('start_membership', { customer: c.customer, plan: p.name, auto_renew: v.auto_renew ? 1 : 0 });
 					if (m.terms_template && !['signed', 'expiring'].includes(m.terms_state)) return askTerms(c, m);
 					return collect(c, m);

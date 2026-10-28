@@ -176,10 +176,13 @@ class MembershipsPage {
 		this.$planFilter.html(`<option value="">${mshpEsc(__('Every plan'))}</option>`
 			+ plans.map((p) => `<option value="${mshpEsc(p.name)}" ${p.name === current ? 'selected' : ''}>${mshpEsc(p.name)}</option>`).join(''));
 		if (reset) this.start = 0;
+		// Only the latest request draws: a slower earlier search must not land under a newer filter.
+		const ticket = (this.ticket = (this.ticket || 0) + 1);
 		let out;
 		try {
 			out = await frappe.xcall(MSHP_API + 'page_members', Object.assign({ start: this.start }, this.filters));
 		} catch (e) { return; }
+		if (ticket !== this.ticket) return;
 		const $tb = this.$members.find('tbody');
 		if (reset) $tb.empty();
 		(out.rows || []).forEach((m) => {

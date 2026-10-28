@@ -20,10 +20,10 @@ def _make_item(name: str) -> str:
 	while frappe.db.exists("Item", code):
 		n += 1
 		code = f"{name.strip()[:126]} {n}"
-	frappe.get_doc({"doctype": "Item", "item_code": code, "item_name": code, "item_group": SERVICE_GROUP,
+	# The Item's own name, not *code*: a store naming items by series gets a series name.
+	return frappe.get_doc({"doctype": "Item", "item_code": code, "item_name": code, "item_group": SERVICE_GROUP,
 		"stock_uom": "Nos", "is_stock_item": 0, "has_serial_no": 0, "is_sales_item": 1, "is_purchase_item": 0,
-		"include_item_in_manufacturing": 0, "description": code}).insert(ignore_permissions=True)
-	return code
+		"include_item_in_manufacturing": 0, "description": code}).insert(ignore_permissions=True).name
 
 
 class MembershipPlan(Document):

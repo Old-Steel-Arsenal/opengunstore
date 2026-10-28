@@ -491,6 +491,18 @@ class PlanItems(_Base):
 		plan.save(ignore_permissions=True)
 		self.assertEqual(plan.registration_item, f"{name} registration fee")
 
+	def test_a_store_naming_items_by_series_links_the_real_item(self):
+		old = frappe.db.get_default("item_naming_by")
+		frappe.db.set_default("item_naming_by", "Naming Series")
+		try:
+			plan = frappe.get_doc({"doctype": ms.PLAN, "plan_name": _uniq("Series"), "active": 1,
+				"billing_period": ms.MONTHLY, "price": 30}).insert(ignore_permissions=True)
+		finally:
+			frappe.db.set_default("item_naming_by", old)
+		self.assertTrue(frappe.db.exists("Item", plan.item))
+		self.assertNotEqual(plan.item, plan.plan_name)                # a series name, not the plan name
+		self.assertEqual(frappe.db.get_value("Item", plan.item, "item_name"), plan.plan_name)
+
 	def test_a_bad_plan_leaves_no_item_behind(self):
 		name = _uniq("Bad")
 		frappe.db.savepoint("bad_plan")
