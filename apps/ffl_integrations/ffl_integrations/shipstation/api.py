@@ -69,6 +69,55 @@ def _unit_ounces(item_code: str, default_oz: float) -> float:
 	return _to_ounces(rec.get("weight_per_unit") or 0, rec.get("weight_uom")) or flt(default_oz)
 
 
+def ffl_ship_to(dest: str, recipient: str) -> dict:
+	"""V2 ship_to for a parcel to a receiving dealer: the buyer, care of the
+	licensee (DBA first), at the licence's premise address."""
+	ffl = frappe.db.get_value(
+		"ATF FFL Record", dest,
+		["licensee_name", "licensee_dba", "street", "street2", "city",
+			"state", "zip", "phone"],
+		as_dict=True) or frappe._dict()
+	return {
+		"name": recipient,
+		"company_name": ffl.licensee_dba or ffl.licensee_name or dest,
+		"phone": ffl.phone,
+		"address_line1": ffl.street,
+		"address_line2": ffl.street2 or None,
+		"city_locality": ffl.city,
+		"state_province": ffl.state,
+		"postal_code": ffl.zip,
+		"country_code": "US",
+		# An FFL premise is a business address — better rates, no
+		# residential surcharge guessing.
+		"address_residential_indicator": "no",
+	}
+
+
+def parcel_item(item_code: str, item_name: str | None, serials: list[str],
+		qty, rate, default_oz: float) -> dict:
+	"""One ShipStation line item (build_ship_to's ``items`` shape)."""
+	name = item_name or item_code
+	if serials:
+		# Surface the serial(s) on the ShipStation packing slip.
+		name = f"{name} (SN: {', '.join(serials)})"[:100]
+	return {
+		"sku": item_code,
+		"name": name,
+		# The live V2 API rejects floats here ("Input string '1.0' is not
+		# a valid integer") — ERPNext qty is a float, ship counts are not.
+		# Floor at 1: cint(0.5) is 0, and a zero-quantity item would be
+		# rejected (and zero out its weight term) for a line that still
+		# ships one physical parcel.
+		"quantity": max(1, cint(qty)),
+		"weight": {"value": _unit_ounces(item_code, default_oz), "unit": "ounce"},
+		# Selling rate per unit. Without it ShipStation shows Unit Cost
+		# $0.00 / Product $0.00 on every order — the
+		# counter cannot tell a $595 rifle from a $20 holster on the Orders
+		# tab, and there is no declared value to insure a label for.
+		"unit_price": flt(rate, 2),
+	}
+
+
 def build_ship_to(sales_invoice: str, default_oz: float | None = None) -> dict:
 	"""Assemble the shipment envelope for a Sales Invoice: V2-shaped ship_to,
 	line items with per-unit weights, and the FFL number (envelope-level only —
@@ -83,25 +132,7 @@ def build_ship_to(sales_invoice: str, default_oz: float | None = None) -> dict:
 	ship_to: dict = {}
 	dest = (getattr(si, "ffl_destination_ffl", None) or "").strip() or None
 	if dest:
-		ffl = frappe.db.get_value(
-			"ATF FFL Record", dest,
-			["licensee_name", "licensee_dba", "street", "street2", "city",
-				"state", "zip", "phone"],
-			as_dict=True) or frappe._dict()
-		ship_to = {
-			"name": recipient,
-			"company_name": ffl.licensee_dba or ffl.licensee_name or dest,
-			"phone": ffl.phone,
-			"address_line1": ffl.street,
-			"address_line2": ffl.street2 or None,
-			"city_locality": ffl.city,
-			"state_province": ffl.state,
-			"postal_code": ffl.zip,
-			"country_code": "US",
-			# An FFL premise is a business address — better rates, no
-			# residential surcharge guessing.
-			"address_residential_indicator": "no",
-		}
+		ship_to = ffl_ship_to(dest, recipient)
 	else:
 		from ffl_core.api.manual_order import invoice_ship_address
 		addr = invoice_ship_address(si)
@@ -133,26 +164,8 @@ def build_ship_to(sales_invoice: str, default_oz: float | None = None) -> dict:
 			continue
 		serials = serials_for_line(row)
 		all_serials.extend(serials)
-		name = row.item_name or row.item_code
-		if serials:
-			# Surface the serial(s) on the ShipStation packing slip.
-			name = f"{name} (SN: {', '.join(serials)})"[:100]
-		items.append({
-			"sku": row.item_code,
-			"name": name,
-			# The live V2 API rejects floats here ("Input string '1.0' is not
-			# a valid integer") — ERPNext qty is a float, ship counts are not.
-			# Floor at 1: cint(0.5) is 0, and a zero-quantity item would be
-			# rejected (and zero out its weight term) for a line that still
-			# ships one physical parcel.
-			"quantity": max(1, cint(row.qty)),
-			"weight": {"value": _unit_ounces(row.item_code, default_oz), "unit": "ounce"},
-			# Selling rate per unit. Without it ShipStation shows Unit Cost
-			# $0.00 / Product $0.00 on every order — the
-			# counter cannot tell a $595 rifle from a $20 holster on the Orders
-			# tab, and there is no declared value to insure a label for.
-			"unit_price": flt(row.rate, 2),
-		})
+		items.append(parcel_item(row.item_code, row.item_name, serials,
+			row.qty, row.rate, default_oz))
 
 	# Order money for ShipStation's Cost Summary / Total Paid. Freight is an
 	# "Actual" charge row inside `taxes` (compliance.shipping_charge keeps
@@ -197,12 +210,6 @@ def build_shipment(sales_invoice: str, config: ShipStationConfig | None = None) 
 	shipment appear on the Orders tab; external ids carry the invoice name for
 	dedup and traceability."""
 	config = config or ShipStationConfig.from_settings()
-	if not config.ship_from_warehouse_id:
-		# The live API rejects a shipment carrying neither ship_from nor
-		# warehouse_id — fail fast with the fix instead of a raw 400.
-		raise ShipStationConfigError(
-			"ShipStation Settings: Ship-From Warehouse ID is empty — run Test "
-			"Connection to list your warehouses and paste the default one.")
 	env = build_ship_to(sales_invoice, default_oz=config.default_parcel_weight_oz)
 	if not env["items"]:
 		# Every line ships from the distributor (the filter above removed them all), so there
@@ -212,6 +219,23 @@ def build_shipment(sales_invoice: str, config: ShipStationConfig | None = None) 
 			"{0} has nothing for us to ship — every line is drop-shipped from the "
 			"distributor, which sends it directly."
 		).format(sales_invoice), title=_("Nothing to Ship"))
+	return shipment_body(env, config)
+
+
+def _require_ship_from(config: ShipStationConfig) -> None:
+	if not config.ship_from_warehouse_id:
+		# The live API rejects a shipment carrying neither ship_from nor
+		# warehouse_id — fail fast with the fix instead of a raw 400.
+		raise ShipStationConfigError(
+			"ShipStation Settings: Ship-From Warehouse ID is empty — run Test "
+			"Connection to list your warehouses and paste the default one.")
+
+
+def shipment_body(env: dict, config: ShipStationConfig) -> dict:
+	"""The POST /v2/shipments body for one envelope (build_ship_to's shape).
+	Shared with GunBroker's pre-dispose Ship, whose envelope comes off the
+	GunBroker Order because there is no invoice yet."""
+	_require_ship_from(config)
 	total_oz = sum(
 		flt(i["weight"]["value"]) * flt(i["quantity"]) for i in env["items"]
 	) or flt(config.default_parcel_weight_oz)

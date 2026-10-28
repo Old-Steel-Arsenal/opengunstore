@@ -253,15 +253,40 @@ check('a GunBroker card offers no Mark Shipped', () => {
 		'Mark Shipped rendered — GunBroker tracking is written back from the label');
 });
 
-check('a GunBroker card offers Dispose but not Ship before it is invoiced', () => {
-	// The GunBroker invoice is raised BY the dispose, so a ready_to_dispose
-	// card has sales_invoice: null. Ship on it called push_shipment with a
-	// null invoice and the server threw; the card said "Ship — null" first.
+check('a paid GunBroker card offers Ship before Dispose, like a counter order', () => {
+	// No invoice yet (Dispose raises it), so Ship goes to push_gb_shipment,
+	// which builds the shipment off the order itself.
 	const ready = Object.assign({}, gbRow, { stage: 'ready_ship', channel_stage: 'ready_to_dispose', paid: true });
 	const { cards } = render({ gb: [ready] });
 	assert(/btn-dispose/.test(cards[0]), 'Dispose missing');
-	assert(!/btn-ship/.test(cards[0]),
-		'Ship offered on a GunBroker card with no invoice behind it');
+	assert(/btn-ship"/.test(cards[0]) && !/btn-ship" disabled/.test(cards[0]),
+		'Ship missing or disabled on a paid GunBroker card before Dispose');
+});
+
+check('an unpaid GunBroker card renders Ship disabled', () => {
+	const unpaid = Object.assign({}, gbRow, { stage: 'blocked', channel_stage: 'awaiting_payment', paid: false });
+	const { cards } = render({ gb: [unpaid] });
+	assert(/btn-ship" disabled/.test(cards[0]), 'Ship live before Mark Payment Received');
+});
+
+check('a GunBroker card with a unit still to name renders Ship disabled', () => {
+	const open = Object.assign({}, gbRow, { stage: 'ready_ship', channel_stage: 'ready_to_dispose', paid: true,
+		assign_units: [{ row: 'R1', item_code: 'P228', unit_label: 'unit 1 of 1', serial: '', refunded: false }] });
+	const { cards } = render({ gb: [open] });
+	assert(/btn-ship" disabled/.test(cards[0]), 'Ship live with a unit that has no gun');
+});
+
+check('Ship on an undisposed GunBroker card pushes the order, not a null invoice', () => {
+	dialogs.length = 0;
+	calls.length = 0;
+	app._confirmShip(Object.assign({}, gbRow, { paid: true, channel_stage: 'ready_to_dispose' }));
+	const d = dialogs[dialogs.length - 1];
+	assert(!/null/.test(d.opts.title), `dialog title: ${d.opts.title}`);
+	d.opts.primary_action();
+	const call = calls[calls.length - 1];
+	assert(call.method === 'ffl_integrations.gunbroker.fulfillment.push_gb_shipment',
+		`dispatched ${call.method}`);
+	assert(call.args.gunbroker_order === gbRow.gunbroker_order, JSON.stringify(call.args));
 });
 
 check('a GunBroker card offers Ship once it has been disposed', () => {

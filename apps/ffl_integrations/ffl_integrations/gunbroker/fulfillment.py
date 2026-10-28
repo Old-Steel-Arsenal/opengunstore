@@ -280,14 +280,13 @@ def _pending_row(order, *, ss_enabled: bool, limit_days: int = 7, today=None,
 		"sync_error": order.sync_error or "",
 		"sync_fail_count": cint(order.sync_fail_count),
 		"last_payment_mode": order.payment_mode_used or "",
-		"ship_pushed": shipstation_pushed(invoice.get("shipstation_order_id"),
-			invoice.get("shipstation_status")),
+		"ship_pushed": shipstation_pushed(*_shipment(order, invoice)),
 		# The tracking number is written back by the poll, from the label the
 		# store bought. There is no honest manual equivalent, so the button that
 		# would claim one is not offered.
 		"can_mark_shipped": False,
 		"shipstation_enabled": ss_enabled,
-		"shipstation_order_id": invoice.get("shipstation_order_id") or "",
+		"shipstation_order_id": _shipment(order, invoice)[0],
 		"ship_items": _ship_items(order) if ss_enabled else [],
 		"has_ship_address": bool(preview),
 		"ship_to_preview": preview,
@@ -312,11 +311,19 @@ def order_stage(order) -> str:
 		return STAGE_AWAITING_PAYMENT
 	if (order.order_status or "") != "Transferred":
 		return STAGE_READY_TO_DISPOSE
-	invoice = _invoice_row(order.sales_invoice)
-	if not shipstation_pushed(invoice.get("shipstation_order_id"),
-			invoice.get("shipstation_status")):
+	if not shipstation_pushed(*_shipment(order, _invoice_row(order.sales_invoice))):
 		return STAGE_AWAITING_SHIP
 	return STAGE_SHIPPED
+
+
+def _shipment(order, invoice: dict) -> tuple[str, str]:
+	"""(shipstation_order_id, shipstation_status): the invoice's once it has
+	one, else the order's own — a Ship pressed before Dispose, when there was
+	no invoice yet to carry it (revenue copies it across when the invoice is
+	raised)."""
+	if shipstation_pushed(invoice.get("shipstation_order_id"), invoice.get("shipstation_status")):
+		return invoice.get("shipstation_order_id") or "", invoice.get("shipstation_status") or ""
+	return order.get("shipstation_order_id") or "", order.get("shipstation_status") or ""
 
 
 def _invoice_row(sales_invoice: str | None) -> dict:
@@ -1680,3 +1687,131 @@ def push_tracking_now(gunbroker_order: str) -> dict:
 	from ffl_integrations.gunbroker import shipping
 
 	return shipping.push_tracking(gunbroker_order)
+
+
+@frappe.whitelist()
+def push_gb_shipment(gunbroker_order: str) -> dict:
+	"""Push a paid GunBroker order to ShipStation (the Pending Order Ship action).
+
+	Same as a counter or web order: Ship does not wait for Dispose. Before
+	Dispose there is no invoice, so the shipment is built off the order itself
+	and its id is kept on the order; revenue copies it onto the invoice when
+	Dispose raises one, which is where the tracking write-back reads it. After
+	Dispose this is the invoice's own push_shipment.
+
+	The gates are Dispose's (paid, FFL received, every unit named, no
+	unresolved line) plus a valid destination, so nothing reaches ShipStation
+	that Dispose would then refuse. A C&R licence is only verified in the
+	Dispose dialog, so a C&R order not yet verified must Dispose first.
+	Tracking still goes back to GunBroker only after Dispose.
+
+	Args:
+	    gunbroker_order: GunBroker Order name.
+
+	Returns:
+	    {ok, shipstation_order_id} — plus already: True when it was pushed before.
+
+	Permissions:
+	    Counter roles.
+	"""
+	frappe.only_for(_ROLES)
+	from ffl_integrations.shipstation import api as ss_api
+	from ffl_integrations.shipstation.client import (
+		ShipStationClient, ShipStationConfigError, ShipStationError)
+
+	order = frappe.get_doc(ORDER_DOCTYPE, gunbroker_order)
+	if order.sales_invoice:
+		return ss_api.push_shipment(order.sales_invoice)
+	if not _shipstation_enabled():
+		frappe.throw(_(
+			"ShipStation is disabled — configure and enable it in ShipStation "
+			"Settings first."))
+	# Serialize concurrent pushes, as push_shipment does on the invoice.
+	locked = frappe.db.get_value(ORDER_DOCTYPE, order.name,
+		["shipstation_order_id", "shipstation_status"], as_dict=True, for_update=True)
+	if shipstation_pushed(locked.shipstation_order_id, locked.shipstation_status):
+		return {"ok": True, "already": True,
+			"shipstation_order_id": locked.shipstation_order_id,
+			"shipstation_status": locked.shipstation_status}
+
+	_refuse_what_must_never_be_booked(order)
+	_require_ready_to_dispose(order)
+	try:
+		client = ShipStationClient.from_settings()
+		envelope = _ship_envelope(order, client.config.default_parcel_weight_oz)
+		shipment = client.find_shipment_by_external_id(order.name)
+		adopted = bool(shipment)
+		if not shipment:
+			shipment = client.create_shipment(ss_api.shipment_body(envelope, client.config))
+	except ShipStationConfigError as exc:
+		frappe.throw(_("ShipStation is not configured: {0}").format(exc))
+	except ShipStationError as exc:
+		frappe.throw(_("ShipStation API error: {0}").format(exc))
+
+	frappe.db.set_value(ORDER_DOCTYPE, order.name,
+		{"shipstation_order_id": shipment["shipment_id"], "shipstation_status": "Pending"},
+		update_modified=False)
+	result = {"ok": True, "shipstation_order_id": shipment["shipment_id"]}
+	if adopted:
+		result["already"] = True
+	return result
+
+
+def _ship_envelope(order, default_oz) -> dict:
+	"""build_ship_to's envelope, off the order — there is no invoice yet."""
+	from ffl_integrations.gunbroker.revenue import _invoice_items
+	from ffl_integrations.shipstation import api as ss_api
+
+	recipient = order.customer_name or order.buyer_username or order.name
+	dest = ""
+	if needs_dealer(order):
+		if order.is_cr_transfer and not (order.atf_ffl_record or "").strip():
+			frappe.throw(_(
+				"{0} is a C&R transfer. The collector's licence is checked in the "
+				"Dispose dialog, so Dispose first, then Ship."
+			).format(order.name), title=_("Dispose First"))
+		if order.is_cr_transfer:
+			dest = order.atf_ffl_record
+			_require_valid_ffl(dest)
+		else:
+			dest = _resolve_and_validate_ffl(order, None)
+		ship_to = ss_api.ffl_ship_to(dest, recipient)
+	else:
+		if not (order.ship_to_line1 or "").strip():
+			frappe.throw(_("{0} has no shipping address on GunBroker.").format(order.name))
+		ship_to = {
+			"name": order.ship_to_name or recipient,
+			"phone": order.customer_phone,
+			"address_line1": order.ship_to_line1,
+			"address_line2": order.ship_to_line2 or None,
+			"city_locality": order.ship_to_city,
+			"state_province": order.ship_to_state,
+			"postal_code": order.ship_to_zip,
+			"country_code": "US",
+		}
+	default_oz = flt(default_oz) or 16.0
+	items, serials = [], []
+	for row in _invoice_items(order):
+		line_serials = [x for x in (row.get("serial_no") or "").split("\n") if x]
+		serials.extend(line_serials)
+		items.append(ss_api.parcel_item(row["item_code"],
+			frappe.db.get_value("Item", row["item_code"], "item_name"),
+			line_serials, row["qty"], row["rate"], default_oz))
+	if not items:
+		frappe.throw(_("{0} has nothing to ship.").format(order.name),
+			title=_("Nothing to Ship"))
+	shipping = flt(order.ship_cost) + flt(order.ship_handling_cost) + flt(order.ship_insurance_cost)
+	return {
+		"order_number": order.name,
+		"ship_to": ship_to,
+		"ffl_number": dest or None,
+		"customer_email": order.customer_email,
+		"items": items,
+		"serials": serials,
+		"currency": (order.currency or "USD").lower(),
+		"amounts": {
+			"amount_paid": flt(order.payment_amount, 2),
+			"tax_paid": flt(order.sales_tax_total, 2),
+			"shipping_paid": flt(shipping, 2),
+		},
+	}

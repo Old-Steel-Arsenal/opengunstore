@@ -1082,6 +1082,8 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sal
 | `fee_accrual_je` | Link | Fee Accrual Journal Entry |  | Journal Entry |
 | `ship_carrier` | Select | Carrier |  | , Unknown, FedEx, UPS, USPS |
 | `tracking_number` | Data | Tracking Number |  |  |
+| `shipstation_order_id` | Data | ShipStation Shipment ID |  |  |
+| `shipstation_status` | Data | ShipStation Status |  |  |
 | `shipping_flag_pushed_at` | Datetime | OrderShipped Flag Sent At |  |  |
 | `tracking_pushed_at` | Datetime | Tracking Sent At |  |  |
 | `gb_ship_writeback_pending` | Check | Ship Write-back Pending |  |  |

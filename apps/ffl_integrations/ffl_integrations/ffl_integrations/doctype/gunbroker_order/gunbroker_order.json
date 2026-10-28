@@ -92,6 +92,8 @@
   "section_shipping",
   "ship_carrier",
   "tracking_number",
+  "shipstation_order_id",
+  "shipstation_status",
   "column_shipping",
   "shipping_flag_pushed_at",
   "tracking_pushed_at",
@@ -639,6 +641,21 @@
    "read_only": 1
   },
   {
+   "fieldname": "shipstation_order_id",
+   "fieldtype": "Data",
+   "label": "ShipStation Shipment ID",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Set when Ship was pressed before Dispose. Dispose copies it onto the Sales Invoice."
+  },
+  {
+   "fieldname": "shipstation_status",
+   "fieldtype": "Data",
+   "label": "ShipStation Status",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
    "fieldname": "column_shipping",
    "fieldtype": "Column Break"
   },
@@ -759,7 +776,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-17 18:30:00",
+ "modified": "2026-10-28 12:00:00",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "GunBroker Order",

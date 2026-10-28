@@ -37,8 +37,9 @@
 //     may ship: "Mark Payment Received" is what opens Dispose. Nothing here may
 //     be edited or cancelled — a GunBroker sale cannot be unwound from the
 //     seller's side, so those buttons are not offered rather than offered and
-//     refused. Tracking goes back to GunBroker automatically once the label is
-//     bought, so there is no Mark Shipped either.
+//     refused. Once paid, Ship works as on a counter order, before or after
+//     Dispose. Tracking goes back to GunBroker automatically once the order is
+//     disposed and the label bought, so there is no Mark Shipped either.
 
 // row.source → which of the three a card is. Anything unrecognised reads as a
 // counter order, which is the conservative default: it is the only kind whose
@@ -558,18 +559,17 @@ class PendingDispositionsApp {
 				? (row.needs_disposition && !isDirect)
 				: ((row.needs_disposition || awaiting) && !isPickup);
 			// Ship is independent of Dispose but shares its gates: never queue a
-			// label for an expired FFL or an unpaid individual. A counter order
-			// always has its invoice — that IS the order — but a GunBroker one
-			// is invoiced by the dispose, so before that there is nothing to
-			// push and the button would call push_shipment(sales_invoice=null).
-			// Keyed on the invoice rather than on the stage so it stays right
-			// if a stage is ever added between the two.
+			// label for an expired FFL, an unpaid order, or a gun not yet named.
+			// A GunBroker order has no invoice before Dispose, so its Ship goes
+			// through push_gb_shipment, which builds the shipment off the order.
 			// A pickup has no destination to ship to — the order leaves over the
 			// counter, so Ship is not offered at all (it used to render disabled).
 			// With an address (or an FFL) the Ship button behaves exactly as before.
-			const canShip = can.ship && row.shipstation_enabled && !row.ship_pushed
-				&& (isCounter || !!row.sales_invoice) && !noAddress;
-			const shipDisabled = row.ffl_expired || blockShipUnpaid || awaitingGoods;
+			const canShip = can.ship && row.shipstation_enabled && !row.ship_pushed && !noAddress;
+			// GunBroker: nothing ships before Mark Payment Received.
+			const shipDisabled = row.ffl_expired || blockShipUnpaid || awaitingGoods
+				|| openUnits > 0 || serialErrors.length > 0
+				|| (isGb && row.channel_stage === 'awaiting_payment');
 			// Mark Shipped / Picked Up renders off the server-computed gate
 			// (can_mark_shipped mirrors mark_shipped_manually's refusals), so
 			// the button and the API can't drift — and it stays independent
@@ -1567,6 +1567,9 @@ class PendingDispositionsApp {
 	// package is addressed to the CUSTOMER, care of the destination FFL.
 	_confirmShip(row) {
 		const esc = frappe.utils.escape_html;
+		// A GunBroker order before Dispose has no invoice: it ships as itself.
+		const isGb = KIND[row.source] === 'gunbroker';
+		const shipRef = row.sales_invoice || (isGb ? __('GunBroker #{0}', [row.gb_order_id]) : '');
 		// The no-ShipStation escape hatch rides along as the dialog's
 		// secondary action — the clerk who opened Ship to hand the package
 		// over shouldn't have to close this and hunt for the card button.
@@ -1622,7 +1625,7 @@ class PendingDispositionsApp {
 				</div>` : ''}
 			</div>`;
 		const d = new frappe.ui.Dialog({
-			title: __('Ship — {0}', [row.sales_invoice]),
+			title: __('Ship — {0}', [shipRef]),
 			fields: [{ fieldtype: 'HTML', fieldname: 'summary', options: summary }],
 			primary_action_label: __('Push to ShipStation'),
 			// Same gate and same call as the card's button
@@ -1636,15 +1639,18 @@ class PendingDispositionsApp {
 			} : {}),
 			primary_action: () => {
 				frappe.call({
-					method: 'ffl_integrations.shipstation.api.push_shipment',
-					args: { sales_invoice: row.sales_invoice },
+					...(isGb
+						? { method: 'ffl_integrations.gunbroker.fulfillment.push_gb_shipment',
+							args: { gunbroker_order: row.gunbroker_order } }
+						: { method: 'ffl_integrations.shipstation.api.push_shipment',
+							args: { sales_invoice: row.sales_invoice } }),
 					freeze: true, freeze_message: __('Pushing to ShipStation…'),
 					callback: (r) => {
 						if (r.message?.ok) {
 							d.hide();
 							frappe.show_alert({
 								message: r.message.already
-									? __('{0} is already in ShipStation.', [row.sales_invoice])
+									? __('{0} is already in ShipStation.', [shipRef])
 									: __('Sent to ShipStation — shipment {0}.', [r.message.shipstation_order_id]),
 								indicator: 'green',
 							}, 7);
