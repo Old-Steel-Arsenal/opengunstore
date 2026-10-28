@@ -17,6 +17,13 @@ test('reasonText: a preset, with details when given; Other needs the details', (
 	assert.strictEqual(pa.reasonText(pa.OTHER, ' scuffed box '), 'scuffed box');
 	assert.strictEqual(pa.reasonText('', 'anything'), '');
 	assert.ok(pa.REASONS.includes(pa.OTHER));
+	assert.ok(pa.RETURN_REASONS.includes(pa.OTHER));
+});
+
+test('reasonsFor: a return gets the return reasons, a price cut the price ones', () => {
+	assert.strictEqual(pa.reasonsFor({ refund: { total: 10, lines: [] } }), pa.RETURN_REASONS);
+	assert.strictEqual(pa.reasonsFor({ lines: [{ rate: 1 }] }), pa.REASONS);
+	assert.strictEqual(pa.reasonsFor(null), pa.REASONS);
 });
 
 test('summaryRows: each line list → now, a gun with its serial, then the invoice discount', () => {

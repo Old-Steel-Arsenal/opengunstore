@@ -23,6 +23,12 @@
 	var OTHER = 'Other';
 	// Kept short on purpose (owner rule: fewest clicks); Other needs the details.
 	var REASONS = ['Price match', 'Damaged or open box', 'Bundle deal', 'Regular customer', OTHER];
+	var RETURN_REASONS = ['Defective or damaged', 'Customer changed mind', 'Wrong item sold', OTHER];
+
+	// The reason list for a check answer: a return's own reasons, else the price ones.
+	function reasonsFor(res) {
+		return res && res.refund ? RETURN_REASONS : REASONS;
+	}
 
 	// Whether a check answer needs the dialog: something was lowered and the caller is no manager.
 	function shouldAsk(res) {
@@ -71,7 +77,8 @@
 		return out;
 	}
 
-	return { REASONS: REASONS, OTHER: OTHER, shouldAsk: shouldAsk, reasonText: reasonText,
+	return { REASONS: REASONS, RETURN_REASONS: RETURN_REASONS, OTHER: OTHER, reasonsFor: reasonsFor,
+		shouldAsk: shouldAsk, reasonText: reasonText,
 		summaryRows: summaryRows, approveArgs: approveArgs, checkFailedMessage: checkFailedMessage };
 });
 
@@ -117,7 +124,7 @@
 					{ fieldtype: 'Password', fieldname: 'secret', label: __('PIN') },
 					{ fieldtype: 'HTML', fieldname: 'switch' },
 					{ fieldtype: 'Select', fieldname: 'reason', label: __('Reason'), reqd: 1,
-						options: [''].concat(api.REASONS.map(function (r) { return { value: r, label: __(r) }; })) },
+						options: [''].concat(api.reasonsFor(res).map(function (r) { return { value: r, label: __(r) }; })) },
 					{ fieldtype: 'Data', fieldname: 'note', label: __('Details') },
 					{ fieldtype: 'HTML', fieldname: 'err' },
 				],
