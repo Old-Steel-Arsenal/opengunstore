@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenGunstore API",
-    "version": "0.4.0",
+    "version": "0.4.1",
     "description": "RPC API of the OpenGunstore custom apps (Frappe/ERPNext v16): ffl_core, ffl_integrations, ffl_woo_sync.\n\nAll endpoints are Frappe *whitelisted methods* invoked as `/api/method/<dotted.path>`. Unless an endpoint declares explicit HTTP verbs, it is documented here as POST (Frappe also accepts GET for read-only calls; always POST mutations). Arguments may be sent as JSON body, form data, or query string — JSON body is recommended.\n\nEvery operation carries an **Auth (derived from code)** line statically resolved from the role gate the function actually executes; the prose Permissions note adds semantics the machine can't infer.\n\nStandard CRUD on DocTypes is served by Frappe's REST layer (`/api/resource/<DocType>`) — see docs/api/frappe-rest.md; the custom DocTypes are modelled under components.schemas and listed in reference/doctypes.md."
   },
   "servers": [
