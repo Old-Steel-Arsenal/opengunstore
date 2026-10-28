@@ -36,7 +36,7 @@ curio or relic. Nothing is changed on a refusal.
 
 **Permissions:** Counter roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:940`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:941`</sub>
 
 ## `correct_payment_details`
 
@@ -69,7 +69,7 @@ accounting correction rather than an edit.
 
 **Permissions:** System Manager.
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:647`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:648`</sub>
 
 ## `dispose_gb_order`
 
@@ -101,7 +101,7 @@ dispositions — create_gb_invoice_now retries.
 
 **Permissions:** Counter roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1122`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1123`</sub>
 
 ## `get_dispose_stock_lines`
 
@@ -119,7 +119,7 @@ taken from, for the "where did these come from?" step of Dispose.
 
 **Returns:** [{line, item_code, item_name, qty, locations: [{location, label, qty}], unassigned, chosen}] -- one per item-level line (ammunition, optics, parts). ``line`` is the GunBroker item id the dispose call keys its picks by; ``chosen`` is the sole place the item can only have come from (exactly one holds it, none is unassigned).
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1098`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1099`</sub>
 
 ## `list_pending_gb_orders`
 
@@ -140,7 +140,7 @@ buys this label, so "disposed" is the middle of the job here, not the end.
 
 **Permissions:** Counter roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:145`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:146`</sub>
 
 ## `mark_gb_unit_refunded`
 
@@ -171,7 +171,7 @@ it). ``refunded=0`` undoes the mark.
 
 **Permissions:** Counter roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1049`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1050`</sub>
 
 ## `mark_payment_received`
 
@@ -203,7 +203,7 @@ are replayed onto a Payment Entry the moment the invoice is raised.
 
 **Permissions:** Counter roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:462`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:463`</sub>
 
 ## `push_gb_shipment`
 
@@ -233,7 +233,7 @@ Tracking still goes back to GunBroker only after Dispose.
 
 **Permissions:** Counter roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1696`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1710`</sub>
 
 ## `push_tracking_now`
 
@@ -254,7 +254,7 @@ operator who has just bought the label and wants the buyer to see it.
 
 **Permissions:** Counter roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1672`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1686`</sub>
 
 ## `reserved_gb_serials`
 
@@ -272,4 +272,4 @@ GunBroker hold registry for one Item's serials — the DISPLAY half.
 
 **Permissions:** Canonical shipping roles, matching the counter and web registries this merges with — it names which regulated serials sit on which order. A caller WITHOUT the role gets an empty ``{}`` back silently, so an empty result from THIS function is not proof of "no holds".
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:54`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:55`</sub>
