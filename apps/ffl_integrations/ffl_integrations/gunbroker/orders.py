@@ -42,6 +42,7 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime
 
+from ffl_core.compliance.ffl_number import normalize as normalize_licence
 from ffl_core.marketplace_accounts import refund_remarks_rule
 from ffl_core.reservations import (
 	CHANNEL_GUNBROKER,
@@ -638,6 +639,45 @@ def _announce_commitment_changes(before: dict[str, int], after: dict[str, int]) 
 # Field mapping
 # ---------------------------------------------------------------------------
 
+def is_masked_licence(value: str | None) -> bool:
+	"""GunBroker's API hides the middle of the receiving dealer's licence
+	(``1-54-XXX-XX-XX-27865``). A real licence never carries an X: county,
+	type and the sequence are digits, and the expiry code is a digit and a
+	month letter A-L."""
+	return "X" in normalize_licence(value)
+
+
+def unmask_licence(masked: str, ship_to_zip: str | None) -> str:
+	"""The full licence behind GunBroker's masked one, or ``masked`` unchanged.
+
+	The parts GunBroker leaves visible — region, district and the 5-digit
+	sequence — identify one licence, and the order ships to that dealer's
+	premises, so the national listing searched around the ship-to ZIP holds
+	it. Taken only when exactly one licence there fits every visible
+	character. Anything else (no ZIP, the service down, no match, two
+	matches) leaves the masked number in place, and the next poll tries
+	again: Dispose refuses an unresolved licence, so nothing ships against a
+	guess. A collector (Type 03) is not in the listing and stays masked.
+	"""
+	from ffl_integrations.atf.data_service_provider import search_remote
+	from ffl_integrations.atf.ez_check import EZCheckUnavailable
+
+	want = normalize_licence(masked)
+	if len(want) != 15 or not (ship_to_zip or "").strip():
+		return masked
+	try:
+		rows = search_remote("", limit=200, zip_code=ship_to_zip)
+	except EZCheckUnavailable:
+		return masked
+	fits = {row["ffl_number"] for row in rows
+		if _fits_masked(want, normalize_licence(row.get("ffl_number")))}
+	return fits.pop() if len(fits) == 1 else masked
+
+
+def _fits_masked(want: str, have: str) -> bool:
+	return len(have) == len(want) and all(w == "X" or w == h for w, h in zip(want, have))
+
+
 def apply_order_fields(order, src: dict) -> None:
 	"""Copy GunBroker's order onto ours.
 
@@ -673,8 +713,10 @@ def apply_order_fields(order, src: dict) -> None:
 	# original the buyer typed: GunBroker is not going to change its mind, and
 	# clobbering it would send the gun back to the wrong dealer.
 	incoming_ffl = _text(get_field(src, "fflNumber"))
-	if incoming_ffl and not (order.ffl_number or "").strip():
-		order.ffl_number = incoming_ffl
+	current_ffl = (order.ffl_number or "").strip()
+	if incoming_ffl and (not current_ffl or is_masked_licence(current_ffl)):
+		order.ffl_number = unmask_licence(incoming_ffl, order.ship_to_zip) \
+			if is_masked_licence(incoming_ffl) else incoming_ffl
 	order.ffl_received = 1 if get_field(src, "fflReceived") else 0
 	order.ffl_received_at = _site_stamp(src, "fflReceivedDate")
 	order.ffl_status = _text(get_field(src, "fflStatus"))

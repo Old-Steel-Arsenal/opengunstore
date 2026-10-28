@@ -24,7 +24,7 @@ retry after fixing the cause is safe. Independent of the Dispose step.
 
 **Permissions:** Counter shipping roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/shipstation/api.py:249`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/shipstation/api.py:273`</sub>
 
 ## `test_connection`
 
@@ -40,4 +40,4 @@ The Settings form's Test Connection button.
 
 **Permissions:** System Manager (fires live outbound calls and returns the account's warehouse list).
 
-<sub>`apps/ffl_integrations/ffl_integrations/shipstation/api.py:385`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/shipstation/api.py:409`</sub>
