@@ -144,7 +144,7 @@ class MembershipsPage {
 			$g.append(`<div class="mshp-plan ${canEdit ? 'editable' : ''} ${p.active ? '' : 'off'}" ${canEdit ? `data-act="edit-plan" data-plan="${i}"` : ''}>
 				<div style="font-weight:600">${mshpEsc(p.name)}${p.active ? '' : ` <span class="indicator-pill gray">${mshpEsc(__('Off'))}</span>`}</div>
 				<div class="text-muted small">${format_currency(p.price)} / ${mshpEsc(period(p))} · ${mshpEsc(grace(p))}</div>
-				<div style="margin-top:4px">${mshpEsc(__('{0} members', [p.members]))}</div></div>`);
+				<div style="margin-top:4px">${mshpEsc(p.members === 1 ? __('1 member') : __('{0} members', [p.members]))}</div></div>`);
 		});
 		if (canEdit) $g.append(`<div class="mshp-plan new editable" data-act="new-plan">+ ${mshpEsc(__('New plan'))}</div>`);
 	}
