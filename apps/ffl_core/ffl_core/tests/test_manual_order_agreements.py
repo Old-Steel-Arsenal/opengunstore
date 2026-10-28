@@ -107,6 +107,23 @@ class CounterOrderAgreements(BuildOrderMixin, FrappeTestCase):
 		self.assertEqual(frappe.db.count("Customer Agreement", {"customer": si.customer, "template": self.per_gun}), 1)
 		self.assertEqual(len(frappe.get_doc("Customer Agreement", copy.name).firearms), 2)
 
+	def test_one_copy_per_gun_emails_and_resends_each_gun_alone(self):
+		frappe.db.set_value("Agreement Template", self.per_gun, "one_copy_per_gun", 1)
+		self.addCleanup(frappe.db.set_value, "Agreement Template", self.per_gun, "one_copy_per_gun", 0)
+		out, serials, send = self._order(guns=2)
+		self.assertEqual(send.call_count, 2)
+		si = frappe.get_doc("Sales Invoice", out["sales_invoice"])
+		copies = lambda: {g.serial_no: g.parent for g in frappe.get_all("Customer Agreement Firearm",  # noqa: E731
+			filters={"parent": ("in", frappe.get_all("Customer Agreement", {"customer": si.customer,
+				"template": self.per_gun}, pluck="name"))}, fields=["serial_no", "parent"])}
+		before = copies()
+		self.assertEqual(sorted(before), sorted(serials))
+		self.assertEqual(len(set(before.values())), 2)
+		with patch("frappe.sendmail") as resend:
+			manual_order.resend_order_agreement(si.name, self.per_gun, serials[1])
+		self.assertEqual(resend.call_count, 1)
+		self.assertEqual(copies(), before)
+
 	def test_no_email_still_books_the_order_and_says_so(self):
 		out, _serial, send = self._order(email=None)
 		self.assertTrue(frappe.db.get_value("Sales Invoice", out["sales_invoice"], "docstatus") == 1)
