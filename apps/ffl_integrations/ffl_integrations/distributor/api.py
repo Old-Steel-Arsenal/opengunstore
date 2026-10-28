@@ -849,7 +849,14 @@ def _create_orders(distributor: str, lines, ship_context=None) -> list:
 
 	dist = frappe.get_doc("Distributor", distributor)
 	provider = get_provider(dist.provider)
+	from ffl_integrations.distributor.items import catalog_item
+
 	enriched = [enrich_line(provider, ln) for ln in (lines or [])]
+	for ln, raw in zip(enriched, lines or []):
+		if not ln["item_code"]:
+			# No local Item yet: make it from the house's catalog, as invoice receiving
+			# does — an order line without an Item could never be received against.
+			ln["item_code"] = catalog_item(provider, ln["sku"], raw.get("upc") or "")[0] or ""
 	try:
 		plans = provider.plan_fulfillment(enriched, ctx)
 	except PlanningError as exc:
@@ -872,6 +879,11 @@ def enrich_line(provider, line: dict) -> dict:
 	sku = line.get("sku")
 	row = provider.catalog_row(sku) or {}
 	item_code = line.get("item_code") or ""
+	if not item_code:
+		# A cart line from the cross-house search carries no Item: use the one the
+		# shop already has for this product (``_create_orders`` makes one if none).
+		from ffl_integrations.distributor.items import local_item
+		item_code = local_item(sku, row.get("upc") or line.get("upc") or "") or ""
 	our_is_firearm = None
 	if item_code:
 		our_is_firearm = frappe.db.get_value("Item", item_code, "is_firearm")
