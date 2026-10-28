@@ -13924,7 +13924,7 @@
           "ffl_core"
         ],
         "summary": "Cancel a membership. By default it runs to the end of the period it is paid for and is not",
-        "description": "renewed. ``end_now`` ends it today: the current invoice's deferred lines get today as their\nservice stop date, so what is still deferred becomes income today. The invoice itself is never\ncancelled; a refund is a credit note.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:609`",
+        "description": "renewed. ``end_now`` ends it today: the current invoice's deferred lines get today as their\nservice stop date, so what is still deferred becomes income today. The invoice itself is never\ncancelled; a refund is a credit note.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:611`",
         "operationId": "ffl_core.membership.cancel_membership",
         "responses": {
           "200": {
@@ -13981,7 +13981,7 @@
           "ffl_core"
         ],
         "summary": "Charge a membership's renewals to another of the customer's cards saved for recurring",
-        "description": "charges.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:583`",
+        "description": "charges.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:585`",
         "operationId": "ffl_core.membership.change_card",
         "responses": {
           "200": {
@@ -14034,7 +14034,7 @@
           "ffl_core"
         ],
         "summary": "Drop a Pending membership the customer did not pay for. Its unpaid invoice is cancelled —",
-        "description": "refused once any payment or card charge touched it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:683`",
+        "description": "refused once any payment or card charge touched it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:685`",
         "operationId": "ffl_core.membership.discard_membership",
         "responses": {
           "200": {
@@ -14087,7 +14087,7 @@
           "ffl_core"
         ],
         "summary": "A customer's memberships and the plans on sale, for the Customer form's Memberships panel.",
-        "description": "A membership whose invoice has since been paid another way is settled here.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:470`",
+        "description": "A membership whose invoice has since been paid another way is settled here.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:472`",
         "operationId": "ffl_core.membership.get_memberships",
         "responses": {
           "200": {
@@ -14183,7 +14183,7 @@
           "ffl_core"
         ],
         "summary": "The overdue renewal's invoice (the open one, else a new one for the next period from the",
-        "description": "original due date), for the counter to take payment by any tender. Paid: Active again.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1123`",
+        "description": "original due date), for the counter to take payment by any tender. Paid: Active again.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1125`",
         "operationId": "ffl_core.membership.invoice_renewal",
         "responses": {
           "200": {
@@ -14231,7 +14231,7 @@
           "ffl_core"
         ],
         "summary": "Memberships a manager should look at: Past Due, Suspended, a renewal charge the gateway never",
-        "description": "confirmed, a renewal the job could not charge, and sign-ups still unpaid after a few days.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1167`",
+        "description": "confirmed, a renewal the job could not charge, and sign-ups still unpaid after a few days.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1169`",
         "operationId": "ffl_core.membership.needs_attention",
         "responses": {
           "200": {
@@ -14261,7 +14261,7 @@
           "ffl_core"
         ],
         "summary": "Charge a membership's saved card now for its overdue renewal (Past Due, Suspended, or Active",
-        "description": "past its period end). Paid: Active again, the new period starting at the original due date. A\ncard charge still waiting for the gateway's answer is looked up, never sent again.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1094`",
+        "description": "past its period end). Paid: Active again, the new period starting at the original due date. A\ncard charge still waiting for the gateway's answer is looked up, never sent again.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1096`",
         "operationId": "ffl_core.membership.retry_renewal",
         "responses": {
           "200": {
@@ -14309,7 +14309,7 @@
           "ffl_core"
         ],
         "summary": "Turn a membership's auto-renew on or off. On needs a card saved for recurring charges",
-        "description": "(the membership's own, else the customer's default one); a membership ending at period end\nis a manager's cancellation and stays off.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:541`",
+        "description": "(the membership's own, else the customer's default one); a membership ending at period end\nis a manager's cancellation and stays off.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:543`",
         "operationId": "ffl_core.membership.set_auto_renew",
         "responses": {
           "200": {

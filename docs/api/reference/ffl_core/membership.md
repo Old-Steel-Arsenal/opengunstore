@@ -24,7 +24,7 @@ cancelled; a refund is a credit note.
 
 **Returns:** The membership's panel row.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:609`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:611`</sub>
 
 ## `change_card`
 
@@ -43,7 +43,7 @@ charges.
 
 **Returns:** The membership's panel row.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:583`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:585`</sub>
 
 ## `discard_membership`
 
@@ -62,7 +62,7 @@ refused once any payment or card charge touched it.
 
 **Returns:** The membership's panel row (status Cancelled).
 
-<sub>`apps/ffl_core/ffl_core/membership.py:683`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:685`</sub>
 
 ## `get_memberships`
 
@@ -80,7 +80,7 @@ A membership whose invoice has since been paid another way is settled here.
 
 **Returns:** {plans: [{name, price, billing_period, registration_fee, auto_renew_default, terms_template}], memberships: [panel rows, live first; a row says whether its renewal is overdue, can be retried on the card, or has a card charge waiting], cards: the customer's active recurring-use saved cards [{name, card_summary}], can_cancel: whether the caller may cancel}.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:470`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:472`</sub>
 
 ## `invoice_membership`
 
@@ -116,7 +116,7 @@ original due date), for the counter to take payment by any tender. Paid: Active 
 
 **Returns:** {sales_invoice, outstanding, customer, auto_renew: 0 (no card charge from this flow)}.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:1123`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:1125`</sub>
 
 ## `needs_attention`
 
@@ -130,7 +130,7 @@ confirmed, a renewal the job could not charge, and sign-ups still unpaid after a
 
 **Returns:** {renewals_on: whether the daily renewal job runs, rows: [{membership, customer, customer_name, plan, status, reason, detail, sales_invoice, outstanding, can_retry, can_cancel, can_drop}]}.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:1167`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:1169`</sub>
 
 ## `retry_renewal`
 
@@ -149,7 +149,7 @@ card charge still waiting for the gateway's answer is looked up, never sent agai
 
 **Returns:** {outcome: renewed / declined / unknown / not_started, message: what happened, row: the membership's panel row}.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:1094`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:1096`</sub>
 
 ## `set_auto_renew`
 
@@ -169,7 +169,7 @@ is a manager's cancellation and stays off.
 
 **Returns:** The membership's panel row.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:541`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:543`</sub>
 
 ## `start_membership`
 

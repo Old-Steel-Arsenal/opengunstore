@@ -456,7 +456,9 @@ def _row(doc) -> dict:
 		"name": doc.name, "plan": doc.plan, "status": doc.status, "price": flt(plan.price),
 		"billing_period": plan.billing_period, "start_date": doc.start_date,
 		"current_period_start": doc.current_period_start, "current_period_end": doc.current_period_end,
-		"next_charge_date": add_days(doc.current_period_end, 1) if renewing and doc.current_period_end else None,
+		# An overdue renewal has no "next charge" to show: its date has passed (the row says what is owed).
+		"next_charge_date": add_days(doc.current_period_end, 1) if renewing and doc.current_period_end
+			and not overdue else None,
 		"auto_renew": cint(doc.auto_renew), "saved_card": doc.saved_card, "card_summary": _card_summary(doc.saved_card),
 		"cancel_at_period_end": cint(doc.cancel_at_period_end), "last_charge_status": doc.last_charge_status,
 		"terms_template": plan.terms_template, "terms_state": _terms_state(doc, plan.terms_template)
