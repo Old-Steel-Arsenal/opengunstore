@@ -588,6 +588,17 @@ if FrappeTestCase:
 				frappe.db.set_value("Distributor", "RSR", "enabled", rsr_was, update_modified=False)
 				frappe.db.set_value("Distributor", self.dist, "enabled", 0, update_modified=False)
 
+		def test_store_order_is_priced_by_store_rules_and_the_label_follows_the_lines(self):
+			do = self._do("Procure To Store")
+			self.assertIn("$5.00", do.shipping_service_label)     # 2 x $19.50, under $500
+			fake = FakeClient(detail=_FILLED)
+			res = ssp.SSProvider(client=fake)._place(do, fake, _settings())
+			self.assertEqual(res["freight"], 5.0)
+			do = self._do("Procure To Store")
+			do.lines[0].wish_qty = 30                                # $585: ships free
+			do.save(ignore_permissions=True)
+			self.assertIn("$0.00", do.shipping_service_label)
+
 		def test_shipping_service_chosen_on_the_draft_is_sent(self):
 			from ffl_integrations.distributor import api as dist_api
 			do = self._do()

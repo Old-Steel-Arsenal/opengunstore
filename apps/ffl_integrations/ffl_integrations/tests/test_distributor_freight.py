@@ -97,6 +97,24 @@ class SSStoreFreightRules(unittest.TestCase):
 	def test_empty_order_is_free(self):
 		self.assertEqual(ss_provider.estimate_store_freight([], self.S), 0.0)
 
+	def test_store_order_options_price_the_base_service_by_store_rules(self):
+		# A Distributor Order line: wish_qty, no department.
+		lines = [{"unit_cost": 22.20, "wish_qty": 4, "ship_method": "Grnd"}]
+		opts = {o["code"]: o["estimate"] for o in
+			ss_provider.shipping_options_for(lines, self.S, False, store=True)}
+		self.assertEqual(opts[ss_provider.SERVICE_GROUND], 5.0)
+		self.assertEqual(opts[ss_provider.SERVICE_ECONOMY], 5.0)
+		self.assertEqual(opts[ss_provider.SERVICE_2DAY], 27.95)
+		self.assertEqual(ss_provider.estimate_freight(lines, self.S, False, store=True), 5.0)
+		self.assertEqual(ss_provider.estimate_freight(lines, self.S, False, service="G", store=True), 5.0)
+		self.assertEqual(ss_provider.estimate_freight(lines, self.S, False, service="G"), 10.95)
+
+	def test_store_handgun_do_lines_are_known_by_ship_method(self):
+		f = lambda q: ss_provider.estimate_freight(  # noqa: E731
+			[{"unit_cost": 300, "wish_qty": q, "ship_method": "2Day"}], self.S, True, store=True)
+		self.assertEqual(f(2), 10.95)
+		self.assertEqual(f(3), 0.0)
+
 
 class _FakeProvider:
 	"""Real-shaped plan split (guns apart from accessories) + a recorded estimate."""

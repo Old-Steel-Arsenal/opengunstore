@@ -30,6 +30,7 @@ class DistributorOrder(Document):
 	def validate(self):
 		self._enforce_status_machine()
 		self._roll_up_total_cost()
+		self._refresh_shipping_label()
 
 	def _enforce_status_machine(self):
 		before = self.get_doc_before_save()
@@ -44,6 +45,19 @@ class DistributorOrder(Document):
 				order_state.assert_transition(before.status, self.status)
 			except ValueError as exc:
 				frappe.throw(frappe._(str(exc)))
+
+	def _refresh_shipping_label(self):
+		# The label carries the estimate, and a house's estimate can follow the
+		# order's value (SS store orders: $5 under $500, free above) — keep it in
+		# step with the lines while the order can still change. A service the
+		# lines no longer allow keeps its label; placement refuses it loudly.
+		if self.status != order_state.DRAFT or not (self.shipping_service or self.shipping_service_label):
+			return
+		from ffl_integrations.distributor.api import _shipping_options_for
+		code = self.shipping_service or ""
+		match = next((o for o in _shipping_options_for(self) if (o.get("code") or "") == code), None)
+		if match:
+			self.shipping_service_label = match["label"]
 
 	def _roll_up_total_cost(self):
 		self.total_cost = sum(

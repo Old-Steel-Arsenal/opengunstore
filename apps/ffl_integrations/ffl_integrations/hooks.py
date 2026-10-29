@@ -132,7 +132,8 @@ doctype_js = {
 	"Item": "public/js/item.js",
 	# Card on file (payments/saved_cards.py): the customer's saved cards, and Charge saved card.
 	"Customer": "public/js/customer_saved_cards.js",
-	"Sales Invoice": "public/js/sales_invoice_saved_cards.js",
+	# Card refund (payments/si_reversal.py): void / refund a card charge on the invoice.
+	"Sales Invoice": ["public/js/sales_invoice_saved_cards.js", "public/js/sales_invoice_card_reversal.js"],
 }
 
 # Server constants exposed to desk JS (frappe.boot.*) — see boot.py.
