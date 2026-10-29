@@ -592,7 +592,8 @@ def shipping_options_for(lines: list, settings, firearm_order: bool, *, has_ammo
 	their drop-ship rates. Pure."""
 	handgun = any(ln.get("ship_method") == SHIP_2DAY for ln in lines)
 	g = lambda k, d: float(getattr(settings, k, None) or d)  # noqa: E731
-	base_rate = (lambda k, d: estimate_store_freight(lines, settings)) if store else g  # noqa: E731
+	store_rate = estimate_store_freight(lines, settings) if store else None
+	base_rate = lambda k, d: store_rate if store else g(k, d)  # noqa: E731
 	if handgun:
 		lane_rate = base_rate("rate_handgun_2day", 10.95)
 		base = [(SERVICE_2DAY, "2-Day Air", lane_rate), (SERVICE_NEXTDAY, "Next-Day Air", g("rate_next_day", 42.95))]
