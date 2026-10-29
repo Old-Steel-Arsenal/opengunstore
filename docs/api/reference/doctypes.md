@@ -768,11 +768,15 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sal
 |---|---|---|---|---|
 | `sales_invoice` | Link | Sales Invoice | ✓ | Sales Invoice |
 | `amount` | Currency | Amount |  |  |
-| `status` | Select | Status |  | IN_PROGRESS, CHARGED, DECLINED, CANCELED |
+| `status` | Select | Status |  | IN_PROGRESS, CHARGED, DECLINED, CANCELED, VOIDED, REFUNDED |
 | `unique_reference` | Data | Gateway Reference |  |  |
 | `approval_code` | Data | Approval Code |  |  |
 | `card_summary` | Data | Card |  |  |
 | `payment_entry` | Link | Payment Entry |  | Payment Entry |
+| `refunded_amount` | Currency | Refunded |  |  |
+| `reversal_entry_type` | Link | Reversal Entry Type |  | DocType |
+| `reversal_entry` | Dynamic Link | Void Entry |  | reversal_entry_type |
+| `reversal_lock` | Small Text | Unconfirmed Void / Refund |  |  |
 | `processor` | Data | Processor |  |  |
 | `instruction_id` | Data | Instruction ID |  |  |
 | `save_card` | Check | Save Card Requested |  |  |

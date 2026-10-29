@@ -13,6 +13,10 @@
   "approval_code",
   "card_summary",
   "payment_entry",
+  "refunded_amount",
+  "reversal_entry_type",
+  "reversal_entry",
+  "reversal_lock",
   "section_gateway",
   "processor",
   "instruction_id",
@@ -47,7 +51,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Status",
-   "options": "IN_PROGRESS\nCHARGED\nDECLINED\nCANCELED",
+   "options": "IN_PROGRESS\nCHARGED\nDECLINED\nCANCELED\nVOIDED\nREFUNDED",
    "read_only": 1
   },
   {
@@ -80,6 +84,37 @@
    "fieldtype": "Link",
    "label": "Payment Entry",
    "options": "Payment Entry",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Card money given back on this charge through the POS (refunds; a void gives back the whole charge).",
+   "fieldname": "refunded_amount",
+   "fieldtype": "Currency",
+   "label": "Refunded",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reversal_entry_type",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Reversal Entry Type",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "description": "The void's booking: the cancelled Payment Entry, or the Journal Entry that reversed it.",
+   "fieldname": "reversal_entry",
+   "fieldtype": "Dynamic Link",
+   "label": "Void Entry",
+   "options": "reversal_entry_type",
+   "read_only": 1
+  },
+  {
+   "description": "Set while a void or refund the processor never confirmed waits for a manager to check its portal (Resolve card reversal). Nothing else may move money on this charge until then.",
+   "fieldname": "reversal_lock",
+   "fieldtype": "Small Text",
+   "label": "Unconfirmed Void / Refund",
    "read_only": 1
   },
   {
@@ -142,7 +177,7 @@
  "index_web_pages_for_search": 0,
  "istable": 0,
  "links": [],
- "modified": "2026-10-27 18:00:00.000000",
+ "modified": "2026-10-29 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "Card Terminal Payment",
