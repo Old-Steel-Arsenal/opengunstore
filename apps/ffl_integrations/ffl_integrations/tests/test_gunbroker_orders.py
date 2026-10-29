@@ -670,10 +670,10 @@ class TestHolding(_OrderCase):
 		self.assertNotIn("SN-001", self.serial_rows)
 
 	def _flagged(self, history="16087230"):
-		self._patch("frappe.db.get_value", side_effect=lambda dt, name, fields, **kw: (
-			frappe._dict({"name": name, "gb_reserved": 0, "gb_order": "",
-				"gb_sold_unknown": 1, "gb_item_id": "", "gb_item_history": history})
-			if isinstance(fields, list) else "may already be sold on GunBroker: x"))
+		self._patch("frappe.db.get_value", return_value=frappe._dict({
+			"name": "SN-001", "gb_reserved": 0, "gb_order": "", "gb_sold_unknown": 1,
+			"gb_item_id": "", "gb_item_history": history,
+			"gb_sync_error": "may already be sold on GunBroker: x"}))
 		return self._patch_object(orders, "_note_doubt_resolved")
 
 	def test_the_order_for_the_sold_listing_lifts_the_doubt_flag(self):

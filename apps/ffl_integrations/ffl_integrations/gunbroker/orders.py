@@ -1227,7 +1227,7 @@ def _hold_serial(order, serial: str, listing_id: str = "") -> tuple[str, bool]:
 	"""
 	locked = frappe.db.get_value("Serial No", serial,
 		["name", "gb_reserved", "gb_order", "gb_bid_locked", "gb_sold_unknown",
-		 "gb_item_id", "gb_item_history"], as_dict=True, for_update=True)
+		 "gb_item_id", "gb_item_history", "gb_sync_error"], as_dict=True, for_update=True)
 	if not locked:
 		return _("Serial {0} no longer exists in POS.").format(serial), False
 	if locked.get("gb_reserved") and (locked.get("gb_order") or "") == order.name:
@@ -1239,7 +1239,6 @@ def _hold_serial(order, serial: str, listing_id: str = "") -> tuple[str, bool]:
 	# doubt keeps it off the shelf until a person sorts that conflict out.
 	lifted = bool(locked.get("gb_sold_unknown")) and _is_sold_listing(locked, listing_id)
 	if lifted:
-		doubt = frappe.db.get_value("Serial No", serial, "gb_sync_error") or ""
 		frappe.db.set_value("Serial No", serial,
 			{"gb_sold_unknown": 0, "gb_sync_error": ""}, update_modified=False)
 	if locked.get("gb_bid_locked"):
@@ -1250,7 +1249,8 @@ def _hold_serial(order, serial: str, listing_id: str = "") -> tuple[str, bool]:
 	if not state.get("sellable"):
 		if lifted:
 			frappe.db.set_value("Serial No", serial,
-				{"gb_sold_unknown": 1, "gb_sync_error": doubt}, update_modified=False)
+				{"gb_sold_unknown": 1, "gb_sync_error": locked.get("gb_sync_error") or ""},
+				update_modified=False)
 		return _shelf_conflict(serial, state), False
 	frappe.db.set_value("Serial No", serial,
 		{"gb_reserved": 1, "gb_order": order.name}, update_modified=False)
