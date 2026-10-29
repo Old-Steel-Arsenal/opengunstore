@@ -669,6 +669,39 @@ class TestHolding(_OrderCase):
 		self.assertFalse(newly)
 		self.assertNotIn("SN-001", self.serial_rows)
 
+	def test_the_order_for_the_sold_listing_lifts_the_doubt_flag(self):
+		# The sweep ran between the sale and this poll: it saw listing 1212139935
+		# sold with no order in POS and flagged the gun. This order is that sale,
+		# so it must be held — not reported as "GunBroker has a buyer for it".
+		self._patch("frappe.db.get_value", return_value=frappe._dict({
+			"name": "SN-001", "gb_reserved": 0, "gb_order": "", "gb_sold_unknown": 1,
+			"gb_item_id": "", "gb_item_history": "1211000000,1212139935"}))
+		self._patch_object(orders, "serial_shelf_state",
+			side_effect=lambda s: {"sellable": self.serial_rows.get(s, {}).get(
+				"gb_sold_unknown") == 0, "reason": "sold_unknown", "detail": {}})
+		order = fx.FakeDoc(name="GB-ORD-00001",
+			lines=[fx.FakeChildRow(gb_item_id="1212139935")])
+		error, newly = orders._hold_serial(order, "SN-001")
+		self.assertEqual(error, "")
+		self.assertTrue(newly)
+		self.assertEqual(self.serial_rows["SN-001"], {"gb_sold_unknown": 0,
+			"gb_sync_error": "", "gb_reserved": 1, "gb_order": "GB-ORD-00001"})
+
+	def test_a_different_listing_does_not_lift_the_doubt_flag(self):
+		# Some other sale of this serial (a hand-made listing, a stale relist) is
+		# not evidence the flagged listing's order arrived — keep failing closed.
+		self._patch("frappe.db.get_value", return_value=frappe._dict({
+			"name": "SN-001", "gb_reserved": 0, "gb_order": "", "gb_sold_unknown": 1,
+			"gb_item_id": "", "gb_item_history": "1212139935"}))
+		self._patch_object(orders, "serial_shelf_state", return_value={
+			"sellable": False, "reason": "sold_unknown", "detail": {}})
+		order = fx.FakeDoc(name="GB-ORD-00001",
+			lines=[fx.FakeChildRow(gb_item_id="1299999999")])
+		error, newly = orders._hold_serial(order, "SN-001")
+		self.assertIn("sold_unknown", error)
+		self.assertFalse(newly)
+		self.assertNotIn("SN-001", self.serial_rows)
+
 	def test_a_vanished_serial_is_reported_rather_than_reserved(self):
 		self._patch("frappe.db.get_value", return_value=None)
 		error, newly = orders._hold_serial(self._order(), "SN-GONE")

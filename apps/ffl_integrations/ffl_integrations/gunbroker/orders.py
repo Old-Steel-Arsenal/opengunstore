@@ -1222,11 +1222,18 @@ def _hold_serial(order, serial: str) -> tuple[str, bool]:
 	gets to answer the same question.
 	"""
 	locked = frappe.db.get_value("Serial No", serial,
-		["name", "gb_reserved", "gb_order", "gb_bid_locked"], as_dict=True, for_update=True)
+		["name", "gb_reserved", "gb_order", "gb_bid_locked", "gb_sold_unknown",
+		 "gb_item_id", "gb_item_history"], as_dict=True, for_update=True)
 	if not locked:
 		return _("Serial {0} no longer exists in POS.").format(serial), False
 	if locked.get("gb_reserved") and (locked.get("gb_order") or "") == order.name:
 		return "", False  # already ours — idempotent success
+	if locked.get("gb_sold_unknown") and _sold_listing_is_on(order, locked):
+		# The sweep saw the listing sell before this poll brought the order in.
+		# This order IS the sale the flag was waiting for — lifted BEFORE the
+		# shelf check, which would otherwise report our own buyer as a conflict.
+		frappe.db.set_value("Serial No", serial,
+			{"gb_sold_unknown": 0, "gb_sync_error": ""}, update_modified=False)
 	if locked.get("gb_bid_locked"):
 		# The auction's promise has become this order. Lifted BEFORE the shelf
 		# check, which would otherwise report the gun as held — by us.
@@ -1237,6 +1244,20 @@ def _hold_serial(order, serial: str) -> tuple[str, bool]:
 	frappe.db.set_value("Serial No", serial,
 		{"gb_reserved": 1, "gb_order": order.name}, update_modified=False)
 	return "", True
+
+
+def _sold_listing_is_on(order, row: dict) -> bool:
+	"""Whether one of this order's listings is the gun's current or past listing.
+
+	The sweep moves the sold item number into ``gb_item_history`` when it raises
+	the doubt flag, so both places are checked. A match by listing number, not by
+	serial, is what makes clearing safe: it says GunBroker's sale of OUR listing
+	for this gun has arrived, not merely that some order mentions the serial.
+	"""
+	ids = {str(row.get("gb_item_id") or "").strip()}
+	ids |= {i.strip() for i in str(row.get("gb_item_history") or "").split(",")}
+	ids.discard("")
+	return any(_text(line.gb_item_id) in ids for line in (order.lines or []))
 
 
 def _shelf_conflict(serial: str, state: dict) -> str:
