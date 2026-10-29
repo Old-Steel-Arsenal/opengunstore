@@ -174,10 +174,8 @@ class SSProvider(RemoteCatalogMixin, DistributorProvider):
 		flags = clean_delivery_options(options) if options is not None \
 			else signature_flags(settings, firearm_order)
 		priced = [{**ln, "wish_qty": ln.get("qty")} for ln in lines]
-		if not lanes.ships_to_consumer(mode):
-			return round(estimate_store_freight(lines, settings)
-				+ delivery_fees(priced, settings, **flags), 2)
-		return estimate_freight(priced, settings, firearm_order, **flags)
+		return estimate_freight(priced, settings, firearm_order,
+			store=not lanes.ships_to_consumer(mode), **flags)
 
 	def delivery_options(self, firearm_order: bool) -> dict:
 		import frappe
@@ -203,7 +201,7 @@ class SSProvider(RemoteCatalogMixin, DistributorProvider):
 		settings = frappe.get_cached_doc(self.settings_doctype)
 		lines = [_line(ln) for ln in (getattr(do, "lines", None) or [])]
 		return shipping_options_for(lines, settings, is_firearm_order(do),
-			has_ammo=_has_ammo(do))
+			has_ammo=_has_ammo(do), store=_ships_to_store(do))
 
 	# ---------------------------------------------------------- ordering
 
@@ -295,7 +293,7 @@ class SSProvider(RemoteCatalogMixin, DistributorProvider):
 		detail = client.get_detail(header)
 		result = normalize_placement(header, detail, lines,
 			freight=estimate_freight(lines, settings, firearm_order,
-				service=getattr(do, "shipping_service", None),
+				service=getattr(do, "shipping_service", None), store=_ships_to_store(do),
 				**order_flags(do, settings, firearm_order)))
 		result["resumed"] = resumed
 		if all(a["ack_qty"] == 0 for a in result["ack_lines"]):
@@ -579,23 +577,34 @@ def _has_ammo(do) -> bool:
 	return False
 
 
-def shipping_options_for(lines: list, settings, firearm_order: bool, *, has_ammo: bool = False) -> list:
+def _ships_to_store(do) -> bool:
+	return not lanes.ships_to_consumer(lanes.mode_of(do.order_type) or lanes.DEFAULT_MODE)
+
+
+def shipping_options_for(lines: list, settings, firearm_order: bool, *, has_ammo: bool = False,
+		store: bool = False) -> list:
 	"""``[{code, label, estimate, default}]`` for this order's lane. Handgun
 	(any 2Day line) → air only; ammunition → ground only (HAZMAT); otherwise
 	every service. Default = Settings (Ground Premium unless the Economy
-	switch is on for non-firearm orders; 2-Day for handguns). Pure."""
+	switch is on for non-firearm orders; 2-Day for handguns). ``store``: the
+	order ships to the shop, so the lane's base service (2-Day for handguns,
+	Ground otherwise) is priced by ``estimate_store_freight``; air upgrades keep
+	their drop-ship rates. Pure."""
 	handgun = any(ln.get("ship_method") == SHIP_2DAY for ln in lines)
 	g = lambda k, d: float(getattr(settings, k, None) or d)  # noqa: E731
+	store_rate = estimate_store_freight(lines, settings) if store else None
+	base_rate = lambda k, d: store_rate if store else g(k, d)  # noqa: E731
 	if handgun:
-		lane_rate = g("rate_handgun_2day", 10.95)
+		lane_rate = base_rate("rate_handgun_2day", 10.95)
 		base = [(SERVICE_2DAY, "2-Day Air", lane_rate), (SERVICE_NEXTDAY, "Next-Day Air", g("rate_next_day", 42.95))]
 	elif firearm_order:
-		base = [(SERVICE_GROUND, "Ground Premium", g("rate_long_gun_ground", 10.95)),
+		base = [(SERVICE_GROUND, "Ground Premium", base_rate("rate_long_gun_ground", 10.95)),
 			(SERVICE_2DAY, "2-Day Air", g("rate_2day_air", 27.95)),
 			(SERVICE_NEXTDAY, "Next-Day Air", g("rate_next_day", 42.95))]
 	else:
-		base = [(SERVICE_ECONOMY, "Ground Economy (no claims / intercepts)", g("rate_accessory_economy", 7.95)),
-			(SERVICE_GROUND, "Ground Premium", g("rate_accessory_ground", 10.95))]
+		base = [(SERVICE_ECONOMY, "Ground Economy (no claims / intercepts)",
+				base_rate("rate_accessory_economy", 7.95)),
+			(SERVICE_GROUND, "Ground Premium", base_rate("rate_accessory_ground", 10.95))]
 		if not has_ammo:
 			base += [(SERVICE_2DAY, "2-Day Air", g("rate_2day_air", 27.95)),
 				(SERVICE_NEXTDAY, "Next-Day Air", g("rate_next_day", 42.95))]
@@ -715,12 +724,12 @@ def build_ship_to(do, mode: str, settings) -> dict:
 	return store_ship_override(settings) or company_ship_to(get("company"))
 
 
-def estimate_freight(lines: list, settings, firearm_order: bool, *, service=None,
+def estimate_freight(lines: list, settings, firearm_order: bool, *, service=None, store=False,
 		adult_signature=False, signature=False, insurance=False) -> float:
 	"""Flat-rate freight for the chosen ``service`` (or the lane default) +
 	per-order fees from the Overview fee table (Settings hold the numbers).
 	An ESTIMATE — the invoice's SHPAMT is authoritative once a parcel ships."""
-	options = shipping_options_for(lines, settings, firearm_order)
+	options = shipping_options_for(lines, settings, firearm_order, store=store)
 	pick = next((o for o in options if service is not None and o["code"] == service), None) \
 		or next(o for o in options if o["default"])
 	rate = float(pick["estimate"]) + delivery_fees(lines, settings, adult_signature=adult_signature,
@@ -757,13 +766,16 @@ def estimate_store_freight(lines: list, settings) -> float:
 	and AR/AK pistols sit in the handgun categories here — SS's
 	catalog does not separate them. Thresholds and rates live in Settings. Pure."""
 	g = lambda k, d: setting_value(settings, k, d)  # noqa: E731
-	value = lambda group: sum(float(ln.get("unit_cost") or 0) * float(ln.get("qty") or 0)  # noqa: E731
-		for ln in group)
-	handguns = [ln for ln in lines if line_class(ln.get("department")) == "handgun"]
-	others = [ln for ln in lines if line_class(ln.get("department")) != "handgun"]
+	# Counter lines carry qty + department; Distributor Order lines carry wish_qty
+	# and no department, only the 2Day ship method handguns get.
+	qty = lambda ln: float(ln.get("qty") or ln.get("wish_qty") or 0)  # noqa: E731
+	value = lambda group: sum(float(ln.get("unit_cost") or 0) * qty(ln) for ln in group)  # noqa: E731
+	is_handgun = lambda ln: line_class(ln.get("department")) == "handgun" or ln.get("ship_method") == SHIP_2DAY  # noqa: E731,E501
+	handguns = [ln for ln in lines if is_handgun(ln)]
+	others = [ln for ln in lines if not is_handgun(ln)]
 	charges = []
 	if handguns:
-		count = sum(float(ln.get("qty") or 0) for ln in handguns)
+		count = sum(qty(ln) for ln in handguns)
 		free = count >= g("store_free_handgun_qty", 3) \
 			or value(handguns) >= g("store_free_handgun_amount", 750.00)
 		charges.append(0.0 if free else g("rate_handgun_2day", 10.95))
