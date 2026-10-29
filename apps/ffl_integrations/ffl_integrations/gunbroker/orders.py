@@ -1005,7 +1005,7 @@ def reserve_order_serials(order) -> None:
 			line.reservation_error = why
 			_alert_unmatched(order, line, why)
 			continue
-		error, newly_held = _hold_serial(order, serial)
+		error, newly_held = _hold_serial(order, serial, line.gb_item_id)
 		order.append("serials", {
 			# The gun's own Item wins over the line's when the SKU named one we
 			# do not have: the disposition needs an Item and the serial knows
@@ -1205,8 +1205,12 @@ def _serial_exists(serial: str) -> bool:
 	return bool(serial) and bool(frappe.db.exists("Serial No", serial))
 
 
-def _hold_serial(order, serial: str) -> tuple[str, bool]:
+def _hold_serial(order, serial: str, listing_id: str = "") -> tuple[str, bool]:
 	"""Reserve one gun for this order under a row lock.
+
+	``listing_id`` is the GunBroker item number of the line that named this gun,
+	when one did; it is what lets this order lift a "sold unknown" flag the sweep
+	raised for that very listing.
 
 	Returns ``(reason_it_could_not, newly_held)`` — "" for the first when the
 	gun is ours.
@@ -1228,10 +1232,14 @@ def _hold_serial(order, serial: str) -> tuple[str, bool]:
 		return _("Serial {0} no longer exists in POS.").format(serial), False
 	if locked.get("gb_reserved") and (locked.get("gb_order") or "") == order.name:
 		return "", False  # already ours — idempotent success
-	if locked.get("gb_sold_unknown") and _sold_listing_is_on(order, locked):
-		# The sweep saw the listing sell before this poll brought the order in.
-		# This order IS the sale the flag was waiting for — lifted BEFORE the
-		# shelf check, which would otherwise report our own buyer as a conflict.
+	# The sweep saw this listing sell before this poll brought the order in, so
+	# this order IS the sale the flag was waiting for. Lifted BEFORE the shelf
+	# check, which would otherwise report our own buyer as a conflict — and put
+	# back if the gun turns out to be unavailable for some other reason, so the
+	# doubt keeps it off the shelf until a person sorts that conflict out.
+	lifted = bool(locked.get("gb_sold_unknown")) and _is_sold_listing(locked, listing_id)
+	if lifted:
+		doubt = frappe.db.get_value("Serial No", serial, "gb_sync_error") or ""
 		frappe.db.set_value("Serial No", serial,
 			{"gb_sold_unknown": 0, "gb_sync_error": ""}, update_modified=False)
 	if locked.get("gb_bid_locked"):
@@ -1240,24 +1248,37 @@ def _hold_serial(order, serial: str) -> tuple[str, bool]:
 		frappe.db.set_value("Serial No", serial, "gb_bid_locked", 0, update_modified=False)
 	state = serial_shelf_state(serial)
 	if not state.get("sellable"):
+		if lifted:
+			frappe.db.set_value("Serial No", serial,
+				{"gb_sold_unknown": 1, "gb_sync_error": doubt}, update_modified=False)
 		return _shelf_conflict(serial, state), False
 	frappe.db.set_value("Serial No", serial,
 		{"gb_reserved": 1, "gb_order": order.name}, update_modified=False)
+	if lifted:
+		_note_doubt_resolved(serial, order, listing_id)
 	return "", True
 
 
-def _sold_listing_is_on(order, row: dict) -> bool:
-	"""Whether one of this order's listings is the gun's current or past listing.
+def _is_sold_listing(row: dict, listing_id: str) -> bool:
+	"""Whether ``listing_id`` is the gun's current or a past listing.
 
 	The sweep moves the sold item number into ``gb_item_history`` when it raises
 	the doubt flag, so both places are checked. A match by listing number, not by
-	serial, is what makes clearing safe: it says GunBroker's sale of OUR listing
-	for this gun has arrived, not merely that some order mentions the serial.
+	serial, is what makes lifting the flag safe: it says GunBroker's sale of OUR
+	listing for this gun has arrived, not merely that some order names the serial.
 	"""
-	ids = {str(row.get("gb_item_id") or "").strip()}
-	ids |= {i.strip() for i in str(row.get("gb_item_history") or "").split(",")}
-	ids.discard("")
-	return any(_text(line.gb_item_id) in ids for line in (order.lines or []))
+	from ffl_integrations.gunbroker.listings import history_ids
+
+	listing_id = _text(listing_id)
+	return bool(listing_id) and listing_id in (
+		history_ids(row) | {_text(row.get("gb_item_id"))})
+
+
+def _note_doubt_resolved(serial: str, order, listing_id: str) -> None:
+	"""Leave the same trail a person clearing the flag by hand has to leave."""
+	frappe.get_doc("Serial No", serial).add_comment("Comment", _(
+		"Cleared the GunBroker \"sold unknown\" flag: order {0} for listing {1} "
+		"arrived and now holds this gun.").format(order.name, listing_id))
 
 
 def _shelf_conflict(serial: str, state: dict) -> str:

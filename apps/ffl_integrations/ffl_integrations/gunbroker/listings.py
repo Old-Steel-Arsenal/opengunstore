@@ -167,6 +167,12 @@ def listing_state(row: dict) -> str:
 	return "unlisted"
 
 
+def history_ids(row: dict) -> set[str]:
+	"""The item numbers this record has already been on and left."""
+	return {i.strip() for i in str(row.get("gb_item_history") or "").split(",")
+		if i.strip()}
+
+
 def _push_history(existing: str | None, item_id: str) -> str:
 	ids = [i.strip() for i in str(existing or "").split(",") if i.strip()]
 	if item_id and (not ids or ids[-1] != str(item_id)):

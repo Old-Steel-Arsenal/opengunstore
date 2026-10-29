@@ -761,7 +761,7 @@ def _adopt_item_listing(rnd: _Round, item_code: str, sku: str, item_id: str,
 	# listing read back inactive was still in the same scan — so without this the
 	# number we came FROM reads as a second live listing, and every round after
 	# an adopt reports a duplicate that is not there.
-	seen = _history_ids(row)
+	seen = listings.history_ids(row)
 	candidates = sorted(set(ids) - {item_id} - seen)
 	if not candidates:
 		return item_id
@@ -791,12 +791,6 @@ def _adopt_item_listing(rnd: _Round, item_code: str, sku: str, item_id: str,
 			return None
 	item_listings.claim_item_listing(item_code, candidates[0], previous=item_id)
 	return candidates[0]
-
-
-def _history_ids(row: dict) -> set[str]:
-	"""The item numbers this record has already been on and left."""
-	return {i.strip() for i in str(row.get("gb_item_history") or "").split(",")
-		if i.strip()}
 
 
 def _our_listing_state(rnd: _Round, item_id: str) -> dict | None:
@@ -849,7 +843,7 @@ def _recheck_item_after_end(rnd: _Round, item_code: str, sku: str,
 		# out `PUSH_GRACE_HOURS` first and only ever claims, never ends; the
 		# whole point of that grace period is that nothing acts inside it.
 		return
-	history = _history_ids(row)
+	history = listings.history_ids(row)
 	if not history or not rnd.selling.usable:
 		return
 	found = {i for i in (_Scan.item_id_of(r) for r in rnd.selling.matches(sku)) if i}
