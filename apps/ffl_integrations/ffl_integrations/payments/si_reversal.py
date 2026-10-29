@@ -344,10 +344,14 @@ def refund_sales_invoice_charge(terminal_payment: str, amount, refund_type: str,
 			frappe.throw(_("{0} is a membership invoice: end the membership first (Cancel → end now), then "
 				"refund.").format(si.name))
 		cn = _credit_note(si, amt, reason)
-		cn_name, amt = cn.name, flt(-flt(cn.grand_total), 2)
-		if amt <= 0 or amt > left + _EPS:
-			frappe.throw(_("The credit note comes to {0}, more than the {1} left on the charge.").format(
-				_money(amt), _money(left)))
+		cn_amt = flt(-flt(cn.grand_total), 2)
+		# Rounding moves it a cent or two at most; more means part of the sale was already returned
+		# (the credit note only takes back what is left) — never refund a different amount silently.
+		if cn_amt <= 0 or abs(cn_amt - amt) > 0.02 or cn_amt > left + _EPS:
+			frappe.throw(_("A credit note for {0} on {1} comes to {2} (part of the sale may already be returned). "
+				"Refund at most what the sale still holds, or use Collect again.").format(
+				_money(amt), si.name, _money(cn_amt)))
+		cn_name, amt = cn.name, cn_amt
 	elif _deferred(si):
 		frappe.throw(_("{0} is a membership invoice: refund it as a Return.").format(si.name))
 	p = api._processor(row.processor)
