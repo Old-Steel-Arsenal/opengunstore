@@ -222,6 +222,10 @@ class SalesInvoiceCardReversal(_CardOnFileBase):
 		with patch("ffl_integrations.payments.si_reversal._stock_or_book", return_value="it sells stock items"), \
 				self.assertRaisesRegex(frappe.ValidationError, "Cancel Order"):
 			rv.refund_sales_invoice_charge(row, 1, rv.RETURN, "x")
+		with patch("ffl_integrations.payments.api._integration_ready", return_value=False), \
+				self.assertRaisesRegex(frappe.ValidationError, "portal"):
+			rv.void_sales_invoice_charge(row, "x")
+		self.assertIsNone(self._row(row).reversal_lock)
 		client.reverse.assert_not_called()
 		client.refund.assert_not_called()
 

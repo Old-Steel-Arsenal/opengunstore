@@ -186,7 +186,7 @@ def _book_refund(row, si, amount: float, refund_type: str, reference: str, reaso
 	cn_name = None
 	if refund_type == RETURN:
 		cn = _credit_note(si, amount, reason)
-		_quietly(cn.submit)
+		_quietly(lambda: _muted(cn.submit))
 		cn_name = cn.name
 		# The refund already left: book the credit note for exactly what went back.
 		entry_type, entry = "Payment Entry", _refund_payment(si, cn.name, amount, account, reference, reason)
@@ -244,7 +244,7 @@ def _credit_note(si, amount: float, reason: str):
 			cn.calculate_taxes_and_totals()
 	mark_system_priced(cn)
 	cn.flags.ignore_permissions = True
-	cn.insert()
+	_muted(cn.insert)
 	return cn
 
 
@@ -320,8 +320,7 @@ def void_sales_invoice_charge(terminal_payment: str, reason: str) -> dict:
 	if _deferred(si):
 		frappe.throw(_("{0} is a membership invoice: end the membership, then refund the charge (type Return) "
 			"so the credit note takes the revenue back.").format(si.name))
-	p = api._processor(row.processor)
-	p.prepare()
+	p = _ready_processor(row)
 	_lock(row, VOID, amount=flt(row.amount))
 	res = _ask(row, lambda: p.void(row.unique_reference, reason=reason[:100]),
 		_("{0} did not void the charge — it may already be settled; refund it instead. {{0}}").format(p.label))
@@ -377,8 +376,7 @@ def refund_sales_invoice_charge(terminal_payment: str, amount, refund_type: str,
 		amt = cn_amt
 	elif _deferred(si):
 		frappe.throw(_("{0} is a membership invoice: refund it as a Return.").format(si.name))
-	p = api._processor(row.processor)
-	p.prepare()
+	p = _ready_processor(row)
 	_lock(row, REFUND, amount=amt, refund_type=refund_type)
 	res = _ask(row, lambda: p.refund(row.unique_reference, amount=amt, reason=reason[:100],
 		operator=frappe.session.user),
@@ -488,6 +486,30 @@ def _money(v) -> str:
 
 def _note(si, text: str) -> None:
 	si.add_comment("Comment", text)
+
+
+def _ready_processor(row):
+	"""The processor that took the charge, prepared — or a plain refusal before anything is locked."""
+	p = api._processor(row.processor)
+	if not api._integration_ready(processor=p.code):
+		frappe.throw(_("{0} is switched off or not set up, so the POS cannot send this. Give the money back in "
+			"its portal.").format(p.label))
+	try:
+		p.prepare()
+	except Exception as e:  # noqa: BLE001 — a setup problem, nothing was sent
+		frappe.throw(_("{0} is not ready: {1}").format(p.label, escape_html(str(e)[-300:])))
+	return p
+
+
+def _muted(fn) -> None:
+	"""ERPNext's informational pop-ups about the credit note (e.g. "Update Outstanding for Self") are
+	not for the person refunding: the timeline note says what was booked."""
+	muted = frappe.flags.mute_messages
+	frappe.flags.mute_messages = True
+	try:
+		fn()
+	finally:
+		frappe.flags.mute_messages = muted
 
 
 def _quietly(fn) -> None:
