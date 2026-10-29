@@ -181,14 +181,14 @@ def _refund_payment(si, cn_name: str, amount: float, account: str, reference: st
 	return pe.name
 
 
-def _book_refund(row, si, amount: float, refund_type: str, cn_name: str | None, reference: str,
-		reason: str) -> dict:
+def _book_refund(row, si, amount: float, refund_type: str, reference: str, reason: str) -> dict:
 	account = _clearing_account(row, si)
+	cn_name = None
 	if refund_type == RETURN:
-		cn = frappe.get_doc("Sales Invoice", cn_name)
-		if cn.docstatus == 0:
-			cn.flags.ignore_permissions = True
-			_quietly(cn.submit)
+		cn = _credit_note(si, amount, reason)
+		_quietly(cn.submit)
+		cn_name = cn.name
+		# The refund already left: book the credit note for exactly what went back.
 		entry_type, entry = "Payment Entry", _refund_payment(si, cn.name, amount, account, reference, reason)
 	else:
 		entry_type, entry = "Journal Entry", _back_on_invoice(si, amount, account, reference,
@@ -204,29 +204,58 @@ def _book_refund(row, si, amount: float, refund_type: str, cn_name: str | None, 
 
 
 def _credit_note(si, amount: float, reason: str):
-	"""Draft credit note taking *amount* (gross) back from *si*, pro rata over its lines and taxes."""
+	"""Credit note (inserted, not submitted) taking *amount* (gross) back from *si*.
+
+	The whole invoice, never returned before → ERPNext's own return against it. Anything else (part
+	of the sale, or a sale already partly returned) → a credit note of the same lines and taxes, each
+	line one unit at its share of the amount, not linked by return_against: ERPNext counts returned
+	quantities, and a price cut returns none. Its remarks name the invoice. Deferred lines book
+	straight to revenue (a refund is not spread over months)."""
 	from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_sales_return
 	from ffl_core.price_approval import mark_system_priced
 
 	total = flt(si.rounded_total or si.grand_total)
 	ratio = min(1.0, amount / total) if total else 0
+	whole = ratio >= 1 - 1e-9 and not frappe.db.exists("Sales Invoice",
+		{"return_against": si.name, "docstatus": ("<", 2)})
 	cn = make_sales_return(si.name)
 	cn.update({"set_posting_time": 1, "posting_date": nowdate(), "ignore_pricing_rule": 1,
 		"disable_rounded_total": 1, "remarks": _("Card refund on {0}: {1}").format(si.name, reason)[:1000]})
-	if ratio < 1 - 1e-9:
-		for item in cn.items:
-			rate = flt(flt(item.rate) * ratio, 2)
-			item.update({"rate": rate, "price_list_rate": rate, "discount_percentage": 0, "discount_amount": 0,
-				"margin_type": "", "margin_rate_or_amount": 0})
+	if not whole:
+		cn.return_against = None
+		cn.set("items", [])
+		for line in si.items:
+			cn.append("items", {"item_code": line.item_code, "item_name": line.item_name,
+				"description": line.description, "uom": line.uom, "conversion_factor": 1, "qty": -1,
+				"rate": flt(flt(line.net_amount) * ratio, 2), "income_account": line.income_account,
+				"cost_center": line.cost_center, "item_tax_template": line.item_tax_template,
+				"item_tax_rate": line.item_tax_rate, "enable_deferred_revenue": 0})
 		for tax in cn.taxes:
 			if tax.charge_type == "Actual":
 				tax.tax_amount = flt(flt(tax.tax_amount) * ratio, 2)
-		if flt(cn.discount_amount):
-			cn.discount_amount = flt(flt(cn.discount_amount) * ratio, 2)
+		cn.discount_amount = cn.additional_discount_percentage = 0
+		cn.calculate_taxes_and_totals()
+		# Cent rounding per line: put the residual on the largest line (net of its tax share).
+		gap = flt(-amount - flt(cn.grand_total), 2)
+		if abs(gap) >= 0.01 and cn.items:
+			big = max(cn.items, key=lambda i: flt(i.rate))
+			gross = flt(cn.grand_total) / flt(cn.net_total) if flt(cn.net_total) else 1
+			big.rate = flt(flt(big.rate) + gap / gross, 2)
+			cn.calculate_taxes_and_totals()
 	mark_system_priced(cn)
 	cn.flags.ignore_permissions = True
 	cn.insert()
 	return cn
+
+
+def _credit_note_total(si, amount: float, reason: str) -> float:
+	"""What the credit note for *amount* comes to, checked by ERPNext — built and thrown away, so no
+	draft sits in the books while the processor is asked."""
+	frappe.db.savepoint("card_refund_cn")
+	try:
+		return flt(-flt(_credit_note(si, amount, reason).grand_total), 2)
+	finally:
+		frappe.db.rollback(save_point="card_refund_cn")
 
 
 # ------------------------------------------------------------------ the gateway step
@@ -239,27 +268,25 @@ def _lock(row, action: str, **facts) -> None:
 	_commit()
 
 
-def _unlock(row, cn_name: str | None = None) -> None:
-	if cn_name and frappe.db.get_value("Sales Invoice", cn_name, "docstatus") == 0:
-		frappe.delete_doc("Sales Invoice", cn_name, ignore_permissions=True, force=True)
+def _unlock(row) -> None:
 	frappe.db.set_value(api.TERMINAL_PAYMENT, row.name, "reversal_lock", None, update_modified=False)
 	_commit()
 
 
-def _ask(row, call, cn_name: str | None, refused: str):
+def _ask(row, call, refused: str):
 	"""Run the processor *call*. Approved → its result. A definite no → unlock and throw *refused*.
 	An unknown outcome → leave the lock and throw the check-the-portal message."""
 	try:
 		res = call()
 	except Exception as e:  # noqa: BLE001 — sorted by what the processor knows
 		if isinstance(e, CardProcessorError) and api._outcome_known(e):
-			_unlock(row, cn_name)
+			_unlock(row)
 			frappe.throw(refused.format(escape_html(str(e)[-300:])))
 		frappe.throw(_("The card processor did not confirm it, so the money may or may not have moved. Do not "
 			"try again: check the processor's portal for {0}, then use Resolve card reversal on {1}.").format(
 			row.unique_reference, row.sales_invoice), title=_("Not confirmed"))
 	if res.status != APPROVED:
-		_unlock(row, cn_name)
+		_unlock(row)
 		frappe.throw(refused.format(escape_html(res.message or _("declined"))))
 	return res
 
@@ -296,7 +323,7 @@ def void_sales_invoice_charge(terminal_payment: str, reason: str) -> dict:
 	p = api._processor(row.processor)
 	p.prepare()
 	_lock(row, VOID, amount=flt(row.amount))
-	res = _ask(row, lambda: p.void(row.unique_reference, reason=reason[:100]), None,
+	res = _ask(row, lambda: p.void(row.unique_reference, reason=reason[:100]),
 		_("{0} did not void the charge — it may already be settled; refund it instead. {{0}}").format(p.label))
 	return _finish(VOID, row, si, p, res.unique_reference or row.unique_reference, reason)
 
@@ -334,7 +361,6 @@ def refund_sales_invoice_charge(terminal_payment: str, amount, refund_type: str,
 	left = _left(row)
 	if amt > left + _EPS:
 		frappe.throw(_("Only {0} is left to refund on this charge.").format(_money(left)))
-	cn_name = None
 	if refund_type == RETURN:
 		why = _stock_or_book(si)
 		if why:
@@ -343,29 +369,24 @@ def refund_sales_invoice_charge(terminal_payment: str, amount, refund_type: str,
 		if any(not i.service_stop_date for i in _deferred(si)):
 			frappe.throw(_("{0} is a membership invoice: end the membership first (Cancel → end now), then "
 				"refund.").format(si.name))
-		cn = _credit_note(si, amt, reason)
-		cn_amt = flt(-flt(cn.grand_total), 2)
-		# Rounding moves it a cent or two at most; more means part of the sale was already returned
-		# (the credit note only takes back what is left) — never refund a different amount silently.
-		if cn_amt <= 0 or abs(cn_amt - amt) > 0.02 or cn_amt > left + _EPS:
-			frappe.throw(_("A credit note for {0} on {1} comes to {2} (part of the sale may already be returned). "
-				"Refund at most what the sale still holds, or use Collect again.").format(
-				_money(amt), si.name, _money(cn_amt)))
-		cn_name, amt = cn.name, cn_amt
+		cn_amt = _credit_note_total(si, amt, reason)
+		# Never refund a different amount than the credit note takes back.
+		if cn_amt <= 0 or abs(cn_amt - amt) > 0.01 or cn_amt > left + _EPS:
+			frappe.throw(_("A credit note for {0} on {1} comes to {2}. Enter a different amount, or use Collect "
+				"again.").format(_money(amt), si.name, _money(cn_amt)))
+		amt = cn_amt
 	elif _deferred(si):
 		frappe.throw(_("{0} is a membership invoice: refund it as a Return.").format(si.name))
 	p = api._processor(row.processor)
 	p.prepare()
-	_lock(row, REFUND, amount=amt, refund_type=refund_type, credit_note=cn_name)
+	_lock(row, REFUND, amount=amt, refund_type=refund_type)
 	res = _ask(row, lambda: p.refund(row.unique_reference, amount=amt, reason=reason[:100],
-		operator=frappe.session.user), cn_name,
+		operator=frappe.session.user),
 		_("{0} refused the refund — nothing was refunded. {{0}}").format(p.label))
-	return _finish(REFUND, row, si, p, res.unique_reference, reason, amount=amt, refund_type=refund_type,
-		cn_name=cn_name)
+	return _finish(REFUND, row, si, p, res.unique_reference, reason, amount=amt, refund_type=refund_type)
 
 
-def _finish(action: str, row, si, p, reference: str, reason: str, *, amount=None, refund_type=None,
-		cn_name=None) -> dict:
+def _finish(action: str, row, si, p, reference: str, reason: str, *, amount=None, refund_type=None) -> dict:
 	"""Book an approved void/refund under the money-fact guard (the money already moved)."""
 	out: dict = {}
 
@@ -374,11 +395,11 @@ def _finish(action: str, row, si, p, reference: str, reason: str, *, amount=None
 			["name", "amount", "unique_reference", "card_summary", "payment_entry", "refunded_amount", "status"],
 			as_dict=True)
 		out.update(_book_void(fresh, si, reference, reason) if action == VOID
-			else _book_refund(fresh, si, amount, refund_type, cn_name, reference, reason))
+			else _book_refund(fresh, si, amount, refund_type, reference, reason))
 
 	api._persist_money_fact(write, action=f"si-{action}", invoice=si.name,
 		facts={"unique_reference": reference or row.unique_reference, "charge": row.unique_reference,
-			"amount": amount if amount is not None else row.amount, "credit_note": cn_name},
+			"amount": amount if amount is not None else row.amount, "refund_type": refund_type},
 		processor_label=p.label)
 	return {"ok": True, "status": VOIDED if action == VOID else frappe.db.get_value(
 		api.TERMINAL_PAYMENT, row.name, "status"), "amount": flt(amount if amount is not None else row.amount),
@@ -409,10 +430,13 @@ def resolve_card_reversal(terminal_payment: str, went_through, note: str, portal
 		frappe.throw(_("This card charge has no unconfirmed void or refund."))
 	lock = _json.loads(row.reversal_lock)
 	if not cint(went_through):
-		_unlock(row, lock.get("credit_note"))
+		_unlock(row)
 		_note(si, _("{0} The {1} of card charge {2} did not happen (checked: {3}).").format(
 			MARKER, _(lock.get("action")), row.unique_reference, note))
 		return {"ok": True, "booked": False}
+	if si.docstatus != 1:
+		frappe.throw(_("{0} is no longer a submitted invoice: book the {1} by hand with the back office.").format(
+			si.name, _(lock.get("action"))))
 	reference = (portal_reference or "").strip()
 	if not reference:
 		frappe.throw(_("Enter the portal's reference for the {0}.").format(_(lock.get("action"))))
@@ -422,7 +446,7 @@ def resolve_card_reversal(terminal_payment: str, went_through, note: str, portal
 		out = _finish(VOID, row, si, p, reference, reason)
 	else:
 		out = _finish(REFUND, row, si, p, reference, reason, amount=flt(lock.get("amount")),
-			refund_type=lock.get("refund_type"), cn_name=lock.get("credit_note"))
+			refund_type=lock.get("refund_type"))
 	return {**out, "booked": True}
 
 

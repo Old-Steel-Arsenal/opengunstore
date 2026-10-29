@@ -18,7 +18,7 @@ The card charges on a Sales Invoice that a manager can void or refund, for the f
 
 **Returns:** {charges: [{name, amount, refunded_amount, left, status, unique_reference, card_summary, locked, lock, can_void}], membership, return_blocked}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:426`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:454`</sub>
 
 ## `refund_sales_invoice_charge`
 
@@ -42,7 +42,7 @@ back on the invoice to be collected another way.
 
 **Returns:** {ok, amount, gateway_reference, entry_type, entry, credit_note, outstanding}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:305`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:332`</sub>
 
 ## `resolve_card_reversal`
 
@@ -61,7 +61,7 @@ Settle a void or refund the card processor never confirmed, after looking in its
 
 **Returns:** {ok, booked, ...the booking when booked}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:386`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:411`</sub>
 
 ## `void_sales_invoice_charge`
 
@@ -84,4 +84,4 @@ are refunded instead (type Return).
 
 **Returns:** {ok, status, entry_type, entry, outstanding}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:270`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:297`</sub>

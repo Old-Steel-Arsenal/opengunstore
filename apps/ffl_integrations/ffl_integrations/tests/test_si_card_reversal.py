@@ -72,7 +72,7 @@ class SalesInvoiceCardReversal(_CardOnFileBase):
 		row = frappe.db.get_value(api.TERMINAL_PAYMENT, {"sales_invoice": si, "status": "CHARGED"}, "name")
 		return si, row, owed
 
-	def _taxed_invoice(self, rate=100) -> str:
+	def _taxed_invoice(self, rate=100, qty=1) -> str:
 		"""A submitted invoice for a non-stock item with an 8.25% tax row."""
 		company = frappe.db.get_value("Company", {"company_name": "FFL Test"}, "name")
 		tax = frappe.db.get_value("Account", {"company": company, "account_name": "SIR Sales Tax"}, "name")
@@ -82,7 +82,7 @@ class SalesInvoiceCardReversal(_CardOnFileBase):
 			tax = frappe.get_doc({"doctype": "Account", "account_name": "SIR Sales Tax", "company": company,
 				"parent_account": parent, "account_type": "Tax"}).insert(ignore_permissions=True).name
 		si = frappe.get_doc({"doctype": "Sales Invoice", "customer": self._customer(), "company": company,
-			"items": [{"item_code": "BO-ACC", "qty": 1, "rate": rate}],
+			"items": [{"item_code": "BO-ACC", "qty": qty, "rate": rate}],
 			"taxes": [{"charge_type": "On Net Total", "account_head": tax, "rate": 8.25, "description": "Test tax"}]})
 		si.flags.ignore_permissions = True
 		si.insert()
@@ -175,7 +175,9 @@ class SalesInvoiceCardReversal(_CardOnFileBase):
 		client.refund.return_value = {"refundReference": "RF-1"}
 		out = rv.refund_sales_invoice_charge(row, round(amt / 4, 2), rv.RETURN, "one of four returned")
 		cn = frappe.get_doc("Sales Invoice", out["credit_note"])
-		self.assertEqual((cn.docstatus, cn.is_return, cn.return_against), (1, 1, si))
+		# A part of the sale: a credit note naming the invoice, not a quantity return against it.
+		self.assertEqual((cn.docstatus, cn.is_return, cn.return_against), (1, 1, None))
+		self.assertIn(si, cn.remarks)
 		self.assertAlmostEqual(-flt(cn.grand_total), out["amount"], 2)
 		self.assertAlmostEqual(out["amount"], amt / 4, delta=0.011)
 		self.assertAlmostEqual(client.refund.call_args.kwargs["refund_amount"], out["amount"], 2)
@@ -239,11 +241,25 @@ class SalesInvoiceCardReversal(_CardOnFileBase):
 		client.refund.side_effect = requests.ConnectionError()
 		with self.assertRaises(frappe.ValidationError):
 			rv.refund_sales_invoice_charge(row, amt, rv.RETURN, "x")
-		cn = _json.loads(self._row(row).reversal_lock)["credit_note"]
-		self.assertEqual(frappe.db.get_value("Sales Invoice", cn, "docstatus"), 0)
+		self.assertEqual(_json.loads(self._row(row).reversal_lock)["refund_type"], rv.RETURN)
+		# No draft credit note waits in the books while the outcome is unknown.
+		self.assertEqual(frappe.db.count("Sales Invoice", {"return_against": si}), 0)
 		out = rv.resolve_card_reversal(row, 1, "portal shows the refund", "PORTAL-RF")
-		self.assertEqual((out["credit_note"], frappe.db.get_value("Sales Invoice", cn, "docstatus")), (cn, 1))
+		self.assertEqual(frappe.db.get_value("Sales Invoice", out["credit_note"], "docstatus"), 1)
 		self.assertEqual(self._row(row).status, "REFUNDED")
+
+	def test_partial_returns_on_a_multi_unit_line_can_repeat(self, cc):
+		client = cc.from_settings.return_value
+		si = self._taxed_invoice(rate=3.33, qty=10)
+		si, row, amt = self._charged(client, si=si)
+		client.refund.return_value = {"refundReference": "RF-Q"}
+		first = rv.refund_sales_invoice_charge(row, round(amt / 2, 2), rv.RETURN, "half returned")
+		self.assertAlmostEqual(first["amount"], round(amt / 2, 2), 2)
+		second = rv.refund_sales_invoice_charge(row, round(amt / 4, 2), rv.RETURN, "price lowered")
+		self.assertAlmostEqual(second["amount"], round(amt / 4, 2), 2)
+		for out in (first, second):
+			self.assertEqual(frappe.db.get_value("Sales Invoice", out["credit_note"], "docstatus"), 1)
+		self.assertAlmostEqual(flt(self._row(row).refunded_amount), first["amount"] + second["amount"], 2)
 
 	# ---------------------------------------------------------------- memberships
 

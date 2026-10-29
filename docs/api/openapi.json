@@ -21141,7 +21141,7 @@
           "ffl_integrations"
         ],
         "summary": "The card charges on a Sales Invoice that a manager can void or refund, for the form.",
-        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:426`",
+        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:454`",
         "operationId": "ffl_integrations.payments.si_reversal.card_charges",
         "responses": {
           "200": {
@@ -21189,7 +21189,7 @@
           "ffl_integrations"
         ],
         "summary": "Refund part or all of a card charge on a counter Sales Invoice to the card it came from.",
-        "description": "Return: a credit note takes the amount back from the sale, pro rata over its lines and tax, and\na Pay Payment Entry settles it (only for invoices that never touched stock or the bound book;\nmembership lines once the membership has ended). Collect again: a Journal Entry puts the amount\nback on the invoice to be collected another way.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:305`",
+        "description": "Return: a credit note takes the amount back from the sale, pro rata over its lines and tax, and\na Pay Payment Entry settles it (only for invoices that never touched stock or the bound book;\nmembership lines once the membership has ended). Collect again: a Journal Entry puts the amount\nback on the invoice to be collected another way.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:332`",
         "operationId": "ffl_integrations.payments.si_reversal.refund_sales_invoice_charge",
         "responses": {
           "200": {
@@ -21251,7 +21251,7 @@
           "ffl_integrations"
         ],
         "summary": "Settle a void or refund the card processor never confirmed, after looking in its portal.",
-        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:386`",
+        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:411`",
         "operationId": "ffl_integrations.payments.si_reversal.resolve_card_reversal",
         "responses": {
           "200": {
@@ -21315,7 +21315,7 @@
           "ffl_integrations"
         ],
         "summary": "Void a card charge on a counter Sales Invoice: the processor reverses the whole capture",
-        "description": "(before it settles) and the invoice owes the amount again.\n\nThe charge's Payment Entry is cancelled when it was posted today, settles only this charge and\nis not bank-cleared; otherwise a Journal Entry today books the reversal. Membership invoices\nare refunded instead (type Return).\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:270`",
+        "description": "(before it settles) and the invoice owes the amount again.\n\nThe charge's Payment Entry is cancelled when it was posted today, settles only this charge and\nis not bank-cleared; otherwise a Journal Entry today books the reversal. Membership invoices\nare refunded instead (type Return).\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:297`",
         "operationId": "ffl_integrations.payments.si_reversal.void_sales_invoice_charge",
         "responses": {
           "200": {
