@@ -35,8 +35,9 @@ An **Agreement Template** holds the text (a range waiver, a rental agreement); a
   or its Item Group does, else a used Item takes FFL Settings › Used Item Agreement
   (:func:`required_for_item`); a template's ``requirement`` says
   whether that matters, or every sale needs it, or it is only offered; its ``scope``
-  says whether one signature covers the customer or each firearm sold needs its own
-  copy naming the gun (:func:`sale_requirements`). The register's Agreements button
+  says whether one signature covers the customer or each firearm sold needs a signed
+  copy naming the gun (:func:`sale_requirements`; one copy may name every gun of a
+  sale, in its ``firearms`` table). The register's Agreements button
   lists them all for the cart (:func:`agreements_for_sale`). A **Per document** template is
   signed for one record (``reference_doctype`` / ``reference_name``: a gunsmith work order's
   intake authorization), from that record, and is never asked for at a sale.
@@ -72,6 +73,8 @@ from ffl_core.store_identity import company_brand
 from ffl_core.utils import atomic, commit, guest_job_elevated, set_file_privacy, single_flag
 
 DOCTYPE = "Customer Agreement"
+# The guns an Each firearm sold copy covers (one signature for every used gun in a sale).
+FIREARM_ROW = "Customer Agreement Firearm"
 TEMPLATE = "Agreement Template"
 TOKEN_HOURS = 72
 EXPIRING_DAYS = 30
@@ -127,22 +130,38 @@ def _expires_on(template, signed_day):
 	return add_days(getdate(signed_day), days) if days > 0 else None
 
 
-def render_body(template_doc, customer_doc, company: str | None, firearm: dict | None = None) -> str:
+def render_body(template_doc, customer_doc, company: str | None, firearm: dict | list | None = None) -> str:
 	"""The template's text for this customer, placeholders filled, sanitized.
 
 	Only the documented placeholders are in the context, each value HTML-escaped;
-	*firearm* (:func:`firearm_context`) adds the gun's for an Each firearm sold copy,
+	*firearm* adds the guns' for an Each firearm sold copy (a list of
+	:func:`firearm_context`: one gun fills its placeholders, several list each
+	placeholder's values with " / ", and ``{{ firearms }}`` is a table of them all),
 	or the record's (:func:`document_context`) for a Per document one.
 	"""
 	brand = company_brand(company)
 	name = customer_doc.customer_name or customer_doc.name
 	first = (customer_doc.get("ffl_first_name") or "").strip() or name.split(" ")[0]
+	guns = firearm if isinstance(firearm, list) else None
+	if guns:
+		firearm = {k: " / ".join(str(g[k]) for g in guns) for k in guns[0]}
 	ctx = {k: escape_html(str(v)) for k, v in {
 		"customer_name": name, "first_name": first, "date": formatdate(nowdate()),
 		"store_name": brand.get("name") or "", "store_address": brand.get("address_line") or "",
 		"valid_days": template_doc.valid_days or "", **(firearm or {}),
 	}.items()}
+	if guns:
+		ctx["firearms"] = _firearms_table(guns)
 	return sanitize_html(frappe.render_template(template_doc.body or "", ctx))
+
+
+def _firearms_table(guns: list[dict]) -> str:
+	"""``{{ firearms }}``: one row per gun a copy covers, every value escaped."""
+	e = lambda v: escape_html(str(v or ""))  # noqa: E731
+	rows = "".join(f"<tr><td>{e(' '.join(filter(None, (g['manufacturer'], g['model']))) or g['item_name'])}"
+		f"{', ' + e(g['caliber']) if g['caliber'] else ''}</td><td>{e(g['serial_no'])}</td><td>{e(g['price'])}</td></tr>"
+		for g in guns)
+	return f"<table><tr><th>Firearm</th><th>Serial</th><th>Price</th></tr>{rows}</table>"
 
 
 def firearm_context(serial_no: str, price=None) -> dict:
@@ -172,7 +191,7 @@ def _template_rows(names=None) -> dict:
 	if names is not None:
 		filters["name"] = ("in", list(names) or [""])
 	rows = frappe.get_all(TEMPLATE, filters=filters,
-		fields=["name", "requirement", "scope", "show_on_counter_panel"], order_by="title asc")
+		fields=["name", "requirement", "scope", "show_on_counter_panel", "one_copy_per_gun"], order_by="title asc")
 	for r in rows:   # a template saved before the two settings existed
 		r.requirement = r.requirement or BY_ITEM
 		r.scope = r.scope or PER_CUSTOMER
@@ -191,7 +210,8 @@ def agreement_status(customer: str, template: str, today=None, serial_no: str | 
 	"""Where *customer* stands with *template* today.
 
 	For an Each firearm sold template pass the gun (*serial_no*) and, when there is
-	one, the sale it is for (*sale*): a signed copy for that gun counts until a
+	one, the sale it is for (*sale*): a signed copy covering that gun (its
+	``firearms`` rows; one copy may cover every gun of a sale) counts until a
 	submitted sale has used it (``reference_name``), and never expires. For a Per
 	document template pass the record (*reference*: ``(doctype, name)``): only that
 	record's copy counts, and it never expires.
@@ -204,7 +224,10 @@ def agreement_status(customer: str, template: str, today=None, serial_no: str | 
 	"""
 	today = getdate(today or nowdate())
 	filters = {"customer": customer, "template": template, "status": ("in", ("Signed", "Pending", "Expired"))}
-	filters["serial_no"] = serial_no if serial_no else ("is", "not set")
+	if serial_no:
+		filters["name"] = ("in", _covering([serial_no]) or [""])
+	else:
+		filters["serial_no"] = ("is", "not set")
 	if reference:
 		filters.update(reference_doctype=reference[0], reference_name=reference[1])
 	elif not serial_no:
@@ -240,6 +263,12 @@ def agreement_status(customer: str, template: str, today=None, serial_no: str | 
 		out.update(state="expired", agreement=lapsed.name,
 			expires_on=str(lapsed.expires_on) if lapsed.expires_on else None)
 	return out
+
+
+def _covering(serials: list[str]) -> list[str]:
+	"""The copies whose ``firearms`` name any of *serials*."""
+	return list(dict.fromkeys(frappe.get_all(FIREARM_ROW, filters={"parenttype": DOCTYPE,
+		"serial_no": ("in", serials)}, pluck="parent"))) if serials else []
 
 
 def _satisfied(status: dict) -> bool:
@@ -390,10 +419,13 @@ def agreements_for_sale(customer: str, items: list | str | None = None, sale: st
 
 	Returns:
 	    {"rows": [{"template", "scope", "requirement", "required": whether this
-	    sale needs it, "serial_no", "item_code", "item_name", "rate", "state",
-	    "expires_on", "agreement"}]} — a Per customer template once, an Each
-	    firearm sold one once per gun in the cart (or once with no gun when the cart
-	    has none, so it can still be seen).
+	    sale needs it, "state", "expires_on", "agreement", "firearms"}]} — every
+	    template once, except an Each firearm sold one with One copy per gun, once
+	    per gun. An Each firearm sold row lists the guns one copy is signed for in
+	    "firearms": [{"serial_no", "item_code", "item_name", "rate", "state"}] (the
+	    guns the sale needs it for, else every gun in the cart; empty when the cart
+	    has none); its "state" is signed once every one of them is, pending when the
+	    unsigned ones all have a copy out, else missing.
 	"""
 	frappe.has_permission("Customer", "read", doc=customer, throw=True)
 	cart = frappe.parse_json(items) if isinstance(items, str) else (items or [])
@@ -406,16 +438,23 @@ def agreements_for_sale(customer: str, items: list | str | None = None, sale: st
 	for t, row in _template_rows().items():
 		if row.scope == PER_DOCUMENT:
 			continue
-		targets = [(serial, r) for serial, r in guns] if row.scope == PER_FIREARM and guns else [(None, None)]
-		for serial, r in targets:
-			st = agreement_status(customer, t, serial_no=serial, sale=sale)
-			out.append({"template": t, "scope": row.scope, "requirement": row.requirement,
-				"required": (t, serial) in needed, "serial_no": serial,
-				"item_code": r.item_code if r else None,
-				"item_name": (names.get(r.item_code) or {}).get("item_name") if r else None,
-				"rate": flt(r.get("rate")) if r else None,
-				"state": st["state"], "expires_on": st["expires_on"], "agreement": st["agreement"]})
-	out.sort(key=lambda x: (not x["required"], x["template"], x["serial_no"] or ""))
+		base = {"template": t, "scope": row.scope, "requirement": row.requirement, "firearms": []}
+		if row.scope != PER_FIREARM:
+			st = agreement_status(customer, t)
+			out.append({**base, "required": (t, None) in needed, "state": st["state"],
+				"expires_on": st["expires_on"], "agreement": st["agreement"]})
+			continue
+		mine = [(serial, r) for serial, r in guns if (t, serial) in needed] or guns
+		firearms = [{"serial_no": serial, "item_code": r.item_code,
+			"item_name": (names.get(r.item_code) or {}).get("item_name"), "rate": flt(r.get("rate")),
+			"state": agreement_status(customer, t, serial_no=serial, sale=sale)["state"]} for serial, r in mine]
+		for copy in [[g] for g in firearms] if row.one_copy_per_gun and firearms else [firearms]:
+			unsigned = [g for g in copy if g["state"] != "signed"]
+			state = "signed" if copy and not unsigned else \
+				"pending" if unsigned and all(g["state"] == "pending" for g in unsigned) else "missing"
+			out.append({**base, "required": any((t, g["serial_no"]) in needed for g in copy), "state": state,
+				"expires_on": None, "agreement": None, "firearms": copy})
+	out.sort(key=lambda x: (not x["required"], x["template"]))
 	return {"rows": out}
 
 
@@ -482,35 +521,45 @@ def email_sale_agreements(doc, email: str | None, needs: list[dict] | None = Non
 
 	For a sale booked before the customer signed (a counter order taken on the phone;
 	see :func:`refuse_missing_required`). *needs* defaults to :func:`missing_requirements`;
-	an Each firearm sold one gets a copy per gun, naming that line's price. A copy
-	whose link is still open is left alone unless *replace*. Never raises: each one is
-	tried on its own and a failure is reported, not thrown, so it cannot undo the sale.
+	an Each firearm sold one gets one copy for all its guns (one per gun with One copy
+	per gun), naming each line's price.
+	A copy whose link is still open is left alone unless *replace*. Never raises: each
+	agreement is tried on its own and a failure is reported, not thrown, so it cannot
+	undo the sale.
 
 	Returns:
 	    [{"template", "serial_no", "state": "sent" / "link_open" / "failed", "email",
-	    "token_expires", "error"}].
+	    "token_expires", "error"}] — one per need (the guns of one copy share its result).
 	"""
 	# An order may carry a list of addresses; the link goes to the first.
 	email = next(iter(split_emails(email or "")), "").strip()
+	needs = missing_requirements(doc) if needs is None else needs
+	per_gun = {t for t, r in _template_rows({n["template"] for n in needs}).items() if r.one_copy_per_gun}
+	groups: dict[tuple, list[dict]] = {}
+	for n in needs:
+		groups.setdefault((n["template"], n.get("serial_no") if n["template"] in per_gun else None), []).append(n)
 	out = []
-	for n in missing_requirements(doc) if needs is None else needs:
-		row = {"template": n["template"], "serial_no": n.get("serial_no"), "state": "failed", "email": email or None,
-			"token_expires": None, "error": None}
-		out.append(row)
+	for (template, _serial), group in groups.items():
+		rows = [{"template": template, "serial_no": n.get("serial_no"), "state": "failed", "email": email or None,
+			"token_expires": None, "error": None} for n in group]
+		out.extend(rows)
 		if not email:
-			row["error"] = _("No email address on this order.")
+			for row in rows:
+				row["error"] = _("No email address on this order.")
 			continue
+		guns = [{"serial_no": n["serial_no"], "price": _line_rate(doc, n["serial_no"])} for n in group if n.get("serial_no")]
 		mark = len(frappe.local.message_log or [])
 		try:
 			with atomic("email sale agreement"):
-				r = _request(doc.customer, n["template"], "email", replace, serial_no=n.get("serial_no"),
-					price=_line_rate(doc, n.get("serial_no")), email=email)
-			row.update(state="link_open" if r.get("link_open") else "sent", token_expires=r.get("token_expires"))
+				r = _request(doc.customer, template, "email", replace, firearms=guns, email=email)
+			for row in rows:
+				row.update(state="link_open" if r.get("link_open") else "sent", token_expires=r.get("token_expires"))
 		except Exception as e:
 			# A handled failure: its throw must not sit as a red error on a successful order.
 			if frappe.local.message_log is not None:
 				del frappe.local.message_log[mark:]
-			row["error"] = strip_html(str(e)) or _("The email could not be sent.")
+			for row in rows:
+				row["error"] = strip_html(str(e)) or _("The email could not be sent.")
 			frappe.log_error(title=f"Agreement email for {doc.name} failed")
 	return out
 
@@ -538,7 +587,8 @@ def _qr_data_uri(url: str) -> str:
 @frappe.whitelist(methods=["POST"])
 def request_agreement(customer: str, template: str, deliver: str = "qr", replace: int = 0,
 		terminal: str | None = None, serial_no: str | None = None, price: float | None = None,
-		reference_doctype: str | None = None, reference_name: str | None = None) -> dict:
+		reference_doctype: str | None = None, reference_name: str | None = None,
+		firearms: list | str | None = None) -> dict:
 	"""Send a customer an agreement to sign.
 
 	Creates the customer's Pending copy of the template, or re-issues the one
@@ -559,11 +609,14 @@ def request_agreement(customer: str, template: str, deliver: str = "qr", replace
 	        manager then records a paper copy on it).
 	    replace: 1 to re-issue even though the pending copy's link still works.
 	    terminal: Signing Terminal name, for ``tablet``; must be active and paired.
-	    serial_no: The gun, for an Each firearm sold template (required there).
+	    serial_no: The gun, for an Each firearm sold template (it or *firearms* is required there).
 	    price: The gun's price in this sale, for the text's ``{{ price }}``.
 	    reference_doctype: For a Per document template (required there): the record's DocType.
 	    reference_name: That record's name; the caller must be able to read it, and the
 	        record's ``agreement_context()`` fills the text's placeholders.
+	    firearms: For an Each firearm sold template, several guns signed for at once:
+	        [{"serial_no", "price"}]. One copy covers them all (refused for a template
+	        with One copy per gun); a pending copy covering any of them is the one re-issued.
 
 	Returns:
 	    {"name": the Customer Agreement, "deliver", "token_expires"} plus, for
@@ -573,11 +626,26 @@ def request_agreement(customer: str, template: str, deliver: str = "qr", replace
 	frappe.only_for(COUNTER_ROLES)
 	frappe.has_permission("Customer", "read", doc=customer, throw=True)
 	return _request(customer, template, deliver, replace, terminal, serial_no, price, reference_doctype,
-		reference_name)
+		reference_name, firearms=firearms)
+
+
+def _gun_list(serial_no, price, firearms) -> list[tuple[str, float | None]]:
+	"""[(serial, price)] from *firearms* ([{"serial_no", "price"}]) or the one *serial_no*, each gun once."""
+	rows = frappe.parse_json(firearms) if isinstance(firearms, str) else firearms
+	if not rows:
+		rows = [{"serial_no": serial_no, "price": price}]
+	if not isinstance(rows, list) or len(rows) > 50:
+		frappe.throw(_("firearms must be a list of up to 50 guns."))
+	out = {}
+	for r in rows:
+		s = (r.get("serial_no") if isinstance(r, dict) else None) or ""
+		if isinstance(s, str) and s.strip():
+			out.setdefault(s.strip(), flt(r.get("price")) or None)
+	return list(out.items())
 
 
 def _request(customer, template, deliver="qr", replace=0, terminal=None, serial_no=None, price=None,
-		reference_doctype=None, reference_name=None, email: str | None = None) -> dict:
+		reference_doctype=None, reference_name=None, email: str | None = None, firearms=None) -> dict:
 	""":func:`request_agreement` past its role / Customer checks (the caller made its own).
 	*email*, for ``email``, is where the link goes instead of the customer's address."""
 	if deliver not in DELIVERIES:
@@ -586,13 +654,15 @@ def _request(customer, template, deliver="qr", replace=0, terminal=None, serial_
 	if not tpl.active:
 		frappe.throw(_("{0} is switched off.").format(escape_html(template)))
 	cust = frappe.get_doc("Customer", customer)
-	serial_no = (serial_no or "").strip() or None
+	guns = []
 	if tpl.scope == PER_FIREARM:
-		if not serial_no or not frappe.db.exists("Serial No", serial_no):
+		guns = _gun_list(serial_no, price, firearms)
+		if not guns or any(not frappe.db.exists("Serial No", s) for s, _p in guns):
 			frappe.throw(_("{0} is signed for each firearm sold: pick the gun it is for.").format(
 				escape_html(template)), title=_("Which firearm?"))
-	else:
-		serial_no = None
+		if len(guns) > 1 and cint(tpl.get("one_copy_per_gun")):
+			frappe.throw(_("{0} is signed once per gun: send one gun at a time.").format(escape_html(template)))
+	serial_no = guns[0][0] if guns else None
 	reference = None
 	if tpl.scope == PER_DOCUMENT:
 		if not (reference_doctype and reference_name and frappe.db.exists(reference_doctype, reference_name)):
@@ -603,7 +673,7 @@ def _request(customer, template, deliver="qr", replace=0, terminal=None, serial_
 			frappe.throw(_("{0} {1} is not {2}'s.").format(escape_html(reference_doctype),
 				escape_html(reference_name), escape_html(customer)))
 		reference = (reference_doctype, reference_name)
-	firearm = firearm_context(serial_no, price) if serial_no else \
+	firearm = [firearm_context(s, p) for s, p in guns] if guns else \
 		document_context(*reference) if reference else None
 	email = (email or cust.get("email_id") or "").strip()
 	if deliver == "tablet":
@@ -619,19 +689,28 @@ def _request(customer, template, deliver="qr", replace=0, terminal=None, serial_
 	company = _default_company()
 	with atomic("request agreement"):
 		existing = frappe.db.get_value(DOCTYPE, {"customer": customer, "template": template, "status": "Pending",
-			"serial_no": serial_no or ("is", "not set"),
+			**({"name": ("in", _covering([s for s, _p in guns]) or [""])} if guns
+				else {"serial_no": ("is", "not set")}),
 			**({"reference_doctype": reference[0], "reference_name": reference[1]} if reference
 				else {"reference_name": ("is", "not set")})}, ["name", "sign_token_hash", "token_expires"],
-			as_dict=True, for_update=True)
+			as_dict=True, for_update=True, order_by="creation desc")
 		if existing and existing.sign_token_hash and existing.token_expires \
 				and get_datetime(existing.token_expires) > now_datetime() and not cint(replace):
-			return {"name": existing.name, "link_open": True, "token_expires": str(existing.token_expires)}
+			# An open copy missing some of these guns stays as it is (the customer may be
+			# signing it); a new copy covers them all.
+			if guns and not {s for s, _p in guns} <= set(frappe.get_all(FIREARM_ROW,
+					filters={"parenttype": DOCTYPE, "parent": existing.name}, pluck="serial_no")):
+				existing = None
+			else:
+				return {"name": existing.name, "link_open": True, "token_expires": str(existing.token_expires)}
 		doc = frappe.get_doc(DOCTYPE, existing.name) if existing else frappe.new_doc(DOCTYPE)
 		doc.update({
 			"customer": customer, "template": template, "template_version": tpl.version or 1,
 			"company": company, "status": "Pending",
 			"body_snapshot": render_body(tpl, cust, company, firearm),
-			"serial_no": serial_no, "item_code": firearm and frappe.db.get_value("Serial No", serial_no, "item_code"),
+			"serial_no": serial_no, "item_code": serial_no and frappe.db.get_value("Serial No", serial_no, "item_code"),
+			"firearms": [{"serial_no": s, "item_code": frappe.db.get_value("Serial No", s, "item_code"), "price": p}
+				for s, p in guns],
 			"reference_doctype": reference and reference[0], "reference_name": reference and reference[1],
 			"sign_token_hash": _hash(token) if token else None, "token_expires": expires,
 			"delivery_channel": {"tablet": "Terminal", "qr": "QR", "email": "Email"}.get(deliver),
@@ -766,16 +845,21 @@ def get_customer_agreements(customer: str) -> dict:
 	    customer: Customer name (document id).
 
 	Returns:
-	    {"rows": [{"name", "template", "serial_no", "status", "signed_on", "signed_via",
-	    "expires_on", "signed_pdf"}] newest first, "can_manage": whether the caller
-	    may void or record paper copies}.
+	    {"rows": [{"name", "template", "serial_no": every gun it covers, comma-separated,
+	    "status", "signed_on", "signed_via", "expires_on", "signed_pdf"}] newest first,
+	    "can_manage": whether the caller may void or record paper copies}.
 	"""
 	frappe.has_permission("Customer", "read", doc=customer, throw=True)
 	rows = frappe.get_all(DOCTYPE, filters={"customer": customer},
 		fields=["name", "template", "serial_no", "status", "signed_on", "signed_via", "expires_on", "signed_pdf"],
 		order_by="creation desc", limit=50) if frappe.has_permission(DOCTYPE, "read") else []
-	return {"rows": [{**r, "signed_on": str(r.signed_on or ""), "expires_on": str(r.expires_on or "")}
-		for r in rows], "can_manage": _is_manager()}
+	guns: dict[str, list] = {}
+	for g in frappe.get_all(FIREARM_ROW, filters={"parenttype": DOCTYPE, "parent": ("in", [r.name for r in rows] or [""])},
+			fields=["parent", "serial_no"], order_by="idx"):
+		guns.setdefault(g.parent, []).append(g.serial_no)
+	return {"rows": [{**r, "serial_no": ", ".join(guns.get(r.name) or []) or r.serial_no,
+		"signed_on": str(r.signed_on or ""), "expires_on": str(r.expires_on or "")} for r in rows],
+		"can_manage": _is_manager()}
 
 
 @frappe.whitelist(methods=["POST"])
@@ -887,7 +971,7 @@ def _refresh_text(doc) -> bool:
 	if cint(doc.template_version) == cint(tpl.version or 1):
 		return False
 	cust = frappe.get_doc("Customer", doc.customer)
-	firearm = firearm_context(doc.serial_no) if doc.get("serial_no") else None
+	firearm = [firearm_context(r.serial_no, r.price) for r in doc.get("firearms") or []] or None
 	doc.db_set({"body_snapshot": render_body(tpl, cust, doc.company, firearm), "template_version": tpl.version or 1},
 		update_modified=False)
 	return True

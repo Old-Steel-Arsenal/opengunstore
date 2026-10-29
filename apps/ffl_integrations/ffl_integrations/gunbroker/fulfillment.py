@@ -45,6 +45,7 @@ from ffl_core.reservations import (
 	uniform_free_serials,
 )
 from ffl_core.utils import commit as safe_commit
+from ffl_integrations.gunbroker import listings as gb_listings
 from ffl_integrations.gunbroker import mapping as gb_mapping
 from ffl_integrations.gunbroker import orders as gb_orders
 from ffl_integrations.notifications import notify_admins, safe_log_error
@@ -1192,9 +1193,22 @@ def dispose_gb_order(gunbroker_order: str, cr_details=None, locations=None) -> d
 	# Pending Fulfillment and the whole step can be retried.
 	issued = _issue_stock_units(order, _stock_lines(order), picks)
 
+	sold_ids = {str(line.gb_item_id or "").strip() for line in (order.lines or [])}
 	for serial in disposed + retired:
-		frappe.db.set_value("Serial No", serial,
-			{"gb_reserved": 0, "gb_order": ""}, update_modified=False)
+		updates = {"gb_reserved": 0, "gb_order": ""}
+		row = gb_listings.serial_state(serial)
+		item_id = str(row.get("gb_item_id") or "").strip()
+		if item_id and item_id in sold_ids:
+			# The listing this order bought leaves with the gun. Left on the
+			# serial, the sweep keeps asking GunBroker about it, finds it sold
+			# with no order holding the gun any more, and raises "may have sold
+			# on GunBroker" for a gun that is already out the door. A listing
+			# that is NOT this order's stays, so the jobs that end listings for
+			# a gun that is no longer sellable still see it.
+			updates.update(gb_listings._clear_gone_tracking(), gb_item_id="",
+				gb_end_pending=0, gb_item_history=gb_listings._push_history(
+					row.get("gb_item_history"), item_id))
+		frappe.db.set_value("Serial No", serial, updates, update_modified=False)
 	# ships_direct is the decision just taken, written down for everything
 	# after this point (the invoice's ship-to, its remarks, the card) to read
 	# instead of re-deriving it from the Items.
