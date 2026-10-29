@@ -503,13 +503,11 @@ def _ready_processor(row):
 
 def _muted(fn) -> None:
 	"""ERPNext's informational pop-ups about the credit note (e.g. "Update Outstanding for Self") are
-	not for the person refunding: the timeline note says what was booked."""
-	muted = frappe.flags.mute_messages
-	frappe.flags.mute_messages = True
-	try:
-		fn()
-	finally:
-		frappe.flags.mute_messages = muted
+	not for the person refunding: the timeline note says what was booked. Dropped only on success, so
+	a refusal still shows its reason."""
+	before = len(frappe.local.message_log or [])
+	fn()
+	del frappe.local.message_log[before:]
 
 
 def _quietly(fn) -> None:
