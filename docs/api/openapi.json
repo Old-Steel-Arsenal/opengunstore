@@ -2574,7 +2574,9 @@
               "IN_PROGRESS",
               "CHARGED",
               "DECLINED",
-              "CANCELED"
+              "CANCELED",
+              "VOIDED",
+              "REFUNDED"
             ],
             "description": "Status"
           },
@@ -2593,6 +2595,22 @@
           "payment_entry": {
             "type": "string",
             "description": "Payment Entry (Link: Payment Entry)"
+          },
+          "refunded_amount": {
+            "type": "number",
+            "description": "Refunded"
+          },
+          "reversal_entry_type": {
+            "type": "string",
+            "description": "Reversal Entry Type (Link: DocType)"
+          },
+          "reversal_entry": {
+            "type": "string",
+            "description": "Void Entry (Link: reversal_entry_type)"
+          },
+          "reversal_lock": {
+            "type": "string",
+            "description": "Unconfirmed Void / Refund"
           },
           "processor": {
             "type": "string",
@@ -21109,6 +21127,233 @@
                 },
                 "required": [
                   "saved_card",
+                  "reason"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.payments.si_reversal.card_charges": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "The card charges on a Sales Invoice that a manager can void or refund, for the form.",
+        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:426`",
+        "operationId": "ffl_integrations.payments.si_reversal.card_charges",
+        "responses": {
+          "200": {
+            "description": "{charges: [{name, amount, refunded_amount, left, status, unique_reference, card_summary, locked, lock, can_void}], membership, return_blocked}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sales_invoice": {
+                    "type": "string",
+                    "description": "The Sales Invoice."
+                  }
+                },
+                "required": [
+                  "sales_invoice"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.payments.si_reversal.refund_sales_invoice_charge": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Refund part or all of a card charge on a counter Sales Invoice to the card it came from.",
+        "description": "Return: a credit note takes the amount back from the sale, pro rata over its lines and tax, and\na Pay Payment Entry settles it (only for invoices that never touched stock or the bound book;\nmembership lines once the membership has ended). Collect again: a Journal Entry puts the amount\nback on the invoice to be collected another way.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:305`",
+        "operationId": "ffl_integrations.payments.si_reversal.refund_sales_invoice_charge",
+        "responses": {
+          "200": {
+            "description": "{ok, amount, gateway_reference, entry_type, entry, credit_note, outstanding}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "terminal_payment": {
+                    "type": "string",
+                    "description": "The Card Terminal Payment row of the charge."
+                  },
+                  "amount": {
+                    "description": "How much to give back, at most what is left on the charge. A Return refunds the credit note's total, which can differ from this by a cent of rounding."
+                  },
+                  "refund_type": {
+                    "type": "string",
+                    "description": "\"Return\" or \"Collect again\"."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Why (kept on the invoice timeline and the bookings)."
+                  }
+                },
+                "required": [
+                  "terminal_payment",
+                  "amount",
+                  "refund_type",
+                  "reason"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.payments.si_reversal.resolve_card_reversal": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Settle a void or refund the card processor never confirmed, after looking in its portal.",
+        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:386`",
+        "operationId": "ffl_integrations.payments.si_reversal.resolve_card_reversal",
+        "responses": {
+          "200": {
+            "description": "{ok, booked, ...the booking when booked}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "terminal_payment": {
+                    "type": "string",
+                    "description": "The locked Card Terminal Payment row."
+                  },
+                  "went_through": {
+                    "description": "1 when the portal shows the void/refund happened (it is booked now, exactly as an approval would have been); 0 when it did not (the charge is unlocked, nothing is booked)."
+                  },
+                  "note": {
+                    "type": "string",
+                    "description": "What was checked in the portal."
+                  },
+                  "portal_reference": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The portal's reference for the void/refund (required when it went through)."
+                  }
+                },
+                "required": [
+                  "terminal_payment",
+                  "went_through",
+                  "note"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.payments.si_reversal.void_sales_invoice_charge": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Void a card charge on a counter Sales Invoice: the processor reverses the whole capture",
+        "description": "(before it settles) and the invoice owes the amount again.\n\nThe charge's Payment Entry is cancelled when it was posted today, settles only this charge and\nis not bank-cleared; otherwise a Journal Entry today books the reversal. Membership invoices\nare refunded instead (type Return).\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:270`",
+        "operationId": "ffl_integrations.payments.si_reversal.void_sales_invoice_charge",
+        "responses": {
+          "200": {
+            "description": "{ok, status, entry_type, entry, outstanding}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "terminal_payment": {
+                    "type": "string",
+                    "description": "The Card Terminal Payment row of the charge."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Why (kept on the invoice timeline and the booking)."
+                  }
+                },
+                "required": [
+                  "terminal_payment",
                   "reason"
                 ]
               }

@@ -74,13 +74,17 @@ def _captured_charges(since, until=None) -> list[frappe._dict]:
 		if r.ref and not frappe.db.exists("Card Charge",
 				{"parent": r.name, "parenttype": "POS Invoice"}):
 			out.setdefault(r.ref, frappe._dict(r, doctype="POS Invoice", draft=r.docstatus == 0))
+	# A refunded row (si_reversal) is still a capture: its refunded_amount says how much went back.
+	# A voided one is not checked (the POS already says the money is gone).
 	for r in frappe.get_all("Card Terminal Payment",
-			filters={"status": "CHARGED", "creation": created,
+			filters={"status": ("in", ["CHARGED", "REFUNDED"]), "creation": created,
 				"unique_reference": ("is", "set")},
-			fields=["unique_reference as ref", "amount", "sales_invoice as name", "processor"]):
+			fields=["unique_reference as ref", "amount", "refunded_amount", "sales_invoice as name",
+				"processor"]):
 		if (r.pop("processor", None) or LEGACY_PROCESSOR) != PROCESSOR:
 			continue
-		out.setdefault(r.ref, frappe._dict(r, refunded_amount=0, doctype="Sales Invoice", draft=False))
+		out.setdefault(r.ref, frappe._dict(r, refunded_amount=flt(r.refunded_amount),
+			doctype="Sales Invoice", draft=False))
 	# A counter order refunded through Cancel Order books a Pay PE ("Refund for
 	# cancelled <SI>") — attributable only when the SI took ONE card capture.
 	# lazy: an Edit (update_order) moves the order to a new SI, so a later
@@ -88,8 +92,8 @@ def _captured_charges(since, until=None) -> list[frappe._dict]:
 	# Follow-up: a structured replaced-by link to read the lineage.
 	for c in out.values():
 		if c.doctype == "Sales Invoice" and frappe.db.count("Card Terminal Payment",
-				{"sales_invoice": c.name, "status": "CHARGED"}) <= 1:
-			c.refunded_amount = _cancel_order_refund(c.name)
+				{"sales_invoice": c.name, "status": ("in", CAPTURED_ROW_STATUSES)}) <= 1:
+			c.refunded_amount = max(flt(c.refunded_amount), _cancel_order_refund(c.name))
 	# Invoice-level refunds (return invoices) only attribute unambiguously to a
 	# sale with ONE card capture; a multi-card sale keeps each row's own
 	# refunded_amount — an unattributable portal refund may then over-alert,
