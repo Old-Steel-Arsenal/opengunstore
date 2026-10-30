@@ -181,7 +181,7 @@ function openAdjustQtyDialog(frm) {
 			{
 				label: __('Set Quantity To'), fieldname: 'new_qty', fieldtype: 'Float',
 				reqd: 1, default: frm.doc.actual_qty || 0,
-				description: __('Sets the absolute on-hand quantity at the chosen warehouse.'),
+				description: __('Units on the shelf now at the chosen warehouse. Register sales not closed yet are allowed for.'),
 			},
 			{
 				label: __('Warehouse'), fieldname: 'warehouse', fieldtype: 'Link',

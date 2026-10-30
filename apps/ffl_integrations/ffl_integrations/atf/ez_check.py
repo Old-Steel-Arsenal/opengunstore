@@ -82,7 +82,6 @@ def verify(ffl_number: str, *, force_live: bool = False) -> EZCheckResult:
 		# NotFound for one says nothing — leave the hand-entered record alone.
 		frappe.db.set_value("ATF FFL Record", cache["ffl_number"],
 			{"expiry_date": None, "live_verified_at": None}, update_modified=False)
-		frappe.db.commit()
 	# NotFound with no row on file inserts nothing (no blank rows from typos).
 	return result
 
@@ -107,7 +106,10 @@ def re_verify_all() -> dict:
 	errors = []
 	for c in codes:
 		try:
-			if verify(c, force_live=True).found:
+			found = verify(c, force_live=True).found
+			# Each row is its own live lookup; keep what is done if a later one fails.
+			frappe.db.commit()
+			if found:
 				updated += 1
 			else:
 				not_found += 1

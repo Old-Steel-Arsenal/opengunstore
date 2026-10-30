@@ -1055,8 +1055,11 @@ def list_pending_dispositions() -> list[dict]:
 		# it no longer owes this order goods: every unit received here or covered
 		# from shelf stock (Fulfill from stock / Re-source raise substituted_qty, and
 		# that parcel then books as plain restock, never against the DO).
-		owing = set(_unreceived_to_store_orders(inv.name)) if any(
-			d.order_type == "Procure To Store" for d in dropship_legs) else set()
+		# Read once: the owing set, the substitutable rows and awaiting_goods all
+		# derive from the same ship-to-store lines.
+		to_store = _to_store_line_rows(inv.name) if any(
+			d.order_type == "Procure To Store" for d in dropship_legs) else {}
+		owing = set(_unreceived_to_store_orders(inv.name, to_store))
 		open_legs = [d for d in dropship_legs if d.status != "Cancelled" and (
 			d.name in owing if d.order_type == "Procure To Store"
 			else d.status != "Complete")]
@@ -1147,7 +1150,8 @@ def list_pending_dispositions() -> list[dict]:
 				"awaiting_arrival": len(awaiting_arrival),
 				# Any unreceived ship-to-store order — guns or accessories. The Ship
 				# button reads this (push_shipment refuses the same way).
-				"awaiting_goods": bool(ship_arrival_block(si)),
+				# Same answer as ship_arrival_block(si), from the lines read above.
+				"awaiting_goods": bool(owing),
 				"distributor_orders": dropship_legs,
 				# A Draft leg the counter may place now: paid, or a ship-to-store
 				# leg (goods come to us — placeable on a deposit; see
@@ -1162,7 +1166,7 @@ def list_pending_dispositions() -> list[dict]:
 					and d.order_type != "Procure To Store" for d in dropship_legs),
 				# Ship-to-store lines not arrived yet that the shelf could serve
 				# instead (Fulfill from stock); the parcel then lands as restock.
-				"substitutable": substitutable_rows(si),
+				"substitutable": substitutable_rows(si, to_store),
 				# Legs a person must act on: killed / short-shipped / held too long.
 				"trouble": trouble_legs(dropship_legs),
 			},
@@ -2340,20 +2344,23 @@ def _to_store_line_rows(sales_invoice: str) -> dict:
 	return out
 
 
-def _unreceived_to_store_orders(sales_invoice: str) -> list[str]:
+def _unreceived_to_store_orders(sales_invoice: str, line_rows: dict | None = None) -> list[str]:
 	"""Live ship-to-store Distributor Orders of this counter order that still owe
 	it goods: a line with units neither received nor covered from shelf stock
-	(``substituted_qty``). Empty on a site without the distributor app."""
-	names = {l.do_name for rows in _to_store_line_rows(sales_invoice).values()
-		for l in rows if l.owed > 0}
+	(``substituted_qty``). Empty on a site without the distributor app.
+	``line_rows`` is a :func:`_to_store_line_rows` result already read for it."""
+	if line_rows is None:
+		line_rows = _to_store_line_rows(sales_invoice)
+	names = {l.do_name for rows in line_rows.values() for l in rows if l.owed > 0}
 	return sorted(names)
 
 
-def substitutable_rows(si) -> list[dict]:
+def substitutable_rows(si, line_rows: dict | None = None) -> list[dict]:
 	"""The order's ship-to-store lines that have not arrived and could be served
-	from the shelf instead — what the queue's Fulfill from stock button offers."""
+	from the shelf instead — what the queue's Fulfill from stock button offers.
+	``line_rows`` is a :func:`_to_store_line_rows` result already read for it."""
 	rows = []
-	by_key = _to_store_line_rows(si.name)
+	by_key = _to_store_line_rows(si.name) if line_rows is None else line_rows
 	for row in si.items:
 		house = (row.ffl_to_store_distributor or "").strip()
 		if not house or (row.serial_no or "").strip() or int(row.delivered_by_supplier or 0):
