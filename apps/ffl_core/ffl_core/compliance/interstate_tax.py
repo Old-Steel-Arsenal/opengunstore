@@ -65,6 +65,12 @@ US_STATES = {
 US_CODES = frozenset(US_STATES.values())
 
 
+def extend_bootinfo(bootinfo) -> None:
+	"""``frappe.boot.ffl_us_states``: the state codes every address form's State dropdown
+	offers (work order, Receive Goods, the register's trade-in), in name order."""
+	bootinfo.ffl_us_states = list(US_STATES.values())
+
+
 def normalize_us_state(raw) -> str | None:
 	"""Canonical USPS code for a free-text state value, else None.
 	Handles full names, codes, case and stray whitespace — production

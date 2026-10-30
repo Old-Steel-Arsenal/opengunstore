@@ -109,11 +109,12 @@ class GunsmithWorkOrder(Document):
 			# Split like Receive Goods' seller address; a state the dropdown lacks is left
 			# for staff to pick.
 			from ffl_core.api.trade_in import customer_address_parts
+			from ffl_core.compliance.interstate_tax import US_CODES
 			parts = customer_address_parts(self.customer)
 			self.address_line1 = parts.get("address_line1") or None
 			self.city = self.city or parts.get("city") or None
 			self.zip = self.zip or parts.get("zip") or None
-			if not self.state and parts.get("state") in (self.meta.get_options("state") or "").split("\n"):
+			if not self.state and parts.get("state") in US_CODES:
 				self.state = parts["state"]
 
 	def agreement_context(self) -> dict:

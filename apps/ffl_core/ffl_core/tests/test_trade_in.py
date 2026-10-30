@@ -134,6 +134,7 @@ class TradeIn(FrappeTestCase):
 			("source_address_line1", ""), ("source_city", ""),
 			("source_state", ""), ("source_zip", ""),
 			("source_state", "Texas"),  # must be the 2-letter code
+			("source_state", "ZZ"),     # of a real state (interstate_tax.US_STATES)
 			("source_zip", "75O24"),    # must be a real 5/9-digit ZIP
 		)
 		for i, (field, bad) in enumerate(cases):

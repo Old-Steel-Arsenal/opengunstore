@@ -167,6 +167,8 @@ extend_bootinfo = [
 	"ffl_core.compliance.le_excise_exempt.extend_bootinfo",
 	# Whether this user's screens ask a manager before saving a lowered price (price_approval.py).
 	"ffl_core.price_approval.extend_bootinfo",
+	# The US state codes for the address forms' State dropdowns (interstate_tax.US_STATES).
+	"ffl_core.compliance.interstate_tax.extend_bootinfo",
 ]
 
 

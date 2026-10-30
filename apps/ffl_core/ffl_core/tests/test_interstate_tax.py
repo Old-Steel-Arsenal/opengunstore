@@ -14,6 +14,7 @@ import unittest
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
+from ffl_core.compliance import interstate_tax
 from ffl_core.compliance.interstate_tax import normalize_us_state
 
 
@@ -366,3 +367,12 @@ class InterstateTaxOnDocs(FrappeTestCase):
 
 if __name__ == "__main__":
 	unittest.main()
+
+
+class StateListAtBoot(FrappeTestCase):
+
+	def test_the_address_forms_get_every_code_in_name_order(self):
+		boot = frappe._dict()
+		interstate_tax.extend_bootinfo(boot)
+		self.assertEqual(boot.ffl_us_states[:4], ["AL", "AK", "AZ", "AR"])
+		self.assertEqual(set(boot.ffl_us_states), interstate_tax.US_CODES)

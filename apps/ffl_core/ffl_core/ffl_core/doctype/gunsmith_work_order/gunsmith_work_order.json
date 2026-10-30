@@ -146,8 +146,7 @@
   {
    "fieldname": "state",
    "fieldtype": "Select",
-   "label": "State",
-   "options": "\nAL\nAK\nAZ\nAR\nCA\nCO\nCT\nDE\nDC\nFL\nGA\nHI\nID\nIL\nIN\nIA\nKS\nKY\nLA\nME\nMD\nMA\nMI\nMN\nMS\nMO\nMT\nNE\nNV\nNH\nNJ\nNM\nNY\nNC\nND\nOH\nOK\nOR\nPA\nRI\nSC\nSD\nTN\nTX\nUT\nVT\nVA\nWA\nWV\nWI\nWY"
+   "label": "State"
   },
   {
    "fieldname": "cb_address_3",

@@ -1394,59 +1394,6 @@
           },
           "state": {
             "type": "string",
-            "enum": [
-              "AL",
-              "AK",
-              "AZ",
-              "AR",
-              "CA",
-              "CO",
-              "CT",
-              "DE",
-              "DC",
-              "FL",
-              "GA",
-              "HI",
-              "ID",
-              "IL",
-              "IN",
-              "IA",
-              "KS",
-              "KY",
-              "LA",
-              "ME",
-              "MD",
-              "MA",
-              "MI",
-              "MN",
-              "MS",
-              "MO",
-              "MT",
-              "NE",
-              "NV",
-              "NH",
-              "NJ",
-              "NM",
-              "NY",
-              "NC",
-              "ND",
-              "OH",
-              "OK",
-              "OR",
-              "PA",
-              "RI",
-              "SC",
-              "SD",
-              "TN",
-              "TX",
-              "UT",
-              "VT",
-              "VA",
-              "WA",
-              "WV",
-              "WI",
-              "WY"
-            ],
             "description": "State"
           },
           "zip": {
@@ -12574,7 +12521,7 @@
           "ffl_core"
         ],
         "summary": "Make a new accessory / ammo / parts Item from the Trade-in dialog, for something the store has never stocked.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Stock Manager / System Manager\n\n**Permissions:** roles.TRADE_IN_ROLES, like the trade-in itself: the counter takes in what the seller brings. Only a non-serialized, non-firearm stock Item can be made here; any other Item stays a stock job (receive_goods.create_item).\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:359`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Stock Manager / System Manager\n\n**Permissions:** roles.TRADE_IN_ROLES, like the trade-in itself: the counter takes in what the seller brings. Only a non-serialized, non-firearm stock Item can be made here; any other Item stays a stock job (receive_goods.create_item).\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:360`",
         "operationId": "ffl_core.api.trade_in.create_accessory_item",
         "responses": {
           "200": {
@@ -12634,7 +12581,7 @@
           "ffl_core"
         ],
         "summary": "Create a Used Firearm Item + FFL Acquisition for an individual trade-in.",
-        "description": "With payload.apply_credit truthy, the acquisition is parked as a DRAFT\n(booked at checkout submit) and the result carries `credit` — a locked\nnegative TRADE-IN-CREDIT line payload for the POS cart. Re-running the\ndialog for a serial that already has a pending draft refreshes that\ndraft (new cost honoured) instead of duplicating it.\n\nWithout apply_credit the store buys the gun and pays the seller now:\npayload.payout_method (Cash / Zelle / Check / ACH, and payout_reference\nunless Cash) is required. The gun is received on a Purchase Receipt from\nthe seller, dated today, and the payment booked with it (Dr Stock Received\nBut Not Billed / Cr Cash or the bank) so the cash drawer count includes it\n(_buy_now).\n\nAccessories / ammo (payload.accessories, [{item_code, qty, rate}] with\nrate the per-unit value) come in alone (has_firearm 0) or with the gun:\nwith apply_credit a draft Material Receipt and a credit line of their own\n(_park_accessories), without it lines on the same paid receipt.\n\n**Auth (derived from code):** Roles: Sales User / Stock Manager / System Manager\n\n**Permissions:** roles.TRADE_IN_ROLES: the counter's sales role plus the stock roles; holding only the sales manager role is refused. Gated at entry, covering BOTH branches — the refresh branch (_refresh_pending_draft) rewrites A&D draft seller identity/cost and historically ran ungated (endpoint-gates hardening, 2026-08-07). A caller without a stock role files the gun under no Item (one is made for this gun) or an existing per-gun priced firearm Item (_check_counter_item); making or choosing any other Item stays a stock job. Everything behind the gate runs gate-free (firearm_intake.create_intake, receive_goods._create_receive), each of our writes with ignore_permissions; the ERPNext-internal checks against the session user (the gun's stock bundle) rest on the DocPerm setup/pos_compat.ROLE_GRANTS gives the counter.\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:114`",
+        "description": "With payload.apply_credit truthy, the acquisition is parked as a DRAFT\n(booked at checkout submit) and the result carries `credit` — a locked\nnegative TRADE-IN-CREDIT line payload for the POS cart. Re-running the\ndialog for a serial that already has a pending draft refreshes that\ndraft (new cost honoured) instead of duplicating it.\n\nWithout apply_credit the store buys the gun and pays the seller now:\npayload.payout_method (Cash / Zelle / Check / ACH, and payout_reference\nunless Cash) is required. The gun is received on a Purchase Receipt from\nthe seller, dated today, and the payment booked with it (Dr Stock Received\nBut Not Billed / Cr Cash or the bank) so the cash drawer count includes it\n(_buy_now).\n\nAccessories / ammo (payload.accessories, [{item_code, qty, rate}] with\nrate the per-unit value) come in alone (has_firearm 0) or with the gun:\nwith apply_credit a draft Material Receipt and a credit line of their own\n(_park_accessories), without it lines on the same paid receipt.\n\n**Auth (derived from code):** Roles: Sales User / Stock Manager / System Manager\n\n**Permissions:** roles.TRADE_IN_ROLES: the counter's sales role plus the stock roles; holding only the sales manager role is refused. Gated at entry, covering BOTH branches — the refresh branch (_refresh_pending_draft) rewrites A&D draft seller identity/cost and historically ran ungated (endpoint-gates hardening, 2026-08-07). A caller without a stock role files the gun under no Item (one is made for this gun) or an existing per-gun priced firearm Item (_check_counter_item); making or choosing any other Item stays a stock job. Everything behind the gate runs gate-free (firearm_intake.create_intake, receive_goods._create_receive), each of our writes with ignore_permissions; the ERPNext-internal checks against the session user (the gun's stock bundle) rest on the DocPerm setup/pos_compat.ROLE_GRANTS gives the counter.\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:115`",
         "operationId": "ffl_core.api.trade_in.create_trade_in_intake",
         "responses": {
           "200": {
@@ -12681,7 +12628,7 @@
           "ffl_core"
         ],
         "summary": "Prefill for the POS Trade-in dialog's seller section.",
-        "description": "A best-effort structured-name split of the Customer (generational\nsuffix pulled out even mid-name — 'pat lee IV Sampleton' →\nfirst pat, middle lee, last Sampleton, suffix IV) plus their\nprimary address as a single line ('addr1, City ST zip' — the shape the\nFastBound push parses). Everything is editable in the dialog; this only\nsaves retyping.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:501`",
+        "description": "A best-effort structured-name split of the Customer (generational\nsuffix pulled out even mid-name — 'pat lee IV Sampleton' →\nfirst pat, middle lee, last Sampleton, suffix IV) plus their\nprimary address as a single line ('addr1, City ST zip' — the shape the\nFastBound push parses). Everything is editable in the dialog; this only\nsaves retyping.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:502`",
         "operationId": "ffl_core.api.trade_in.seller_defaults",
         "responses": {
           "200": {

@@ -2,6 +2,7 @@
 frappe.ui.form.on('Gunsmith Work Order', {
 	setup(frm) {
 		// Charges are things sold over the counter: no templates, nothing switched off.
+		frm.set_df_property('state', 'options', [''].concat(frappe.boot.ffl_us_states || []));
 		frm.set_query('item_code', 'lines', () => ({ filters: { disabled: 0, has_variants: 0, is_sales_item: 1, is_firearm: 0 } }));
 	},
 	scan_barcode(frm) {
@@ -43,11 +44,10 @@ frappe.ui.form.on('Gunsmith Work Order', {
 		frappe.call({ method: 'ffl_core.api.trade_in.seller_defaults', args: { customer: frm.doc.customer } })
 			.then((r) => {
 				const d = r.message || {};
-				const states = frm.get_field('state').df.options.split('\n');
 				frm.set_value({
 					phone: d.phone || '', email: d.email || '', address_line1: d.source_address_line1 || '',
 					city: d.source_city || '', zip: d.source_zip || '',
-					state: states.includes(d.source_state) ? d.source_state : '',
+					state: (frappe.boot.ffl_us_states || []).includes(d.source_state) ? d.source_state : '',
 				});
 			});
 	},

@@ -399,7 +399,7 @@ A customer's gun left for gunsmithing: intake, authorization, deposit, the work,
 | `email` | Data | Email |  | Email |
 | `address_line1` | Data | Street Address |  |  |
 | `city` | Data | City |  |  |
-| `state` | Select | State |  | , AL, AK, AZ, AR, CA, CO, CT, DE, DC, FL, GA, HI, ID, IL, IN, IA, KS, KY, LA, ME, MD, MA, MI, MN, MS, MO, MT, NE, NV, NH, NJ, NM, NY, NC, ND, OH, OK, OR, PA, RI, SC, SD, TN, TX, UT, VT, VA, WA, WV, WI, WY |
+| `state` | Select | State |  |  |
 | `zip` | Data | ZIP |  |  |
 | `id_type` | Select | ID Type |  | , Driver License, State ID, Passport, Military ID, Other |
 | `id_number` | Data | ID Number |  |  |
