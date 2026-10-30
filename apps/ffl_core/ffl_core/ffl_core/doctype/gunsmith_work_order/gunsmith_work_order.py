@@ -9,7 +9,7 @@ from __future__ import annotations
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt, fmt_money, formatdate
+from frappe.utils import escape_html, flt, fmt_money, formatdate
 
 _FIREARM_FIELDS = ("manufacturer", "model", "caliber", "serial_number", "firearm_type")
 
@@ -25,6 +25,13 @@ class GunsmithWorkOrder(Document):
 				or frappe.db.get_single_value("Global Defaults", "default_company")
 		self.serial_number = (self.serial_number or "").strip()
 		self._fill_contact()
+		if self.state:
+			# The dropdown's list is sent at login, so the value is checked here.
+			from ffl_core.compliance.interstate_tax import normalize_us_state
+			code = normalize_us_state(self.state)
+			if not code:
+				frappe.throw(_("State {0} is not a US state.").format(escape_html(self.state)), title=_("Address"))
+			self.state = code
 		from ffl_core.feature_gate import customer_id_numbers_enabled
 		if not customer_id_numbers_enabled() and not (self.log_in_bound_book and not self.purchase_receipt):
 			# Kept only for the bound-book entry this save makes (log_gun clears it after);

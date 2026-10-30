@@ -780,6 +780,28 @@ class BoundBook(_Base):
 		self.assertEqual(job.state, "TX")
 		self.assertTrue(frappe.db.get_value(gunsmith.DOCTYPE, job.name, "purchase_receipt"))
 
+	def test_the_state_on_the_job_is_a_us_state_code(self):
+		job = _job(self.cust, state="texas")
+		self.assertEqual(job.state, "TX")
+		job.state = "ZZ"
+		with self.assertRaisesRegex(frappe.ValidationError, "not a US state"):
+			job.save(ignore_permissions=True)
+
+	def test_a_part_charges_at_its_list_price(self):
+		price_list = frappe.db.get_single_value("Selling Settings", "selling_price_list")
+		if not frappe.db.exists("Item Price", {"item_code": "_Test GW Part", "price_list": price_list}):
+			frappe.get_doc({"doctype": "Item Price", "item_code": "_Test GW Part", "price_list": price_list,
+				"price_list_rate": 35}).insert(ignore_permissions=True)
+		rate = frappe.db.get_value("Item Price", {"item_code": "_Test GW Part", "price_list": price_list},
+			"price_list_rate")
+		self.assertEqual(gunsmith.charge_details("_Test GW Part", self.cust.name),
+			{"item_name": "Extractor", "rate": flt(rate)})
+
+	def test_the_labor_item_is_sent_at_login(self):
+		boot = frappe._dict()
+		setup.extend_bootinfo(boot)
+		self.assertEqual(boot.ffl_gunsmith_labor_item, setup.labor_item())
+
 	def test_no_address_names_the_customers_address(self):
 		cust = _customer()
 		frappe.db.set_value("Customer", cust.name, "customer_primary_address", None)

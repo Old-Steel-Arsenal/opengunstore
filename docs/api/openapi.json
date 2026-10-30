@@ -13409,7 +13409,7 @@
           "ffl_core"
         ],
         "summary": "Close a job that will not be done. A gun in the bound book still goes back through",
-        "description": "pick-up (its disposition), so a logged job is not cancelled: clear its charges and\npick it up instead. A deposit held is refunded afterwards (:func:`refund_deposit`).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:414`",
+        "description": "pick-up (its disposition), so a logged job is not cancelled: clear its charges and\npick it up instead. A deposit held is refunded afterwards (:func:`refund_deposit`).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:442`",
         "operationId": "ffl_core.gunsmith.cancel_work_order",
         "responses": {
           "200": {
@@ -13456,13 +13456,68 @@
         }
       }
     },
+    "/api/method/ffl_core.gunsmith.charge_details": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "A part picked or scanned onto a job's charges: its name and its list price for the",
+        "description": "customer, as Create Order prices a line (``price_approval.list_rate``). The counter\ncan't read Item Price itself.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:273`",
+        "operationId": "ffl_core.gunsmith.charge_details",
+        "responses": {
+          "200": {
+            "description": "{\"item_name\", \"rate\": the list price, 0 when there is none}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "item_code": {
+                    "type": "string",
+                    "description": "The Item charged."
+                  },
+                  "customer": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The job's customer, whose price list applies; else the default selling list."
+                  }
+                },
+                "required": [
+                  "item_code"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.gunsmith.complete_work": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "The register's Complete: the clerk confirms what was done and what it costs; the",
-        "description": "job keeps them, is Ready, and is handed back as :func:`open_pickup` does — at once\nwith nothing to bill and nothing held, else through the draft pick-up invoice the\nregister loads into its cart.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:273`",
+        "description": "job keeps them, is Ready, and is handed back as :func:`open_pickup` does — at once\nwith nothing to bill and nothing held, else through the draft pick-up invoice the\nregister loads into its cart.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:301`",
         "operationId": "ffl_core.gunsmith.complete_work",
         "responses": {
           "200": {
@@ -13666,7 +13721,7 @@
           "ffl_core"
         ],
         "summary": "Log a job's gun in the bound book now (a job created unlogged, or one whose",
-        "description": "first attempt failed).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:449`",
+        "description": "first attempt failed).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:477`",
         "operationId": "ffl_core.gunsmith.log_in_bound_book",
         "responses": {
           "200": {
@@ -13728,7 +13783,7 @@
           "ffl_core"
         ],
         "summary": "Received / In Progress → Ready: the work is done and recorded.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:351`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:379`",
         "operationId": "ffl_core.gunsmith.mark_ready",
         "responses": {
           "200": {
@@ -13776,7 +13831,7 @@
           "ffl_core"
         ],
         "summary": "Tell the customer the gun is ready, and record who told them, how and when.",
-        "description": "Email sends the store's \"Gunsmith Work Ready\" email now (the customer needs an\nemail address). Phone and Text are made by staff; this records them.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:373`",
+        "description": "Email sends the store's \"Gunsmith Work Ready\" email now (the customer needs an\nemail address). Phone and Text are made by staff; this records them.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:401`",
         "operationId": "ffl_core.gunsmith.notify_customer",
         "responses": {
           "200": {
@@ -13829,7 +13884,7 @@
           "ffl_core"
         ],
         "summary": "Hand the gun back. With nothing to charge and no deposit held, the job is",
-        "description": "picked up now; otherwise this opens (or returns) the draft register invoice with\nthe charges and the deposit held coming off them, and its submit picks the job up.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:579`",
+        "description": "picked up now; otherwise this opens (or returns) the draft register invoice with\nthe charges and the deposit held coming off them, and its submit picks the job up.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:607`",
         "operationId": "ffl_core.gunsmith.open_pickup",
         "responses": {
           "200": {
@@ -13877,7 +13932,7 @@
           "ffl_core"
         ],
         "summary": "Open (or return) the draft register return that pays back the deposit still held",
-        "description": "— a cancelled job's, or what a smaller bill left over. A return goes against one\npayment and refunds at most that payment, newest first; with several payments held\nthe rest is refunded with the next return.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:646`",
+        "description": "— a cancelled job's, or what a smaller bill left over. A return goes against one\npayment and refunds at most that payment, newest first; with several payments held\nthe rest is refunded with the next return.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:674`",
         "operationId": "ffl_core.gunsmith.refund_deposit",
         "responses": {
           "200": {
@@ -13980,7 +14035,7 @@
           "ffl_core"
         ],
         "summary": "Received (or Ready, reopened) → In Progress.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:329`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:357`",
         "operationId": "ffl_core.gunsmith.start_work",
         "responses": {
           "200": {

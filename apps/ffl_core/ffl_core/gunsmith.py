@@ -269,6 +269,34 @@ def register_work_orders(search_term: str | None = None, name: str | None = None
 	return {"labor_item": setup.labor_item(), "authorization_template": template, "orders": orders}
 
 
+@frappe.whitelist()
+def charge_details(item_code: str, customer: str | None = None) -> dict:
+	"""A part picked or scanned onto a job's charges: its name and its list price for the
+	customer, as Create Order prices a line (``price_approval.list_rate``). The counter
+	can't read Item Price itself.
+
+	Args:
+	    item_code: The Item charged.
+	    customer: The job's customer, whose price list applies; else the default selling list.
+
+	Returns:
+	    {"item_name", "rate": the list price, 0 when there is none}.
+	"""
+	from erpnext.accounts.party import get_default_price_list
+
+	from ffl_core.price_approval import list_rate
+
+	frappe.only_for(COUNTER_ROLES)
+	if not item_code or not frappe.db.exists("Item", item_code):
+		frappe.throw(_("Item {0} not found.").format(escape_html(item_code or "")))
+	price_list = (get_default_price_list(frappe.get_cached_doc("Customer", customer))
+		if customer and frappe.db.exists("Customer", customer) else None) \
+		or frappe.db.get_single_value("Selling Settings", "selling_price_list")
+	doc = frappe._dict(customer=customer, selling_price_list=price_list, posting_date=nowdate())
+	rate, _own = list_rate(doc, frappe._dict(item_code=item_code, qty=1))
+	return {"item_name": frappe.db.get_value("Item", item_code, "item_name"), "rate": flt(rate)}
+
+
 @frappe.whitelist(methods=["POST"])
 def complete_work(name: str, work_performed: str, lines: str | list | None = None) -> dict:
 	"""The register's Complete: the clerk confirms what was done and what it costs; the

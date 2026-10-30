@@ -169,6 +169,8 @@ extend_bootinfo = [
 	"ffl_core.price_approval.extend_bootinfo",
 	# The US state codes for the address forms' State dropdowns (interstate_tax.US_STATES).
 	"ffl_core.compliance.interstate_tax.extend_bootinfo",
+	# The gunsmith labor item for the work order form (setup/gunsmith.py).
+	"ffl_core.setup.gunsmith.extend_bootinfo",
 ]
 
 
