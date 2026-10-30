@@ -10,27 +10,34 @@ frappe.ui.form.on('Gunsmith Work Order', {
 		new erpnext.utils.BarcodeScanner({ frm, items_table_name: 'lines' }).process_scan();
 	},
 	refresh(frm) {
+		// frm._labor: the store's labor item, from the server each time the form loads.
 		frm._estimate = flt(frm.doc.estimated_cost);
 		if (frm.is_new()) {
 			// The labor charge is there from the start (the server adds it too); parts go under it.
-			if (!(frm.doc.lines || []).length) {
-				frm.add_child('lines', { item_code: laborItem(), qty: 1, rate: flt(frm.doc.estimated_cost) });
-				frm.refresh_field('lines');
-			}
 			addressRequired(frm);
+			frappe.call({ method: M + 'labor_item' }).then((r) => {
+				frm._labor = r.message;
+				if (frm._labor && !(frm.doc.lines || []).length) {
+					frm.add_child('lines', { item_code: frm._labor, qty: 1, rate: flt(frm.doc.estimated_cost) });
+					frm.refresh_field('lines');
+				}
+			});
 			return;
 		}
 		// A closed job is kept as it is (the server refuses changes too).
 		if (['Picked Up', 'Cancelled'].includes(frm.doc.status)) frm.disable_form();
 		addressRequired(frm);
 		frappe.call({ method: 'ffl_core.gunsmith.get_state', args: { name: frm.doc.name } })
-			.then((r) => draw(frm, r.message || {}));
+			.then((r) => {
+				frm._labor = (r.message || {}).labor_item;
+				draw(frm, r.message || {});
+			});
 	},
 	estimated_cost(frm) {
 		// The labor charge follows the estimate until someone prices it by hand (as the server does).
 		const was = frm._estimate || 0;
 		frm._estimate = flt(frm.doc.estimated_cost);
-		(frm.doc.lines || []).filter((r) => r.item_code === laborItem() && flt(r.rate) === was)
+		(frm.doc.lines || []).filter((r) => frm._labor && r.item_code === frm._labor && flt(r.rate) === was)
 			.forEach((r) => frappe.model.set_value(r.doctype, r.name, 'rate', frm._estimate));
 	},
 	log_in_bound_book: addressRequired,
@@ -59,7 +66,7 @@ frappe.ui.form.on('Gunsmith Work Order Line', {
 		// A part comes with its name and the customer's list price; both stay editable. The labor
 		// line keeps no name: on the bill it reads the job's Work Performed.
 		const row = locals[cdt][cdn];
-		if (!row.item_code || row.item_code === laborItem()) return;
+		if (!row.item_code || row.item_code === frm._labor) return;
 		frappe.call({ method: M + 'charge_details', args: { item_code: row.item_code, customer: frm.doc.customer } })
 			.then((r) => {
 				const d = r.message || {};
@@ -75,15 +82,10 @@ frappe.ui.form.on('Gunsmith Work Order Line', {
 		}
 		// A first row (the labor charge removed and re-added) gets the labor item.
 		if ((frm.doc.lines || []).length === 1) {
-			if (!locals[cdt][cdn].item_code) frappe.model.set_value(cdt, cdn, 'item_code', laborItem());
+			if (frm._labor && !locals[cdt][cdn].item_code) frappe.model.set_value(cdt, cdn, 'item_code', frm._labor);
 		}
 	},
 });
-
-// The store's labor item (setup.labor_item, sent at login: the counter can't read FFL Settings).
-function laborItem() {
-	return frappe.boot.ffl_gunsmith_labor_item;
-}
 
 // Logging the gun needs the customer's address; the server names what's missing too.
 function addressRequired(frm) {

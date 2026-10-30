@@ -129,7 +129,7 @@ def get_state(name: str) -> dict:
 	    name: Gunsmith Work Order name.
 
 	Returns:
-	    {"deposit_held", "charges", "authorization": {"template",
+	    {"labor_item", "deposit_held", "charges", "authorization": {"template",
 	    "state", "agreement"} or None, "drafts": {"deposit", "pickup", "refund"}}.
 	"""
 	frappe.only_for(COUNTER_ROLES)
@@ -139,6 +139,7 @@ def get_state(name: str) -> dict:
 	template = setup.agreement_template()
 	auth = agreement_status(doc.customer, template, reference=(DOCTYPE, doc.name)) if template else None
 	return {
+		"labor_item": setup.labor_item(),
 		"deposit_held": deposit_held(doc.name),
 		"charges": charges_total(doc),
 		"authorization": auth,
@@ -267,6 +268,18 @@ def register_work_orders(search_term: str | None = None, name: str | None = None
 			if template and r.status in OPEN else None
 		orders.append(r)
 	return {"labor_item": setup.labor_item(), "authorization_template": template, "orders": orders}
+
+
+@frappe.whitelist()
+def labor_item() -> str:
+	"""The labor item a new job's first charge line uses (FFL Settings › Gunsmithing,
+	which the counter can't read itself).
+
+	Returns:
+	    The Item name.
+	"""
+	frappe.only_for(COUNTER_ROLES)
+	return setup.labor_item()
 
 
 @frappe.whitelist()
@@ -559,6 +572,7 @@ def log_gun(doc) -> None:
 	logged = {"purchase_receipt": received["name"], "serial_no": serial, "item_code": item_code}
 	if not customer_id_numbers_enabled():
 		# The acquisition record keeps the ID the bound book needs; the job keeps none.
+		# The scan's File already went to the acquisition with the receive.
 		logged["id_number"] = logged["id_document"] = None
 	doc.db_set(logged, update_modified=False)
 

@@ -797,10 +797,34 @@ class BoundBook(_Base):
 		self.assertEqual(gunsmith.charge_details("_Test GW Part", self.cust.name),
 			{"item_name": "Extractor", "rate": flt(rate)})
 
-	def test_the_labor_item_is_sent_at_login(self):
-		boot = frappe._dict()
-		setup.extend_bootinfo(boot)
-		self.assertEqual(boot.ffl_gunsmith_labor_item, setup.labor_item())
+	def test_the_form_gets_the_labor_item_from_the_server(self):
+		self.assertEqual(gunsmith.labor_item(), setup.labor_item())
+		self.assertEqual(gunsmith.get_state(_job(self.cust).name)["labor_item"], setup.labor_item())
+
+	def _scan(self, job):
+		return frappe.get_doc({"doctype": "File", "file_name": f"{job.name}-id.txt", "content": f"ID {job.name}",
+			"is_private": 1, "attached_to_doctype": gunsmith.DOCTYPE, "attached_to_name": job.name}
+			).insert(ignore_permissions=True).file_url
+
+	def test_an_unlogged_jobs_scan_is_deleted_when_ids_are_not_stored(self):
+		job = _job(self.cust)
+		url = self._scan(job)
+		with patch("ffl_core.feature_gate.customer_id_numbers_enabled", return_value=False):
+			job.reload()
+			job.id_document = url
+			job.save(ignore_permissions=True)
+		self.assertFalse(frappe.db.exists("File", {"file_url": url}))
+
+	def test_a_logged_scan_leaves_the_job_for_the_acquisition(self):
+		job = _job(self.cust)
+		url = self._scan(job)
+		job.db_set("id_document", url)
+		with patch("ffl_core.feature_gate.customer_id_numbers_enabled", return_value=False):
+			gunsmith.log_in_bound_book(job.name, "Driver License", "D6180339")
+		job.reload()
+		self.assertFalse(job.id_document)
+		self.assertEqual(frappe.db.get_value("File", {"file_url": url}, "attached_to_doctype"), "FFL Acquisition")
+		self.assertEqual(frappe.db.get_value("Purchase Receipt", job.purchase_receipt, "ffl_seller_id_document"), url)
 
 	def test_no_address_names_the_customers_address(self):
 		cust = _customer()

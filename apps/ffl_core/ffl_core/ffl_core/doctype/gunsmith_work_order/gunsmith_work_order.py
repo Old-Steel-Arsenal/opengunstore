@@ -35,7 +35,11 @@ class GunsmithWorkOrder(Document):
 		from ffl_core.feature_gate import customer_id_numbers_enabled
 		if not customer_id_numbers_enabled() and not (self.log_in_bound_book and not self.purchase_receipt):
 			# Kept only for the bound-book entry this save makes (log_gun clears it after);
-			# the ID scan carries the same number, so it goes too.
+			# the ID scan carries the same number, so it goes too, file and all.
+			if self.id_document and not self.purchase_receipt:
+				for f in frappe.get_all("File", pluck="name", filters={"file_url": self.id_document,
+						"attached_to_doctype": self.doctype, "attached_to_name": self.name}):
+					frappe.delete_doc("File", f, ignore_permissions=True)
 			self.id_number = self.id_document = None
 		if self.id_document:
 			# Government-ID scans are PII: private, as Receive Goods keeps them.

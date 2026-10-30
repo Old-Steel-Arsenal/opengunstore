@@ -83,12 +83,6 @@ def labor_item() -> str:
 	return frappe.db.get_single_value("FFL Settings", "gunsmith_labor_item") or LABOR_ITEM
 
 
-def extend_bootinfo(bootinfo) -> None:
-	"""``frappe.boot.ffl_gunsmith_labor_item``: the work order form's labor line, without
-	the counter needing read access to FFL Settings."""
-	bootinfo.ffl_gunsmith_labor_item = labor_item()
-
-
 def agreement_template() -> str | None:
 	return frappe.db.get_single_value("FFL Settings", "gunsmith_agreement_template") or None
 
