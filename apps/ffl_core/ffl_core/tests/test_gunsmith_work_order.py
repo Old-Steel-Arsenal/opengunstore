@@ -769,6 +769,33 @@ class BoundBook(_Base):
 			gunsmith.DOCTYPE, job.name, "purchase_receipt")})
 		self.assertEqual(acq.source_address, "9 Range Rd, Austin TX 78701")
 
+	def test_a_spelled_out_state_is_filled_as_its_code(self):
+		cust = _customer()
+		frappe.db.set_value("Address", cust.customer_primary_address, "state", "Texas")
+		job = _job(cust, log_in_bound_book=1, id_type="Driver License", id_number="D1928374")
+		self.assertEqual(job.state, "TX")
+		self.assertTrue(frappe.db.get_value(gunsmith.DOCTYPE, job.name, "purchase_receipt"))
+
+	def test_no_address_names_the_customers_address(self):
+		cust = _customer()
+		frappe.db.set_value("Customer", cust.name, "customer_primary_address", None)
+		with self.assertRaisesRegex(frappe.ValidationError, "customer's address"):
+			_job(cust, log_in_bound_book=1, id_type="Driver License", id_number="D5647382")
+
+	def test_a_firearm_is_not_a_charge(self):
+		logged = _job(self.cust, log_in_bound_book=1, id_type="Driver License", id_number="D3141592")
+		gun = frappe.db.get_value(gunsmith.DOCTYPE, logged.name, "item_code")
+		job = _job(self.cust)
+		job.append("lines", {"item_code": gun, "qty": 1, "rate": 0})
+		with self.assertRaisesRegex(frappe.ValidationError, "is a firearm"):
+			job.save(ignore_permissions=True)
+
+	def test_the_id_scan_goes_with_the_number_when_ids_are_not_stored(self):
+		with patch("ffl_core.feature_gate.customer_id_numbers_enabled", return_value=False):
+			job = _job(self.cust, id_type="Driver License", id_number="D2718281",
+				id_document="/private/files/_test_gw_id.jpg")
+		self.assertFalse(frappe.db.get_value(gunsmith.DOCTYPE, job.name, "id_document"))
+
 	def test_the_job_keeps_no_id_number_when_ids_are_not_stored(self):
 		with patch("ffl_core.feature_gate.customer_id_numbers_enabled", return_value=False):
 			job = _job(self.cust, log_in_bound_book=1, id_type="Driver License", id_number="D2468101")

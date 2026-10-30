@@ -2,7 +2,7 @@
 frappe.ui.form.on('Gunsmith Work Order', {
 	setup(frm) {
 		// Charges are things sold over the counter: no templates, nothing switched off.
-		frm.set_query('item_code', 'lines', () => ({ filters: { disabled: 0, has_variants: 0, is_sales_item: 1 } }));
+		frm.set_query('item_code', 'lines', () => ({ filters: { disabled: 0, has_variants: 0, is_sales_item: 1, is_firearm: 0 } }));
 	},
 	scan_barcode(frm) {
 		// ERPNext's scanner: a new row per item, a repeat scan adds one to its qty.
@@ -13,7 +13,7 @@ frappe.ui.form.on('Gunsmith Work Order', {
 		if (frm.is_new()) {
 			// The labor charge is there from the start (the server adds it too); parts go under it.
 			if (!(frm.doc.lines || []).length) {
-				frappe.db.get_single_value('FFL Settings', 'gunsmith_labor_item').then((item) => {
+				laborItem().then((item) => {
 					if (item && !(frm.doc.lines || []).length) {
 						frm.add_child('lines', { item_code: item, qty: 1, rate: flt(frm.doc.estimated_cost) });
 						frm.refresh_field('lines');
@@ -31,7 +31,7 @@ frappe.ui.form.on('Gunsmith Work Order', {
 		// The labor charge follows the estimate until someone prices it by hand (as the server does).
 		const was = frm._estimate || 0;
 		frm._estimate = flt(frm.doc.estimated_cost);
-		frappe.db.get_single_value('FFL Settings', 'gunsmith_labor_item').then((item) => {
+		laborItem().then((item) => {
 			(frm.doc.lines || []).filter((r) => r.item_code === item && flt(r.rate) === was)
 				.forEach((r) => frappe.model.set_value(r.doctype, r.name, 'rate', frm._estimate));
 		});
@@ -60,17 +60,23 @@ frappe.ui.form.on('Gunsmith Work Order Line', {
 		// A part comes with its name and the store's selling price; both stay editable.
 		const row = locals[cdt][cdn];
 		if (!row.item_code) return;
-		frappe.db.get_value('Item', row.item_code, 'item_name').then((r) => {
-			const name = r.message && r.message.item_name;
-			if (name && !row.description) frappe.model.set_value(cdt, cdn, 'description', name);
+		frappe.db.get_value('Item', row.item_code, ['item_name', 'is_firearm']).then((r) => {
+			const it = r.message || {};
+			if (it.is_firearm) {
+				// A scanned serial tag (often the customer's own gun) is not a part.
+				frappe.show_alert({ indicator: 'red', message: __('{0} is a firearm, not a part.', [row.item_code]) });
+				frm.get_field('lines').grid.get_row(cdn).remove();
+				return;
+			}
+			if (it.item_name && !row.description) frappe.model.set_value(cdt, cdn, 'description', it.item_name);
+			const price_list = frappe.defaults.get_default('selling_price_list');
+			if (!price_list || flt(row.rate)) return;
+			frappe.db.get_value('Item Price', { item_code: row.item_code, price_list, selling: 1 }, 'price_list_rate')
+				.then((p) => {
+					const rate = flt(p.message && p.message.price_list_rate);
+					if (rate && !flt(row.rate)) frappe.model.set_value(cdt, cdn, 'rate', rate);
+				});
 		});
-		const price_list = frappe.defaults.get_default('selling_price_list');
-		if (!price_list || flt(row.rate)) return;
-		frappe.db.get_value('Item Price', { item_code: row.item_code, price_list, selling: 1 }, 'price_list_rate')
-			.then((r) => {
-				const rate = flt(r.message && r.message.price_list_rate);
-				if (rate && !flt(row.rate)) frappe.model.set_value(cdt, cdn, 'rate', rate);
-			});
 	},
 	lines_add(frm, cdt, cdn) {
 		// The scanner adds 1 to the row's qty, so its new row starts from 0, not the default 1.
@@ -80,12 +86,17 @@ frappe.ui.form.on('Gunsmith Work Order Line', {
 		}
 		// A first row (the labor charge removed and re-added) gets the labor item.
 		if ((frm.doc.lines || []).length === 1) {
-			frappe.db.get_single_value('FFL Settings', 'gunsmith_labor_item').then((item) => {
+			laborItem().then((item) => {
 				if (item && !locals[cdt][cdn].item_code) frappe.model.set_value(cdt, cdn, 'item_code', item);
 			});
 		}
 	},
 });
+
+// The store's labor item, as the server's setup.labor_item(): the setting, else GUNSMITHING.
+function laborItem() {
+	return frappe.db.get_single_value('FFL Settings', 'gunsmith_labor_item').then((item) => item || 'GUNSMITHING');
+}
 
 function lineAmount(frm, cdt, cdn) {
 	const row = locals[cdt][cdn];

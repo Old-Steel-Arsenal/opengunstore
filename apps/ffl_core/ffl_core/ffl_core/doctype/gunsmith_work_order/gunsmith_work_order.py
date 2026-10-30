@@ -27,13 +27,15 @@ class GunsmithWorkOrder(Document):
 		self._fill_contact()
 		from ffl_core.feature_gate import customer_id_numbers_enabled
 		if not customer_id_numbers_enabled() and not (self.log_in_bound_book and not self.purchase_receipt):
-			# Kept only for the bound-book entry this save makes (log_gun clears it after).
-			self.id_number = None
+			# Kept only for the bound-book entry this save makes (log_gun clears it after);
+			# the ID scan carries the same number, so it goes too.
+			self.id_number = self.id_document = None
 		if self.id_document:
 			# Government-ID scans are PII: private, as Receive Goods keeps them.
 			from ffl_core.api.receive_goods import _ensure_private_file
 			self.id_document = _ensure_private_file(self.id_document)
 		self._labor_line(before)
+		self._no_firearm_charges()
 		for row in self.get("lines") or []:
 			row.qty = flt(row.qty) or 1
 			row.amount = flt(row.qty * flt(row.rate), 2)
@@ -81,6 +83,16 @@ class GunsmithWorkOrder(Document):
 				if row.item_code == labor and flt(row.rate) == flt(before.estimated_cost):
 					row.rate = flt(self.estimated_cost)
 
+	def _no_firearm_charges(self):
+		"""A charge is labor or a part; a firearm on the bill (a scanned serial tag, often the
+		customer's own gun) would sell a gun through the work order."""
+		codes = {r.item_code for r in self.get("lines") or [] if r.item_code}
+		guns = frappe.get_all("Item", filters={"name": ["in", list(codes)], "is_firearm": 1}, pluck="name") \
+			if codes else []
+		if guns:
+			frappe.throw(_("{0} is a firearm, not a part. Remove it from the charges.").format(
+				", ".join(guns)), title=_("Charges"))
+
 	def _fill_contact(self):
 		"""The paper form's customer block, from the customer, where left blank."""
 		if not self.customer:
@@ -90,15 +102,16 @@ class GunsmithWorkOrder(Document):
 		self.phone = self.phone or cust.mobile_no
 		self.email = self.email or cust.email_id
 		if not self.address_line1:
-			# Split like Receive Goods' seller address; a state the dropdown lacks
-			# (a spelled-out "Texas") is left for staff to pick.
-			from ffl_core.api.trade_in import _STATE_RE, customer_address_parts
+			# Split like Receive Goods' seller address; "Texas" is filled as "TX", and a
+			# state the dropdown lacks is left for staff to pick.
+			from ffl_core.api.trade_in import customer_address_parts
+			from ffl_core.compliance.interstate_tax import normalize_us_state
 			parts = customer_address_parts(self.customer)
 			self.address_line1 = parts.get("address_line1") or None
 			self.city = self.city or parts.get("city") or None
 			self.zip = self.zip or parts.get("zip") or None
-			state = (parts.get("state") or "").upper()
-			if not self.state and _STATE_RE.match(state):
+			state = normalize_us_state(parts.get("state"))
+			if not self.state and state in (self.meta.get_options("state") or "").split("\n"):
 				self.state = state
 
 	def agreement_context(self) -> dict:

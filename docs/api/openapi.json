@@ -13882,7 +13882,7 @@
           "ffl_core"
         ],
         "summary": "Hand the gun back. With nothing to charge and no deposit held, the job is",
-        "description": "picked up now; otherwise this opens (or returns) the draft register invoice with\nthe charges and the deposit held coming off them, and its submit picks the job up.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:576`",
+        "description": "picked up now; otherwise this opens (or returns) the draft register invoice with\nthe charges and the deposit held coming off them, and its submit picks the job up.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:579`",
         "operationId": "ffl_core.gunsmith.open_pickup",
         "responses": {
           "200": {
@@ -13930,7 +13930,7 @@
           "ffl_core"
         ],
         "summary": "Open (or return) the draft register return that pays back the deposit still held",
-        "description": "— a cancelled job's, or what a smaller bill left over. A return goes against one\npayment and refunds at most that payment, newest first; with several payments held\nthe rest is refunded with the next return.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:643`",
+        "description": "— a cancelled job's, or what a smaller bill left over. A return goes against one\npayment and refunds at most that payment, newest first; with several payments held\nthe rest is refunded with the next return.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:646`",
         "operationId": "ffl_core.gunsmith.refund_deposit",
         "responses": {
           "200": {

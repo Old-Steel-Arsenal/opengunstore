@@ -545,6 +545,8 @@ def seller_defaults(customer: str) -> dict:
 	middle = (cust.middle_name or "").strip() or split["middle"]
 	suffix = (cust.name_suffix or "").strip() or split["suffix"]
 
+	from ffl_core.compliance.interstate_tax import normalize_us_state
+
 	parts = customer_address_parts(customer)
 	return {
 		"source_first_name": first,
@@ -554,7 +556,8 @@ def seller_defaults(customer: str) -> dict:
 		# Structured parts for the dialog's split address fields…
 		"source_address_line1": parts.get("address_line1", ""),
 		"source_city": parts.get("city", ""),
-		"source_state": parts.get("state", ""),
+		# A spelled-out "Texas" becomes "TX" for the forms' 2-letter state dropdowns.
+		"source_state": normalize_us_state(parts.get("state")) or parts.get("state", ""),
 		"source_zip": parts.get("zip", ""),
 		# …and the composed line for legacy consumers.
 		"source_address": _compose_address_line(parts),

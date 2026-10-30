@@ -486,8 +486,11 @@ def log_gun(doc) -> None:
 	from ffl_core.api.trade_in import seller_defaults
 
 	missing = [label for field, label in (("caliber", _("Caliber / Gauge")), ("firearm_type", _("Firearm Type")),
-		("address_line1", _("Street Address")), ("city", _("City")), ("state", _("State")), ("zip", _("ZIP")),
 		("id_type", _("ID Type")), ("id_number", _("ID Number"))) if not (doc.get(field) or "").strip()]
+	if not all((doc.get(f) or "").strip() for f in ("address_line1", "city", "state", "zip")):
+		# The register's intake takes the address from the customer, so point there.
+		missing.append(_("the customer's address (street, city, state, ZIP — on the work order, or a primary "
+			"address on the customer)"))
 	if missing:
 		frappe.throw(_("To log the gun in the bound book, fill in: {0}.").format(", ".join(missing)),
 			title=_("Bound book"))
@@ -528,7 +531,7 @@ def log_gun(doc) -> None:
 	logged = {"purchase_receipt": received["name"], "serial_no": serial, "item_code": item_code}
 	if not customer_id_numbers_enabled():
 		# The acquisition record keeps the ID the bound book needs; the job keeps none.
-		logged["id_number"] = None
+		logged["id_number"] = logged["id_document"] = None
 	doc.db_set(logged, update_modified=False)
 
 

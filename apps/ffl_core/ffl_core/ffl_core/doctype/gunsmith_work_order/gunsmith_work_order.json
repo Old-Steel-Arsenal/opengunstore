@@ -128,8 +128,7 @@
   {
    "fieldname": "address_line1",
    "fieldtype": "Data",
-   "label": "Street Address",
-   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt"
+   "label": "Street Address"
   },
   {
    "fieldname": "cb_address_1",
@@ -138,8 +137,7 @@
   {
    "fieldname": "city",
    "fieldtype": "Data",
-   "label": "City",
-   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt"
+   "label": "City"
   },
   {
    "fieldname": "cb_address_2",
@@ -149,8 +147,7 @@
    "fieldname": "state",
    "fieldtype": "Select",
    "label": "State",
-   "options": "\nAL\nAK\nAZ\nAR\nCA\nCO\nCT\nDE\nDC\nFL\nGA\nHI\nID\nIL\nIN\nIA\nKS\nKY\nLA\nME\nMD\nMA\nMI\nMN\nMS\nMO\nMT\nNE\nNV\nNH\nNJ\nNM\nNY\nNC\nND\nOH\nOK\nOR\nPA\nRI\nSC\nSD\nTN\nTX\nUT\nVT\nVA\nWA\nWV\nWI\nWY",
-   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt"
+   "options": "\nAL\nAK\nAZ\nAR\nCA\nCO\nCT\nDE\nDC\nFL\nGA\nHI\nID\nIL\nIN\nIA\nKS\nKY\nLA\nME\nMD\nMA\nMI\nMN\nMS\nMO\nMT\nNE\nNV\nNH\nNJ\nNM\nNY\nNC\nND\nOH\nOK\nOR\nPA\nRI\nSC\nSD\nTN\nTX\nUT\nVT\nVA\nWA\nWV\nWI\nWY"
   },
   {
    "fieldname": "cb_address_3",
@@ -159,8 +156,7 @@
   {
    "fieldname": "zip",
    "fieldtype": "Data",
-   "label": "ZIP",
-   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt"
+   "label": "ZIP"
   },
   {
    "fieldname": "section_id",
@@ -171,7 +167,8 @@
    "fieldtype": "Select",
    "label": "ID Type",
    "options": "\nDriver License\nState ID\nPassport\nMilitary ID\nOther",
-   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt"
+   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt",
+   "depends_on": "eval:doc.log_in_bound_book || frappe.boot.ffl_store_customer_id_numbers"
   },
   {
    "fieldname": "cb_id_1",
@@ -181,7 +178,8 @@
    "fieldname": "id_number",
    "fieldtype": "Data",
    "label": "ID Number",
-   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt"
+   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt",
+   "depends_on": "eval:doc.log_in_bound_book || frappe.boot.ffl_store_customer_id_numbers"
   },
   {
    "fieldname": "cb_id_2",
@@ -190,7 +188,8 @@
   {
    "fieldname": "id_document",
    "fieldtype": "Attach",
-   "label": "ID Scan"
+   "label": "ID Scan",
+   "depends_on": "eval:doc.log_in_bound_book || frappe.boot.ffl_store_customer_id_numbers"
   },
   {
    "fieldname": "section_firearm",
