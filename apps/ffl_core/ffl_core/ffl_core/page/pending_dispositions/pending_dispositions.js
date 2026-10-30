@@ -165,7 +165,7 @@ const PD_PRIMARY = {
 	blocked: '.btn-fulfill-stock, .btn-resource, .btn-pay, .btn-gb-paid',
 	to_place: '.btn-release',
 	waiting: '',
-	ready_ship: '.btn-ship, .btn-mark-shipped, .btn-dispose',
+	ready_ship: '.btn-ship, .btn-mark-shipped, .btn-dispose, .btn-gb-invoice',
 	ready_pickup: '.btn-pickup, .btn-mark-shipped, .btn-dispose',
 	disposing: '.btn-dispose',
 };
@@ -567,8 +567,9 @@ class PendingDispositionsApp {
 			// With an address (or an FFL) the Ship button behaves exactly as before.
 			// A disposed GunBroker order whose invoice failed to post waits for
 			// Create Invoice: push_gb_shipment only builds off a pending order.
+			const needsGbInvoice = isGb && row.disposed && !row.sales_invoice;
 			const canShip = can.ship && row.shipstation_enabled && !row.ship_pushed && !noAddress
-				&& !(isGb && row.disposed && !row.sales_invoice);
+				&& !needsGbInvoice;
 			// GunBroker: nothing ships before Mark Payment Received.
 			const shipDisabled = row.ffl_expired || blockShipUnpaid || awaitingGoods
 				|| openUnits > 0 || serialErrors.length > 0
@@ -747,6 +748,8 @@ class PendingDispositionsApp {
 						${showDispose ? `<button class="btn btn-primary btn-sm btn-dispose" ${disposeDisabled ? 'disabled' : ''}>${__('Dispose')}</button>` : ''}
 						${isPickup && !pickupInvoice ? `<button class="btn btn-primary btn-sm btn-pickup" ${pickupBlock ? 'disabled' : ''}>${__('Pickup')}</button>` : ''}
 						${pickupInvoice ? `<a class="btn btn-default btn-sm" href="/app/pos-invoice/${encodeURIComponent(pickupInvoice)}">${__('Open counter order')}</a>` : ''}
+						${needsGbInvoice ? `<button class="btn btn-primary btn-sm btn-gb-invoice">${__('Create Invoice')}</button>
+							<div class="meta">${__('Disposed, but the invoice did not post. Create it to ship.')}</div>` : ''}
 						${canShip ? `<button class="btn ${row.disposed ? 'btn-primary' : 'btn-default'} btn-sm btn-ship" ${shipDisabled ? 'disabled' : ''}>${__('Ship')}</button>` : ''}
 						${canMarkShipped ? `<button class="btn btn-default btn-sm btn-mark-shipped">${noAddress ? __('Mark Picked Up') : __('Mark Shipped (no ShipStation)')}</button>` : ''}
 						${(can.edit && !row.has_disposition && !row.ship_pushed) ? `<button class="btn btn-default btn-sm btn-edit-order">${__('Edit')}</button>` : ''}
@@ -768,6 +771,7 @@ class PendingDispositionsApp {
 			$card.find('.btn-mark-shipped').on('click', () => this._markShippedManually(row));
 			$card.find('.btn-pay').on('click', () => this._recordPayment(row));
 			$card.find('.btn-gb-paid').on('click', () => this._markGbPaymentReceived(row));
+			$card.find('.btn-gb-invoice').on('click', () => this._createGbInvoice(row));
 			$card.find('.btn-edit-order').on('click', () => frappe.set_route('create-order', 'edit', row.sales_invoice));
 			$card.find('.btn-cancel-order').on('click', () => this._confirmCancel(row));
 			// Model-level units (GunBroker): delegated, because there is one
@@ -1097,6 +1101,27 @@ class PendingDispositionsApp {
 	// which is also what gets replayed onto a Payment Entry once the invoice
 	// exists (a GunBroker order is paid long before it is invoiced, so there is
 	// nothing to book the receipt against until the guns are disposed).
+	// Dispose books the bound-book exit first and the invoice after; when the
+	// invoice fails the guns are already out, so the retry is its own button.
+	_createGbInvoice(row) {
+		frappe.call({
+			method: 'ffl_integrations.gunbroker.revenue.create_gb_invoice_now',
+			args: { gunbroker_order: row.gunbroker_order },
+			freeze: true, freeze_message: __('Creating invoice…'),
+			callback: (r) => {
+				const res = r.message || {};
+				const posted = res.status === 'created' || res.status === 'exists';
+				frappe.show_alert({
+					message: posted
+						? __('Invoice {0} posted — this order can now ship.', [res.sales_invoice])
+						: __('Invoice {0} was left in Draft. Open it to see why.', [res.sales_invoice]),
+					indicator: posted ? 'green' : 'orange',
+				}, 7);
+				this._load();
+			},
+		});
+	}
+
 	_markGbPaymentReceived(row) {
 		const d = new frappe.ui.Dialog({
 			title: __('Mark Payment Received — GunBroker #{0}', [row.gb_order_id]),

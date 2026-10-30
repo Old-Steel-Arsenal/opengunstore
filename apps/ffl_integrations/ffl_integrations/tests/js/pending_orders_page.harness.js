@@ -282,6 +282,18 @@ check('a disposed GunBroker card whose invoice failed offers no Ship', () => {
 		disposed: true, needs_disposition: false, sales_invoice: null });
 	const { cards } = render({ gb: [stuck] });
 	assert(!/btn-ship/.test(cards[0]), 'Ship offered with no invoice behind a disposed order');
+	assert(/btn-gb-invoice/.test(cards[0]), 'no Create Invoice — the card has no action at all');
+	calls.length = 0;
+	app._createGbInvoice(stuck);
+	const call = calls.find((c) => c.method === 'ffl_integrations.gunbroker.revenue.create_gb_invoice_now');
+	assert(call && call.args.gunbroker_order === stuck.gunbroker_order, JSON.stringify(calls));
+});
+
+check('Create Invoice is not offered once the invoice exists', () => {
+	const done = Object.assign({}, gbRow, { stage: 'ready_ship', channel_stage: 'awaiting_ship', paid: true,
+		disposed: true, needs_disposition: false, sales_invoice: 'ACC-SINV-9' });
+	const { cards } = render({ gb: [done] });
+	assert(!/btn-gb-invoice/.test(cards[0]), 'Create Invoice on an invoiced order');
 });
 
 check('Ship on an undisposed GunBroker card pushes the order, not a null invoice', () => {

@@ -743,8 +743,13 @@ def block_sale_of_sold_gb_listing(doc, method=None) -> None:
 	reported in a single warning and the sale proceeds. A per-request timeout
 	would have been no promise at all — three guns at three seconds each is nine
 	seconds at the till, and the promise made to the owner was three.
+
+	A GunBroker order's own invoice is not a counter sale: the buyer GunBroker
+	reports IS this order's buyer. Probing it found its own listing sold and
+	refused the revenue booking after Dispose, stranding the order with no
+	invoice and nothing on its card to ship it with.
 	"""
-	if _skip() or _exempt_invoice(doc):
+	if _skip() or _exempt_invoice(doc) or doc.get("gunbroker_order"):
 		return
 
 	rows = []
