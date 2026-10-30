@@ -6,6 +6,9 @@ symmetric and enforced by a test).
 
 * ``serial_channel_exit`` — we CALL it. GunBroker took a gun; every other
   storefront has to stop offering it, now.
+* ``serial_channel_return`` — we CALL it. GunBroker let go of a gun it held
+  (order cancelled, unit dropped or reassigned); the storefronts that took it
+  down for us put it back on sale.
 * ``channel_presale_probe`` — ffl_core calls it, and we REGISTER for it. A
   cashier is about to ring a gun up; does GunBroker already have a buyer?
 
@@ -35,12 +38,14 @@ from frappe import _
 from ffl_integrations.notifications import safe_log_error
 
 EXIT_HOOK = "serial_channel_exit"
+RETURN_HOOK = "serial_channel_return"
 
 # What GunBroker did with the gun, as the other channels are told about it.
 REASON_SOLD = "sold"          # a buyer paid
 REASON_RESERVED = "reserved"  # very probably sold; the order is not in yet
 REASON_ENDED = "ended"        # the listing was withdrawn without a sale
 REASON_BID = "bid"            # an auction has a bid: promised to the high bidder
+REASON_RELEASED = "released"  # GunBroker let go of the gun (serial_channel_return)
 
 
 def fire_serial_channel_exit(serial_no: str, *, channel: str = "gunbroker",
@@ -59,9 +64,31 @@ def fire_serial_channel_exit(serial_no: str, *, channel: str = "gunbroker",
 	    ``(False, "no serial_channel_exit registrant")``. Nothing raises out of
 	    here under any circumstance.
 	"""
-	registrants = frappe.get_hooks(EXIT_HOOK)
+	return _fire(EXIT_HOOK, serial_no, channel=channel, reason=reason)
+
+
+def fire_serial_channel_return(serial_no: str, *, channel: str = "gunbroker") -> tuple[bool, str]:
+	"""Tell every registered channel that GunBroker no longer holds this gun.
+
+	The undo of :func:`fire_serial_channel_exit`: the gun is back on the shelf
+	and the storefronts that delisted it for us may sell it again. Same
+	contract and the same never-raise rule, for the same reason — it runs inside
+	the transaction that releases the hold.
+
+	Args:
+	    serial_no: The Serial No GunBroker released.
+	    channel: Which channel released it. Always "gunbroker" from this package.
+
+	Returns:
+	    ``(ok, error)`` exactly as :func:`fire_serial_channel_exit`.
+	"""
+	return _fire(RETURN_HOOK, serial_no, channel=channel, reason=REASON_RELEASED)
+
+
+def _fire(hook: str, serial_no: str, *, channel: str, reason: str) -> tuple[bool, str]:
+	registrants = frappe.get_hooks(hook)
 	if not registrants:
-		return False, "no serial_channel_exit registrant (ffl_woo_sync not installed)"
+		return False, f"no {hook} registrant (ffl_woo_sync not installed)"
 	errors: list[str] = []
 	for path in registrants:
 		try:
@@ -69,7 +96,7 @@ def fire_serial_channel_exit(serial_no: str, *, channel: str = "gunbroker",
 		except Exception as exc:  # noqa: BLE001 — see the module docstring
 			errors.append(f"{path}: {type(exc).__name__}: {exc}"[:500])
 			safe_log_error(
-				f"serial_channel_exit failed for {serial_no} ({channel}/{reason})",
+				f"{hook} failed for {serial_no} ({channel}/{reason})",
 				frappe.get_traceback())
 	if errors:
 		return False, "; ".join(errors)[:2000]

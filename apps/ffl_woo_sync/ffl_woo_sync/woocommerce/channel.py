@@ -90,6 +90,36 @@ def serial_channel_exit(serial_no: str, *, channel: str, reason: str) -> None:
 		f"serial_channel_exit: {serial_no} left via {channel} ({reason})")
 
 
+def serial_channel_return(serial_no: str, *, channel: str, reason: str) -> None:
+	"""Put a gun back on the WooCommerce storefront: the other channel let it go.
+
+	The undo of :func:`serial_channel_exit`. GunBroker released its hold (the
+	order was cancelled before invoicing, a unit was dropped or reassigned), so
+	the gun is on the shelf again and the page the exit took down — draft, stock
+	0, ``{site}_delisted`` set — goes back up.
+
+	Args:
+	    serial_no: The Serial No the other channel released.
+	    channel: Which channel released it (e.g. "gunbroker").
+	    reason: Always "released" today; kept for the shared contract.
+
+	Same door the web store's own cancellation uses
+	(``webhook._enqueue_serial_or_item_push`` with ``relist=True``), so a gun with
+	no price, one in custody, or one another channel still holds is refused by
+	``push_serial``'s own guards. Enqueued after commit, so the push reads the
+	released hold.
+	"""
+	from ffl_woo_sync.woocommerce.webhook import _enqueue_serial_or_item_push
+
+	serial_no = (serial_no or "").strip()
+	if not serial_no:
+		return
+	for site in SITES:
+		_enqueue_serial_or_item_push(serial_no, site=site, relist=True)
+	frappe.logger("ffl_woo_sync").info(
+		f"serial_channel_return: {serial_no} released by {channel} ({reason})")
+
+
 def channel_commitments_changed(item_code: str, *, source: str) -> None:
 	"""Re-push this Item's stock because ANOTHER channel's committed units moved.
 

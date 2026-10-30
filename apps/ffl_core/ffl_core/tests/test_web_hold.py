@@ -80,6 +80,7 @@ class UnmergedCounterSales(FrappeTestCase):
 
 	def setUp(self):
 		frappe.db.delete("POS Invoice Item", {"item_code": ITEM})
+		frappe.db.delete("Packed Item", {"item_code": ITEM, "parenttype": "POS Invoice"})
 		get_hooks = frappe.get_hooks
 		hook = f"{__name__}._storefront_shelf"
 		for patcher in (
@@ -113,3 +114,17 @@ class UnmergedCounterSales(FrappeTestCase):
 		self._pos_sale(1)
 		self._pos_sale(-1, is_return=1)
 		web_hold.refuse_held_units(_invoice(1))
+
+	def test_a_bundle_component_sold_at_the_counter_counts(self):
+		"""A bundle's component leaves the Bin at the close too (Packed Item)."""
+		web_hold.refuse_held_units(_invoice(1))
+		inv = frappe.new_doc("POS Invoice")
+		inv.update({"name": f"INVC-POS-{frappe.generate_hash(length=8)}", "docstatus": 1})
+		inv.db_insert()
+		packed = frappe.new_doc("Packed Item")
+		packed.update({"name": frappe.generate_hash(length=10), "parent": inv.name,
+			"parenttype": "POS Invoice", "parentfield": "packed_items", "idx": 1, "docstatus": 1,
+			"parent_item": "WEB-HOLD-KIT", "item_code": ITEM, "qty": 1})
+		packed.db_insert()
+		with self.assertRaisesRegex(frappe.ValidationError, "#6120"):
+			web_hold.refuse_held_units(_invoice(1))

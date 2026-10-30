@@ -29,7 +29,7 @@ from typing import Any
 
 import frappe
 from frappe import _
-from frappe.utils import formatdate, now_datetime
+from frappe.utils import flt, now_datetime
 
 from ffl_core.roles import STOCK_ROLES
 from ffl_core.api._helpers import default_warehouse as _default_warehouse
@@ -200,16 +200,22 @@ def set_stock(item_code: str, new_qty, warehouse: str | None = None,
 	Receipt is faster (see add_stock); set_stock is the right primitive
 	when the user already knows the absolute target.
 
+	The quantity entered is what is on the shelf now. A register sale not yet
+	closed has left the shelf but is still in the Bin (ERPNext posts it at the
+	register close), so the reconciliation sets the Bin to the entered quantity
+	plus those units; once the close posts them the Bin reads the entered figure.
+
 	Args:
 	    item_code: Non-serialized stock Item to adjust.
-	    new_qty: Absolute on-hand target, >= 0.
+	    new_qty: Units physically on the shelf now, >= 0.
 	    warehouse: Optional target; defaults to the configured warehouse.
 	    reason: Optional audit note (stored as a Comment on the Stock
 	        Reconciliation).
 
 	Returns:
-	    {ok, name (Stock Reconciliation #), prev_qty, new_qty, delta,
-	    warehouse}.
+	    {ok, name (Stock Reconciliation #), prev_qty, new_qty (as entered),
+	    open_register_qty (units on register sales not closed yet), delta
+	    (what the reconciliation changed the Bin by), warehouse}.
 
 	Raises:
 	    ValidationError: Serial-tracked item, invalid qty, missing
@@ -234,30 +240,26 @@ def set_stock(item_code: str, new_qty, warehouse: str | None = None,
 		"record — adjusting bulk qty here would orphan serial entries. "
 		"Use Receive Goods to add or Stock Entry to remove specific units."))
 
-	# Same rule as the inventory count: a register sale is in the Bin until the
-	# register closes, so a quantity set now would be wrong by exactly that much.
+	# A register sale stays in the Bin until the register closes (a return's
+	# negative qty: out of it), so the Bin must hold the shelf count plus those units.
 	from ffl_core.api.inventory_count import _open_register_sales, _row_rate
-	open_sales = _open_register_sales({(item_code, warehouse)}, now_datetime()).get(
-		(item_code, warehouse))
-	if open_sales:
-		frappe.throw(_("{0} register sales of this item from {1} are not closed yet. Close the "
-			"register — or wait for the nightly close at 11 PM — then adjust the quantity.").format(
-				len({s["invoice"] for s in open_sales}),
-				formatdate(min(s["posted"] for s in open_sales))))
+	open_qty = flt(sum(s["qty"] for s in _open_register_sales(
+		{(item_code, warehouse)}, now_datetime()).get((item_code, warehouse), [])), 6)
+	target = max(0.0, flt(new_qty_f + open_qty, 6))
 
 	# Read current qty so we can short-circuit no-ops
 	prev_qty = float(frappe.db.get_value(
 		"Bin", {"item_code": item_code, "warehouse": warehouse}, "actual_qty"
 	) or 0)
-	if abs(prev_qty - new_qty_f) < 1e-9:
+	if abs(prev_qty - target) < 1e-9:
 		frappe.throw(_("Stock is already {0} at {1}; nothing to adjust.")
-			.format(prev_qty, warehouse))
+			.format(new_qty_f, warehouse))
 
 	# An explicit rate on a reconciliation row revalues everything already in
 	# the bin, so keep the bin's own rate when it holds stock (the item's cost
 	# otherwise). 0 = no cost on file: fine for a write-off, not for new units.
 	rate = _row_rate(item_code, warehouse, prev_qty)
-	if new_qty_f > prev_qty and not rate:
+	if target > prev_qty and not rate:
 		frappe.throw(_("No cost on file for {0}: set its valuation rate, or use + Add Stock "
 			"with a rate.").format(item_code))
 
@@ -268,7 +270,7 @@ def set_stock(item_code: str, new_qty, warehouse: str | None = None,
 		"items": [{
 			"item_code": item_code,
 			"warehouse": warehouse,
-			"qty": new_qty_f,
+			"qty": target,
 			"valuation_rate": rate,
 			"allow_zero_valuation_rate": 0 if rate else 1,
 		}],
@@ -293,7 +295,8 @@ def set_stock(item_code: str, new_qty, warehouse: str | None = None,
 		"name": sr.name,
 		"prev_qty": prev_qty,
 		"new_qty": new_qty_f,
-		"delta": new_qty_f - prev_qty,
+		"open_register_qty": open_qty,
+		"delta": target - prev_qty,
 		"warehouse": warehouse,
 	}
 

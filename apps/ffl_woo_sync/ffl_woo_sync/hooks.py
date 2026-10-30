@@ -179,6 +179,15 @@ serial_channel_exit = [
     "ffl_woo_sync.woocommerce.channel.serial_channel_exit",
 ]
 
+# `serial_channel_return` is its undo: GunBroker let go of a gun it held (order
+# cancelled before invoicing, unit dropped or reassigned), so the page the exit
+# took down goes back up.
+#
+#     fn(serial_no: str, *, channel: str, reason: str) -> None
+serial_channel_return = [
+    "ffl_woo_sync.woocommerce.channel.serial_channel_return",
+]
+
 # `channel_committed_units` / `channel_commitments_changed` are ffl_core's two
 # hooks for the pool every sales channel shares (a uniform-price gun, or a box of
 # ammunition, sold on more than one channel before it ships). This app answers

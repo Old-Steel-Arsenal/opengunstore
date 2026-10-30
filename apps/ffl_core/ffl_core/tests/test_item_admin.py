@@ -498,34 +498,57 @@ class ItemAdminAddStock(FrappeTestCase):
 			set_stock("ADDSTOCK-CLEAN", 5, warehouse=warehouse)
 		self.assertIn("no cost on file", str(ctx.exception).lower())
 
-	def test_set_stock_refused_while_a_register_sale_is_open(self):
+	def test_set_stock_allows_for_an_open_register_sale(self):
 		"""A submitted POS Invoice stays out of the stock ledger until the register
-		closes, so the Bin still holds the sold units; adjusting now would have the
-		nightly close issue them a second time."""
+		closes, so the Bin still holds the sold unit. The entered figure is the shelf:
+		the Bin is set to it plus the open sale, and reads it once the close posts."""
 		from frappe.utils import now_datetime
 		warehouse = self._clean_item()
 		add_stock("ADDSTOCK-CLEAN", 10, warehouse=warehouse, rate=5)
+		company = frappe.db.get_value("Warehouse", warehouse, "company")
 		# Written straight to the tables, as the inventory count tests do: a real
 		# sale needs a shift, a profile and payments, none of which this is about.
 		when = now_datetime()
 		inv = frappe.new_doc("POS Invoice")
 		inv.update({"name": f"ADDSTOCK-POS-{frappe.generate_hash(length=8)}",
-			"company": frappe.db.get_value("Warehouse", warehouse, "company"), "docstatus": 1,
+			"company": company, "docstatus": 1,
 			"posting_date": when.date().isoformat(), "posting_time": when.time().isoformat()})
 		inv.db_insert()
 		line = frappe.new_doc("POS Invoice Item")
 		line.update({"name": frappe.generate_hash(length=10), "parent": inv.name,
 			"parenttype": "POS Invoice", "parentfield": "items", "idx": 1, "docstatus": 1,
-			"item_code": "ADDSTOCK-CLEAN", "qty": 2, "stock_qty": 2, "warehouse": warehouse})
+			"item_code": "ADDSTOCK-CLEAN", "qty": 1, "stock_qty": 1, "warehouse": warehouse})
 		line.db_insert()
 		self.addCleanup(lambda: (frappe.db.delete("POS Invoice Item", {"parent": inv.name}),
 			frappe.db.delete("POS Invoice", {"name": inv.name}), frappe.db.commit()))
+
+		out = set_stock("ADDSTOCK-CLEAN", 8, warehouse=warehouse, reason="Shelf count")
+		self.assertEqual(out["new_qty"], 8.0)
+		self.assertEqual(out["open_register_qty"], 1.0)
+		self.assertEqual(out["delta"], -1.0)
+
+		def bin_qty():
+			return float(frappe.db.get_value("Bin",
+				{"item_code": "ADDSTOCK-CLEAN", "warehouse": warehouse}, "actual_qty") or 0)
+		self.assertEqual(bin_qty(), 9.0)
+		# Entering the same shelf count again is a no-op, not a second unit off.
 		with self.assertRaises(frappe.ValidationError) as ctx:
 			set_stock("ADDSTOCK-CLEAN", 8, warehouse=warehouse)
-		self.assertIn("not closed yet", str(ctx.exception))
-		bin_qty = frappe.db.get_value("Bin",
-			{"item_code": "ADDSTOCK-CLEAN", "warehouse": warehouse}, "actual_qty")
-		self.assertEqual(float(bin_qty or 0), 10.0)
+		self.assertIn("nothing to adjust", str(ctx.exception).lower())
+
+		# The register close posts the sale's stock exit (stood in for by an issue)
+		# and marks the ticket merged: the Bin now reads the shelf count.
+		se = frappe.get_doc({"doctype": "Stock Entry", "stock_entry_type": "Material Issue",
+			"company": company, "items": [{"item_code": "ADDSTOCK-CLEAN", "qty": 1,
+				"s_warehouse": warehouse}]})
+		se.insert(ignore_permissions=True)
+		se.submit()
+		frappe.db.set_value("POS Invoice", inv.name, "consolidated_invoice", "SINV-CLOSE",
+			update_modified=False)
+		self.assertEqual(bin_qty(), 8.0)
+		with self.assertRaises(frappe.ValidationError) as ctx:
+			set_stock("ADDSTOCK-CLEAN", 8, warehouse=warehouse)
+		self.assertIn("nothing to adjust", str(ctx.exception).lower())
 
 	def test_two_consecutive_add_stock_keeps_item_qty_in_sync(self):
 		"""Regression for race condition: when two stock-adding events hit

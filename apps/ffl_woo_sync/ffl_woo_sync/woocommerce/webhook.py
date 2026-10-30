@@ -2564,7 +2564,7 @@ def _reopen_if_revived(order, body: dict) -> bool:
 			serial = (sr.get(field) or "").strip()
 			if not serial:
 				continue
-			reason, _ = _serial_availability(serial, item_code)
+			reason, _detail = _serial_availability(serial, item_code)
 			if not reason:
 				_reserve_serial(serial, order.name)
 				_enqueue_serial_or_item_push(serial, site=site)

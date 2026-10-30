@@ -731,25 +731,28 @@ def _movements(baseline: dict, as_of) -> tuple[dict, dict]:
 
 
 def _open_register_sales(keys, as_of) -> dict:
-	"""{(item, warehouse): [{invoice, posted}]} for submitted POS Invoices rung up at or
-	before ``as_of`` that have not been consolidated. ERPNext posts a POS sale to stock
-	only when its register closes, so the Bin still holds those units and a quantity set
-	now would be wrong by exactly that much — whichever way it is worked out."""
+	"""{(item, warehouse): [{invoice, posted, qty}]} for submitted POS Invoices rung up at
+	or before ``as_of`` that have not been consolidated (``qty`` in stock units, negative
+	on a return). ERPNext posts a POS sale to stock only when its register closes, so the
+	Bin still holds those units and a quantity set now would be wrong by exactly that
+	much — whichever way it is worked out."""
 	out: dict = {}
 	if not keys:
 		return out
 	items = tuple({k[0] for k in keys})
 	warehouses = tuple({k[1] for k in keys})
-	for table in ("POS Invoice Item", "Packed Item"):
-		for name, item_code, warehouse, posted in frappe.db.sql(
-				f"""SELECT p.name, c.item_code, c.warehouse, TIMESTAMP(p.posting_date, p.posting_time)
+	for table, qty_col in (("POS Invoice Item", "stock_qty"), ("Packed Item", "qty")):
+		for name, item_code, warehouse, posted, qty in frappe.db.sql(
+				f"""SELECT p.name, c.item_code, c.warehouse, TIMESTAMP(p.posting_date, p.posting_time),
+				           c.`{qty_col}`
 				    FROM `tabPOS Invoice` p JOIN `tab{table}` c ON c.parent = p.name
 				    WHERE p.docstatus = 1 AND c.docstatus = 1 AND c.parenttype = 'POS Invoice'
 				      AND IFNULL(p.consolidated_invoice, '') = ''
 				      AND TIMESTAMP(p.posting_date, p.posting_time) <= %s
 				      AND c.item_code IN %s AND c.warehouse IN %s""", (as_of, items, warehouses)):
 			if (item_code, warehouse) in keys:
-				out.setdefault((item_code, warehouse), []).append({"invoice": name, "posted": posted})
+				out.setdefault((item_code, warehouse), []).append(
+					{"invoice": name, "posted": posted, "qty": flt(qty)})
 	return out
 
 

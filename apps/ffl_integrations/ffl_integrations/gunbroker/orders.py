@@ -62,7 +62,11 @@ from ffl_integrations.gunbroker.client import (
 	kv_key,
 )
 from ffl_integrations.gunbroker import mapping
-from ffl_integrations.gunbroker.crosschannel import REASON_SOLD, fire_serial_channel_exit
+from ffl_integrations.gunbroker.crosschannel import (
+	REASON_SOLD,
+	fire_serial_channel_exit,
+	fire_serial_channel_return,
+)
 from ffl_integrations.integration_gate import gunbroker_enabled
 from ffl_integrations.notifications import notify_admins, safe_log_error
 
@@ -1420,8 +1424,8 @@ def _announce_cancellation(order) -> None:
 		subject = _("GunBroker order {0} was cancelled").format(order.gb_order_id)
 		body = _(
 			"{0} ({1}) is cancelled on GunBroker before it was invoiced. Nothing "
-			"was booked and nothing is owed; the gun has been released in POS. Its "
-			"website listing stays down until someone re-publishes it."
+			"was booked and nothing is owed; the gun has been released and is "
+			"back on sale on the other channels."
 		).format(order.name, order.gb_order_id)
 	notify_admins(subject, body,
 		dedup_key=f"gb_cancel_{order.gb_order_id}", window_minutes=1440)
@@ -1429,7 +1433,11 @@ def _announce_cancellation(order) -> None:
 
 def release_serial_if_held_by(order_name: str, serial: str) -> bool:
 	"""Drop one gun's GunBroker hold, but only if THIS order holds it. Never
-	another order's or another channel's. True when something was released."""
+	another order's or another channel's. True when something was released.
+
+	A released gun is back on the shelf, so the storefronts that took it down
+	when GunBroker held it (``serial_channel_exit``) are told to put it back
+	(``serial_channel_return``). Never raises."""
 	serial = (serial or "").strip()
 	if not serial:
 		return False
@@ -1438,6 +1446,7 @@ def release_serial_if_held_by(order_name: str, serial: str) -> bool:
 	if held.get("gb_reserved") and (held.get("gb_order") or "") == order_name:
 		frappe.db.set_value("Serial No", serial,
 			{"gb_reserved": 0, "gb_order": ""}, update_modified=False)
+		fire_serial_channel_return(serial)
 		return True
 	return False
 
