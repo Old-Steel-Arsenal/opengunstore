@@ -483,9 +483,10 @@ def log_gun(doc) -> None:
 	gets a per-gun Item as a counter intake would."""
 	from ffl_core.api.firearm_intake import _resolve_item
 	from ffl_core.api.receive_goods import _create_receive
-	from ffl_core.api.trade_in import customer_address_line, seller_defaults
+	from ffl_core.api.trade_in import seller_defaults
 
 	missing = [label for field, label in (("caliber", _("Caliber / Gauge")), ("firearm_type", _("Firearm Type")),
+		("address_line1", _("Street Address")), ("city", _("City")), ("state", _("State")), ("zip", _("ZIP")),
 		("id_type", _("Customer ID Type")), ("id_number", _("Customer ID Number"))) if not (doc.get(field) or "").strip()]
 	if missing:
 		frappe.throw(_("To log the gun in the bound book, fill in: {0}.").format(", ".join(missing)),
@@ -493,9 +494,6 @@ def log_gun(doc) -> None:
 	who = seller_defaults(doc.customer)
 	if not (who.get("source_first_name") and who.get("source_last_name")):
 		frappe.throw(_("The bound book needs the customer's first and last name: add them on the customer."))
-	address = customer_address_line(doc.customer)
-	if not address:
-		frappe.throw(_("The bound book needs the customer's address: add a primary address on the customer."))
 	serial = doc.serial_number.strip()
 	item_code = frappe.db.get_value("Serial No", serial, "item_code")
 	if frappe.db.get_value("Serial No", serial, "status") == "Active":
@@ -513,9 +511,13 @@ def log_gun(doc) -> None:
 		"seller_middle_name": who.get("source_middle_name"),
 		"seller_last_name": who.get("source_last_name"),
 		"seller_suffix": who.get("source_suffix"),
-		"seller_address": address,
+		"seller_address_line1": doc.address_line1,
+		"seller_city": doc.city,
+		"seller_state": doc.state,
+		"seller_zip": doc.zip,
 		"id_type": doc.id_type,
 		"id_number": doc.id_number,
+		"id_document": doc.id_document,
 		"notes": _("Gunsmith work order {0}").format(doc.name),
 		"items": [{"item_code": item_code, "qty": 1, "rate": 0, "serials": [serial],
 			"manufacturer": doc.manufacturer, "model_name": doc.model, "caliber": doc.caliber,

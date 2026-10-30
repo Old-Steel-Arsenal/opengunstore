@@ -1,5 +1,13 @@
 // Gunsmith Work Order form: the buttons that move a job along (rules: ffl_core/gunsmith.py).
 frappe.ui.form.on('Gunsmith Work Order', {
+	setup(frm) {
+		// Charges are things sold over the counter: no templates, nothing switched off.
+		frm.set_query('item_code', 'lines', () => ({ filters: { disabled: 0, has_variants: 0, is_sales_item: 1 } }));
+	},
+	scan_barcode(frm) {
+		// ERPNext's scanner: a new row per item, a repeat scan adds one to its qty.
+		new erpnext.utils.BarcodeScanner({ frm, items_table_name: 'lines' }).process_scan();
+	},
 	refresh(frm) {
 		if (frm.is_new()) return;
 		// A closed job is kept as it is (the server refuses changes too).
@@ -10,14 +18,35 @@ frappe.ui.form.on('Gunsmith Work Order', {
 	customer(frm) {
 		if (!frm.doc.customer) return;
 		// The paper form's customer block, refilled for the new customer (the server fills blanks too).
-		frm.set_value({ phone: '', email: '', address: '' });
+		frm.set_value({ phone: '', email: '', address_line1: '', city: '', state: '', zip: '' });
 	},
 });
 
 frappe.ui.form.on('Gunsmith Work Order Line', {
 	qty: lineAmount,
 	rate: lineAmount,
+	item_code(frm, cdt, cdn) {
+		// A part comes with its name and the store's selling price; both stay editable.
+		const row = locals[cdt][cdn];
+		if (!row.item_code) return;
+		frappe.db.get_value('Item', row.item_code, 'item_name').then((r) => {
+			const name = r.message && r.message.item_name;
+			if (name && !row.description) frappe.model.set_value(cdt, cdn, 'description', name);
+		});
+		const price_list = frappe.defaults.get_default('selling_price_list');
+		if (!price_list || flt(row.rate)) return;
+		frappe.db.get_value('Item Price', { item_code: row.item_code, price_list, selling: 1 }, 'price_list_rate')
+			.then((r) => {
+				const rate = flt(r.message && r.message.price_list_rate);
+				if (rate && !flt(row.rate)) frappe.model.set_value(cdt, cdn, 'rate', rate);
+			});
+	},
 	lines_add(frm, cdt, cdn) {
+		// The scanner adds 1 to the row's qty, so its new row starts from 0, not the default 1.
+		if (frappe.flags.trigger_from_barcode_scanner) {
+			locals[cdt][cdn].qty = 0;
+			return;
+		}
 		// The first charge is usually the labor: offer the store's labor item.
 		if ((frm.doc.lines || []).length === 1) {
 			frappe.db.get_single_value('FFL Settings', 'gunsmith_labor_item').then((item) => {

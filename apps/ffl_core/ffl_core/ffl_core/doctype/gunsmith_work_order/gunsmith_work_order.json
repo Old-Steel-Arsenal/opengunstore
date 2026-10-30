@@ -3,7 +3,7 @@
  "autoname": "format:GWO-{YYYY}-{#####}",
  "naming_rule": "Expression",
  "creation": "2026-10-17 18:00:00.000000",
- "modified": "2026-10-17 18:00:00.000000",
+ "modified": "2026-10-30 12:00:00.000000",
  "modified_by": "Administrator",
  "description": "A customer's gun left for gunsmithing: intake, authorization, deposit, the work, and pick-up.",
  "doctype": "DocType",
@@ -14,7 +14,13 @@
   "customer_name",
   "phone",
   "email",
-  "address",
+  "address_line1",
+  "city",
+  "state",
+  "zip",
+  "id_type",
+  "id_number",
+  "id_document",
   "column_break_customer",
   "status",
   "company",
@@ -32,8 +38,6 @@
   "firearm_notes",
   "section_bound_book",
   "log_in_bound_book",
-  "id_type",
-  "id_number",
   "column_break_bound_book",
   "purchase_receipt",
   "item_code",
@@ -51,8 +55,6 @@
   "section_work",
   "gunsmith",
   "work_performed",
-  "lines",
-  "final_cost",
   "column_break_work",
   "completed_on",
   "notified_via",
@@ -60,7 +62,11 @@
   "notified_by",
   "pickup_invoice",
   "picked_up_on",
-  "cancel_reason"
+  "cancel_reason",
+  "section_charges",
+  "scan_barcode",
+  "lines",
+  "final_cost"
  ],
  "fields": [
   {
@@ -97,9 +103,49 @@
    "options": "Email"
   },
   {
-   "fieldname": "address",
-   "fieldtype": "Small Text",
-   "label": "Address"
+   "fieldname": "address_line1",
+   "fieldtype": "Data",
+   "label": "Street Address",
+   "description": "As on the ID — the bound book needs it when the gun is logged.",
+   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt"
+  },
+  {
+   "fieldname": "city",
+   "fieldtype": "Data",
+   "label": "City",
+   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt"
+  },
+  {
+   "fieldname": "state",
+   "fieldtype": "Select",
+   "label": "State",
+   "options": "\nAL\nAK\nAZ\nAR\nCA\nCO\nCT\nDE\nDC\nFL\nGA\nHI\nID\nIL\nIN\nIA\nKS\nKY\nLA\nME\nMD\nMA\nMI\nMN\nMS\nMO\nMT\nNE\nNV\nNH\nNJ\nNM\nNY\nNC\nND\nOH\nOK\nOR\nPA\nRI\nSC\nSD\nTN\nTX\nUT\nVT\nVA\nWA\nWV\nWI\nWY",
+   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt"
+  },
+  {
+   "fieldname": "zip",
+   "fieldtype": "Data",
+   "label": "ZIP",
+   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt"
+  },
+  {
+   "fieldname": "id_type",
+   "fieldtype": "Select",
+   "label": "Customer ID Type",
+   "options": "\nDriver License\nState ID\nPassport\nMilitary ID\nOther",
+   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt"
+  },
+  {
+   "fieldname": "id_number",
+   "fieldtype": "Data",
+   "label": "Customer ID Number",
+   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt"
+  },
+  {
+   "fieldname": "id_document",
+   "fieldtype": "Attach",
+   "label": "Customer ID Document",
+   "description": "Photo/scan of the customer ID (stored privately)."
   },
   {
    "fieldname": "column_break_customer",
@@ -206,21 +252,6 @@
    "label": "Log in Bound Book",
    "default": "0",
    "description": "Record the gun in the bound book: an acquisition from the customer now, a Gunsmithing disposition back to them at pick-up. The gun is held in customer custody at zero cost and is never for sale. A job can start unlogged and be logged later; a logged job stays logged."
-  },
-  {
-   "fieldname": "id_type",
-   "fieldtype": "Select",
-   "label": "Customer ID Type",
-   "options": "\nDriver License\nState ID\nPassport\nMilitary ID\nOther",
-   "depends_on": "eval:doc.log_in_bound_book",
-   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt"
-  },
-  {
-   "fieldname": "id_number",
-   "fieldtype": "Data",
-   "label": "Customer ID Number",
-   "depends_on": "eval:doc.log_in_bound_book",
-   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt"
   },
   {
    "fieldname": "column_break_bound_book",
@@ -333,6 +364,18 @@
    "fieldname": "work_performed",
    "fieldtype": "Text",
    "label": "Work Performed"
+  },
+  {
+   "fieldname": "section_charges",
+   "fieldtype": "Section Break",
+   "label": "Charges"
+  },
+  {
+   "fieldname": "scan_barcode",
+   "fieldtype": "Data",
+   "label": "Scan Barcode",
+   "options": "Barcode",
+   "description": "Scan a part or accessory to add it to the charges (scan again for one more)."
   },
   {
    "fieldname": "lines",

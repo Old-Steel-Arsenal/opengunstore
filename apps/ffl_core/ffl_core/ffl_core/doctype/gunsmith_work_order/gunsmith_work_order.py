@@ -29,6 +29,10 @@ class GunsmithWorkOrder(Document):
 		if not customer_id_numbers_enabled() and not (self.log_in_bound_book and not self.purchase_receipt):
 			# Kept only for the bound-book entry this save makes (log_gun clears it after).
 			self.id_number = None
+		if self.id_document:
+			# Government-ID scans are PII: private, as Receive Goods keeps them.
+			from ffl_core.api.receive_goods import _ensure_private_file
+			self.id_document = _ensure_private_file(self.id_document)
 		for row in self.get("lines") or []:
 			row.qty = flt(row.qty) or 1
 			row.amount = flt(row.qty * flt(row.rate), 2)
@@ -69,9 +73,17 @@ class GunsmithWorkOrder(Document):
 			or frappe._dict()
 		self.phone = self.phone or cust.mobile_no
 		self.email = self.email or cust.email_id
-		if not self.address:
-			from ffl_core.api.trade_in import customer_address_line
-			self.address = customer_address_line(self.customer) or None
+		if not self.address_line1:
+			# Split like Receive Goods' seller address; a state the dropdown lacks
+			# (a spelled-out "Texas") is left for staff to pick.
+			from ffl_core.api.trade_in import _STATE_RE, customer_address_parts
+			parts = customer_address_parts(self.customer)
+			self.address_line1 = parts.get("address_line1") or None
+			self.city = self.city or parts.get("city") or None
+			self.zip = self.zip or parts.get("zip") or None
+			state = (parts.get("state") or "").upper()
+			if not self.state and _STATE_RE.match(state):
+				self.state = state
 
 	def agreement_context(self) -> dict:
 		"""Placeholders for the intake authorization (agreements.document_context)."""

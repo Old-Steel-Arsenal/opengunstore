@@ -163,7 +163,7 @@ class Status(_Base):
 		job = _job(_customer(mobile_no="555-0100"))
 		self.assertEqual(job.status, "Received")
 		self.assertEqual(job.phone, "555-0100")
-		self.assertIn("12 Main St", job.address)
+		self.assertEqual((job.address_line1, job.city, job.state, job.zip), ("12 Main St", "Springfield", "TX", "75024"))
 		self.assertTrue(job.name.startswith("GWO-"))
 
 	def test_status_moves_only_through_the_actions(self):
@@ -744,6 +744,13 @@ class BoundBook(_Base):
 		disp = frappe.get_doc("FFL Disposition", job.disposition)
 		self.assertEqual((disp.docstatus, disp.disposition_type, disp.customer), (1, "Gunsmithing", self.cust.name))
 		self.assertNotEqual(frappe.db.get_value("Serial No", job.serial_number, "status"), "Active")
+
+	def test_the_bound_book_takes_the_address_on_the_job(self):
+		job = _job(self.cust, log_in_bound_book=1, id_type="Driver License", id_number="D8642097",
+			address_line1="9 Range Rd", city="Austin", state="TX", zip="78701")
+		acq = frappe.get_doc("FFL Acquisition", {"purchase_receipt": frappe.db.get_value(
+			gunsmith.DOCTYPE, job.name, "purchase_receipt")})
+		self.assertEqual(acq.source_address, "9 Range Rd, Austin TX 78701")
 
 	def test_the_job_keeps_no_id_number_when_ids_are_not_stored(self):
 		with patch("ffl_core.feature_gate.customer_id_numbers_enabled", return_value=False):
