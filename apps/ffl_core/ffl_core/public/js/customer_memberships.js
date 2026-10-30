@@ -238,7 +238,7 @@
 			fields: [
 				{ fieldtype: 'Small Text', fieldname: 'reason', label: __('Reason'), reqd: 1 },
 				{ fieldtype: 'Check', fieldname: 'end_now', label: __('End it today'),
-					description: __('Off: it runs to {0} and is not renewed. On: it ends today. Either way any refund is a credit note made by hand.', [date(m.current_period_end)]) },
+					description: __('Off: it runs to {0} and is not renewed. On: it ends today. To give money back, use Card refund on the invoice.', [date(m.current_period_end)]) },
 			],
 			primary_action_label: __('Cancel membership'),
 			primary_action: async (v) => {

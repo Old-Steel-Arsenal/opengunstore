@@ -68,7 +68,7 @@
 		const types = [{ value: 'Return', label: __('Return / price lowered — credit note takes it off the sale') },
 			{ value: 'Collect again', label: __('Collect again — the sale stands, the invoice owes it again') }];
 		const note = out.membership
-			? __('Membership invoice: end the membership first (Cancel → end now), then refund as a Return.')
+			? __('Membership invoice: end the membership first (Cancel → End it today), then refund as a Return.')
 			: (out.return_blocked ? __('A Return is not possible here because {0} — use Cancel Order or a sales return.', [out.return_blocked]) : '');
 		const d = new frappe.ui.Dialog({
 			title: __('Refund card charge — {0}', [frm.doc.name]),

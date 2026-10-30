@@ -366,7 +366,7 @@ def refund_sales_invoice_charge(terminal_payment: str, amount, refund_type: str,
 			frappe.throw(_("{0} cannot be refunded as a return from here because {1}. Use Cancel Order or a sales "
 				"return for it.").format(si.name, why))
 		if any(not i.service_stop_date for i in _deferred(si)):
-			frappe.throw(_("{0} is a membership invoice: end the membership first (Cancel → end now), then "
+			frappe.throw(_("{0} is a membership invoice: end the membership first (Cancel → End it today), then "
 				"refund.").format(si.name))
 		cn_amt = _credit_note_total(si, amt, reason)
 		# Never refund a different amount than the credit note takes back.

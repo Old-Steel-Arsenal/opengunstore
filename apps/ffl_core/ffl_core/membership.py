@@ -1015,7 +1015,7 @@ def _attempt(doc, plan, today, *, manual: bool = False) -> str:
 		error = _("only part of the amount was approved")
 	if _charge_waiting(invoice):
 		doc.last_charge_status = _("The card charge for {0} was not confirmed by the gateway. It is not charged "
-			"again: look it up with Retry now (Membership Settings → Needs attention).").format(invoice)
+			"again: look it up with Look up card charge (Customers → Memberships → Needs attention).").format(invoice)
 		_save(doc)
 		return UNKNOWN
 	if not out and not waiting and _charge_rows(invoice) == before and _rollback_to("membership_renewal_charge"):
@@ -1146,7 +1146,7 @@ def invoice_renewal(membership: str) -> dict:
 	row = _open_renewal(doc, start)
 	if row and _charge_waiting(row.sales_invoice):
 		frappe.throw(_("A card charge on {0} is waiting for the gateway's answer. A manager looks it up first "
-			"(Retry now); taking another payment now could charge the customer twice.").format(row.sales_invoice),
+			"(Look up card charge); taking another payment now could charge the customer twice.").format(row.sales_invoice),
 			title=_("Charge not confirmed"))
 	if not row:
 		si = _make_invoice(doc, plan, start, end=end, posting=today, renewal=True)
