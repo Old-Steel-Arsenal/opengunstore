@@ -29,7 +29,7 @@
 
 ## Local dev bench
 
-`make dev-bench-init` initializes from the **head of the `version-16` branch** (`FRAPPE_BRANCH`, default `version-16`), which is usually newer than the tags production runs; afterwards frappe/erpnext inside the bench are plain git checkouts and do not follow upstream automatically. The versions production runs are pinned in `deploy/prod/frappe-refs.env` (`FRAPPE_REF`, `ERPNEXT_REF` and `HRMS_REF`, which can differ). `make dev-site-create` fetches hrms at `HRMS_REF` into the bench if it is missing and installs it on the dev site.
+`make dev-bench-init` initializes from the **head of the `version-16` branch** (`FRAPPE_BRANCH`, default `version-16`), which is usually newer than the tags production runs; afterwards frappe/erpnext inside the bench are plain git checkouts and do not follow upstream automatically. The versions production runs are pinned in `deploy/prod/frappe-refs.env` (`FRAPPE_REF`, `ERPNEXT_REF` and `HRMS_REF`, which can differ). `make dev-site-create` fetches hrms (`version-16` head, like the rest of the dev bench) if the bench lacks it and installs it on the dev site.
 
 - `make dev-upgrade` moves the bench to the **latest `version-16` head** (fetch, checkout, pull, reinstall the venv, migrate; it works the same way inside a worktree). It does **not** align the bench with the versions pinned in `deploy/prod/frappe-refs.env`.
 - `make ci-upgrade-test` = `dev-upgrade` + `test`, so it **permanently** upgrades and migrates the dev bench and its site to the version-16 head; it does not restore the previous versions afterwards. Use a throwaway worktree bench (`make dev-bench-clone`) for it, and `make dev-down-volumes` plus deleting the worktree to discard it. CI runs it against a throwaway bench.

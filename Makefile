@@ -96,7 +96,7 @@ dev-bench-clone: ## Worktree only: clone the main checkout's frappe-bench (APFS 
 dev-site-create: ## Create the dev site and install ERPNext + HRMS; always (re-)applies allow_tests
 	$(COMPOSE) exec -T frappe bash -lc '\
 		cd /workspace/frappe-bench && \
-		{ [ -d apps/hrms ] || { . /workspace/deploy/prod/frappe-refs.env && bench get-app --branch "$$HRMS_REF" hrms https://github.com/frappe/hrms.git; }; } && \
+		{ [ -d apps/hrms ] || bench get-app --branch $(FRAPPE_BRANCH) hrms https://github.com/frappe/hrms.git; } && \
 		if bench --site $(SITE_NAME) doctor >/dev/null 2>&1; then \
 			echo "*** Site $(SITE_NAME) already exists — NOT recreated; drop it with: make dev-site-drop CONFIRM=yes"; \
 		else \

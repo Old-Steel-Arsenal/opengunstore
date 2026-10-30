@@ -414,6 +414,7 @@ jobs:
           fi
           echo "frappe_target=${FRAPPE_REF}" >> "$GITHUB_OUTPUT"
           echo "erpnext_target=${ERPNEXT_REF}" >> "$GITHUB_OUTPUT"
+          echo "hrms_target=${HRMS_REF}" >> "$GITHUB_OUTPUT"
           if [ -n "$UPGRADE_FROM" ] && [ "$USE_CACHE" = "true" ] && [ -f gunstore-old/deploy/prod/frappe-refs.env ]; then
             # shellcheck source=/dev/null
             . gunstore-old/deploy/prod/frappe-refs.env
@@ -648,25 +649,26 @@ jobs:
           done
 
       - name: Move the bench to the refs under test
-        if: ${{ inputs.upgrade_from != '' && (steps.refs.outputs.frappe != steps.refs.outputs.frappe_target || steps.refs.outputs.erpnext != steps.refs.outputs.erpnext_target) }}
+        if: ${{ inputs.upgrade_from != '' && (steps.refs.outputs.frappe != steps.refs.outputs.frappe_target || steps.refs.outputs.erpnext != steps.refs.outputs.erpnext_target || steps.refs.outputs.hrms != steps.refs.outputs.hrms_target) }}
         working-directory: frappe-bench
         env:
           FRAPPE_REF: ${{ steps.refs.outputs.frappe_target }}
           ERPNEXT_REF: ${{ steps.refs.outputs.erpnext_target }}
+          HRMS_REF: ${{ steps.refs.outputs.hrms_target }}
         run: |
           set -euo pipefail
-          for app in frappe erpnext; do
-            if [ "$app" = frappe ]; then ref="$FRAPPE_REF"; else ref="$ERPNEXT_REF"; fi
+          for app in frappe erpnext hrms; do
+            case "$app" in frappe) ref="$FRAPPE_REF" ;; erpnext) ref="$ERPNEXT_REF" ;; hrms) ref="$HRMS_REF" ;; esac
             # by URL, not remote name: a reused bench's clones need not share one
             git -C "apps/$app" fetch --quiet --depth 1 "https://github.com/frappe/$app.git" "$ref"
             # --force: the build's yarn install rewrites tracked lockfiles (erpnext banking/yarn.lock)
             git -C "apps/$app" checkout --quiet --force FETCH_HEAD
           done
-          ./env/bin/pip install --quiet -e apps/frappe -e apps/erpnext
+          ./env/bin/pip install --quiet -e apps/frappe -e apps/erpnext -e apps/hrms
           # and the front end, so nothing of the old release is left in this bench
           bench setup requirements --node
           bench build
-          ./env/bin/python -c 'import frappe, erpnext; print(f"bench moved to frappe {frappe.__version__}, erpnext {erpnext.__version__}")'
+          ./env/bin/python -c 'import frappe, erpnext, hrms; print(f"bench moved to frappe {frappe.__version__}, erpnext {erpnext.__version__}, hrms {hrms.__version__}")'
 
       # The card-charge storage rename (ffl_integrations rename_payroc_storage_to_card) moves live
       # money facts: card rows written in the OLD shape before the migrate must all read back under
