@@ -487,7 +487,7 @@ def log_gun(doc) -> None:
 
 	missing = [label for field, label in (("caliber", _("Caliber / Gauge")), ("firearm_type", _("Firearm Type")),
 		("address_line1", _("Street Address")), ("city", _("City")), ("state", _("State")), ("zip", _("ZIP")),
-		("id_type", _("Customer ID Type")), ("id_number", _("Customer ID Number"))) if not (doc.get(field) or "").strip()]
+		("id_type", _("ID Type")), ("id_number", _("ID Number"))) if not (doc.get(field) or "").strip()]
 	if missing:
 		frappe.throw(_("To log the gun in the bound book, fill in: {0}.").format(", ".join(missing)),
 			title=_("Bound book"))

@@ -1376,10 +1376,6 @@
             "type": "string",
             "description": "Customer (Link: Customer)"
           },
-          "customer_name": {
-            "type": "string",
-            "description": "Customer Name"
-          },
           "phone": {
             "type": "string",
             "description": "Phone"
@@ -1388,48 +1384,105 @@
             "type": "string",
             "description": "Email"
           },
-          "address": {
+          "address_line1": {
             "type": "string",
-            "description": "Address"
+            "description": "Street Address"
           },
-          "status": {
+          "city": {
+            "type": "string",
+            "description": "City"
+          },
+          "state": {
             "type": "string",
             "enum": [
-              "Received",
-              "In Progress",
-              "Ready",
-              "Picked Up",
-              "Cancelled"
+              "AL",
+              "AK",
+              "AZ",
+              "AR",
+              "CA",
+              "CO",
+              "CT",
+              "DE",
+              "DC",
+              "FL",
+              "GA",
+              "HI",
+              "ID",
+              "IL",
+              "IN",
+              "IA",
+              "KS",
+              "KY",
+              "LA",
+              "ME",
+              "MD",
+              "MA",
+              "MI",
+              "MN",
+              "MS",
+              "MO",
+              "MT",
+              "NE",
+              "NV",
+              "NH",
+              "NJ",
+              "NM",
+              "NY",
+              "NC",
+              "ND",
+              "OH",
+              "OK",
+              "OR",
+              "PA",
+              "RI",
+              "SC",
+              "SD",
+              "TN",
+              "TX",
+              "UT",
+              "VT",
+              "VA",
+              "WA",
+              "WV",
+              "WI",
+              "WY"
             ],
-            "description": "Status"
+            "description": "State"
           },
-          "company": {
+          "zip": {
             "type": "string",
-            "description": "Company (Link: Company)"
+            "description": "ZIP"
           },
-          "received_by": {
+          "id_type": {
             "type": "string",
-            "description": "Received By (Link: User)"
+            "enum": [
+              "Driver License",
+              "State ID",
+              "Passport",
+              "Military ID",
+              "Other"
+            ],
+            "description": "ID Type"
           },
-          "received_on": {
+          "id_number": {
             "type": "string",
-            "description": "Date Received"
+            "description": "ID Number"
+          },
+          "id_document": {
+            "type": "string",
+            "description": "ID Scan"
           },
           "manufacturer": {
             "type": "string",
             "description": "Manufacturer"
           },
-          "model": {
-            "type": "string",
-            "description": "Model"
-          },
           "caliber": {
             "type": "string",
             "description": "Caliber / Gauge"
           },
-          "serial_number": {
+          "model": {
             "type": "string",
-            "description": "Serial Number"
+            "description": "Model"
           },
           "firearm_type": {
             "type": "string",
@@ -1449,17 +1502,9 @@
             ],
             "description": "Firearm Type"
           },
-          "accessories": {
+          "serial_number": {
             "type": "string",
-            "description": "Accessories"
-          },
-          "condition": {
-            "type": "string",
-            "description": "Condition"
-          },
-          "firearm_notes": {
-            "type": "string",
-            "description": "Notes"
+            "description": "Serial Number"
           },
           "log_in_bound_book": {
             "type": "integer",
@@ -1469,36 +1514,17 @@
             ],
             "description": "Log in Bound Book"
           },
-          "id_type": {
+          "accessories": {
             "type": "string",
-            "enum": [
-              "Driver License",
-              "State ID",
-              "Passport",
-              "Military ID",
-              "Other"
-            ],
-            "description": "Customer ID Type"
+            "description": "Came In With"
           },
-          "id_number": {
+          "condition": {
             "type": "string",
-            "description": "Customer ID Number"
+            "description": "Condition"
           },
-          "purchase_receipt": {
+          "firearm_notes": {
             "type": "string",
-            "description": "Custody Receipt (Link: Purchase Receipt)"
-          },
-          "item_code": {
-            "type": "string",
-            "description": "Item (Link: Item)"
-          },
-          "serial_no": {
-            "type": "string",
-            "description": "Serial No (Link: Serial No)"
-          },
-          "disposition": {
-            "type": "string",
-            "description": "Disposition (Link: FFL Disposition)"
+            "description": "Notes"
           },
           "work_requested": {
             "type": "string",
@@ -1506,35 +1532,15 @@
           },
           "estimated_cost": {
             "type": "number",
-            "description": "Estimated Cost"
-          },
-          "deposit_amount": {
-            "type": "number",
-            "description": "Paid at Intake"
+            "description": "Estimate"
           },
           "estimated_completion": {
             "type": "string",
-            "description": "Estimated Completion"
+            "description": "Ready By"
           },
-          "intake_agreement": {
+          "scan_barcode": {
             "type": "string",
-            "description": "Intake Authorization (Link: Customer Agreement)"
-          },
-          "deposit_invoice": {
-            "type": "string",
-            "description": "Deposit Invoice (Link: POS Invoice)"
-          },
-          "deposit_held": {
-            "type": "number",
-            "description": "Deposit Held"
-          },
-          "gunsmith": {
-            "type": "string",
-            "description": "Gunsmith (Link: User)"
-          },
-          "work_performed": {
-            "type": "string",
-            "description": "Work Performed"
+            "description": "Scan"
           },
           "lines": {
             "type": "array",
@@ -1545,7 +1551,15 @@
           },
           "final_cost": {
             "type": "number",
-            "description": "Final Cost"
+            "description": "Total Before Tax"
+          },
+          "gunsmith": {
+            "type": "string",
+            "description": "Gunsmith (Link: User)"
+          },
+          "work_performed": {
+            "type": "string",
+            "description": "Work Performed"
           },
           "completed_on": {
             "type": "string",
@@ -1568,10 +1582,6 @@
             "type": "string",
             "description": "Notified By (Link: User)"
           },
-          "pickup_invoice": {
-            "type": "string",
-            "description": "Pick-up Invoice (Link: POS Invoice)"
-          },
           "picked_up_on": {
             "type": "string",
             "description": "Date Picked Up"
@@ -1579,16 +1589,79 @@
           "cancel_reason": {
             "type": "string",
             "description": "Cancel Reason"
+          },
+          "received_on": {
+            "type": "string",
+            "description": "Date Received"
+          },
+          "received_by": {
+            "type": "string",
+            "description": "Received By (Link: User)"
+          },
+          "company": {
+            "type": "string",
+            "description": "Company (Link: Company)"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Received",
+              "In Progress",
+              "Ready",
+              "Picked Up",
+              "Cancelled"
+            ],
+            "description": "Status"
+          },
+          "customer_name": {
+            "type": "string",
+            "description": "Customer Name"
+          },
+          "deposit_amount": {
+            "type": "number",
+            "description": "Paid at Intake"
+          },
+          "deposit_held": {
+            "type": "number",
+            "description": "Deposit Held"
+          },
+          "deposit_invoice": {
+            "type": "string",
+            "description": "Deposit Invoice (Link: POS Invoice)"
+          },
+          "pickup_invoice": {
+            "type": "string",
+            "description": "Pick-up Invoice (Link: POS Invoice)"
+          },
+          "intake_agreement": {
+            "type": "string",
+            "description": "Intake Authorization (Link: Customer Agreement)"
+          },
+          "purchase_receipt": {
+            "type": "string",
+            "description": "Custody Receipt (Link: Purchase Receipt)"
+          },
+          "item_code": {
+            "type": "string",
+            "description": "Item (Link: Item)"
+          },
+          "serial_no": {
+            "type": "string",
+            "description": "Serial No (Link: Serial No)"
+          },
+          "disposition": {
+            "type": "string",
+            "description": "Disposition (Link: FFL Disposition)"
           }
         },
         "required": [
           "customer",
-          "company",
-          "received_on",
           "manufacturer",
           "model",
           "serial_number",
-          "work_requested"
+          "work_requested",
+          "received_on",
+          "company"
         ]
       },
       "Gunsmith_Work_Order_Line": {
@@ -13809,7 +13882,7 @@
           "ffl_core"
         ],
         "summary": "Hand the gun back. With nothing to charge and no deposit held, the job is",
-        "description": "picked up now; otherwise this opens (or returns) the draft register invoice with\nthe charges and the deposit held coming off them, and its submit picks the job up.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:574`",
+        "description": "picked up now; otherwise this opens (or returns) the draft register invoice with\nthe charges and the deposit held coming off them, and its submit picks the job up.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:576`",
         "operationId": "ffl_core.gunsmith.open_pickup",
         "responses": {
           "200": {
@@ -13857,7 +13930,7 @@
           "ffl_core"
         ],
         "summary": "Open (or return) the draft register return that pays back the deposit still held",
-        "description": "— a cancelled job's, or what a smaller bill left over. A return goes against one\npayment and refunds at most that payment, newest first; with several payments held\nthe rest is refunded with the next return.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:638`",
+        "description": "— a cancelled job's, or what a smaller bill left over. A return goes against one\npayment and refunds at most that payment, newest first; with several payments held\nthe rest is refunded with the next return.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:643`",
         "operationId": "ffl_core.gunsmith.refund_deposit",
         "responses": {
           "200": {

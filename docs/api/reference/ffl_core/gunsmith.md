@@ -172,7 +172,7 @@ the charges and the deposit held coming off them, and its submit picks the job u
 
 **Returns:** {"pos_invoice", "already": bool} or {"picked_up": True, "refund_due": deposit still held, refunded with :func:`refund_deposit`}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:574`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:576`</sub>
 
 ## `refund_deposit`
 
@@ -192,7 +192,7 @@ the rest is refunded with the next return.
 
 **Returns:** {"pos_invoice", "already": bool, "amount": what this return pays back}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:638`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:643`</sub>
 
 ## `register_work_orders`
 

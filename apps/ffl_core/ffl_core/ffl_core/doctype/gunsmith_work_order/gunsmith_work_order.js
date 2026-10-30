@@ -40,6 +40,16 @@ frappe.ui.form.on('Gunsmith Work Order', {
 		if (!frm.doc.customer) return;
 		// The paper form's customer block, refilled for the new customer (the server fills blanks too).
 		frm.set_value({ phone: '', email: '', address_line1: '', city: '', state: '', zip: '' });
+		// Filled now, as Receive Goods does; a state the dropdown lacks is left for staff to pick.
+		frappe.call({ method: 'ffl_core.api.trade_in.seller_defaults', args: { customer: frm.doc.customer } })
+			.then((r) => {
+				const d = r.message || {};
+				const state = (d.source_state || '').toUpperCase();
+				frm.set_value({
+					phone: d.phone || '', email: d.email || '', address_line1: d.source_address_line1 || '',
+					city: d.source_city || '', zip: d.source_zip || '', state: /^[A-Z]{2}$/.test(state) ? state : '',
+				});
+			});
 	},
 });
 
@@ -159,9 +169,9 @@ function logDialog(frm) {
 	const d = frm.doc;
 	frappe.prompt([
 		{ fieldtype: 'HTML', options: '<p>' + __('The gun is received from {0} as a Gunsmithing acquisition and held in customer custody at zero cost (never for sale). At pick-up a Gunsmithing disposition returns it to them.', [frappe.utils.escape_html(d.customer_name || d.customer)]) + '</p>' },
-		{ fieldtype: 'Select', fieldname: 'id_type', label: __('Customer ID Type'), reqd: 1, default: d.id_type,
+		{ fieldtype: 'Select', fieldname: 'id_type', label: __('ID Type'), reqd: 1, default: d.id_type,
 			options: ['', 'Driver License', 'State ID', 'Passport', 'Military ID', 'Other'] },
-		{ fieldtype: 'Data', fieldname: 'id_number', label: __('Customer ID Number'), reqd: 1, default: d.id_number },
+		{ fieldtype: 'Data', fieldname: 'id_number', label: __('ID Number'), reqd: 1, default: d.id_number },
 	], (v) => act(frm, 'log_in_bound_book', v), __('Log in bound book'), __('Log it'));
 }
 

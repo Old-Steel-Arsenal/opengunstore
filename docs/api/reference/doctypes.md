@@ -395,47 +395,52 @@ A customer's gun left for gunsmithing: intake, authorization, deposit, the work,
 | field | type | label | reqd | options |
 |---|---|---|---|---|
 | `customer` | Link | Customer | ✓ | Customer |
-| `customer_name` | Data | Customer Name |  |  |
 | `phone` | Data | Phone |  | Phone |
 | `email` | Data | Email |  | Email |
-| `address` | Small Text | Address |  |  |
-| `status` | Select | Status |  | Received, In Progress, Ready, Picked Up, Cancelled |
-| `company` | Link | Company | ✓ | Company |
-| `received_by` | Link | Received By |  | User |
-| `received_on` | Date | Date Received | ✓ |  |
+| `address_line1` | Data | Street Address |  |  |
+| `city` | Data | City |  |  |
+| `state` | Select | State |  | , AL, AK, AZ, AR, CA, CO, CT, DE, DC, FL, GA, HI, ID, IL, IN, IA, KS, KY, LA, ME, MD, MA, MI, MN, MS, MO, MT, NE, NV, NH, NJ, NM, NY, NC, ND, OH, OK, OR, PA, RI, SC, SD, TN, TX, UT, VT, VA, WA, WV, WI, WY |
+| `zip` | Data | ZIP |  |  |
+| `id_type` | Select | ID Type |  | , Driver License, State ID, Passport, Military ID, Other |
+| `id_number` | Data | ID Number |  |  |
+| `id_document` | Attach | ID Scan |  |  |
 | `manufacturer` | Data | Manufacturer | ✓ |  |
-| `model` | Data | Model | ✓ |  |
 | `caliber` | Data | Caliber / Gauge |  |  |
-| `serial_number` | Data | Serial Number | ✓ |  |
+| `model` | Data | Model | ✓ |  |
 | `firearm_type` | Select | Firearm Type |  | , Pistol, Revolver, Rifle, Shotgun, Receiver, Other Firearm, Silencer, Short Barreled Rifle, Short Barreled Shotgun, Machine Gun, Destructive Device, Any Other Weapon |
-| `accessories` | Small Text | Accessories |  |  |
+| `serial_number` | Data | Serial Number | ✓ |  |
+| `log_in_bound_book` | Check | Log in Bound Book |  |  |
+| `accessories` | Small Text | Came In With |  |  |
 | `condition` | Small Text | Condition |  |  |
 | `firearm_notes` | Small Text | Notes |  |  |
-| `log_in_bound_book` | Check | Log in Bound Book |  |  |
-| `id_type` | Select | Customer ID Type |  | , Driver License, State ID, Passport, Military ID, Other |
-| `id_number` | Data | Customer ID Number |  |  |
-| `purchase_receipt` | Link | Custody Receipt |  | Purchase Receipt |
-| `item_code` | Link | Item |  | Item |
-| `serial_no` | Link | Serial No |  | Serial No |
-| `disposition` | Link | Disposition |  | FFL Disposition |
 | `work_requested` | Small Text | Work Requested | ✓ |  |
-| `estimated_cost` | Currency | Estimated Cost |  | Company:company:default_currency |
-| `deposit_amount` | Currency | Paid at Intake |  | Company:company:default_currency |
-| `estimated_completion` | Date | Estimated Completion |  |  |
-| `intake_agreement` | Link | Intake Authorization |  | Customer Agreement |
-| `deposit_invoice` | Link | Deposit Invoice |  | POS Invoice |
-| `deposit_held` | Currency | Deposit Held |  | Company:company:default_currency |
+| `estimated_cost` | Currency | Estimate |  | Company:company:default_currency |
+| `estimated_completion` | Date | Ready By |  |  |
+| `scan_barcode` | Data | Scan |  | Barcode |
+| `lines` | Table | Charges |  | Gunsmith Work Order Line |
+| `final_cost` | Currency | Total Before Tax |  | Company:company:default_currency |
 | `gunsmith` | Link | Gunsmith |  | User |
 | `work_performed` | Text | Work Performed |  |  |
-| `lines` | Table | Charges |  | Gunsmith Work Order Line |
-| `final_cost` | Currency | Final Cost |  | Company:company:default_currency |
 | `completed_on` | Date | Date Completed |  |  |
 | `notified_via` | Select | Customer Notified By |  | , Phone, Email, Text |
 | `notified_on` | Datetime | Date Notified |  |  |
 | `notified_by` | Link | Notified By |  | User |
-| `pickup_invoice` | Link | Pick-up Invoice |  | POS Invoice |
 | `picked_up_on` | Datetime | Date Picked Up |  |  |
 | `cancel_reason` | Small Text | Cancel Reason |  |  |
+| `received_on` | Date | Date Received | ✓ |  |
+| `received_by` | Link | Received By |  | User |
+| `company` | Link | Company | ✓ | Company |
+| `status` | Select | Status |  | Received, In Progress, Ready, Picked Up, Cancelled |
+| `customer_name` | Data | Customer Name |  |  |
+| `deposit_amount` | Currency | Paid at Intake |  | Company:company:default_currency |
+| `deposit_held` | Currency | Deposit Held |  | Company:company:default_currency |
+| `deposit_invoice` | Link | Deposit Invoice |  | POS Invoice |
+| `pickup_invoice` | Link | Pick-up Invoice |  | POS Invoice |
+| `intake_agreement` | Link | Intake Authorization |  | Customer Agreement |
+| `purchase_receipt` | Link | Custody Receipt |  | Purchase Receipt |
+| `item_code` | Link | Item |  | Item |
+| `serial_no` | Link | Serial No |  | Serial No |
+| `disposition` | Link | Disposition |  | FFL Disposition |
 
 ## Gunsmith Work Order Line
 
