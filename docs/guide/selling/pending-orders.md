@@ -216,8 +216,11 @@ Pushes the order to ShipStation so staff pick the carrier and buy the label
 there. It does not dispose anything and does not touch the bound book.
 
 Offered on counter and GunBroker rows while the ShipStation integration is on and
-the order has not been pushed. On a GunBroker row it appears only after Dispose,
-because the invoice ShipStation ships against is created by the dispose step.
+the order has not been pushed. On a GunBroker row it is greyed out until
+**Mark Payment Received**, and can be used before or after Dispose. A Type 03
+order must be disposed first. When Dispose booked the guns but the invoice did
+not post, the card shows **Create Invoice** instead, until it posts. See
+[GunBroker](../channels/gunbroker.md#working-the-order).
 Never offered on a web order: the store's own ShipStation plugin on WooCommerce
 buys that label.
 
