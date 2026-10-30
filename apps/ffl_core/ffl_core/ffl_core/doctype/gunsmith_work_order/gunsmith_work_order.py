@@ -75,8 +75,12 @@ class GunsmithWorkOrder(Document):
 
 		labor = labor_item()
 		if before is None:
-			if not self.get("lines") and frappe.db.exists("Item", labor):
+			# First, whatever was scanned in before the first save.
+			if not any(r.item_code == labor for r in self.get("lines") or []) and frappe.db.exists("Item", labor):
 				self.append("lines", {"item_code": labor, "qty": 1, "rate": flt(self.estimated_cost)})
+				self.lines.insert(0, self.lines.pop())
+				for i, r in enumerate(self.lines, 1):
+					r.idx = i
 			return
 		if flt(self.estimated_cost) != flt(before.estimated_cost):
 			for row in self.get("lines") or []:
@@ -86,9 +90,9 @@ class GunsmithWorkOrder(Document):
 	def _no_firearm_charges(self):
 		"""A charge is labor or a part; a firearm on the bill (a scanned serial tag, often the
 		customer's own gun) would sell a gun through the work order."""
-		codes = {r.item_code for r in self.get("lines") or [] if r.item_code}
-		guns = frappe.get_all("Item", filters={"name": ["in", list(codes)], "is_firearm": 1}, pluck="name") \
-			if codes else []
+		from ffl_core.firearm import is_firearm_item
+
+		guns = sorted({r.item_code for r in self.get("lines") or [] if is_firearm_item(r.item_code)})
 		if guns:
 			frappe.throw(_("{0} is a firearm, not a part. Remove it from the charges.").format(
 				", ".join(guns)), title=_("Charges"))
@@ -102,17 +106,15 @@ class GunsmithWorkOrder(Document):
 		self.phone = self.phone or cust.mobile_no
 		self.email = self.email or cust.email_id
 		if not self.address_line1:
-			# Split like Receive Goods' seller address; "Texas" is filled as "TX", and a
-			# state the dropdown lacks is left for staff to pick.
+			# Split like Receive Goods' seller address; a state the dropdown lacks is left
+			# for staff to pick.
 			from ffl_core.api.trade_in import customer_address_parts
-			from ffl_core.compliance.interstate_tax import normalize_us_state
 			parts = customer_address_parts(self.customer)
 			self.address_line1 = parts.get("address_line1") or None
 			self.city = self.city or parts.get("city") or None
 			self.zip = self.zip or parts.get("zip") or None
-			state = normalize_us_state(parts.get("state"))
-			if not self.state and state in (self.meta.get_options("state") or "").split("\n"):
-				self.state = state
+			if not self.state and parts.get("state") in (self.meta.get_options("state") or "").split("\n"):
+				self.state = parts["state"]
 
 	def agreement_context(self) -> dict:
 		"""Placeholders for the intake authorization (agreements.document_context)."""

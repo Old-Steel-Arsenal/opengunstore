@@ -38,16 +38,16 @@ frappe.ui.form.on('Gunsmith Work Order', {
 	},
 	customer(frm) {
 		if (!frm.doc.customer) return;
-		// The paper form's customer block, refilled for the new customer (the server fills blanks too).
-		frm.set_value({ phone: '', email: '', address_line1: '', city: '', state: '', zip: '' });
-		// Filled now, as Receive Goods does; a state the dropdown lacks is left for staff to pick.
+		// The paper form's customer block, refilled now for the new customer, as Receive Goods
+		// does (the server fills blanks too); a state the dropdown lacks is left for staff to pick.
 		frappe.call({ method: 'ffl_core.api.trade_in.seller_defaults', args: { customer: frm.doc.customer } })
 			.then((r) => {
 				const d = r.message || {};
-				const state = (d.source_state || '').toUpperCase();
+				const states = frm.get_field('state').df.options.split('\n');
 				frm.set_value({
 					phone: d.phone || '', email: d.email || '', address_line1: d.source_address_line1 || '',
-					city: d.source_city || '', zip: d.source_zip || '', state: /^[A-Z]{2}$/.test(state) ? state : '',
+					city: d.source_city || '', zip: d.source_zip || '',
+					state: states.includes(d.source_state) ? d.source_state : '',
 				});
 			});
 	},
@@ -60,23 +60,21 @@ frappe.ui.form.on('Gunsmith Work Order Line', {
 		// A part comes with its name and the store's selling price; both stay editable.
 		const row = locals[cdt][cdn];
 		if (!row.item_code) return;
-		frappe.db.get_value('Item', row.item_code, ['item_name', 'is_firearm']).then((r) => {
-			const it = r.message || {};
-			if (it.is_firearm) {
-				// A scanned serial tag (often the customer's own gun) is not a part.
-				frappe.show_alert({ indicator: 'red', message: __('{0} is a firearm, not a part.', [row.item_code]) });
-				frm.get_field('lines').grid.get_row(cdn).remove();
-				return;
-			}
-			if (it.item_name && !row.description) frappe.model.set_value(cdt, cdn, 'description', it.item_name);
-			const price_list = frappe.defaults.get_default('selling_price_list');
-			if (!price_list || flt(row.rate)) return;
-			frappe.db.get_value('Item Price', { item_code: row.item_code, price_list, selling: 1 }, 'price_list_rate')
-				.then((p) => {
-					const rate = flt(p.message && p.message.price_list_rate);
-					if (rate && !flt(row.rate)) frappe.model.set_value(cdt, cdn, 'rate', rate);
-				});
+		// Not the labor: its line on the bill reads the job's Work Performed.
+		laborItem().then((labor) => {
+			if (row.item_code === labor || row.description) return;
+			frappe.db.get_value('Item', row.item_code, 'item_name').then((r) => {
+				const name = r.message && r.message.item_name;
+				if (name && !row.description) frappe.model.set_value(cdt, cdn, 'description', name);
+			});
 		});
+		const price_list = frappe.defaults.get_default('selling_price_list');
+		if (!price_list || flt(row.rate)) return;
+		frappe.db.get_value('Item Price', { item_code: row.item_code, price_list, selling: 1 }, 'price_list_rate')
+			.then((r) => {
+				const rate = flt(r.message && r.message.price_list_rate);
+				if (rate && !flt(row.rate)) frappe.model.set_value(cdt, cdn, 'rate', rate);
+			});
 	},
 	lines_add(frm, cdt, cdn) {
 		// The scanner adds 1 to the row's qty, so its new row starts from 0, not the default 1.
@@ -94,8 +92,12 @@ frappe.ui.form.on('Gunsmith Work Order Line', {
 });
 
 // The store's labor item, as the server's setup.labor_item(): the setting, else GUNSMITHING.
+// Read once per page load.
+let laborItemPromise;
 function laborItem() {
-	return frappe.db.get_single_value('FFL Settings', 'gunsmith_labor_item').then((item) => item || 'GUNSMITHING');
+	laborItemPromise = laborItemPromise
+		|| frappe.db.get_single_value('FFL Settings', 'gunsmith_labor_item').then((item) => item || 'GUNSMITHING');
+	return laborItemPromise;
 }
 
 function lineAmount(frm, cdt, cdn) {

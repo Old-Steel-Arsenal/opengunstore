@@ -183,6 +183,10 @@ class Status(_Base):
 		job.save(ignore_permissions=True)
 		self.assertFalse(job.lines, "a removed labor charge is not put back")
 
+	def test_a_part_scanned_before_the_first_save_goes_under_the_labor(self):
+		job = _job(self.cust, estimated_cost=80, lines=[{"item_code": "_Test GW Part", "qty": 1, "rate": 40}])
+		self.assertEqual([(r.idx, r.item_code) for r in job.lines], [(1, LABOR_ITEM), (2, "_Test GW Part")])
+
 	def test_status_moves_only_through_the_actions(self):
 		job = _job(self.cust)
 		job.status = "Ready"

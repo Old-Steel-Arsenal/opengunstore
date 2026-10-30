@@ -545,8 +545,6 @@ def seller_defaults(customer: str) -> dict:
 	middle = (cust.middle_name or "").strip() or split["middle"]
 	suffix = (cust.name_suffix or "").strip() or split["suffix"]
 
-	from ffl_core.compliance.interstate_tax import normalize_us_state
-
 	parts = customer_address_parts(customer)
 	return {
 		"source_first_name": first,
@@ -556,8 +554,7 @@ def seller_defaults(customer: str) -> dict:
 		# Structured parts for the dialog's split address fields…
 		"source_address_line1": parts.get("address_line1", ""),
 		"source_city": parts.get("city", ""),
-		# A spelled-out "Texas" becomes "TX" for the forms' 2-letter state dropdowns.
-		"source_state": normalize_us_state(parts.get("state")) or parts.get("state", ""),
+		"source_state": parts.get("state", ""),
 		"source_zip": parts.get("zip", ""),
 		# …and the composed line for legacy consumers.
 		"source_address": _compose_address_line(parts),
@@ -569,8 +566,11 @@ def seller_defaults(customer: str) -> dict:
 def customer_address_parts(customer: str) -> dict:
 	"""The Customer's primary Address as structured parts ({address_line1,
 	city, state, zip}) straight off the Address record — the dialog prefill
-	maps these onto its split fields with no string parsing anywhere. Empty
-	dict when the customer has no usable primary address."""
+	maps these onto its split fields with no string parsing anywhere. A
+	spelled-out state ("Texas") comes back as its code. Empty dict when the
+	customer has no usable primary address."""
+	from ffl_core.compliance.interstate_tax import normalize_us_state
+
 	primary = frappe.db.get_value("Customer", customer, "customer_primary_address")
 	if not primary:
 		return {}
@@ -583,7 +583,7 @@ def customer_address_parts(customer: str) -> dict:
 	return {
 		"address_line1": a.address_line1.strip(),
 		"city": (a.city or "").strip(),
-		"state": (a.state or "").strip(),
+		"state": normalize_us_state(a.state) or (a.state or "").strip(),
 		"zip": (a.pincode or "").strip(),
 	}
 
