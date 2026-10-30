@@ -212,7 +212,8 @@ shop:
 | Long guns, ammunition and accessories | 500.00 | 5.00, **Long guns / ammo / accessories below that** |
 
 Those are the defaults. An order holding both pays the higher of the two
-charges. The Sports South card on the hub reads the rule back in one line.
+charges. Sports South orders to the store use this rule on the Distributor Order too. Only
+the air upgrades keep the flat rates above. The Sports South card on the hub reads the rule back in one line.
 **Alert when invoiced freight differs by more than**, 5.00 by default, works as
 it does for RSR.
 
@@ -242,7 +243,7 @@ that failed to place.
 card of the [Distributors hub](../distributors/hub.md). Connects to Lipsey's
 ordering API. The catalog reaches the store through Data Service, or, with a
 [Local catalog](../../data-service.md#local-catalog), from Lipsey's own feeds
-with the dealer login. The page has three tabs: Account, Ordering and Status.
+with the dealer login. The page has four tabs: Account, Ordering, Freight and Status.
 
 Lipsey's lets in only computers it has approved, so the API must be reached from
 the address you gave Lipsey's when you asked for API access.
@@ -264,16 +265,20 @@ collapsed **Advanced** section holds **API base URL**.
 
 **Ordering tab.** **No confirmation email from Lipsey's** stops Lipsey's own
 order email for orders placed from the POS. Leave it off: that email is how you
-check an order whose answer never came back.
+check an order whose answer never came back. Tick **Accessory drop-ship orders
+ship overnight** to ask Lipsey's for overnight shipping on accessory drop-ship
+orders. Lipsey's bills those at overnight rates, so the POS gives no freight
+estimate for them.
 
-**Status tab.** Lipsey's has no order status call. Once a day the POS reads the
-shipping list Lipsey's publishes for the day before: invoice number, Lipsey's
-order number, your PO and tracking. That list lands in the Invoices view with the
-hourly invoice pull, and the order poll then marks the order shipped.
-**Shipping polled through** shows the last day read for each login (dealer and
-drop-ship), and **Last shipping poll** when. A day that fails is read again on the
-next pull. A login that keeps failing does not hold up the other one. **Last
-error** holds the last failure.
+**Freight tab.** The flat rates Create Order estimates Lipsey's drop-ship freight
+with: **Drop-ship firearm order**, 9.95 by default with adult signature included,
+and **Drop-ship accessory order**, 8.00. Each is per order. The freight Lipsey's
+invoices always replaces the estimate. Orders shipped to your store are not
+estimated, and Create Order reads **freight unknown** for them.
+
+**Status tab.** The order is marked shipped the day after Lipsey's ships it.
+**Shipping polled through** shows the last day read for each login, and **Last
+shipping poll** when. **Last error** holds the last failure.
 
 **Buttons.** **Test Connection** on the toolbar checks the catalog service. With
 **Allow live orders** on, it also signs in with each login that is filled in and
@@ -281,10 +286,7 @@ makes one small read. It places no order.
 
 **Lipsey's orders in the POS.**
 
-- Lipsey's adds a new store order to an open order of the same kind, long guns
-  or handguns, when one exists. Several POS orders can then share one Lipsey's
-  order number. Each keeps its own PO, and a shipment is matched to every order on
-  that Lipsey's order that was placed by the invoice date.
+- Several POS orders can share one Lipsey's order number. Each keeps its own PO.
 - The order's lines take the quantity and price Lipsey's confirmed when the order
   was placed. A line Lipsey's could not fill is marked cancelled. A line Lipsey's
   answer does not name, while it did answer for an order, is counted as ordered,

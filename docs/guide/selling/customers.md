@@ -90,6 +90,13 @@ A member's own record shows **Family of** with a link to the head. A member
 cannot have members of their own, and a head with members cannot join another
 family or be deleted.
 
+## Memberships and saved cards
+
+Under **Agreements** on a customer, **Memberships** sells and manages the
+customer's memberships, and **Saved cards** lists the cards kept on file. See
+[Memberships](memberships.md) and
+[Saving a card to charge later](payments.md#saving-a-card-to-charge-later).
+
 ## Storing ID numbers
 
 Whether the system keeps ID numbers and dates of birth is a store decision. A

@@ -147,9 +147,54 @@ only while the Payroc terminal is switched on.
 <figcaption>Every terminal attempt on a counter order: the invoice, the amount, the status and the Payroc reference.</figcaption>
 </figure>
 
-A refund of a card payment taken this way is issued in the Payroc portal, and
-the accounting side is reversed with **Cancel Order** or an order edit on
-Pending Order.
+To give card money back on a counter order, use **Card refund** on its invoice.
+See [Card refund on a counter order](#card-refund-on-a-counter-order).
+
+## Saving a card to charge later
+
+With the customer's signed authorization, a card paid at the terminal can be kept
+on file and charged later against a counter order's balance. It is off until a
+System Manager turns it on in the [Payments hub](#the-payments-hub). First create an
+agreement under **Customers → Agreement templates** that is **Active** and has
+**Signed** set to **Per customer**. Then, on the
+**Card on file** card, pick the **Authorization the customer signs first**, tick
+**Offer "Save this card"** and click **Save**. The card reads **on, but the
+active processor cannot save cards** when the processor cannot keep cards.
+
+**Saving the card.** The customer must be a named customer, not the walk-in
+customer.
+
+1. In the **Card payment** dialog on the register, or **Record Payment** with
+   **Credit Card** on the [Pending Order queue](pending-orders.md), tick **Save this
+   card**, then charge as usual.
+2. If the customer has not signed the card-on-file authorization, it goes to the
+   signing tablet, or shows as a QR code. **Waiting for the signature** stays
+   open for up to ten minutes. The card is charged once it is signed. **Cancel**
+   goes back to the card dialog.
+
+A green message reads **Card saved for later
+charges**. If the card was charged but could not be kept, **Card charged but not
+saved** says why, and the money stays recorded on the sale.
+
+**Charging it later.** A **Sales Manager** or **System Manager** opens the counter
+order's Sales Invoice. While it owes money and the customer has a saved card, the
+**Charge saved card** button shows.
+
+1. Click **Charge saved card**.
+2. Pick the **Card**. **Amount** starts as the whole balance and cannot be more.
+3. Click **Charge**.
+
+A decline books nothing and says **Card not charged**. If the processor never
+answers, the dialog reads **Charge not confirmed**. Do not take another payment
+for that amount. Click **Charge saved card** again in a few minutes and it looks
+the charge up. If the processor's portal shows no charge, click **Release as not
+charged** and write what you checked under **What you checked in the portal**.
+
+The customer's saved cards are listed under **Saved cards** below **Agreements**
+on the customer. A manager can click **Remove** and give a reason. The processor
+forgets the card, and it can never be charged again. A card saved here is not used for membership renewals. A membership saves its own
+card when its first payment is charged with auto-renew. See
+[Memberships](memberships.md).
 
 ## The Card Charges table
 
@@ -224,6 +269,47 @@ blocked until the portal refund is recorded.
 4. Write what you verified, and click **I refunded it in Payroc — record**.
 
 Recording it lets the return submit. It does not move any money.
+
+## Card refund on a counter order
+
+A **Sales Manager** or **System Manager** can give card money back from the
+Sales Invoice of a counter order ([Create Order](create-order.md)). Open it. While it has a card charge with money left, the
+**Card refund** button group shows **Void** and **Refund**. This is separate from
+**Void Card Charge** on the register's POS Invoice, above.
+
+**Void** gives back the whole charge before the processor settles it, usually the
+same day.
+
+1. Click **Card refund**, then **Void**.
+2. Pick the **Card charge** if there is more than one, and type the **Reason**.
+3. Click **Void**.
+
+The invoice owes the amount again. If the processor says it has already settled,
+refund it instead. A charge that was partly refunded cannot be voided.
+
+**Refund** gives back any part of what is left on a charge, settled or not.
+
+1. Click **Card refund**, then **Refund**.
+2. Pick the **Card charge**, set the **Amount** and choose the **Type**.
+3. Type the **Reason** and click **Refund**.
+
+| Type | Use it when | What happens |
+|---|---|---|
+| **Return / price lowered** | Goods or service came back, or the price dropped | A credit note takes the amount off the sale, sales tax included, in proportion to the lines |
+| **Collect again** | The sale stands and the money will come another way | The invoice owes the amount again. Sales and tax are unchanged |
+
+A **Return** is refused on an order that sells stock items, carries a serial
+number or a delivery, or has a bound book entry. The dialog says why. Use
+**Cancel Order** or a sales return for those, or choose **Collect again**. The
+A Return refunds what the credit note comes to, which can be a cent off the
+amount you typed. If it is further off, the dialog says what to enter.
+
+If the processor does not confirm a void or refund, the message reads **Not
+confirmed**. Do not try again, because the money may have moved. Look in the
+processor's portal, then click **Card refund**, **Resolve card reversal**. Under
+**The portal shows**, choose **It happened — book it** and type the **Portal
+reference**, or **It did not happen — unlock**. Write what you checked and click
+**Resolve**. Until then that charge cannot be voided or refunded.
 
 ## The daily card charge check
 

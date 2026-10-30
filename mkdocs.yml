@@ -111,6 +111,7 @@ nav:
           - Selling a firearm: guide/selling/firearm-sale.md
           - Customer transfers: guide/selling/transfers.md
           - Customers: guide/selling/customers.md
+          - Memberships: guide/selling/memberships.md
           - Build and ship an order: guide/selling/create-order.md
           - The Pending Order queue: guide/selling/pending-orders.md
           - Taking payment: guide/selling/payments.md

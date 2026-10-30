@@ -8,9 +8,10 @@ Everything below runs on the server's own schedule. Cron times are evaluated in 
 
 | When | What runs |
 |---|---|
+| 07:00 daily | Membership renewals |
 | 23:00 daily | Automatic POS close |
 | 00:05 daily | GunBroker sale-window price sweep |
-| Daily | FastBound push and delete retries, FastBound list refresh, stuck-record digest, GunBroker audit, item quantity self-heal, sale price refresh, abandoned 4473 alert, pending-orders digest, card charge check, Sports South credit poll, extension update check |
+| Daily | Membership close-out, FastBound push and delete retries, FastBound list refresh, stuck-record digest, GunBroker audit, item quantity self-heal, sale price refresh, abandoned 4473 alert, pending-orders digest, card charge check, Sports South credit poll, extension update check |
 | Hourly | Stale trade-in draft nudge, signed 4473 PDF copies, GunBroker listing sweep, distributor invoice pull, storage location sweep |
 | Every 30 minutes | Distributor order poll |
 | Every 15 minutes | POS consolidation safety net, feed staleness watchdog, category mirror, local catalog sync, GunBroker order poll, GunBroker end-listing confirmation, auction bid watch |
@@ -39,6 +40,15 @@ This is a backstop, not the intended way to end a day. An automatic close trusts
 **Item quantity and sale prices, daily.** The quantity shown on each item is recounted from stock, and sale prices whose start or end date has come are applied.
 
 **Storage locations, hourly.** A gun that has left stock has its storage location cleared, for any path the moment-of-sale update missed. See [Storage locations](../inventory/storage-locations.md).
+
+## Memberships
+
+**Renewals, 07:00 daily.** Each auto-renewing membership whose period has ended is
+charged to its saved card. Declined ones are retried each morning until their
+grace days run out, then suspended, and yearly members are emailed their
+reminder. Nothing runs while **Charge renewals automatically** is off. **Close-out,
+daily.** A membership that does not renew turns Cancelled or Expired after its
+last day. See [Memberships](../selling/memberships.md#renewals).
 
 ## Cards
 

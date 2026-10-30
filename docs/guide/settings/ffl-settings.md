@@ -56,6 +56,8 @@ Discounts the system gives (pricing rules, sale prices) never ask. See
 
 **Used Item Agreement.** The agreement every Item marked Used needs, unless the Item or its Item Group names its own. Leave it empty to turn this off. Shown only while Require Agreements at Sale is on.
 
+When one sale holds several used guns, the customer signs one copy that lists every gun, if the agreement's **Signed** field is **Each firearm sold**. To ask for a separate signed copy per gun, open the agreement under **Customers → Agreement templates** and tick **One copy per gun**. It is off by default.
+
 ## FFL Verification
 
 This tab controls how another dealer's license gets checked against the ATF eZ Check service.
