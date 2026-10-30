@@ -93,9 +93,10 @@ dev-bench-clone: ## Worktree only: clone the main checkout's frappe-bench (APFS 
 	@$(MAKE) --no-print-directory dev-site-create
 	@$(MAKE) --no-print-directory dev-install-our-apps
 
-dev-site-create: ## Create the dev site and install ERPNext; always (re-)applies allow_tests
+dev-site-create: ## Create the dev site and install ERPNext + HRMS; always (re-)applies allow_tests
 	$(COMPOSE) exec -T frappe bash -lc '\
 		cd /workspace/frappe-bench && \
+		{ [ -d apps/hrms ] || { . /workspace/deploy/prod/frappe-refs.env && bench get-app --branch "$$HRMS_REF" hrms https://github.com/frappe/hrms.git; }; } && \
 		if bench --site $(SITE_NAME) doctor >/dev/null 2>&1; then \
 			echo "*** Site $(SITE_NAME) already exists — NOT recreated; drop it with: make dev-site-drop CONFIRM=yes"; \
 		else \
@@ -106,6 +107,7 @@ dev-site-create: ## Create the dev site and install ERPNext; always (re-)applies
 				--no-mariadb-socket \
 				--force; \
 		fi && \
+		bench --site $(SITE_NAME) install-app hrms && \
 		bench --site $(SITE_NAME) set-config allow_tests true && \
 		echo "allow_tests set on $(SITE_NAME) (make test refuses to run without it)" \
 	'
@@ -254,16 +256,16 @@ api-docs-serve: ## Serve the Redoc API browser at http://localhost:8033
 	@echo "API docs at http://localhost:8033 (Ctrl-C to stop)"
 	@cd docs/api && python3 -m http.server 8033
 
-dev-upgrade: ## Move this checkout's bench to the latest Frappe + ERPNext $(FRAPPE_BRANCH) and migrate (no tests)
+dev-upgrade: ## Move this checkout's bench to the latest Frappe + ERPNext + HRMS $(FRAPPE_BRANCH) and migrate (no tests)
 	$(COMPOSE) exec -T frappe bash -lc '\
 		set -e; cd /workspace/frappe-bench && \
-		for app in frappe erpnext; do \
+		for app in frappe erpnext hrms; do \
 			(cd apps/$$app && git fetch -q && git checkout -q $(FRAPPE_BRANCH) && git pull -q && \
 				echo "$$app: $$(git describe --tags --always)"); \
 		done && \
-		./env/bin/pip install -q -e apps/frappe -e apps/erpnext && \
+		./env/bin/pip install -q -e apps/frappe -e apps/erpnext -e apps/hrms && \
 		bench --site $(SITE_NAME) migrate && \
-		bench version | grep -E "^(frappe|erpnext) " \
+		bench version | grep -E "^(frappe|erpnext|hrms) " \
 	'
 
 ci-upgrade-test: ## Simulate a Frappe + ERPNext stable upgrade and re-run tests (run in CI)

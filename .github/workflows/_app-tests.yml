@@ -410,6 +410,7 @@ jobs:
           else
             FRAPPE_REF="$BRANCH"
             ERPNEXT_REF="$BRANCH"
+            HRMS_REF="$BRANCH"
           fi
           echo "frappe_target=${FRAPPE_REF}" >> "$GITHUB_OUTPUT"
           echo "erpnext_target=${ERPNEXT_REF}" >> "$GITHUB_OUTPUT"
@@ -419,7 +420,8 @@ jobs:
           fi
           echo "frappe=${FRAPPE_REF}" >> "$GITHUB_OUTPUT"
           echo "erpnext=${ERPNEXT_REF}" >> "$GITHUB_OUTPUT"
-          echo "bench refs: frappe ${FRAPPE_REF}, erpnext ${ERPNEXT_REF}"
+          echo "hrms=${HRMS_REF}" >> "$GITHUB_OUTPUT"
+          echo "bench refs: frappe ${FRAPPE_REF}, erpnext ${ERPNEXT_REF}, hrms ${HRMS_REF}"
 
       - name: Restore bench cache
         id: bench-cache
@@ -427,7 +429,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: frappe-bench
-          key: bench-v3-${{ runner.os }}-${{ env.ImageOS }}-py${{ steps.setup-python.outputs.python-version }}-frappe-${{ steps.refs.outputs.frappe }}-erpnext-${{ steps.refs.outputs.erpnext }}
+          key: bench-v3-${{ runner.os }}-${{ env.ImageOS }}-py${{ steps.setup-python.outputs.python-version }}-frappe-${{ steps.refs.outputs.frappe }}-erpnext-${{ steps.refs.outputs.erpnext }}-hrms-${{ steps.refs.outputs.hrms }}
 
       # Self-hosted: the runner workspace survives runs, so last run's bench is
       # already on local disk — no network cache transfer at all. Reuse it only
@@ -457,14 +459,15 @@ jobs:
         env:
           WANT_FRAPPE: ${{ steps.refs.outputs.frappe }}
           WANT_ERPNEXT: ${{ steps.refs.outputs.erpnext }}
+          WANT_HRMS: ${{ steps.refs.outputs.hrms }}
         run: |
           have=$(./frappe-bench/env/bin/python -c \
-            'import frappe, erpnext; print(f"v{frappe.__version__} v{erpnext.__version__}")' \
+            'import frappe, erpnext, hrms; print(f"v{frappe.__version__} v{erpnext.__version__} v{hrms.__version__}")' \
             2>/dev/null || true)
-          if [ "$have" = "${WANT_FRAPPE} ${WANT_ERPNEXT}" ]; then
+          if [ "$have" = "${WANT_FRAPPE} ${WANT_ERPNEXT} ${WANT_HRMS}" ]; then
             echo "reuse=true" >> "$GITHUB_OUTPUT"
           else
-            echo "rebuilding the bench: has '${have:-none}', want '${WANT_FRAPPE} ${WANT_ERPNEXT}'"
+            echo "rebuilding the bench: has '${have:-none}', want '${WANT_FRAPPE} ${WANT_ERPNEXT} ${WANT_HRMS}'"
             rm -rf frappe-bench
             echo "reuse=false" >> "$GITHUB_OUTPUT"
           fi
@@ -505,7 +508,17 @@ jobs:
           FRAPPE_REDIS_QUEUE: redis://127.0.0.1:${{ job.services.redis.ports['6379'] }}
         run: bench get-app --branch ${{ steps.refs.outputs.erpnext }} erpnext https://github.com/frappe/erpnext.git
 
-      # Persist the freshly-built bench (frappe+erpnext+venv) for next time —
+      # Baked into the image for every store (a store installs it on its site to use it), so the
+      # suite runs with it installed: it overrides Payment Entry, which our money paths submit.
+      - name: Get HRMS
+        if: ${{ !inputs.use_cache || (steps.bench-cache.outputs.cache-hit != 'true' && steps.local-bench.outputs.reuse != 'true') }}
+        working-directory: frappe-bench
+        env:
+          FRAPPE_REDIS_CACHE: redis://127.0.0.1:${{ job.services.redis.ports['6379'] }}
+          FRAPPE_REDIS_QUEUE: redis://127.0.0.1:${{ job.services.redis.ports['6379'] }}
+        run: bench get-app --branch ${{ steps.refs.outputs.hrms }} hrms https://github.com/frappe/hrms.git
+
+      # Persist the freshly-built bench (frappe+erpnext+hrms+venv) for next time —
       # only on a cache miss, captured here BEFORE our apps + site are added.
       # GitHub-hosted only: on self-hosted the bench persists on disk by itself.
       - name: Save bench cache
@@ -551,7 +564,7 @@ jobs:
           # newline-terminated). The default file ships *without* a trailing
           # newline; merging via `cat | printf` ate the boundary and produced
           # "erpnextffl_core" → ModuleNotFoundError. Just declare the truth.
-          printf '%s\n' frappe erpnext ffl_core ffl_integrations ffl_woo_sync > sites/apps.txt
+          printf '%s\n' frappe erpnext hrms ffl_core ffl_integrations ffl_woo_sync > sites/apps.txt
           echo "--- apps.txt ---"
           cat sites/apps.txt
 
@@ -565,6 +578,7 @@ jobs:
             --mariadb-root-password root \
             --admin-password admin \
             --install-app erpnext \
+            --install-app hrms \
             --install-app ffl_core \
             --install-app ffl_integrations \
             --install-app ffl_woo_sync \
@@ -578,7 +592,7 @@ jobs:
           bench --site ci.localhost execute "ffl_core.setup.test_bootstrap.run"
 
       # Self-hosted CD path: the expensive, invariant part of site creation
-      # (frappe+erpnext schema + setup wizard) is dumped ONCE per resolved
+      # (frappe+erpnext+hrms schema + setup wizard) is dumped ONCE per resolved
       # frappe/erpnext version into the persistent workspace, and every run
       # restores that dump instead of re-running thousands of DDLs. Our three
       # apps are DELIBERATELY NOT in the template — they change every commit
@@ -590,7 +604,7 @@ jobs:
         working-directory: frappe-bench
         run: |
           set -euo pipefail
-          VER=$(./env/bin/python -c "import frappe, erpnext; print(f'frappe{frappe.__version__}-erpnext{erpnext.__version__}')")
+          VER=$(./env/bin/python -c "import frappe, erpnext, hrms; print(f'frappe{frappe.__version__}-erpnext{erpnext.__version__}-hrms{hrms.__version__}')")
           TPL="$GITHUB_WORKSPACE/site-template-${VER}.sql.gz"
           if [ ! -f "$TPL" ] || [ ! -d sites/ci.localhost ]; then
             echo "::notice::site template for ${VER} missing — building it (one-time slow path)"
@@ -598,6 +612,7 @@ jobs:
               --mariadb-root-password root \
               --admin-password admin \
               --install-app erpnext \
+              --install-app hrms \
               --no-mariadb-socket \
               --force
             bench --site ci.localhost set-config allow_tests true
@@ -671,7 +686,7 @@ jobs:
             ln -sfn "$GITHUB_WORKSPACE/gunstore/apps/$app" "apps/$app"
             ./env/bin/pip install -e "apps/$app"
           done
-          printf '%s\n' frappe erpnext ffl_core ffl_integrations ffl_woo_sync > sites/apps.txt
+          printf '%s\n' frappe erpnext hrms ffl_core ffl_integrations ffl_woo_sync > sites/apps.txt
           echo "::group::bench migrate ($(git -C "$GITHUB_WORKSPACE/gunstore-old" rev-parse --short HEAD) → $(git -C "$GITHUB_WORKSPACE/gunstore" rev-parse --short HEAD))"
           bench --site ci.localhost migrate
           echo "::endgroup::"
