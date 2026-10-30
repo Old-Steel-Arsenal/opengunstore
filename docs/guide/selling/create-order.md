@@ -426,6 +426,19 @@ worked out. It shows **(partial)** when a distributor could not estimate, and th
 distributor's line reads **freight unknown**. The freight the distributor invoices
 always replaces the estimate.
 
+Shipped to your store, RSR sells full cases at its case price. When RSR lists
+one, the cell for that line prices the full cases at it and a note in the cell
+reads, for example, **Ship to store: Case of 50 at $7.83 each — 20 more fill
+a case**. The Distributor Order line shows the same note under **Case Price**.
+Drop-ship lines pay the unit cost, and the cost RSR acknowledges replaces the
+estimate.
+
+A Lipsey's drop-ship order is estimated from its flat rates. An order to your
+store reads **freight unknown**. A Sports South order shipped to your store uses
+Sports South's store shipping rule, not the drop-ship rate: handguns ship free
+with 3 or more or $750 or more, and everything else free at $500 or more, below
+that 5.00 by default. Both thresholds are on the Sports South Freight tab.
+
 A Sports South order also shows **Signature**, **Adult signature** and **Insurance**
 checkboxes. They start from the delivery options in
 [Sports South Settings](../settings/integrations.md#sports-south-settings). Tick or untick one for this
@@ -567,7 +580,9 @@ list, and turns green with "Ready to create." when nothing is. Click
 9. Deletes the draft you resumed, if any.
 10. When the buyer has not signed an agreement the sale needs (the Used Item
     Agreement, or one an item names), emails the signing link to the order's
-    email, or the customer's when there is none. The order is created either
+    email, or the customer's when there is none. One link covers every gun on
+    the order, unless the agreement has **One copy per gun** ticked. The order
+    is created either
     way. With **Dispose & ship now** the order is not disposed: the gun waits on
     the Pending Order queue until it is signed.
 

@@ -131,6 +131,10 @@ differs by more than**, 5.00 by default, sends an alert when the freight RSR
 invoices is further than that from the estimate booked when the order was
 placed.
 
+An order shipped to your store is priced at RSR's case price for every full case
+in a line, when RSR lists one for the item. See
+[Build and ship an order](../selling/create-order.md#the-summary-and-freight-estimate).
+
 **Buttons.** **Test Connection** on the toolbar checks the catalog service. With
 **Allow live orders** on, it also signs in to RSR with each account number you
 filled in, and flags a blank **Order email**. It places no order. The RSR card on
@@ -212,7 +216,9 @@ shop:
 | Long guns, ammunition and accessories | 500.00 | 5.00, **Long guns / ammo / accessories below that** |
 
 Those are the defaults. An order holding both pays the higher of the two
-charges. The Sports South card on the hub reads the rule back in one line.
+charges. The same rule prices a Sports South order shipped to the store, both the
+shipping choices on the Distributor Order and the freight recorded when it is
+placed. Only the air upgrades keep the flat rates above. The Sports South card on the hub reads the rule back in one line.
 **Alert when invoiced freight differs by more than**, 5.00 by default, works as
 it does for RSR.
 
@@ -242,7 +248,7 @@ that failed to place.
 card of the [Distributors hub](../distributors/hub.md). Connects to Lipsey's
 ordering API. The catalog reaches the store through Data Service, or, with a
 [Local catalog](../../data-service.md#local-catalog), from Lipsey's own feeds
-with the dealer login. The page has three tabs: Account, Ordering and Status.
+with the dealer login. The page has four tabs: Account, Ordering, Freight and Status.
 
 Lipsey's lets in only computers it has approved, so the API must be reached from
 the address you gave Lipsey's when you asked for API access.
@@ -264,7 +270,16 @@ collapsed **Advanced** section holds **API base URL**.
 
 **Ordering tab.** **No confirmation email from Lipsey's** stops Lipsey's own
 order email for orders placed from the POS. Leave it off: that email is how you
-check an order whose answer never came back.
+check an order whose answer never came back. Tick **Accessory drop-ship orders
+ship overnight** to ask Lipsey's for overnight shipping on accessory drop-ship
+orders. Lipsey's bills those at overnight rates, so the POS gives no freight
+estimate for them.
+
+**Freight tab.** The flat rates Create Order estimates Lipsey's drop-ship freight
+with: **Drop-ship firearm order**, 9.95 by default with adult signature included,
+and **Drop-ship accessory order**, 8.00. Each is per order. The freight Lipsey's
+invoices always replaces the estimate. Orders shipped to your store are not
+estimated, and Create Order reads **freight unknown** for them.
 
 **Status tab.** Lipsey's has no order status call. Once a day the POS reads the
 shipping list Lipsey's publishes for the day before: invoice number, Lipsey's

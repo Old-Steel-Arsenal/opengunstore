@@ -26,7 +26,7 @@ The integration shortcuts are:
 | Data Service (FFL & Catalog) | Data Service Settings |
 | Extensions | The Extensions page at `/app/extensions` |
 
-The two hubs are pages, not settings forms. The **Payments** hub lists every card processor as a card showing whether it is enabled, whether it is ready, the mode of payment it is wired to, and when it last took money. Each card has **Test Connection** and **Credentials** buttons. The **Distributors** hub has one card per distributor, with its **Enabled**, **Stocking** and **Poll** switches, feed and order health, and **Test Connection**, **Pricing & stock** and **Account & shipping** buttons. See [the Distributors hub](../distributors/hub.md).
+The two hubs are pages, not settings forms. The **Payments** hub lists every card processor as a card showing whether it is enabled, whether it is ready, the mode of payment it is wired to, and when it last took money. Each card has **Test Connection** and **Credentials** buttons. A **Card on file** card below them switches on [saving cards](../selling/payments.md#saving-a-card-to-charge-later). The **Distributors** hub has one card per distributor, with its **Enabled**, **Stocking** and **Poll** switches, feed and order health, and **Test Connection**, **Pricing & stock** and **Account & shipping** buttons. See [the Distributors hub](../distributors/hub.md).
 
 <figure markdown>
 ![The Payments hub](../screenshots/page-payment-hub.webp){ .screenshot }
@@ -38,7 +38,7 @@ The three configuration cards are:
 | Card | Links |
 |---|---|
 | FFL & Compliance | FFL Settings, MCP Settings, ATF FFL Record |
-| POS & Sales | ShipStation Settings, Cash Drawer Settings, POS Profile, Mode of Payment, Selling Settings |
+| POS & Sales | ShipStation Settings, Cash Drawer Settings, Membership Settings, POS Profile, Mode of Payment, Selling Settings |
 | Catalog Reference | Item Group, Brand, Caliber, Warehouse, Stock Settings |
 
 The Dashboard's **All records** list also reaches several of these under **Setup**. See [the Dashboard](../getting-started/dashboard.md).
@@ -52,6 +52,7 @@ The Dashboard's **All records** list also reaches several of these under **Setup
 | ATF FFL Record | `/app/atf-ffl-record` | The looked-up ATF license records other FFLs are checked against |
 | ShipStation Settings | `/app/shipstation-settings` | Shipping labels, the ship-from warehouse and parcel defaults |
 | Cash Drawer Settings | `/app/cash-drawer-settings` | Count difference that needs a reason, biggest cash expense, expense accounts |
+| Membership Settings | `/app/membership-settings` | Whether renewals are charged automatically, and the yearly renewal reminder. See [Memberships](../selling/memberships.md#renewal-settings) |
 | POS Profile | `/app/pos-profile` | Which till, warehouse, price list and payment methods a register uses |
 | Mode of Payment | `/app/mode-of-payment` | The tender types the register offers and the account each posts to |
 | Selling Settings | `/app/selling-settings` | ERPNext-wide selling defaults such as customer naming and order behavior |

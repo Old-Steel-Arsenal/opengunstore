@@ -21,6 +21,7 @@ quoted here is the wording the system actually uses.
 | Distributor quantities look wrong or frozen | Distributors hub, alert email | [A distributor feed is stale](#a-distributor-feed-is-stale) |
 | A card charge hung, or the amount is unclear | Register | [A card charge went wrong](#a-card-charge-went-wrong) |
 | A serial shows as sold in the wrong place | Register, Firearms In Stock | [A serial is sold in the wrong place](#a-serial-is-sold-in-the-wrong-place) |
+| A GunBroker order is disposed but has no Ship button | Pending Order | [A GunBroker order is disposed but cannot ship](#a-gunbroker-order-is-disposed-but-cannot-ship) |
 | An email says card charges are no longer captured | Alert email, invoice comment | [A card charge was voided outside the POS](#a-card-charge-was-voided-outside-the-pos) |
 | The register refuses a sale held for a web order | Register | [Other messages](#other-messages) |
 | A cash drawer action is refused | Cash drawer page | [Other messages](#other-messages) |
@@ -257,6 +258,10 @@ A card already run on the Payroc Virtual Terminal is recorded, not charged
 again: on Record Payment tick **Already charged on Virtual Terminal** and type
 the approval code. See [Taking payment](../selling/payments.md).
 
+A void or refund the processor did not confirm locks that charge until a manager
+checks the portal and clicks **Resolve card reversal**. See
+[Card refund on a counter order](../selling/payments.md#card-refund-on-a-counter-order).
+
 **Escalate to.** A manager immediately for the third case. A refund or a void
 needs manager rights in any case.
 
@@ -312,6 +317,22 @@ reports as disposed and offers to take them out of stock.
 
 **Escalate to.** A manager before removing anything from stock, and before
 touching an auction that has bids.
+
+## A GunBroker order is disposed but cannot ship
+
+**What you see.** After Dispose, an orange message reads **Disposed … firearm(s),
+but the invoice did not post. Use Create Invoice on the card.** On the Pending
+Order card there is a **Create Invoice** button and no **Ship** button.
+
+**What it means.** The bound book exit was written, so the guns are out, but the
+order's invoice did not post.
+
+**What to do.** Click **Create Invoice**. **Invoice … posted — this order can now
+ship.** means **Ship** is back. **Invoice … was left in Draft. Open it to see
+why.** means open that invoice and read the reason. Do not dispose the order
+again. See [GunBroker](../channels/gunbroker.md#working-the-order).
+
+**Escalate to.** A manager if the invoice stays in Draft.
 
 ## Other messages
 

@@ -121,10 +121,12 @@ Counter orders with distributor legs get a second strip of pills:
 ### Agreements
 
 A counter order whose gun needs a signed agreement shows an **Agreements** strip:
-each agreement (one per gun for an agreement signed for each firearm) reads
+each agreement (with the gun's serial after it, for an agreement signed for each firearm) reads
 **signed**, **sent, link open until** a date and time, **link expired**, or **not
 signed**. **Resend link** emails a new link to the order's email (you can change
-the address in the dialog); the old link stops working. The strip updates by
+the address in the dialog); the old link stops working. One link covers every
+gun on the order that is still unsigned, unless the agreement has **One copy per
+gun** ticked. The strip updates by
 itself when the customer signs.
 
 Dispose on such an order opens with a red warning: the customer has not signed,

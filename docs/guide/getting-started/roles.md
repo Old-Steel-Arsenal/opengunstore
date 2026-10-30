@@ -27,6 +27,7 @@ deciding what a new person needs.
 | Create Order | Sales User, Sales Manager, Stock Manager, System Manager |
 | Pending Order (**Orders** in the sidebar) | Sales User, Sales Manager, Stock Manager, System Manager |
 | Cash Drawer | Sales User, Sales Manager, Stock Manager, System Manager |
+| Memberships | Sales User, Sales Manager, Stock Manager, System Manager, Accounts User, Accounts Manager |
 | Receive Goods | Stock User, Stock Manager, Purchase User, Purchase Manager, System Manager |
 | Upload Photos by Serial | Stock User, Stock Manager, Item Manager, System Manager |
 | Inventory Count | Stock User, Stock Manager, System Manager |
@@ -122,6 +123,12 @@ Some pages open for more roles than may finish the job on them:
 Some buttons check for **Sales Manager** or **System Manager** at the moment you
 click them, regardless of which page you are on:
 
+- **Card refund** (**Void**, **Refund**, **Resolve card reversal**), **Charge saved
+  card** and **Remove** on a saved card, on a counter order's Sales Invoice and the
+  customer. See [Taking payment](../selling/payments.md).
+- On the [Memberships](../selling/memberships.md) page: creating and changing
+  plans, **Needs attention**, **Retry card**, **Look up card charge** and
+  **Cancel**. Selling a membership and **Take payment** are for counter staff.
 - **Manager Override 4473** on a parked firearm order, whether its 4473 is
   pending or was done straight in the bound book. See
   [Selling a firearm](../selling/firearm-sale.md#manager-override).
