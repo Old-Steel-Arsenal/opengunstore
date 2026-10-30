@@ -567,7 +567,7 @@ class PendingDispositionsApp {
 			// With an address (or an FFL) the Ship button behaves exactly as before.
 			// A disposed GunBroker order whose invoice failed to post waits for
 			// Create Invoice: push_gb_shipment only builds off a pending order.
-			const needsGbInvoice = isGb && row.disposed && !row.sales_invoice;
+			const needsGbInvoice = isGb && row.disposed && !row.sales_invoice_posted;
 			const canShip = can.ship && row.shipstation_enabled && !row.ship_pushed && !noAddress
 				&& !needsGbInvoice;
 			// GunBroker: nothing ships before Mark Payment Received.
@@ -1446,9 +1446,15 @@ class PendingDispositionsApp {
 					callback: (r) => {
 						if (r.message?.ok) {
 							d.hide();
+							// GunBroker raises its invoice after the bound-book exit; a
+							// failure there must not read as a clean Dispose.
+							const inv = r.message.invoice_status;
+							const invFailed = kind === 'gunbroker' && inv && inv !== 'created' && inv !== 'exists';
 							frappe.show_alert({
-								message: __('Disposed {0} firearm(s); FastBound push queued.', [r.message.disposed_count]),
-								indicator: 'green',
+								message: invFailed
+									? __('Disposed {0} firearm(s), but the invoice did not post. Use Create Invoice on the card.', [r.message.disposed_count])
+									: __('Disposed {0} firearm(s); FastBound push queued.', [r.message.disposed_count]),
+								indicator: invFailed ? 'orange' : 'green',
 							}, 7);
 							this._load();
 						}

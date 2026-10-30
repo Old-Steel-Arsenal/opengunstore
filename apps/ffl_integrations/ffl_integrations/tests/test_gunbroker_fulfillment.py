@@ -759,6 +759,7 @@ class TestPendingRow(_FulfillmentCase):
 		"awaiting_serial", "serial_errors", "pending_serials", "store_pickup",
 		"pickup_invoice", "destination_ffl", "destination_ffl_name",
 		"ffl_expiry_date", "ffl_expired", "is_cr", "cr_prefill", "sales_invoice",
+		"sales_invoice_posted",
 		"sales_orders", "legs", "note", "last_payment_mode", "ship_pushed",
 		"can_mark_shipped", "shipstation_enabled", "shipstation_order_id",
 		"ship_items", "has_ship_address", "ship_to_preview", "site",
@@ -775,6 +776,19 @@ class TestPendingRow(_FulfillmentCase):
 		row = self._row(self._order(payment_mode_used="GunBroker Check"))
 		missing = [k for k in self.REQUIRED_KEYS if k not in row]
 		self.assertEqual(missing, [], f"row contract is missing: {missing}")
+
+	def test_only_a_submitted_invoice_counts_as_posted(self):
+		"""A blocked submit leaves the order linked to a Draft, which Ship refuses."""
+		order = self._order(payment_mode_used="GunBroker Check",
+			order_status="Transferred", sales_invoice="ACC-SINV-1")
+		for docstatus, posted in ((0, False), (1, True)):
+			with patch("frappe.get_all", return_value=[]), \
+					patch.object(fulfillment, "_invoice_row",
+						return_value={"name": "ACC-SINV-1", "docstatus": docstatus}), \
+					patch.object(fulfillment, "_ship_to_preview", return_value=None), \
+					patch.object(fulfillment, "_ship_items", return_value=[]):
+				row = fulfillment._pending_row(order, ss_enabled=True)
+			self.assertIs(row["sales_invoice_posted"], posted)
 
 	def test_a_gunbroker_row_never_claims_to_be_a_pickup_or_a_web_order(self):
 		row = self._row(self._order(payment_mode_used="GunBroker Check"))

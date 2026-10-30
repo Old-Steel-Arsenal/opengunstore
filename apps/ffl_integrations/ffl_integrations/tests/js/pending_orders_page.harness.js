@@ -157,7 +157,7 @@ const gbRow = {
 	pending_serials: [{ item_code: 'RIFLE', serial: 'SN-G' }], store_pickup: false,
 	pickup_invoice: null, destination_ffl: 'FFL-3', destination_ffl_name: 'GB Dealer',
 	ffl_expiry_date: '2027-01-01', ffl_expired: false,
-	is_cr: false, cr_prefill: null, sales_invoice: null, sales_orders: [], legs: null,
+	is_cr: false, cr_prefill: null, sales_invoice: null, sales_invoice_posted: false, sales_orders: [], legs: null,
 	note: '', last_payment_mode: '', ship_pushed: false, can_mark_shipped: false,
 	shipstation_enabled: true, shipstation_order_id: '', ship_items: [],
 	has_ship_address: true, ship_to_preview: { company: 'GB Dealer', city: 'Austin', state: 'TX' },
@@ -289,9 +289,17 @@ check('a disposed GunBroker card whose invoice failed offers no Ship', () => {
 	assert(call && call.args.gunbroker_order === stuck.gunbroker_order, JSON.stringify(calls));
 });
 
+check('a disposed GunBroker card linked to a Draft invoice offers Create Invoice, not Ship', () => {
+	// A blocked submit links the Draft to the order; push_shipment refuses a Draft.
+	const draft = Object.assign({}, gbRow, { stage: 'ready_ship', channel_stage: 'awaiting_ship', paid: true,
+		disposed: true, needs_disposition: false, sales_invoice: 'ACC-SINV-9', sales_invoice_posted: false });
+	const { cards } = render({ gb: [draft] });
+	assert(/btn-gb-invoice/.test(cards[0]) && !/btn-ship/.test(cards[0]), 'Draft invoice card');
+});
+
 check('Create Invoice is not offered once the invoice exists', () => {
 	const done = Object.assign({}, gbRow, { stage: 'ready_ship', channel_stage: 'awaiting_ship', paid: true,
-		disposed: true, needs_disposition: false, sales_invoice: 'ACC-SINV-9' });
+		disposed: true, needs_disposition: false, sales_invoice: 'ACC-SINV-9', sales_invoice_posted: true });
 	const { cards } = render({ gb: [done] });
 	assert(!/btn-gb-invoice/.test(cards[0]), 'Create Invoice on an invoiced order');
 });
@@ -313,7 +321,7 @@ check('a GunBroker card offers Ship once it has been disposed', () => {
 	// The store buys this label itself, so Ship is the next thing to do —
 	// and by now the dispose has raised the invoice to push.
 	const shipping = Object.assign({}, gbRow, { stage: 'ready_ship', channel_stage: 'awaiting_ship', paid: true,
-		disposed: true, needs_disposition: false, sales_invoice: 'ACC-SINV-9',
+		disposed: true, needs_disposition: false, sales_invoice: 'ACC-SINV-9', sales_invoice_posted: true,
 		pending_serials: [], disposed_serials: ['SN-G'] });
 	const { cards } = render({ gb: [shipping] });
 	assert(/btn-ship/.test(cards[0]), 'Ship missing — the store buys this label');
@@ -528,7 +536,7 @@ check('an unreadable-serial row still gets Mark Shipped disabled, not hidden', (
 
 check('a GunBroker Ship dialog offers no Mark Shipped at all', () => {
 	const gbShip = Object.assign({}, gbRow, { stage: 'ready_ship', channel_stage: 'awaiting_ship', paid: true,
-		disposed: true, needs_disposition: false, sales_invoice: 'ACC-SINV-9',
+		disposed: true, needs_disposition: false, sales_invoice: 'ACC-SINV-9', sales_invoice_posted: true,
 		pending_serials: [], disposed_serials: ['SN-G'], ship_items: [] });
 	dialogs.length = 0;
 	app._confirmShip(gbShip);
