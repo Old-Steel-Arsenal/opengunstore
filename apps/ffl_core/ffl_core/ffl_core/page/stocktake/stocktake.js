@@ -175,6 +175,7 @@ class StocktakeApp {
 			<div class="stkc">
 				<style>
 					.stkc { max-width: 1000px; margin: 0 auto; padding: 4px 0 80px; }
+					@media (max-width: 767px) { .stkc { padding-inline: 15px; } }
 					.stkc .card-box { background: var(--card-bg); border: 1px solid var(--border-color);
 						border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; }
 					.stkc table { width: 100%; border-collapse: collapse; }
@@ -289,8 +290,10 @@ class StocktakeApp {
 					{ fieldname: 'warehouses', fieldtype: 'MultiSelectList', label: __('Warehouses'),
 						description: __('Leave both empty to count the whole store.'),
 						get_data: () => Promise.resolve(opts.warehouses.map((w) => ({ value: w, description: '' }))) },
+					{ fieldtype: 'Column Break' },
 					{ fieldname: 'item_groups', fieldtype: 'MultiSelectList', label: __('Item groups'),
 						get_data: (txt) => frappe.db.get_link_options('Item Group', txt) },
+					{ fieldtype: 'Section Break' },
 					{ fieldname: 'include_custody', fieldtype: 'Check', default: 1,
 						label: __('Include guns held for customers') },
 				],

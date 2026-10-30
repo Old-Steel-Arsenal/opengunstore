@@ -80,8 +80,32 @@ class CreateOrderApp {
 					}
 					.ffl-build .section.muted { opacity: 0.55; }
 					.ffl-build .section h3 { margin: 0 0 14px 0; font-size: 15px; font-weight: 600; }
-					.ffl-build .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+					/* Number only the sections on screen, so a hidden one leaves no gap. */
+					.ffl-build { counter-reset: ffl-sec; }
+					.ffl-build .section.numbered { counter-increment: ffl-sec; }
+					.ffl-build .section.numbered > h3::before { content: counter(ffl-sec) ". "; }
+					/* margin 0 cancels Bootstrap's -15px .row gutter so fields line up with the heading. */
+					.ffl-build .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; margin-left: 0; margin-right: 0; }
 					.ffl-build .row.cols-3 { grid-template-columns: 2fr 1fr 1fr; }
+					.ffl-build .row.cols-buyer { grid-template-columns: 3fr 2fr 3fr; }
+					.ffl-build #seg-buyer { margin-bottom: 14px; }
+					@media (max-width: 600px) {
+						.ffl-build .row, .ffl-build .row.cols-buyer { grid-template-columns: 1fr; }
+						.ffl-build .row.cols-3 { grid-template-columns: 1fr 1fr; }
+						.ffl-build .row.cols-3 > :first-child { grid-column: 1 / -1; }
+						.ffl-build .submit-bar { flex-wrap: wrap; }
+						.ffl-build .submit-left { flex-basis: 100%; }
+						.ffl-build .submit-actions { flex: 1; justify-content: flex-end; }
+						.ffl-build > div.submit-bar { padding-left: 12px; padding-right: 12px; }
+						/* Stacked cells: the customer cell drops the control margin (see .ffl-row), so put it back. */
+						.ffl-build .row > .ffl-row { margin-bottom: 16px; }
+						/* FFL picker + two buttons: the input takes its own line instead of shrinking to ~100px. */
+						.ffl-build .ffl-row:has(.btn-sm) { flex-wrap: wrap; }
+						.ffl-build .ffl-row:has(.btn-sm) .grow { flex-basis: 100%; }
+						.ffl-build .total-bar { flex-wrap: wrap; gap: 8px; }
+						.ffl-build .total-bar > :last-child { flex-basis: 100%; }
+						.ffl-build #btn-plan, .ffl-build .total-bar label { white-space: nowrap; }
+					}
 					.ffl-build .ffl-row { display: flex; gap: 8px; align-items: flex-end; }
 					.ffl-build .ffl-row .grow { flex: 1; }
 					/* Frappe controls add a bottom margin + empty help-box; zero them so
@@ -182,30 +206,21 @@ class CreateOrderApp {
 					.ffl-build .badge.warn { background: var(--bg-red); color: var(--red-700); }
 				</style>
 
-				<!-- 0. BUYER TYPE -->
-				<div class="section">
-					<h3>${__('Buyer Type')}</h3>
+				<!-- 1. BUYER (type toggle + who) -->
+				<div class="section numbered">
+					<h3>${__('Buyer')}</h3>
 					<div class="seg" id="seg-buyer">
 						<button data-v="individual" class="active">${__('Individual')}</button>
 						<button data-v="business">${__('Business (FFL)')}</button>
 					</div>
-					<div class="helper">${__('Business buyers are themselves an FFL — the guns ship to their license.')}</div>
-				</div>
-
-				<!-- 1. BUYER -->
-				<div class="section">
-					<h3>1. ${__('Buyer')}</h3>
 					<div id="buyer-individual">
-						<div class="row">
+						<div class="row cols-buyer">
 							<div class="ffl-row">
 								<div class="grow" id="f-customer"></div>
 								<button class="btn btn-default" id="btn-rename-cust" title="${__('Fix customer name spelling')}">✎</button>
 							</div>
-							<div id="f-email"></div>
-						</div>
-						<div class="row" style="margin-top:12px">
 							<div id="f-phone"></div>
-							<div></div>
+							<div id="f-email"></div>
 						</div>
 					</div>
 					<div id="buyer-business" style="display:none">
@@ -231,8 +246,8 @@ class CreateOrderApp {
 				</div>
 
 				<!-- 2. DESTINATION FFL -->
-				<div class="section" id="sec-dest" style="display:none">
-					<h3>2. ${__('Destination FFL')}</h3>
+				<div class="section numbered" id="sec-dest" style="display:none">
+					<h3>${__('Destination FFL')}</h3>
 					<div id="f-cr_transfer"></div>
 					<div id="dest-standard">
 						<div class="ffl-row">
@@ -242,14 +257,11 @@ class CreateOrderApp {
 						</div>
 					</div>
 					<div id="dest-cr" style="display:none">
-						<div class="helper">${__('Type what the license copy says; the ATF directory does not list Type 03 collectors. The gun ships to the licensed premises.')}</div>
-						<div class="row" style="margin-top:12px">
+						<div class="helper">${__('The gun ships to the licensed premises on the license copy.')}</div>
+						<div style="margin-top:12px" id="f-cr_contact_name"></div>
+						<div class="row">
 							<div id="f-cr_license_number"></div>
 							<div id="f-cr_license_expiry"></div>
-						</div>
-						<div class="row" style="margin-top:12px">
-							<div id="f-cr_contact_name"></div>
-							<div></div>
 						</div>
 						<div class="row" style="margin-top:12px">
 							<div id="f-cr_premise_street"></div>
@@ -268,8 +280,8 @@ class CreateOrderApp {
 				</div>
 
 				<!-- 3. RECIPIENT & SHIP-TO -->
-				<div class="section">
-					<h3>3. ${__('Recipient & Ship-To')}</h3>
+				<div class="section numbered">
+					<h3>${__('Recipient & Ship-To')}</h3>
 					<div id="f-pickup"></div>
 					<div class="row">
 						<div id="f-recipient_name"></div>
@@ -288,13 +300,12 @@ class CreateOrderApp {
 				</div>
 
 				<!-- 4. ITEMS -->
-				<div class="section">
-					<h3>4. ${__('Items')}</h3>
+				<div class="section numbered">
+					<h3>${__('Items')}</h3>
 					<div class="scan-wrap">
 						<div id="f-scan"></div>
 						<div class="typeahead" id="typeahead"></div>
 					</div>
-					<div class="helper">${__('Scan a barcode or type an SKU or item name; scanning a firearm serial adds that gun at its tag price.')}</div>
 					<div id="pending-area"></div>
 					<div class="lines" id="lines-area" style="display:none">
 						<table>
@@ -327,8 +338,8 @@ class CreateOrderApp {
 				</div>
 
 				<!-- 5. PAYMENT -->
-				<div class="section">
-					<h3>5. ${__('Payment')}</h3>
+				<div class="section numbered">
+					<h3>${__('Payment')}</h3>
 					<div class="row">
 						<div id="f-mode"></div>
 						<div id="f-amount"></div>
@@ -343,15 +354,15 @@ class CreateOrderApp {
 				</div>
 
 				<!-- 6. FULFILLMENT -->
-				<div class="section">
-					<h3>6. ${__('Fulfillment')}</h3>
+				<div class="section numbered">
+					<h3>${__('Fulfillment')}</h3>
 					<div class="seg" id="seg-dispose">
 						<button data-v="later" class="active">${__('Create only — dispose later')}</button>
 						<button data-v="now">${__('Dispose & ship now')}</button>
 					</div>
-					<div class="helper" id="dispose-note">${__('Defer: the order joins the Pending Dispositions queue; the gun stays in stock and on the bound book until you ship it.')}</div>
+					<div class="helper" id="dispose-note">${__('The gun stays in stock and on the bound book until you ship it.')}</div>
 					<div class="helper" id="legs-preview" style="display:none; margin-top:8px"></div>
-						<div style="margin-top:12px" id="f-note"></div>
+					<div style="margin-top:12px" id="f-note"></div>
 				</div>
 
 				<div class="submit-bar">
@@ -614,7 +625,7 @@ class CreateOrderApp {
 			$(e.currentTarget).addClass('active');
 			this.$body.find('#dispose-note').text(this.disposeNow
 				? __('Takes the gun out of stock, books the transfer and pushes to FastBound now.')
-				: __('Defer: the order joins the Pending Dispositions queue; the gun stays in stock and on the bound book until you ship it.'));
+				: __('The gun stays in stock and on the bound book until you ship it.'));
 			this._syncDepositNote();
 			this._syncTerminalNote();
 		});
@@ -714,7 +725,6 @@ class CreateOrderApp {
 			__('{0} source(s)', [offers.length || (row.sources || []).length || 1]),
 			lowest ? __('lowest cost {0}', [format_currency(lowest)]) : __('cost unknown'),
 			`${__('Total qty')} ${cint(row.qty)}`,
-			__('source chosen in the Fulfillment plan'),
 		].join(' · ');
 		this._renderDropshipPending({
 			mark: __('API'), name, facts, isFirearm,
@@ -2790,7 +2800,7 @@ class CreateOrderApp {
 		this.$body.find('#buyer-business').hide();
 		this.$body.find('#seg-dispose button').removeClass('active');
 		this.$body.find('#seg-dispose button[data-v="later"]').addClass('active');
-		this.$body.find('#dispose-note').text(__('Defer: the order joins the Pending Dispositions queue; the gun stays in stock and on the bound book until you ship it.'));
+		this.$body.find('#dispose-note').text(__('The gun stays in stock and on the bound book until you ship it.'));
 		this.$body.find('#pending-area, #biz-ffl-card, #dest-ffl-card, #shipto-note').empty();
 		this._renderLines();
 		this._syncDestSection();

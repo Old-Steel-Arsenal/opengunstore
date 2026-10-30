@@ -6,9 +6,9 @@ from the primary Contact, so an FFL's bound-book identity had nowhere to be
 entered on the customer itself — the "Add new customer" form and quick-entry
 showed only Customer Name.
 
-This adds four editable, quick-entry name parts right below Gender in the top
-section, the same structured identity the POS Trade-in / Receive Goods forms
-capture and that ``ffl_core.api.trade_in.seller_defaults`` reads to prefill
+This adds four editable, quick-entry name parts at the top of the right
+column of the top section, the same structured identity the POS Trade-in /
+Receive Goods forms capture and that ``ffl_core.api.trade_in.seller_defaults`` reads to prefill
 them. They are CUSTOM fields (``ffl_first_name`` / ``middle_name`` /
 ``ffl_last_name`` / ``name_suffix``): Frappe honours ``insert_after`` for
 custom fields but NOT for standard ones, so the standard first_name/last_name
@@ -16,7 +16,7 @@ mirrors are left hidden and untouched, and seller_defaults coalesces our
 fields, then those mirrors, then a display-name split. A dedicated Section
 Break was avoided on purpose — anchored near the top it swallows the following
 customer_group, and anchored lower it collides with the FFL-Dealer section
-chain; a plain field run under Gender is unambiguous and self-labelled.
+chain; a plain field run above Customer Group is unambiguous and self-labelled.
 
 ``customer_name`` (the docname — this site's ``cust_master_name`` is "Customer
 Name") is kept in sync with the parts server-side by
@@ -57,7 +57,9 @@ def ensure() -> dict:
 					"fieldname": "ffl_first_name",
 					"fieldtype": "Data",
 					"label": "First Name",
-					"insert_after": "gender",
+					# Top of the right column, above Customer Group: under Gender
+					# they made the left column nine deep beside a lone Customer Group.
+					"insert_after": "column_break0",
 					"depends_on": _INDIVIDUAL,
 					"allow_in_quick_entry": 1,
 					"module": "FFL Core",

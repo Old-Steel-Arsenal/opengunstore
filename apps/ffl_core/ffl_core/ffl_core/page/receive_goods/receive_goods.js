@@ -283,8 +283,28 @@ class ReceiveGoodsApp {
 						font-size: 15px;
 						font-weight: 600;
 					}
-					.ffl-receive .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+					/* margin 0 cancels Bootstrap's -15px .row gutter so fields line up with the heading. */
+					.ffl-receive .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; margin-left: 0; margin-right: 0; }
 					.ffl-receive .row.cols-3 { grid-template-columns: 2fr 1fr 1fr; }
+					.ffl-receive .row.cols-3-even { grid-template-columns: 1fr 1fr 1fr; }
+					.ffl-receive .row.cols-4 { grid-template-columns: 2fr 1fr 2fr 1fr; }
+					.ffl-receive #row-individual-address { grid-template-columns: 2fr 1.5fr 1fr 1fr; }
+					/* Individual seller hides Supplier: Source | Type take the row instead of leaving a blank third. */
+					.ffl-receive .row.cols-3-even:has(> #row-ffl-supplier[style*="none"]) { grid-template-columns: 1fr 1fr; }
+					/* Notes has no label of its own (the card heading says it); drop the blank label line. */
+					.ffl-receive #f-notes .clearfix { display: none; }
+					/* format_currency wraps the amount in a block div; keep it on the Total line. */
+					.ffl-receive .total-bar .total { white-space: nowrap; }
+					.ffl-receive .total-bar #total > div { display: inline; }
+					@media (max-width: 600px) {
+						.ffl-receive .row.cols-3-even { grid-template-columns: 1fr; }
+						.ffl-receive .row.cols-4, .ffl-receive #row-individual-address { grid-template-columns: 1fr 1fr; }
+						.ffl-receive #row-individual-address > :nth-child(-n+2) { grid-column: 1 / -1; }
+						.ffl-receive #row-ffl-transfer { grid-template-columns: 1fr; }
+						.ffl-receive > div.submit-bar { padding-left: 12px; padding-right: 12px; }
+						.ffl-receive .submit-bar { flex-wrap: wrap; }
+						.ffl-receive .submit-bar #readiness { flex-basis: 100%; }
+					}
 					.ffl-receive .lines {
 						margin-top: 12px;
 						border: 1px solid var(--border-color);
@@ -422,15 +442,16 @@ class ReceiveGoodsApp {
 						<div id="f-acquisition_source"></div>
 						<div id="f-posting_date"></div>
 					</div>
+					<div class="row cols-3-even" style="margin-top:12px">
+						<div id="row-ffl-supplier"><div id="f-supplier"></div></div>
+						<div id="f-source"></div>
+						<div id="f-acquisition_type"></div>
+					</div>
 					<div class="row" id="row-ffl-transfer" style="margin-top:12px">
 						<div id="f-is_ffl_transfer"></div>
 						<div id="f-transfer_for_customer"></div>
 					</div>
-					<div class="row" id="row-ffl-supplier" style="margin-top:12px">
-						<div id="f-supplier"></div>
-						<div></div>
-					</div>
-					<div class="row" id="row-individual-name" style="margin-top:12px; display:none">
+					<div class="row cols-4" id="row-individual-name" style="margin-top:12px; display:none">
 						<div id="f-seller_first_name"></div>
 						<div id="f-seller_middle_name"></div>
 						<div id="f-seller_last_name"></div>
@@ -444,15 +465,11 @@ class ReceiveGoodsApp {
 						<div id="f-seller_id_number"></div>
 						<div id="f-seller_id_document"></div>
 					</div>
-					<div class="row" id="row-individual-address" style="margin-top:12px; display:none">
+					<div class="row cols-4" id="row-individual-address" style="margin-top:12px; display:none">
 						<div id="f-seller_address_line1"></div>
 						<div id="f-seller_city"></div>
 						<div id="f-seller_state"></div>
 						<div id="f-seller_zip"></div>
-					</div>
-					<div class="row" style="margin-top:12px">
-						<div id="f-source"></div>
-						<div id="f-acquisition_type"></div>
 					</div>
 					<div class="row" id="row-consignment-commission" style="margin-top:12px; display:none">
 						<div id="f-consignment_commission_pct"></div>
@@ -467,7 +484,6 @@ class ReceiveGoodsApp {
 						<div id="f-scan" class="scan-input"></div>
 						<div class="typeahead" id="typeahead"></div>
 					</div>
-					<div class="helper">${__('Scan barcode, type SKU or item name. Use ↑↓ + Enter to pick.')}</div>
 
 					<div id="pending-area"></div>
 
@@ -616,7 +632,6 @@ class ReceiveGoodsApp {
 			acquisition_type: f('#f-acquisition_type', {
 				label: __('Acquisition Type'), fieldtype: 'Select', fieldname: 'acquisition_type',
 				options: '',
-				description: __('FastBound bound-book acquisition type (optional; synced from FastBound).'),
 				change: () => this._onAcquisitionTypeChange(),
 			}),
 			consignment_commission_pct: f('#f-consignment_commission_pct', {
@@ -1629,9 +1644,7 @@ class ReceiveGoodsApp {
 		pending.storageCtrl = fp('#p-storage', {
 			label: __('Storage location'), fieldtype: 'Link', options: 'Storage Location',
 			fieldname: 'storage_location',
-			description: isGun
-				? __('Several guns on one line fill the next free slots.')
-				: __('A display case, rack or safe.'),
+			description: isGun ? __('Several guns on one line fill the next free slots.') : '',
 			get_query: () => ({
 				query: 'ffl_core.api.storage.location_query',
 				filters: isGun ? { only_free: 1 } : { kind: 'Open' },

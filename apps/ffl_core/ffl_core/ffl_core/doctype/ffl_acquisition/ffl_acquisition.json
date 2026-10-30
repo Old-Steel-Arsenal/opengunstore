@@ -8,10 +8,10 @@
   "section_basic",
   "acquisition_date",
   "source_type",
+  "company",
+  "column_break_1",
   "receive_source",
   "transaction_type",
-  "column_break_1",
-  "company",
   "amended_from",
   "section_source",
   "source_name",
@@ -61,6 +61,17 @@
    "reqd": 1
   },
   {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "receive_source",
    "fieldtype": "Select",
    "label": "Receive Source"
@@ -70,17 +81,6 @@
    "fieldname": "transaction_type",
    "fieldtype": "Select",
    "label": "Acquisition Type"
-  },
-  {
-   "fieldname": "column_break_1",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "company",
-   "fieldtype": "Link",
-   "label": "Company",
-   "options": "Company",
-   "reqd": 1
   },
   {
    "fieldname": "amended_from",
@@ -251,7 +251,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-09 22:00:00",
+ "modified": "2026-10-30 19:00:00",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "FFL Acquisition",

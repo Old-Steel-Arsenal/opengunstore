@@ -3,7 +3,7 @@
  "autoname": "format:GWO-{YYYY}-{#####}",
  "naming_rule": "Expression",
  "creation": "2026-10-17 18:00:00.000000",
- "modified": "2026-10-30 18:00:00.000000",
+ "modified": "2026-10-30 19:00:00.000000",
  "modified_by": "Administrator",
  "description": "A customer's gun left for gunsmithing: intake, authorization, deposit, the work, and pick-up.",
  "doctype": "DocType",
@@ -14,7 +14,6 @@
   "customer",
   "cb_customer_1",
   "phone",
-  "cb_customer_2",
   "email",
   "section_address",
   "address_line1",
@@ -50,25 +49,22 @@
   "cb_estimate_1",
   "estimated_cost",
   "estimated_completion",
+  "section_lines",
+  "lines",
   "section_charges",
   "scan_barcode",
   "cb_charges_1",
-  "cb_charges_2",
-  "section_lines",
-  "lines",
-  "section_total",
-  "cb_total_2",
-  "cb_total_3",
   "final_cost",
   "section_work",
   "gunsmith",
   "work_performed",
-  "cb_work_1",
+  "section_progress",
   "completed_on",
-  "notified_via",
   "notified_on",
-  "notified_by",
   "picked_up_on",
+  "cb_work_1",
+  "notified_via",
+  "notified_by",
   "cancel_reason",
   "section_records",
   "received_on",
@@ -119,10 +115,6 @@
    "fieldtype": "Data",
    "label": "Phone",
    "options": "Phone"
-  },
-  {
-   "fieldname": "cb_customer_2",
-   "fieldtype": "Column Break"
   },
   {
    "fieldname": "email",
@@ -306,6 +298,16 @@
    "label": "Ready By"
   },
   {
+   "fieldname": "section_lines",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "lines",
+   "fieldtype": "Table",
+   "label": "Charges",
+   "options": "Gunsmith Work Order Line"
+  },
+  {
    "fieldname": "section_charges",
    "fieldtype": "Section Break"
   },
@@ -318,32 +320,6 @@
   },
   {
    "fieldname": "cb_charges_1",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "cb_charges_2",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "section_lines",
-   "fieldtype": "Section Break"
-  },
-  {
-   "fieldname": "lines",
-   "fieldtype": "Table",
-   "label": "Charges",
-   "options": "Gunsmith Work Order Line"
-  },
-  {
-   "fieldname": "section_total",
-   "fieldtype": "Section Break"
-  },
-  {
-   "fieldname": "cb_total_2",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "cb_total_3",
    "fieldtype": "Column Break"
   },
   {
@@ -372,21 +348,15 @@
    "label": "Work Performed"
   },
   {
-   "fieldname": "cb_work_1",
-   "fieldtype": "Column Break"
+   "fieldname": "section_progress",
+   "fieldtype": "Section Break",
+   "label": "Progress",
+   "depends_on": "eval:!doc.__islocal"
   },
   {
    "fieldname": "completed_on",
    "fieldtype": "Date",
    "label": "Date Completed",
-   "read_only": 1,
-   "no_copy": 1
-  },
-  {
-   "fieldname": "notified_via",
-   "fieldtype": "Select",
-   "label": "Customer Notified By",
-   "options": "\nPhone\nEmail\nText",
    "read_only": 1,
    "no_copy": 1
   },
@@ -398,17 +368,29 @@
    "no_copy": 1
   },
   {
-   "fieldname": "notified_by",
-   "fieldtype": "Link",
-   "label": "Notified By",
-   "options": "User",
+   "fieldname": "picked_up_on",
+   "fieldtype": "Datetime",
+   "label": "Date Picked Up",
    "read_only": 1,
    "no_copy": 1
   },
   {
-   "fieldname": "picked_up_on",
-   "fieldtype": "Datetime",
-   "label": "Date Picked Up",
+   "fieldname": "cb_work_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "notified_via",
+   "fieldtype": "Select",
+   "label": "Customer Notified By",
+   "options": "\nPhone\nEmail\nText",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "notified_by",
+   "fieldtype": "Link",
+   "label": "Notified By",
+   "options": "User",
    "read_only": 1,
    "no_copy": 1
   },

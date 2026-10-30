@@ -8,7 +8,7 @@ Source: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py` · 4 en
 
 `POST /api/method/ffl_integrations.payments.si_reversal.card_charges`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales Manager / System Manager
 
 The card charges on a Sales Invoice that a manager can void or refund, for the form.
 
@@ -24,7 +24,7 @@ The card charges on a Sales Invoice that a manager can void or refund, for the f
 
 `POST /api/method/ffl_integrations.payments.si_reversal.refund_sales_invoice_charge`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales Manager / System Manager
 
 Refund part or all of a card charge on a counter Sales Invoice to the card it came from.
 
@@ -48,7 +48,7 @@ back on the invoice to be collected another way.
 
 `POST /api/method/ffl_integrations.payments.si_reversal.resolve_card_reversal`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales Manager / System Manager
 
 Settle a void or refund the card processor never confirmed, after looking in its portal.
 
@@ -67,7 +67,7 @@ Settle a void or refund the card processor never confirmed, after looking in its
 
 `POST /api/method/ffl_integrations.payments.si_reversal.void_sales_invoice_charge`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales Manager / System Manager
 
 Void a card charge on a counter Sales Invoice: the processor reverses the whole capture
 

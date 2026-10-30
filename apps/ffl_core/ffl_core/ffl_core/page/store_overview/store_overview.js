@@ -286,7 +286,7 @@ const SOV_CSS = `
 	.sov .sov-ch { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px 12px; }
 	.sov .sov-ct { font-weight: 600; font-size: 14px; line-height: 1.3; color: var(--heading-color, var(--text-color)); }
 	.sov .sov-cs { color: var(--text-muted); font-size: 12px; display: flex; align-items: center; gap: 6px; }
-	.sov .sov-push { margin-left: auto; }
+	.sov .sov-push { margin-left: auto; white-space: nowrap; flex: none; }
 	.sov .sov-tabs { display: inline-flex; gap: 2px; padding: 3px; background: var(--subtle-fg, var(--control-bg)); border-radius: 8px; margin: 0 16px 12px; align-self: flex-start; }
 	.sov .sov-tab { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 6px; color: var(--text-muted);
 		font-weight: 500; cursor: pointer; user-select: none; border: 0; background: transparent; font-size: 13px; }
@@ -314,7 +314,6 @@ const SOV_CSS = `
 		padding: 11px 16px; border-top: 1px solid var(--border-color); }
 	.sov .sov-days { text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; }
 	.sov .sov-days.old { color: var(--orange-600); }
-	.sov .sov-foot { padding: 10px 16px; border-top: 1px solid var(--border-color); font-size: 12px; color: var(--text-muted); }
 	.sov .sov-pad { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 16px; }
 	.sov .sov-rowh { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 2px; }
 	.sov .sov-kv { display: flex; justify-content: space-between; gap: 12px; font-variant-numeric: tabular-nums; }
@@ -329,10 +328,10 @@ const SOV_CSS = `
 	.sov .sov-arrl { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 	.sov .sov-prog { height: 4px; border-radius: 2px; background: var(--subtle-fg, var(--control-bg)); overflow: hidden; margin-top: -2px; }
 	.sov .sov-progf { height: 100%; background: var(--text-color); border-radius: 2px; }
-	.sov .sov-rech { display: flex; align-items: flex-end; gap: 16px; margin-top: 16px; flex-wrap: wrap; }
+	.sov .sov-rech { display: flex; align-items: center; gap: 16px; margin-top: 16px; flex-wrap: wrap; }
 	.sov .sov-filter { margin-left: auto; width: 260px; max-width: 100%; }
-	.sov .sov-recs { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 24px 20px; padding: 18px 20px 22px; }
-	.sov .sov-recg { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+	.sov .sov-recs { column-width: 170px; column-gap: 20px; padding: 18px 20px 0; }
+	.sov .sov-recg { display: flex; flex-direction: column; gap: 6px; min-width: 0; break-inside: avoid; padding-bottom: 22px; }
 	.sov .sov-recgt { font-size: 12px; color: var(--text-muted); font-weight: 500; margin-bottom: 2px; }
 	.sov .sov-rec { color: var(--text-color); width: fit-content; }
 	.sov .sov-rec:hover { text-decoration: underline; text-underline-offset: 3px; }
@@ -343,13 +342,17 @@ const SOV_CSS = `
 		.sov .sov-grid { grid-template-columns: minmax(0,1fr); }
 		.sov .sov-side { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); align-items: start; }
 		.sov .sov-span2 { grid-column: 1 / -1; }
-		.sov .sov-recs { grid-template-columns: repeat(3, minmax(0,1fr)); }
 		.sov .sov-trow { grid-template-columns: minmax(0,1.2fr) minmax(0,1.4fr) minmax(0,1.1fr) 76px 92px; }
 		.sov .sov-prow { grid-template-columns: 120px minmax(0,1.3fr) minmax(0,1fr) 64px; }
 	}
 	@container (max-width: 560px) {
-		.sov .sov-kpis, .sov .sov-side { grid-template-columns: minmax(0,1fr); }
-		.sov .sov-recs { grid-template-columns: repeat(2, minmax(0,1fr)); }
+		.sov .sov-side { grid-template-columns: minmax(0,1fr); }
+		.sov .sov-kpis { gap: 8px; }
+		.sov .sov-kpi { padding: 12px; }
+		.sov .sov-kpiv { font-size: 22px; }
+		.sov .sov-bars { display: none; }
+		.sov .sov-recs { column-count: 2; column-width: auto; }
+		.sov .sov-filter { width: 100%; margin-left: 0; }
 		.sov .sov-trow { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
 		.sov .sov-trow > :nth-child(n+3) { display: none; }
 		.sov .sov-prow { grid-template-columns: minmax(0,1fr) 56px; }
@@ -485,7 +488,7 @@ class StoreOverview {
 		if (b.consignment) parts.push(__('{0} on consignment', [b.consignment]));
 		if (b.transfers) parts.push(__('{0} customer transfers', [b.transfers]));
 		const value = `<a href="${sovRoute('Report', 'Firearms In Stock')}" style="color:inherit">${b.total}</a>`;
-		return this.tile(__('Firearms in stock'), value, `<span>${sovEsc(parts.join(' · '))}</span>`);
+		return this.tile(__('Firearms in stock'), value, parts.length ? `<span>${sovEsc(parts.join(' · '))}</span>` : '');
 	}
 
 	card4473() {
@@ -536,7 +539,6 @@ class StoreOverview {
 			<div class="sov-ch"><div><div class="sov-ct">${__('Waiting on pickup')}</div>
 				<div class="sov-cs">${__('Inbound FFL transfers logged in, customer not in yet.')}</div></div>${all}</div>
 			${rows || `<div class="sov-empty">${__('No transfer guns waiting.')}</div>`}
-			<div class="sov-foot">${__('Past {0} days turns amber.', [SOV_OLD_PICKUP_DAYS])}</div>
 		</section>`;
 	}
 
@@ -628,8 +630,7 @@ class StoreOverview {
 			this.$records.empty();
 			return;
 		}
-		this.$records.html(`<div class="sov-rech"><div><div class="sov-ct" style="font-size:15px">${__('All records')}</div>
-			<div class="sov-cs">${__('Every list, report and setting, in one place.')}</div></div>
+		this.$records.html(`<div class="sov-rech"><div class="sov-ct" style="font-size:15px">${__('All records')}</div>
 			<div class="sov-filter"><input type="search" class="form-control input-sm" placeholder="${__('Filter…')}" value="${sovEsc(this.q)}"></div></div>
 			<div class="sov-card sov-recs"></div>`);
 		this.renderRecords();

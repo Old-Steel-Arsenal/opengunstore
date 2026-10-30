@@ -20,7 +20,7 @@ class PaymentHubApp {
 		this.$body = $(`
 			<div class="pay-hub">
 				<style>
-					.pay-hub { max-width: 860px; margin: 0 auto; padding: 4px 0 60px; }
+					.pay-hub { max-width: 860px; margin: 0 auto; padding: 4px 16px 60px; }
 					.pay-hub .hub-card { background: var(--card-bg); border: 1px solid var(--border-color);
 						border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; }
 					.pay-hub .hub-card.off { opacity: .62; }
@@ -40,10 +40,8 @@ class PaymentHubApp {
 					.pay-hub .meta { font-size: 12px; color: var(--text-muted); margin-top: 7px;
 						display: flex; gap: 16px; flex-wrap: wrap; }
 					.pay-hub .foot { display: flex; gap: 8px; margin-top: 11px; flex-wrap: wrap; }
-					.pay-hub .note { font-size: 12px; color: var(--text-muted); margin-top: 14px; }
 				</style>
 				<div class="cards"></div>
-				<div class="note"></div>
 			</div>`);
 		this.$body.appendTo(this.page.main);
 		this.refresh();
@@ -60,9 +58,6 @@ class PaymentHubApp {
 		const $cards = this.$body.find('.cards').empty();
 		this.data.processors.forEach((row) => this.renderCard($cards, row));
 		if (this.data.card_on_file) this.renderCardOnFile($cards, this.data.card_on_file);
-		this.$body.find('.note').text(__(
-			'Adding a processor is a registry entry in ffl_integrations/payments/hub.py '
-			+ 'plus its own Settings doctype — this page and the workspace card stay as they are.'));
 	}
 
 	renderCard($cards, row) {
@@ -132,7 +127,12 @@ class PaymentHubApp {
 			? (supported ? `<span class="state ok">${esc(__('on — "Save this card" is offered at the terminal'))}</span>`
 				: `<span class="state warn">${esc(__('on, but the active processor cannot save cards'))}</span>`)
 			: `<span class="state idle">${esc(__('off'))}</span>`);
-		const $form = $('<div style="margin-top:10px; max-width:420px"></div>').appendTo($card);
+		const $tg = $('<div class="toggles"></div>').appendTo($card);
+		const $label = $(`<label class="${cof.can_write ? '' : 'ro'}"></label>`).appendTo($tg);
+		const $cb = $('<input type="checkbox">').prop('checked', !!cof.enabled)
+			.prop('disabled', !cof.can_write).appendTo($label);
+		$label.append(document.createTextNode(__('Offer "Save this card"')));
+		const $form = $('<div style="margin-top:8px; max-width:420px"></div>').appendTo($card);
 		const control = frappe.ui.form.make_control({
 			parent: $form, render_input: true,
 			df: { fieldtype: 'Link', fieldname: 'card_on_file_template', options: 'Agreement Template',
@@ -141,12 +141,7 @@ class PaymentHubApp {
 		});
 		control.set_value(cof.template || '');
 		control.$input.prop('disabled', !cof.can_write);
-		const $tg = $('<div class="toggles"></div>').appendTo($card);
-		const $label = $(`<label class="${cof.can_write ? '' : 'ro'}"></label>`).appendTo($tg);
-		const $cb = $('<input type="checkbox">').prop('checked', !!cof.enabled)
-			.prop('disabled', !cof.can_write).appendTo($label);
-		$label.append(document.createTextNode(__('Offer "Save this card"')));
-		$card.append(`<div class="meta"><span>${esc(__('A saved card can later be charged against a counter order\'s balance (Sales Invoice → Charge saved card). The card number never reaches this system: the processor keeps it and hands back a token, stored encrypted.'))}</span></div>`);
+		$card.append(`<div class="meta"><span>${esc(__('A saved card can be charged later for an order\'s balance.'))}</span></div>`);
 		const $foot = $('<div class="foot"></div>').appendTo($card);
 		$('<button class="btn btn-default btn-sm"></button>').text(__('Save'))
 			.prop('disabled', !cof.can_write).appendTo($foot)
@@ -158,7 +153,8 @@ class PaymentHubApp {
 	}
 
 	when(value) {
-		return value ? frappe.datetime.comment_when(value) : `<span>${__('never')}</span>`;
+		// An unset Datetime on a Single can come back as 0001-01-01: that is "never" too.
+		return value && !String(value).startsWith('0001-') ? frappe.datetime.comment_when(value) : `<span>${__('never')}</span>`;
 	}
 
 	testConnection(row, $btn) {

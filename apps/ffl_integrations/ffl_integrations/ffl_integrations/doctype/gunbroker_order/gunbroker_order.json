@@ -7,10 +7,10 @@
  "field_order": [
   "gb_order_id",
   "order_status",
+  "order_date",
   "column_head",
   "gb_status",
   "gb_status_label",
-  "order_date",
   "gb_last_modified",
   "acknowledged_at",
   "section_buyer",
@@ -22,6 +22,10 @@
   "customer_email",
   "customer_phone",
   "tax_exempt",
+  "section_lines",
+  "lines",
+  "section_serials",
+  "serials",
   "section_ship_to",
   "ship_to_name",
   "ship_to_line1",
@@ -106,10 +110,6 @@
   "is_chargeback",
   "chargeback_handled_at",
   "refund_handled_at",
-  "section_lines",
-  "lines",
-  "section_serials",
-  "serials",
   "section_sync",
   "sync_error",
   "sync_fail_count",
@@ -140,6 +140,12 @@
    "reqd": 1
   },
   {
+   "fieldname": "order_date",
+   "fieldtype": "Datetime",
+   "label": "Order Date",
+   "read_only": 1
+  },
+  {
    "fieldname": "column_head",
    "fieldtype": "Column Break"
   },
@@ -155,12 +161,6 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "GunBroker Status",
-   "read_only": 1
-  },
-  {
-   "fieldname": "order_date",
-   "fieldtype": "Datetime",
-   "label": "Order Date",
    "read_only": 1
   },
   {
@@ -225,6 +225,28 @@
    "fieldtype": "Check",
    "label": "Tax Exempt",
    "read_only": 1
+  },
+  {
+   "fieldname": "section_lines",
+   "fieldtype": "Section Break",
+   "label": "Lines"
+  },
+  {
+   "fieldname": "lines",
+   "fieldtype": "Table",
+   "label": "Lines",
+   "options": "GunBroker Order Line"
+  },
+  {
+   "fieldname": "section_serials",
+   "fieldtype": "Section Break",
+   "label": "Serials"
+  },
+  {
+   "fieldname": "serials",
+   "fieldtype": "Table",
+   "label": "Serials",
+   "options": "GunBroker Order Serial"
   },
   {
    "fieldname": "section_ship_to",
@@ -716,28 +738,6 @@
    "label": "Refund Handled At"
   },
   {
-   "fieldname": "section_lines",
-   "fieldtype": "Section Break",
-   "label": "Lines"
-  },
-  {
-   "fieldname": "lines",
-   "fieldtype": "Table",
-   "label": "Lines",
-   "options": "GunBroker Order Line"
-  },
-  {
-   "fieldname": "section_serials",
-   "fieldtype": "Section Break",
-   "label": "Serials"
-  },
-  {
-   "fieldname": "serials",
-   "fieldtype": "Table",
-   "label": "Serials",
-   "options": "GunBroker Order Serial"
-  },
-  {
    "collapsible": 1,
    "fieldname": "section_sync",
    "fieldtype": "Section Break",
@@ -767,7 +767,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-28 12:00:00",
+ "modified": "2026-10-30 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "GunBroker Order",

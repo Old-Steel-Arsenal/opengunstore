@@ -161,7 +161,8 @@
   {
    "fieldname": "books_section",
    "fieldtype": "Section Break",
-   "label": "Books"
+   "label": "Books",
+   "collapsible": 1
   },
   {
    "fieldname": "debit_account",
@@ -220,7 +221,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-07 01:12:57.841162",
+ "modified": "2026-10-30 19:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Cash Drawer Entry",

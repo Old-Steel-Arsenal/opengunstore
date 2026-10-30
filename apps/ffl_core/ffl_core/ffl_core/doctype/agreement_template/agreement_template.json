@@ -5,13 +5,13 @@
  "engine": "InnoDB",
  "field_order": [
   "title",
+  "scope",
+  "valid_days",
+  "one_copy_per_gun",
   "active",
   "version",
   "column_break_settings",
-  "valid_days",
   "requirement",
-  "scope",
-  "one_copy_per_gun",
   "show_on_counter_panel",
   "minors_need_guardian",
   "section_body",
@@ -26,6 +26,31 @@
    "reqd": 1,
    "unique": 1,
    "in_list_view": 1
+  },
+  {
+   "fieldname": "scope",
+   "fieldtype": "Select",
+   "label": "Signed",
+   "options": "Per customer\nEach firearm sold\nPer document",
+   "default": "Per customer",
+   "in_list_view": 1,
+   "description": "Per document agreements are signed from a record, such as a gunsmith work order, and never asked for at a sale."
+  },
+  {
+   "fieldname": "valid_days",
+   "fieldtype": "Int",
+   "label": "Valid For (Days)",
+   "default": "0",
+   "non_negative": 1,
+   "description": "0 = never expires.",
+   "depends_on": "eval:doc.scope=='Per customer'"
+  },
+  {
+   "fieldname": "one_copy_per_gun",
+   "fieldtype": "Check",
+   "label": "One copy per gun",
+   "default": "0",
+   "depends_on": "eval:doc.scope==\"Each firearm sold\""
   },
   {
    "fieldname": "active",
@@ -49,15 +74,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "valid_days",
-   "fieldtype": "Int",
-   "label": "Valid For (Days)",
-   "default": "0",
-   "non_negative": 1,
-   "description": "0 = never expires.",
-   "depends_on": "eval:doc.scope=='Per customer'"
-  },
-  {
    "fieldname": "requirement",
    "fieldtype": "Select",
    "label": "Required",
@@ -65,22 +81,6 @@
    "default": "Required by item",
    "in_list_view": 1,
    "description": "Required by item applies to a counter sale of an Item or Item Group that names this agreement. Required for every sale blocks every counter sale until it is signed, so a walk-in sale needs a named customer."
-  },
-  {
-   "fieldname": "scope",
-   "fieldtype": "Select",
-   "label": "Signed",
-   "options": "Per customer\nEach firearm sold\nPer document",
-   "default": "Per customer",
-   "in_list_view": 1,
-   "description": "Per document agreements are signed from a record, such as a gunsmith work order, and never asked for at a sale."
-  },
-  {
-   "fieldname": "one_copy_per_gun",
-   "fieldtype": "Check",
-   "label": "One copy per gun",
-   "default": "0",
-   "depends_on": "eval:doc.scope==\"Each firearm sold\""
   },
   {
    "fieldname": "show_on_counter_panel",
@@ -115,7 +115,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-28 14:00:00.000000",
+ "modified": "2026-10-30 19:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Agreement Template",

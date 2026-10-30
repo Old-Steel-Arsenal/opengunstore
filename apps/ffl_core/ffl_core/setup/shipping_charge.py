@@ -21,11 +21,12 @@ _FIELD = {
 	"fieldname": "ffl_shipping_amount",
 	"fieldtype": "Currency",
 	"label": "Shipping Amount",
-	"insert_after": "taxes_and_charges",
+	# Right column of Taxes and Charges, under Incoterm / Named Place: the left column already
+	# holds the tax fields, so anchoring there left Incoterm alone on the right.
+	"insert_after": "named_place",
 	"read_only": 1,
 	"print_hide": 1,
-	"description": "Operator-entered shipping charge (Create Order); materialized "
-		"into a Sales Taxes and Charges row by ffl_core.compliance.shipping_charge.",
+	"description": "Charged on this order as the Shipping row in Sales Taxes and Charges.",
 }
 # The freight tax basis, stamped at creation from FFL Settings and copied with
 # the document (amend / return / SO → SI), so an order keeps the basis it was
@@ -37,8 +38,7 @@ _INCLUSIVE_FIELD = {
 	"insert_after": "ffl_shipping_amount",
 	"read_only": 1,
 	"print_hide": 1,
-	"description": "Set when the order was created: the Shipping Amount already "
-		"includes its sales tax (the Shipping row carries the rest).",
+	"description": "The Shipping Amount already includes its sales tax.",
 }
 _FIELDS = {dt: [dict(_FIELD), dict(_INCLUSIVE_FIELD)] for dt in ("Sales Order", "Sales Invoice")}
 

@@ -1,7 +1,7 @@
 {
  "actions": [],
  "creation": "2026-10-27 12:00:00.000000",
- "modified": "2026-10-28 12:00:00.000000",
+ "modified": "2026-10-30 18:00:00.000000",
  "modified_by": "Administrator",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -53,8 +53,7 @@
    "options": "Monthly\nYearly",
    "default": "Monthly",
    "reqd": 1,
-   "in_list_view": 1,
-   "description": "A period runs from the start day to the day before the same day next month or year."
+   "in_list_view": 1
   },
   {
    "fieldname": "price",
@@ -72,7 +71,7 @@
    "fieldtype": "Link",
    "label": "Billed Item",
    "options": "Item",
-   "description": "Left empty, saving the plan creates it; whether it is taxed follows the item's own Item Tax Template. Saving the plan books its revenue as deferred, earned over each period."
+   "description": "Left empty, saving the plan creates it; tax follows the item's Item Tax Template and revenue is deferred over each period."
   },
   {
    "fieldname": "description",
@@ -89,7 +88,7 @@
    "fieldtype": "Link",
    "label": "Registration Item",
    "options": "Item",
-      "description": "Charged on a customer's first invoice of this plan only; left empty with a fee set, saving the plan creates one."
+   "description": "Charged on a customer's first invoice of this plan only; left empty with a fee set, saving the plan creates one."
   },
   {
    "fieldname": "column_break_b",

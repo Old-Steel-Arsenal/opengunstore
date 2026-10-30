@@ -8,6 +8,7 @@
  "field_order": [
   "caliber_name",
   "abbreviation",
+  "column_break_1",
   "metric_equivalent",
   "category"
  ],
@@ -27,6 +28,10 @@
    "label": "Abbreviation"
   },
   {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
    "description": "For example '9mm Luger' ↔ '.355'.",
    "fieldname": "metric_equivalent",
    "fieldtype": "Data",
@@ -41,7 +46,7 @@
   }
  ],
  "links": [],
- "modified": "2026-05-04 12:00:00",
+ "modified": "2026-10-30 19:00:00",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Caliber",

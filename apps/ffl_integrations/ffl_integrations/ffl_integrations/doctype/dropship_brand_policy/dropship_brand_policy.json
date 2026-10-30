@@ -6,8 +6,10 @@
  "field_order": [
   "brand",
   "distributor",
+  "column_break_policy",
   "policy",
   "reason",
+  "section_notes",
   "notes"
  ],
  "fields": [
@@ -27,6 +29,10 @@
    "description": "Blank applies to every distributor; set applies to this distributor only."
   },
   {
+   "fieldname": "column_break_policy",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "policy",
    "fieldtype": "Select",
    "label": "Policy",
@@ -43,13 +49,17 @@
    "label": "Reason shown to staff"
   },
   {
+   "fieldname": "section_notes",
+   "fieldtype": "Section Break"
+  },
+  {
    "fieldname": "notes",
    "fieldtype": "Small Text",
    "label": "Notes"
   }
  ],
  "links": [],
- "modified": "2026-07-22 18:00:00",
+ "modified": "2026-10-30 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "Dropship Brand Policy",

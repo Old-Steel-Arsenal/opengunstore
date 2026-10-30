@@ -226,6 +226,8 @@ class PendingDispositionsApp {
 			<div class="ffl-pending ffl-pending-orders">
 				<style>
 					.ffl-pending { max-width: 960px; margin: 0 auto; padding: 8px 0 60px; }
+					.ffl-dispose-cr .form-section + .form-section { border-top: 0; padding-top: 0; padding-bottom: 0; }
+					.ffl-dispose-cr .form-section + .form-section .section-body { padding-top: 0; margin-top: 0; }
 					.ffl-pending .card {
 						background: var(--card-bg); border: 1px solid var(--border-color);
 						border-radius: 8px; padding: 16px 18px; margin-bottom: 12px;
@@ -292,6 +294,14 @@ class PendingDispositionsApp {
 					.ffl-agreement-warning { background: var(--bg-red); color: var(--red-700); border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; font-weight: 500; }
 					.ffl-dispose-summary { line-height: 1.7; }
 					.ffl-dispose-summary ul { margin: 4px 0 0; padding-left: 20px; }
+					/* Phone: side gutter, and the action column drops under the order. */
+					@media (max-width: 767px) {
+						.ffl-pending { padding-inline: 15px; }
+						.ffl-pending .card { grid-template-columns: minmax(0, 1fr); }
+						.ffl-pending-orders .actions { width: auto; min-width: 0; }
+						/* Stacked C&R columns keep Frappe's gutters: City/State/ZIP would sit indented. */
+						.ffl-dispose-cr .form-column { padding-inline: 0; }
+					}
 				</style>
 				<div class="pd-toolbar">
 					<div class="pd-chips">
@@ -1374,7 +1384,6 @@ class PendingDispositionsApp {
 					${row.ships_direct === true
 						? __('This takes the goods out of stock and raises the invoice. No bound-book entry, and nothing goes to FastBound.')
 						: __('This books the bound-book transfer, removes the gun from stock, and pushes to FastBound.')}
-					${isCounter || isGb ? ' ' + __('Buying the shipping label is the separate Ship step.') : ''}
 				</div>
 			</div>`;
 		// A Type 03 (Curio & Relic) collector has no dealer at the far end and no
@@ -1466,6 +1475,8 @@ class PendingDispositionsApp {
 		// Red, but still .btn-primary: the checkbox handlers look the button up by
 		// that class on every change (see the front-end invariant test).
 		if (unsigned.length) d.$wrapper.addClass('ffl-dispose-unsigned');
+		// The C&R rows are split into short sections; drop the rules between them.
+		if (isCr) d.$wrapper.addClass('ffl-dispose-cr');
 	}
 
 	// ---- C&R (Type 03) verification block -------------------------------------
@@ -1485,30 +1496,39 @@ class PendingDispositionsApp {
 				fieldtype: 'HTML', fieldname: 'cr_header',
 				options: `<hr><div style="font-weight:600;margin-bottom:4px">${__('C&R (Type 03) verification')}</div>
 					<div class="text-muted" style="font-size:12px;margin-bottom:8px">
-						${__('FastBound needs these exactly as printed on the collector\'s license.')}<br>
-						${__('The parcel ships to this address — it must be the licensed premises.')}
+						${__('Enter these exactly as on the license; the parcel ships to this address, the licensed premises.')}
 					</div>`,
 			},
+			// Short fields in pairs (license | expiry, address lines, city | state | ZIP);
+			// the closing Section Break keeps the confirm checkbox below at full width.
+			{ fieldtype: 'Section Break' },
 			f({ fieldtype: 'Data', fieldname: 'cr_license_number', reqd: 1,
 				label: __('C&R license number'), default: p.license_number || '',
 				description: __('Fourth group must be 03 — e.g. 1-23-456-03-7C-89012') }),
+			{ fieldtype: 'Column Break' },
 			// Deliberately not pre-filled from a previous order: a licence that
 			// was valid then may have lapsed since, so it is read fresh every time.
 			f({ fieldtype: 'Date', fieldname: 'cr_license_expiry', reqd: 1,
 				label: __('License expiration date'), default: p.license_expiry || '' }),
+			{ fieldtype: 'Section Break' },
 			f({ fieldtype: 'Data', fieldname: 'cr_contact_name', reqd: 1,
 				label: __("Collector's full name"), default: p.contact_name || '' }),
+			{ fieldtype: 'Section Break' },
 			f({ fieldtype: 'Data', fieldname: 'cr_premise_street', reqd: 1,
 				label: __('Address 1'), default: p.premise_street || '' }),
+			{ fieldtype: 'Column Break' },
 			f({ fieldtype: 'Data', fieldname: 'cr_premise_street2',
 				label: __('Address 2'), default: p.premise_street2 || '' }),
+			{ fieldtype: 'Section Break' },
 			f({ fieldtype: 'Data', fieldname: 'cr_premise_city', reqd: 1,
 				label: __('City'), default: p.premise_city || '' }),
 			{ fieldtype: 'Column Break' },
 			f({ fieldtype: 'Data', fieldname: 'cr_premise_state', reqd: 1,
 				label: __('State'), default: p.premise_state || '' }),
+			{ fieldtype: 'Column Break' },
 			f({ fieldtype: 'Data', fieldname: 'cr_premise_zip', reqd: 1,
 				label: __('ZIP'), default: p.premise_zip || '' }),
+			{ fieldtype: 'Section Break' },
 		];
 	}
 

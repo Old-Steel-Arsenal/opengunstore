@@ -13,18 +13,22 @@
   "account",
   "account_number",
   "company",
-  "status",
   "column_break_head",
+  "status",
   "web_ref",
-  "fill_or_kill",
+  "hold_status",
+  "hold_reason",
+  "section_lines",
+  "lines",
+  "section_delivery",
   "shipping_service",
   "shipping_service_label",
+  "column_break_delivery",
+  "fill_or_kill",
   "delivery_options_set",
   "delivery_signature",
   "delivery_adult_signature",
   "delivery_insurance",
-  "hold_status",
-  "hold_reason",
   "section_source",
   "source_doctype",
   "source_name",
@@ -44,20 +48,20 @@
   "transfer_ffl_premise_state",
   "transfer_ffl_premise_zip",
   "transfer_ffl_record",
-  "section_lines",
-  "lines",
   "section_tracking",
   "placed_at",
   "last_poll_at",
   "next_poll_at",
+  "receive_status",
+  "woo_notified_status",
   "column_break_track",
   "total_cost",
   "freight_cost",
   "invoiced_freight",
-  "receive_status",
+  "section_tracking_notes",
   "error",
+  "column_break_tracking_notes",
   "notes_posted",
-  "woo_notified_status",
   "section_raw",
   "raw_request",
   "raw_response"
@@ -111,6 +115,10 @@
    "options": "Company"
   },
   {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
@@ -121,22 +129,37 @@
    "read_only": 1
   },
   {
-   "fieldname": "column_break_head",
-   "fieldtype": "Column Break"
-  },
-  {
    "fieldname": "web_ref",
    "fieldtype": "Data",
    "label": "Distributor Order No.",
    "read_only": 1
   },
   {
-   "fieldname": "fill_or_kill",
-   "fieldtype": "Check",
-   "label": "Fill or Kill",
-   "default": "0",
-   "read_only": 1,
-   "description": "A line the distributor cannot fill is dropped instead of back-ordered."
+   "fieldname": "hold_status",
+   "fieldtype": "Data",
+   "label": "Hold Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "hold_reason",
+   "fieldtype": "Small Text",
+   "label": "Hold / Cancel Reason"
+  },
+  {
+   "fieldname": "section_lines",
+   "fieldtype": "Section Break",
+   "label": "Lines"
+  },
+  {
+   "fieldname": "lines",
+   "fieldtype": "Table",
+   "options": "Distributor Order Line",
+   "label": "Lines"
+  },
+  {
+   "fieldname": "section_delivery",
+   "fieldtype": "Section Break",
+   "label": "Shipping"
   },
   {
    "fieldname": "shipping_service",
@@ -149,6 +172,18 @@
    "fieldtype": "Data",
    "label": "Shipping service",
    "read_only": 1
+  },
+  {
+   "fieldname": "column_break_delivery",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "fill_or_kill",
+   "fieldtype": "Check",
+   "label": "Fill or Kill",
+   "default": "0",
+   "read_only": 1,
+   "description": "A line the distributor cannot fill is dropped instead of back-ordered."
   },
   {
    "fieldname": "delivery_options_set",
@@ -181,17 +216,6 @@
    "default": "0",
    "read_only": 1,
    "depends_on": "eval:doc.delivery_options_set"
-  },
-  {
-   "fieldname": "hold_status",
-   "fieldtype": "Data",
-   "label": "Hold Status",
-   "read_only": 1
-  },
-  {
-   "fieldname": "hold_reason",
-   "fieldtype": "Small Text",
-   "label": "Hold / Cancel Reason"
   },
   {
    "fieldname": "section_source",
@@ -292,20 +316,9 @@
    "label": "Transfer FFL Record"
   },
   {
-   "fieldname": "section_lines",
-   "fieldtype": "Section Break",
-   "label": "Lines"
-  },
-  {
-   "fieldname": "lines",
-   "fieldtype": "Table",
-   "options": "Distributor Order Line",
-   "label": "Lines"
-  },
-  {
    "fieldname": "section_tracking",
    "fieldtype": "Section Break",
-   "label": "Tracking"
+   "label": "Tracking and costs"
   },
   {
    "fieldname": "placed_at",
@@ -323,6 +336,20 @@
    "fieldname": "next_poll_at",
    "fieldtype": "Datetime",
    "label": "Next Poll At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "receive_status",
+   "fieldtype": "Select",
+   "label": "Receive Status",
+   "options": "Not Received\nPartial\nReceived",
+   "default": "Not Received",
+   "read_only": 1
+  },
+  {
+   "fieldname": "woo_notified_status",
+   "fieldtype": "Data",
+   "label": "Shop Notified Status",
    "read_only": 1
   },
   {
@@ -348,12 +375,8 @@
    "read_only": 1
   },
   {
-   "fieldname": "receive_status",
-   "fieldtype": "Select",
-   "label": "Receive Status",
-   "options": "Not Received\nPartial\nReceived",
-   "default": "Not Received",
-   "read_only": 1
+   "fieldname": "section_tracking_notes",
+   "fieldtype": "Section Break"
   },
   {
    "fieldname": "error",
@@ -362,15 +385,13 @@
    "read_only": 1
   },
   {
+   "fieldname": "column_break_tracking_notes",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "notes_posted",
    "fieldtype": "Small Text",
    "label": "Tracking Notes Posted",
-   "read_only": 1
-  },
-  {
-   "fieldname": "woo_notified_status",
-   "fieldtype": "Data",
-   "label": "Shop Notified Status",
    "read_only": 1
   },
   {
@@ -395,7 +416,7 @@
   }
  ],
  "links": [],
- "modified": "2026-07-22 12:00:00",
+ "modified": "2026-10-30 12:30:00",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "Distributor Order",

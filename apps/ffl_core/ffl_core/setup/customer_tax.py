@@ -5,6 +5,8 @@ sales tax on all of their orders. The certificate is attached to the Customer
 (retrievable any time) and `is_tax_exempt` drives the 0% tax in
 ffl_core.api.manual_order.create_order.
 
+Both sit on the Customer's Tax tab, under Tax Category (``tax_category``, core).
+
 Installed idempotently via create_custom_fields (mirrors setup/shipstation_fields)
 and wired into after_install + after_migrate.
 """
@@ -19,10 +21,9 @@ _FIELDS = {
 			"fieldname": "is_tax_exempt",
 			"fieldtype": "Check",
 			"label": "Tax Exempt",
-			"insert_after": "is_ffl_dealer",
+			"insert_after": "tax_category",
 			"in_standard_filter": 1,
-			"description": "Sales-tax exempt — a resale/exemption certificate is on "
-				"file. Exempts every order for this customer from sales tax.",
+			"description": "No sales tax is charged on this customer's orders.",
 		},
 		{
 			"fieldname": "tax_exemption_certificate",
@@ -30,7 +31,7 @@ _FIELDS = {
 			"label": "Tax Exemption Certificate",
 			"insert_after": "is_tax_exempt",
 			"depends_on": "is_tax_exempt",
-			"description": "The resale/exemption certificate kept on file.",
+			"description": "",  # "" (not omitted) clears the old helper text on existing sites
 		},
 	],
 }
