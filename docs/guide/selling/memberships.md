@@ -104,7 +104,7 @@ ended is charged to its saved card.
 | Declined | The renewal invoice is voided. With grace, the membership goes **Past Due** and is retried each morning. Without, it is **Suspended** |
 | No card the system can charge | No invoice is made. The membership is handled as declined |
 | The processor never answered | The invoice stays open and is never charged again by itself. A manager clicks **Look up card charge** |
-| The processor refused the request | The membership keeps its status, the invoice is voided and the charge is tried again tomorrow |
+| The processor refused the request | The membership keeps its status and the charge is tried again tomorrow |
 
 When grace runs out the membership is **Suspended**. A renewal paid late keeps the
 original dates. A suspended member who pays starts again that day, and the
