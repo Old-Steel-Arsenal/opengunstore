@@ -183,7 +183,7 @@ function _openAtfLookupDialog(frm) {
 				fieldname: 'ffl_number',
 				label: __('FFL Number'),
 				reqd: 1,
-				description: __('Format: 1-99-999-99-9X-99999. Hyphens optional. Hits ATF EZ Check live; the record is cached locally so picking it next time goes through the dropdown.'),
+				description: __('Format: 1-99-999-99-9X-99999; hyphens are optional.'),
 			},
 		],
 		primary_action_label: __('Lookup & Use'),

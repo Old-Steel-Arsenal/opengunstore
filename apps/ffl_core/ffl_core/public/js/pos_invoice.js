@@ -188,7 +188,6 @@ function override4473(frm) {
 			{
 				fieldtype: 'Small Text', fieldname: 'reason', reqd: 1,
 				label: __('Reason'),
-				description: __('e.g. 4473 completed in FastBound, disposition deleted by partner FFL; serial mismatch — webhook did not sync.'),
 			},
 		],
 		primary_action_label: __('Force-complete the sale'),

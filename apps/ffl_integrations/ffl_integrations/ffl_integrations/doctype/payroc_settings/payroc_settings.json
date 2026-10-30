@@ -39,7 +39,7 @@
   {
    "default": "1",
    "depends_on": "eval:!doc.enabled",
-   "description": "Standalone-terminal mode only: a Credit Card sale or refund cannot complete without the terminal's approval code (not the batch number or the last 4).",
+   "description": "Standalone-terminal mode only: a Credit Card sale or refund cannot complete without the terminal's approval code (not the batch number or the last 4); turning it off leaves card sales with nothing to match against the terminal's batch report.",
    "fieldname": "require_card_reference",
    "fieldtype": "Check",
    "label": "Require Card Reference (manual terminal)"

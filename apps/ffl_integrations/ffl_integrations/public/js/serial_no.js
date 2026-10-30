@@ -55,7 +55,7 @@ function _reassignDialog(frm) {
 		fields: [{
 			fieldtype: 'HTML',
 			options: `<div class="alert alert-info" style="margin-bottom:10px">${
-				__('Move this firearm to a different model Item. Everything on the gun is preserved — serial, A&D record, price, photos, condition, manufacturer / importer and stock. FastBound is not changed.')}</div>`,
+				__('Moves this firearm to a different model Item; its serial, A&D record, price, photos, condition, manufacturer / importer and stock stay as they are. FastBound is not changed.')}</div>`,
 		}, {
 			fieldtype: 'Link', fieldname: 'target_item', label: __('Target Item'),
 			options: 'Item', reqd: 1,
@@ -162,7 +162,7 @@ function _fbSyncDialog(frm, diffs) {
 	const fields = [{
 		fieldtype: 'HTML', fieldname: 'intro',
 		options: `<div class="text-muted" style="margin-bottom:8px">${
-			__('For each differing field, choose which side is correct. "Use POS" pushes your value to the FastBound bound book.')}</div>`,
+			__('"Use POS" pushes your value to the FastBound bound book.')}</div>`,
 	}];
 	diffs.forEach((d) => {
 		fields.push({
@@ -327,7 +327,7 @@ function _gbAskListing(frm, then) {
 				{ fieldtype: 'Section Break', fieldname: 'gb_sec_premium', label: __('Paid promotion') },
 				{ fieldtype: 'HTML', fieldname: 'premium_note',
 					options: `<div class="text-muted small" style="margin-bottom:8px">${
-						__('GunBroker charges extra for each one ticked, every time the gun is listed. They can only be chosen now, when the listing is created: POS cannot add them to a listing that is already live.')
+						__('GunBroker charges extra for each one ticked, every time the gun is listed; they cannot be added to a live listing.')
 						}${premium.featured || premium.showcase || premium.sponsored_onsite || premium.view_counter
 							? ` <b>${__('Ticked because this gun had them last time.')}</b>` : ''}</div>` },
 				{ fieldtype: 'Check', fieldname: 'premium_featured', label: __('Featured'),

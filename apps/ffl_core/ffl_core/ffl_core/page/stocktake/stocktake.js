@@ -260,7 +260,7 @@ class StocktakeApp {
 			if (this.count) return;
 			if (!counts.length) {
 				this.$view.html(`<div class="card-box"><b>${__('No counts yet.')}</b>
-					<div class="muted">${__('Press New Count to start walking the shop. Pick a warehouse or item group, or leave both empty to count everything.')}</div></div>`);
+					<div class="muted">${__('Press New Count to start.')}</div></div>`);
 				return;
 			}
 			const rows = counts.map((c) => `
@@ -287,10 +287,9 @@ class StocktakeApp {
 				title: __('New Count'),
 				fields: [
 					{ fieldname: 'warehouses', fieldtype: 'MultiSelectList', label: __('Warehouses'),
-						description: __('Leave empty to count the whole store.'),
+						description: __('Leave both empty to count the whole store.'),
 						get_data: () => Promise.resolve(opts.warehouses.map((w) => ({ value: w, description: '' }))) },
 					{ fieldname: 'item_groups', fieldtype: 'MultiSelectList', label: __('Item groups'),
-						description: __('Leave empty to count every item group.'),
 						get_data: (txt) => frappe.db.get_link_options('Item Group', txt) },
 					{ fieldname: 'include_custody', fieldtype: 'Check', default: 1,
 						label: __('Include guns held for customers') },
@@ -730,13 +729,13 @@ class StocktakeApp {
 							|| `<div class="muted">${__('Every firearm matches.')}</div>`}
 						<button class="btn btn-xs btn-default print-report" style="margin-top:6px">${__('Print firearm report')}</button>
 					</div>
-					${qtyCounted ? '' : `<div class="muted" style="margin:10px 0">${__('This count only produces the firearm report. No stock quantities were counted, so nothing is adjusted.')}</div>`}
+					${qtyCounted ? '' : `<div class="muted" style="margin:10px 0">${__('No stock quantities were counted, so nothing is adjusted.')}</div>`}
 					${qtyCounted ? `${blockedNote}
 					<h5>${__('Items to adjust')}</h5>
 					${walked.length ? table(walked) : `<div class="muted">${__('Every counted item matches the system.')}</div>`}` : ''}
 					${qtyCounted && never.length ? `<h5 style="margin-top:16px">${__('Never scanned')} (${never.length})
 						<button class="btn btn-xs btn-default set-zero" style="margin-left:8px">${__('Set all to 0')}</button></h5>
-						<div class="muted" style="margin-bottom:6px">${__('Nobody scanned these. They are left alone unless you tick them, which sets them to 0.')}</div>
+						<div class="muted" style="margin-bottom:6px">${__('Left alone unless you tick them, which sets them to 0.')}</div>
 						${table(never)}` : ''}
 					${qtyCounted && (v.skipped || []).length ? `<h5 style="margin-top:16px">${__('Cannot be adjusted here')}</h5>
 						<div class="muted" style="margin-bottom:6px">${__('Fix the item, then adjust these by hand.')}</div>

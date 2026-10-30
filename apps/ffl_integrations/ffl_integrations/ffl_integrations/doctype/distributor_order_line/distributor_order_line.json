@@ -74,7 +74,7 @@
    "label": "Case Price",
    "read_only": 1,
    "in_list_view": 1,
-   "description": "On store orders, full cases buy at the distributor's case price, which Unit Cost already includes."
+   "description": "On store orders, full cases buy at the distributor's case price, which Unit Cost already includes; it is an estimate until the distributor's acknowledged cost replaces it."
   },
   {
    "fieldname": "invoiced_unit_cost",

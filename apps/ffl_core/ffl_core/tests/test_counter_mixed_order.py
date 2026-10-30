@@ -41,7 +41,7 @@ class MixedOrderRules(unittest.TestCase):
 			mock.patch.object(manual_order, "_dropship_eligibility", _elig, create=True),
 			# Serial validation of a local gun row queries stock/warehouse; the unit layer only answers "sellable, in the store warehouse".
 			mock.patch.object(manual_order, "_validate_serial",
-				lambda serial, item_code, seen: "Store - F"),
+				lambda serial, item_code, seen, ctx=None: "Store - F"),
 		]:
 			p.start()
 			self.addCleanup(p.stop)

@@ -155,8 +155,8 @@
 		}).appendTo(overlay);
 		$card.append('<h3 style="margin:0 0 4px">' + (locked ? __('Screen locked') : __('Switch user')) + '</h3>'
 			+ '<p class="text-muted" style="margin:0 0 12px">' + (locked
-				? __('Pick yourself and type your PIN or password to carry on, or pick someone else to sign in as them.')
-				: __('Pick who is at the counter and type their PIN or password.')) + '</p>'
+				? __('Pick yourself to carry on, or pick someone else to sign in as them.')
+				: __('Pick who is at the counter.')) + '</p>'
 			+ '<div class="ffl-staff-list" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px"></div>'
 			+ '<div class="ffl-staff-auth" style="margin-top:14px" hidden>'
 			+ '<div class="ffl-staff-who" style="font-weight:600; margin-bottom:6px"></div>'

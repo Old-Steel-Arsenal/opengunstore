@@ -296,7 +296,6 @@ class DistributorHubApp {
 				{
 					fieldname: 'provider', fieldtype: 'Select', label: __('Provider'),
 					reqd: 1, options: providers.map((p) => p.code).join('\n'),
-					description: __('Integration backend for the new house.'),
 				},
 				{ fieldname: 'info', fieldtype: 'HTML' },
 			],

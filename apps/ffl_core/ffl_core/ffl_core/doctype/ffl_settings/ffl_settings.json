@@ -92,14 +92,14 @@
    "fieldtype": "Check",
    "label": "Shipping Price Includes Sales Tax",
    "default": "1",
-   "description": "On: the shipping you enter is what the customer pays, sales tax included; off: sales tax is added on top."
+   "description": "On: the shipping you enter is what the customer pays, sales tax included; off: sales tax is added on top. Existing orders keep the way they were created."
   },
   {
    "fieldname": "peace_officer_exempt_tax_account",
    "fieldtype": "Link",
    "options": "Account",
    "label": "Peace-Officer Exempt Tax Account",
-   "description": "California stores only: the excise tax account that a sale to a peace officer or law enforcement agency is exempt from."
+   "description": "California stores only: the excise tax account that a sale to a peace officer or law enforcement agency is exempt from. The counter then offers a Peace-Officer Exemption that removes this tax and keeps sales tax."
   },
   {
    "fieldname": "counter_lock_minutes",

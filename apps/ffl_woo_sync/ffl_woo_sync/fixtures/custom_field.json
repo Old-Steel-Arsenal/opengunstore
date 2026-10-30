@@ -260,7 +260,7 @@
   "unique": 0
  },
  {
-  "description": "Set on invoices auto-booked from a web order, which are accounting only.",
+  "description": "Set on invoices auto-booked from a web order, which are accounting only; it also decides how interstate sales tax is applied.",
   "docstatus": 0,
   "doctype": "Custom Field",
   "dt": "Sales Invoice",
@@ -281,7 +281,7 @@
   "unique": 0
  },
  {
-  "description": "The web order this counter sale is the in-store pickup for.",
+  "description": "The web order this counter sale is the in-store pickup on a retail 4473; submitting closes the web order and cancelling puts it back in the pickup queue.",
   "docstatus": 0,
   "doctype": "Custom Field",
   "dt": "POS Invoice",

@@ -72,7 +72,7 @@
    "fieldtype": "Link",
    "label": "Billed Item",
    "options": "Item",
-   "description": "Left empty, saving the plan creates it; whether it is taxed follows the item's own Item Tax Template."
+   "description": "Left empty, saving the plan creates it; whether it is taxed follows the item's own Item Tax Template. Saving the plan books its revenue as deferred, earned over each period."
   },
   {
    "fieldname": "description",
@@ -110,7 +110,7 @@
    "fieldtype": "Check",
    "label": "Auto-renew by Default",
    "default": "1",
-   "description": "Auto-renew saves the customer's card for recurring charges."
+   "description": "Pre-ticks Auto-renew when the plan is sold; Auto-renew saves the customer's card for recurring charges."
   },
   {
    "fieldname": "terms_template",

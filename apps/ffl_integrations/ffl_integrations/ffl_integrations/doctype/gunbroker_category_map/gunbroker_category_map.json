@@ -43,7 +43,7 @@
   {
    "columns": 1,
    "default": "0",
-   "description": "Use this row only for antiques (pre-1899), and point it at a GunBroker Antique category.",
+   "description": "Use this row only for antiques (pre-1899), and point it at a GunBroker Antique category; an antique is listed only under a row flagged here, never the plain or C&R row.",
    "fieldname": "is_antique",
    "fieldtype": "Check",
    "in_list_view": 1,

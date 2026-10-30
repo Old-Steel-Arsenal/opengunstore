@@ -536,7 +536,7 @@ class StoreOverview {
 			<div class="sov-ch"><div><div class="sov-ct">${__('Waiting on pickup')}</div>
 				<div class="sov-cs">${__('Inbound FFL transfers logged in, customer not in yet.')}</div></div>${all}</div>
 			${rows || `<div class="sov-empty">${__('No transfer guns waiting.')}</div>`}
-			<div class="sov-foot">${__('Oldest first. Past {0} days turns amber.', [SOV_OLD_PICKUP_DAYS])}</div>
+			<div class="sov-foot">${__('Past {0} days turns amber.', [SOV_OLD_PICKUP_DAYS])}</div>
 		</section>`;
 	}
 

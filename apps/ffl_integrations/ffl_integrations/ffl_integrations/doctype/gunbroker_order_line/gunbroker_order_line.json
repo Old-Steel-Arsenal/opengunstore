@@ -73,6 +73,7 @@
    "label": "Line Subtotal"
   },
   {
+   "description": "The marketplace-facilitator tax GunBroker allocated to this line; booked per order.",
    "fieldname": "line_tax",
    "fieldtype": "Currency",
    "label": "Line Sales Tax"

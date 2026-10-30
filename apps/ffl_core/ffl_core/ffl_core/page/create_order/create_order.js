@@ -242,7 +242,7 @@ class CreateOrderApp {
 						</div>
 					</div>
 					<div id="dest-cr" style="display:none">
-						<div class="helper">${__('The ATF directory holds no Type 03 collectors, so nothing can be looked up — read the license copy and type what it says. The gun ships to the licensed premises.')}</div>
+						<div class="helper">${__('Type what the license copy says; the ATF directory does not list Type 03 collectors. The gun ships to the licensed premises.')}</div>
 						<div class="row" style="margin-top:12px">
 							<div id="f-cr_license_number"></div>
 							<div id="f-cr_license_expiry"></div>
@@ -294,7 +294,7 @@ class CreateOrderApp {
 						<div id="f-scan"></div>
 						<div class="typeahead" id="typeahead"></div>
 					</div>
-					<div class="helper">${__('Scan barcode, type SKU / item name — or scan a firearm serial # to add that gun, its serial, and its tag price in one step. Use ↑↓ + Enter to pick. Store stock and distributor drop-ship results appear together; picking a drop-ship result quotes it below.')}</div>
+					<div class="helper">${__('Scan a barcode or type an SKU or item name; scanning a firearm serial adds that gun at its tag price.')}</div>
 					<div id="pending-area"></div>
 					<div class="lines" id="lines-area" style="display:none">
 						<table>
@@ -417,7 +417,7 @@ class CreateOrderApp {
 			}),
 			le_excise_exempt: this._f('#f-le_excise_exempt', {
 				label: __('Peace officer / law enforcement agency — excise tax exempt'),
-				description: __('Active or retired peace officer, or the agency employing one, with a CDTFA-230-FET certificate for this sale. Takes off the excise tax only; sales tax stays.'),
+				description: __('Active or retired peace officer, or the agency employing one, with a CDTFA-230-FET certificate for this sale; takes off the excise tax only, sales tax stays.'),
 				fieldtype: 'Check', fieldname: 'le_excise_exempt',
 				change: () => this._onLeExemptChange(),
 			}),
@@ -487,12 +487,11 @@ class CreateOrderApp {
 			}),
 			pay_later: this._f('#f-pay-later', {
 				label: __('Pay later'), fieldtype: 'Check', fieldname: 'pay_later',
-				description: __('No payment now — the order books on account; collect it from Pending Order.'),
+				description: __('No payment now: the order books on account; collect it from Pending Order.'),
 				change: () => this._syncPaymentFields(),
 			}),
 			note: this._f('#f-note', {
 				label: __('Order Note (staff)'), fieldtype: 'Small Text', fieldname: 'note',
-				description: __('Shown on the Pending Order queue and saved on the invoice.'),
 			}),
 			transaction_number: this._f('#f-txn', {
 				label: __('Transaction Number'), fieldtype: 'Data', fieldname: 'transaction_number',
@@ -614,7 +613,7 @@ class CreateOrderApp {
 			this.$body.find('#seg-dispose button').removeClass('active');
 			$(e.currentTarget).addClass('active');
 			this.$body.find('#dispose-note').text(this.disposeNow
-				? __('Ship now: book the transfer, take the gun out of stock, push to FastBound.')
+				? __('Takes the gun out of stock, books the transfer and pushes to FastBound now.')
 				: __('Defer: the order joins the Pending Dispositions queue; the gun stays in stock and on the bound book until you ship it.'));
 			this._syncDepositNote();
 			this._syncTerminalNote();
@@ -1644,7 +1643,7 @@ class CreateOrderApp {
 			CreateOrderApp.SHIP_TO_FIELDS.forEach(([, f]) => this.fields[f].set_value(''));
 			this._lockShipTo(true);
 			this.$body.find('#shipto-note').text(
-				__('Counter pickup — no shipping address needed. Distributor lines can only be ordered to the store.'));
+				__('Counter pickup: no shipping address needed. Distributor lines can only be ordered to the store.'));
 			let unplanned = 0;
 			this.lines.forEach((l) => {
 				if (l.channel === 'dropship') { l.channel_confirmed = false; unplanned++; }
@@ -1838,7 +1837,7 @@ class CreateOrderApp {
 			this.fields.ship_zip.set_value(m.zip || '');
 			// Firearm orders ship to the FFL — lock the ship-to so it can't drift.
 			this._lockShipTo(true);
-			this.$body.find('#shipto-note').text(__('Locked to the destination FFL address (firearms ship to the FFL).'));
+			this.$body.find('#shipto-note').text(__('Locked to the destination FFL\'s address.'));
 			this._updateTotals();
 		});
 	}
@@ -2323,7 +2322,7 @@ class CreateOrderApp {
 				this._usStates = m.us_states || {};
 				this._stateCodes = new Set(Object.values(this._usStates));
 				this.fields.shipping.set_description(this._freightTaxable ? '' : __(
-					'The actual carrier cost — shipping charged at cost is not taxed here. Put any mark-up or handling on its own taxable line.'));
+					'Enter the actual carrier cost (not taxed here); put any mark-up or handling on its own taxable line.'));
 				this._updateTotals();
 			},
 		});
@@ -2339,7 +2338,7 @@ class CreateOrderApp {
 		if (!buyerOk) missing.push(__('Buyer'));
 		// Recommended, not required: no email just means no receipt is sent.
 		this.fields.email.set_description(this.fields.email.get_value() ? '' : __(
-			'Recommended — without an email no receipt is sent.'));
+			'Without an email no receipt is sent.'));
 		if (!this.lines.length) missing.push(__('At least one item'));
 		if (this._hasRegulated() && !this.destinationFfl && !this._isPickup()) {
 			// Typing the C&R block is not choosing a destination — the license
@@ -2475,7 +2474,7 @@ class CreateOrderApp {
 		this._refundRefCtl = this._f('#edit-refund-controls', {
 			label: __('Refund Reference'), fieldtype: 'Data',
 			fieldname: 'refund_reference', change: () => this._reflectReadiness(),
-			description: __('Zelle / ACH: the confirmation number. Check/Money Order: the number of the check you wrote. Credit Card: the terminal approval code.'),
+			description: __('The confirmation, check or approval number for the refund method.'),
 		});
 		// Surface the staff Order Note (normally in the edit-hidden Fulfillment
 		// section) right under the money summary, so an edit can read and change
@@ -2587,7 +2586,7 @@ class CreateOrderApp {
 			title: __('Fix Customer Name'),
 			fields: [
 				{ fieldtype: 'HTML', fieldname: 'note', options:
-					`<div class="text-muted" style="margin-bottom:8px">${__('Renames {0} everywhere — use this for spelling fixes, not to switch buyers (pick a different customer for that).', [frappe.utils.escape_html(cust)])}</div>` },
+					`<div class="text-muted" style="margin-bottom:8px">${__('Renames {0} everywhere; use it for spelling fixes only.', [frappe.utils.escape_html(cust)])}</div>` },
 				{ fieldtype: 'Data', fieldname: 'new_name', label: __('Correct Name'), reqd: 1, default: cust },
 			],
 			primary_action_label: __('Rename'),

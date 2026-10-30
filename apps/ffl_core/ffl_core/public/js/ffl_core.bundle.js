@@ -440,17 +440,17 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 				{ label: __('Item Code (SKU)'), fieldname: 'item_code', fieldtype: 'Data', reqd: 1, default: row.sku },
 				{ label: __('Item Name'), fieldname: 'item_name', fieldtype: 'Data', default: itemName },
 				{ label: __('Item Group'), fieldname: 'item_group', fieldtype: 'Link', options: 'Item Group',
-					description: __('Leave blank to file it under the catalog\'s category; set only to override.') },
+					description: __('Leave blank to use the catalog\'s category.') },
 				{ label: __('Has Serial No (track per unit)'), fieldname: 'has_serial_no', fieldtype: 'Check',
 					default: serialDefault,
-					description: __('Always on for firearm groups (incl. NFA) — the server forces it; only meaningful for non-firearm stock.') },
+					description: __('Always on for firearms; only choose for non-firearm stock.') },
 				{ label: __('Uniform Selling Price'), fieldname: 'uniform_sell_price', fieldtype: 'Check', default: 1,
-					description: __('When checked (recommended for RSR SKUs — one price for many like units), all units share the Selling Price below. Uncheck for per-gun pricing entered at receive.') },
+					description: __('All units share the Selling Price below; uncheck to price each gun at receive.') },
 				{ label: __('Selling Price (MAP / MSRP)'), fieldname: 'standard_rate', fieldtype: 'Currency',
 					default: row.map || row.msrp || 0,
 					depends_on: 'eval:doc.uniform_sell_price',
 					mandatory_depends_on: 'eval:doc.uniform_sell_price',
-					description: __('Item.standard_rate — only used in Uniform mode. Defaults to MAP (RSR-enforced floor), else MSRP. In per-gun mode the price lives on each Serial No.') },
+					description: __('Defaults to MAP, else MSRP.') },
 			],
 			primary_action_label: __('Create & Add'),
 			primary_action: (values) => {
@@ -505,10 +505,10 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 				{ label: __('Item Name'), fieldname: 'item_name', fieldtype: 'Data', default: seed },
 				{ label: __('Item Group'), fieldname: 'item_group', fieldtype: 'Link', options: 'Item Group', reqd: 1 },
 				{ label: __('Has Serial No (track per unit)'), fieldname: 'has_serial_no', fieldtype: 'Check',
-					description: __('Always on for firearm groups (incl. NFA, used guns) — the server forces it. Off only for non-serialized stock.') },
+					description: __('Always on for firearms; off only for non-serialized stock.') },
 				{ label: __('Stock UoM'), fieldname: 'stock_uom', fieldtype: 'Link', options: 'UOM', default: 'Nos' },
 				{ label: __('Uniform Selling Price'), fieldname: 'uniform_sell_price', fieldtype: 'Check',
-					description: __('When checked, all serials of this item sell at the Default Selling Price below. Uncheck (default) for per-gun pricing entered at receive.') },
+					description: __('All units share the Default Selling Price below; leave unticked to price each gun at receive.') },
 				{ label: __('Default Selling Price'), fieldname: 'standard_rate', fieldtype: 'Currency',
 					depends_on: 'eval:doc.uniform_sell_price',
 					mandatory_depends_on: 'eval:doc.uniform_sell_price',
@@ -1124,7 +1124,6 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 				{
 					label: __('Customer'), fieldname: 'source_name', fieldtype: 'Link',
 					options: 'Customer', reqd: 1, default: posCustomer,
-					description: __('Person trading in the firearm. Pre-filled from POS customer.'),
 					change: () => {
 						// Banned box / alerts first (customer_flags.js): a Banned seller is
 						// cleared and nothing of theirs is filled in.
@@ -1219,8 +1218,7 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 				{
 					label: __('Storage location'), fieldname: 'storage_location', fieldtype: 'Link',
 					options: 'Storage Location', depends_on: GUN,
-					description: __('Where the gun goes in the store. A slot holds one firearm. '
-						+ 'Leave blank to place it later from Storage Locations.'),
+					description: __('Leave blank to place it later.'),
 					get_query: () => ({
 						query: 'ffl_core.api.storage.location_query', filters: { only_free: 1 },
 					}),
@@ -1235,13 +1233,12 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 				{
 					label: __('Retail Price ($)'), fieldname: 'retail_price',
 					fieldtype: 'Currency', depends_on: GUN,
-					description: __('Optional — set later when pricing the unit.'),
 				},
 				{ fieldtype: 'Section Break', label: __('Accessories & ammo') },
 				{
 					fieldname: 'accessories', fieldtype: 'Table', label: __('Accessories & ammo'),
 					in_place_edit: true, data: [],
-					description: __('Anything else the seller brings, counted by quantity. No serial numbers.'),
+					description: __('Counted by quantity; no serial numbers.'),
 					fields: [
 						{
 							label: __('Item'), fieldname: 'item_code', fieldtype: 'Link', options: 'Item',
@@ -2248,7 +2245,7 @@ frappe.provide('frappe.ui.form');
 						},
 						{
 							label: __('Reason'), fieldname: 'reason', fieldtype: 'Small Text', reqd: 1,
-							description: __('Required for the audit trail (e.g. "Found dealer invoice — true cost $900").'),
+							description: __('For example "Found dealer invoice — true cost $900".'),
 						},
 						{
 							label: __('The amount actually paid to the seller was different'),
@@ -2396,7 +2393,7 @@ frappe.provide('frappe.ui.form');
 					allowed_file_types: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
 					max_file_size: 10 * 1024 * 1024,
 				},
-				upload_notes: __('JPG / PNG / WEBP, up to 10 MB each. You can select several at once. Photos are made public — the web store uses them.'),
+				upload_notes: __('JPG / PNG / WEBP up to 10 MB each; photos are made public for the web store.'),
 				on_success(file) { if (file && file.file_url) urls.push(file.file_url); },
 			});
 			const $w = up.dialog && up.dialog.$wrapper;
@@ -2959,14 +2956,14 @@ frappe.provide('frappe.ui.form');
 				fieldtype: 'Data', fieldname: 'transaction_number',
 				label: __('Transaction Number / Approval Code'),
 				depends_on: needs, mandatory_depends_on: needs,
-				description: __('Zelle / ACH: the bank or app confirmation number. Check/Money Order: the check or money order number. Credit Card: the approval code from the terminal or Virtual Terminal receipt — never the card number.'),
+				description: __('The check, bank-confirmation or card approval number; never the card number.'),
 			};
 			if (!terminal) return [ref];
 			return [{
 				fieldtype: 'Check', fieldname: 'charged_outside',
 				label: __('Already charged on Virtual Terminal'),
 				depends_on: sw.cardProcessorEnabled() ? 'eval:doc.mode==' + card : 'eval:false',
-				description: __('Records the card payment without running the terminal. Enter the approval code below.'),
+				description: __('Records the card payment without running the terminal.'),
 			}, ref];
 		},
 		// Single-field form, kept for dialogs built before fields() existed.
@@ -3950,7 +3947,7 @@ frappe.provide('frappe.ui.form');
 			mode: 'Zelle',
 			title: __('Zelle Transaction Number'),
 			label: __('Transaction Number'),
-			description: __('Enter the Zelle confirmation / transaction number to complete this sale.'),
+			description: __('Zelle confirmation number.'),
 		});
 	}
 
@@ -3959,7 +3956,7 @@ frappe.provide('frappe.ui.form');
 			mode: 'Check/Money Order',
 			title: __('Check or Money Order Number'),
 			label: __('Check / money order number'),
-			description: __('Enter the number printed on the check or money order to complete this sale.'),
+			description: __('Number printed on the check or money order.'),
 		});
 	}
 
@@ -3976,7 +3973,7 @@ frappe.provide('frappe.ui.form');
 			// The APPROVAL CODE, not the batch number (one batch covers many sales
 			// and does not exist until the batch is closed) and not the card's last
 			// 4 (not unique). Only the approval code identifies this transaction.
-			description: __('The approval code printed on the terminal receipt for this transaction.'),
+			description: __('Printed on the terminal receipt.'),
 			// Refunds too: a negative card row reverses revenue and sales tax, and on
 			// a standalone terminal nothing else shows the money went back. The server
 			// gate says the same (include_refunds=True) — if this did not, the counter
@@ -4992,15 +4989,15 @@ frappe.provide('frappe.ui.form');
 				fieldtype: 'HTML',
 				options: `<div class="alert alert-info" style="margin-bottom:10px">
 					${(window.ffl && window.ffl.switches && window.ffl.switches.paper4473Mode())
-						? __("Scan or type the serial of each firearm this customer is transferring in. Each is added at $0 (already the customer's) plus one Transfer Fee per gun. Then complete the PAPER 4473 and record it with <b>Record Paper 4473</b> on the payment screen.")
-						: __("Scan or type the serial of each firearm this customer is transferring in. Each is added at $0 (already the customer's) plus one Transfer Fee per gun, then you finish the 4473 in FastBound.")}
+						? __("Each firearm is added at $0 (already the customer's) plus one Transfer Fee per gun. Then complete the PAPER 4473 and record it with <b>Record Paper 4473</b> on the payment screen.")
+						: __("Each firearm is added at $0 (already the customer's) plus one Transfer Fee per gun, then you finish the 4473 in FastBound.")}
 				</div>`,
 			}, {
 				fieldtype: 'Autocomplete',
 				fieldname: 'serial_input',
 				label: __('Scan or type serial'),
 				options: acOptions,
-				description: __('Type a few characters to match in-stock firearms, or scan the serial; press Enter to add.'),
+				description: __('Press Enter to add.'),
 			}, {
 				fieldtype: 'HTML',
 				fieldname: 'added',
@@ -5011,7 +5008,7 @@ frappe.provide('frappe.ui.form');
 				fieldname: 'fee',
 				label: __('Transfer Fee (per firearm)'),
 				default: cfg.fee_amount || 0,
-				description: __('Charged once per added firearm. Editable.'),
+				description: __('Charged once per added firearm.'),
 			}],
 			// Paper mode never opens FastBound — this button parks the transfer so the
 			// counter can record the paper 4473 on it.

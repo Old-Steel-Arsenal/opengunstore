@@ -786,7 +786,7 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "Set on invoices auto-booked from a GunBroker order, which are accounting only.",
+  "description": "Set on invoices auto-booked from a GunBroker order, which are accounting only: no sales tax rules or receipt email apply, and the bound-book exit is on the GunBroker Order.",
   "doctype": "Custom Field",
   "dt": "Sales Invoice",
   "fieldname": "gunbroker_order",
@@ -864,7 +864,7 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "Set when this bound-book exit was auto-booked from a GunBroker order.",
+  "description": "Set when this bound-book exit was auto-booked from a GunBroker order; cancelling the Sales Invoice does not undo this A&D entry.",
   "doctype": "Custom Field",
   "dt": "FFL Disposition",
   "fieldname": "gunbroker_order",

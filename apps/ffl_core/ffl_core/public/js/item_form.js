@@ -121,7 +121,6 @@ function openAddStockDialog(frm) {
 			{
 				label: __('Quantity'), fieldname: 'qty', fieldtype: 'Float',
 				reqd: 1, default: 1,
-				description: __('Number of units to add to stock.'),
 			},
 			{
 				label: __('Warehouse'), fieldname: 'warehouse', fieldtype: 'Link',
@@ -131,11 +130,10 @@ function openAddStockDialog(frm) {
 			{
 				label: __('Cost / Rate'), fieldname: 'rate', fieldtype: 'Currency',
 				default: frm.doc.last_purchase_rate || frm.doc.dealer_price || 0,
-				description: __('Optional — defaults to last purchase rate, then RSR dealer price.'),
+				description: __('Defaults to the last purchase rate, then the RSR dealer price.'),
 			},
 			{
 				label: __('Remarks'), fieldname: 'remarks', fieldtype: 'Small Text',
-				description: __('Optional note on the Stock Entry (found inventory, opening stock, etc.).'),
 			},
 		],
 		primary_action_label: __('Add to Stock'),
@@ -183,7 +181,7 @@ function openAdjustQtyDialog(frm) {
 			{
 				label: __('Set Quantity To'), fieldname: 'new_qty', fieldtype: 'Float',
 				reqd: 1, default: frm.doc.actual_qty || 0,
-				description: __('Sets the absolute on-hand quantity at the chosen warehouse. Creates a Stock Reconciliation entry for the audit trail.'),
+				description: __('Sets the absolute on-hand quantity at the chosen warehouse.'),
 			},
 			{
 				label: __('Warehouse'), fieldname: 'warehouse', fieldtype: 'Link',
@@ -192,7 +190,7 @@ function openAdjustQtyDialog(frm) {
 			},
 			{
 				label: __('Reason'), fieldname: 'reason', fieldtype: 'Small Text',
-				description: __('Required for the audit trail (e.g. "Annual physical count", "Found in back room", "Write-off — damaged").'),
+				description: __('For example "Annual physical count" or "Write-off — damaged".'),
 				reqd: 1,
 			},
 		],
@@ -381,7 +379,6 @@ function openScanDialog(frm) {
 				fieldname: 'scan',
 				label: __('UPC / RSR Stock # / MFG #'),
 				reqd: 1,
-				description: __('Type or scan a barcode. Matches against UPC, RSR stock number, or manufacturer part number.'),
 			},
 			{ fieldtype: 'HTML', fieldname: 'preview' },
 		],

@@ -118,7 +118,7 @@
 		[first, middle, last, suffix].forEach(function (df) { if (df) out.push(df); });
 		var name = take('customer_name', {
 			read_only_depends_on: INDIVIDUAL,
-			description: L('For an individual this is composed from the name parts above.'),
+			description: L('Built from the name parts above.'),
 		});
 		if (name) out.push(name);
 		if (opts && opts.family) {

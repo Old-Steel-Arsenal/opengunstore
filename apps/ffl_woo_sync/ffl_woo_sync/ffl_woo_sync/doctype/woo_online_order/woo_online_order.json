@@ -219,7 +219,7 @@
    "label": "C&R Verification (staff-entered at dispose)"
   },
   {
-   "description": "Exactly as printed on the collector's licence.",
+   "description": "Exactly as printed on the collector's licence; it becomes the FastBound contact's license name.",
    "fieldname": "cr_contact_name",
    "fieldtype": "Data",
    "label": "Collector Name (as printed on license)",

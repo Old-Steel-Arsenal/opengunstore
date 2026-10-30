@@ -1401,7 +1401,7 @@ class PendingDispositionsApp {
 				...(locFields.length ? [{
 					fieldtype: 'HTML', fieldname: 'stg_head',
 					options: `<div style="font-weight:600;margin:6px 0 2px">${__('Where did these come from?')}</div>
-						<div class="text-muted" style="font-size:12px">${__('Pick the location each was taken from. Leave blank if you are not sure — it goes on the Not placed list.')}</div>`,
+						<div class="text-muted" style="font-size:12px">${__('Leave blank if you are not sure; it goes on the Not placed list.')}</div>`,
 				}] : []),
 				...locFields.map((f) => ({ fieldtype: 'Select', fieldname: f.fieldname, label: f.label,
 					options: f.options, default: f.default })),
@@ -1632,7 +1632,7 @@ class PendingDispositionsApp {
 				<div><b>${__('Recipient')}:</b> ${esc(row.customer_name || row.customer)}</div>
 				${coLine}
 				<div class="text-muted" style="font-size:12px">
-					${!p.line1 && row.destination_ffl ? __('Address is read from the licence when this is pushed.') + '<br>' : ''}${esc(p.line1 || '')}${p.line2 ? ', ' + esc(p.line2) : ''}<br>
+					${!p.line1 && row.destination_ffl ? __('Address comes from the FFL licence.') + '<br>' : ''}${esc(p.line1 || '')}${p.line2 ? ', ' + esc(p.line2) : ''}<br>
 					${esc(cityLine)}${p.phone ? ' · ' + esc(p.phone) : ''}${fflLine}
 				</div>
 				<div style="margin-top:8px"><b>${__('Items')}:</b><ul>${items}</ul></div>
@@ -1744,7 +1744,7 @@ class PendingDispositionsApp {
 				+ '.includes(doc.refund_mode)';
 			fields.push({
 				fieldtype: 'Data', fieldname: 'refund_reference', label: __('Refund Reference'),
-				description: __('Zelle / ACH: the confirmation number. Check/Money Order: the number of the check you wrote. Credit Card: the terminal approval code.'),
+				description: __('The confirmation, check or approval number for the refund method.'),
 				depends_on: needsRef, mandatory_depends_on: needsRef,
 			});
 		}

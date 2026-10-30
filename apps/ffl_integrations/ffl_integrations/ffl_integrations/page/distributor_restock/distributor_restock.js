@@ -406,7 +406,7 @@ class DistributorOrdersApp {
 			<th class="num">${__('Lines')}</th><th></th></tr></thead><tbody>${rows}</tbody></table>
 			<div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
 				<button class="btn btn-sm btn-primary btn-confirm-all">${__('Confirm & Queue All')}</button>
-				<span class="muted">${__('One order per distributor; guns and accessories are split into separate orders and >400 SKUs are chunked. Confirm puts each order in the queue for the placement worker.')}</span>
+				<span class="muted">${__('One order per distributor; guns and accessories go on separate orders. Confirm queues each order to be placed with the distributor.')}</span>
 			</div>`);
 		$sec.show();
 		const confirm = ($btn) => {
@@ -506,7 +506,7 @@ class DistributorOrdersApp {
 		const $i = this.$body.find('.invoices');
 		this.$body.find('.t-count').text(`${rows.length} ${__('invoice(s)')}`);
 		if (!rows.length) {
-			$i.html(`<div class="muted">${__('No invoices yet. They are pulled from each distributor every hour (last 30 days).')}</div>`);
+			$i.html(`<div class="muted">${__('No invoices yet.')}</div>`);
 			return;
 		}
 		const esc = frappe.utils.escape_html;
@@ -544,7 +544,7 @@ class DistributorOrdersApp {
 		$i.html(`<table><thead><tr><th>${__('Invoice')}</th><th>${__('Distributor')}</th><th>${__('Goods went to')}</th><th>${__('POS Order')}</th>
 			<th class="num">${__('Lines')}</th><th>${__('Tracking')}</th><th class="num">${__('Freight')}</th>
 			<th class="num">${__('Total')}</th></tr></thead><tbody>${body}</tbody></table>
-			<div class="muted" style="margin-top:8px;">${__('Every invoice on each distributor account (last 30 days), whoever placed the order. Read-only: nothing here posts to the books. Click a row to see its lines. A parcel that shipped to the store but was not ordered from this POS is received from Receive Goods → Incoming shipments.')}</div>`);
+			<div class="muted" style="margin-top:8px;">${__('Every invoice on each distributor account for the last 30 days, including orders not placed here. Read-only: nothing here posts to the books. A parcel that shipped to the store but was not ordered from this POS is received from Receive Goods → Incoming shipments.')}</div>`);
 		$i.find('tr.order-row').on('click', (e) => {
 			if ($(e.target).closest('a, button').length) return;
 			$i.find(`tr.order-lines[data-i="${$(e.currentTarget).data('i')}"]`).toggle();
@@ -595,7 +595,7 @@ class DistributorOrdersApp {
 			<th>${__('Status')}</th><th class="num">${__('Shipped / Ordered')}</th>
 			<th>${__('Tracking')}</th><th>${__('Invoices')}</th><th class="num">${__('Total')}</th><th></th>
 			</tr></thead><tbody>${body}</tbody></table>
-			<div class="muted" style="margin-top:8px;">${__('Statuses refresh from each distributor every 30 minutes. Click a row to see its lines.')}</div>`);
+			<div class="muted" style="margin-top:8px;">${__('Click a row to see its lines.')}</div>`);
 		$o.find('tr.order-row').on('click', (e) => {
 			if ($(e.target).closest('a, button').length) return;
 			$o.find(`tr.order-lines[data-i="${$(e.currentTarget).data('i')}"]`).toggle();

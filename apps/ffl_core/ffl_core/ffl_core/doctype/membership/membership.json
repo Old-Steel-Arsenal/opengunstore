@@ -122,7 +122,8 @@
    "fieldtype": "Link",
    "label": "Saved Card",
    "options": "Saved Card",
-   "read_only": 1
+   "read_only": 1,
+   "description": "Renewals are charged to this card."
   },
   {
    "fieldname": "column_break_b",

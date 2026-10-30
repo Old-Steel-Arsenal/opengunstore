@@ -180,7 +180,7 @@
   {
    "default": "0",
    "depends_on": "eval:['Retail Sale'].includes(doc.disposition_type)",
-   "description": "Set when a manager completed the sale because FastBound was unavailable or out of sync.",
+   "description": "Set when a manager completed the sale because FastBound was unavailable or out of sync; use only when the 4473 was completed in FastBound but did not sync back.",
    "fieldname": "manual_override",
    "fieldtype": "Check",
    "label": "Manual Override (4473 bypass)",
