@@ -129,7 +129,7 @@ def get_state(name: str) -> dict:
 	    name: Gunsmith Work Order name.
 
 	Returns:
-	    {"deposit_held", "charges", "authorization": {"template",
+	    {"labor_item", "deposit_held", "charges", "authorization": {"template",
 	    "state", "agreement"} or None, "drafts": {"deposit", "pickup", "refund"}}.
 	"""
 	frappe.only_for(COUNTER_ROLES)
@@ -139,6 +139,7 @@ def get_state(name: str) -> dict:
 	template = setup.agreement_template()
 	auth = agreement_status(doc.customer, template, reference=(DOCTYPE, doc.name)) if template else None
 	return {
+		"labor_item": setup.labor_item(),
 		"deposit_held": deposit_held(doc.name),
 		"charges": charges_total(doc),
 		"authorization": auth,
@@ -267,6 +268,46 @@ def register_work_orders(search_term: str | None = None, name: str | None = None
 			if template and r.status in OPEN else None
 		orders.append(r)
 	return {"labor_item": setup.labor_item(), "authorization_template": template, "orders": orders}
+
+
+@frappe.whitelist()
+def labor_item() -> str:
+	"""The labor item a new job's first charge line uses (FFL Settings › Gunsmithing,
+	which the counter can't read itself).
+
+	Returns:
+	    The Item name.
+	"""
+	frappe.only_for(COUNTER_ROLES)
+	return setup.labor_item()
+
+
+@frappe.whitelist()
+def charge_details(item_code: str, customer: str | None = None) -> dict:
+	"""A part picked or scanned onto a job's charges: its name and its list price for the
+	customer, as Create Order prices a line (``price_approval.list_rate``). The counter
+	can't read Item Price itself.
+
+	Args:
+	    item_code: The Item charged.
+	    customer: The job's customer, whose price list applies; else the default selling list.
+
+	Returns:
+	    {"item_name", "rate": the list price, 0 when there is none}.
+	"""
+	from erpnext.accounts.party import get_default_price_list
+
+	from ffl_core.price_approval import list_rate
+
+	frappe.only_for(COUNTER_ROLES)
+	if not item_code or not frappe.db.exists("Item", item_code):
+		frappe.throw(_("Item {0} not found.").format(escape_html(item_code or "")))
+	price_list = (get_default_price_list(frappe.get_cached_doc("Customer", customer))
+		if customer and frappe.db.exists("Customer", customer) else None) \
+		or frappe.db.get_single_value("Selling Settings", "selling_price_list")
+	doc = frappe._dict(customer=customer, selling_price_list=price_list, posting_date=nowdate())
+	rate, _own = list_rate(doc, frappe._dict(item_code=item_code, qty=1))
+	return {"item_name": frappe.db.get_value("Item", item_code, "item_name"), "rate": flt(rate)}
 
 
 @frappe.whitelist(methods=["POST"])
@@ -483,19 +524,20 @@ def log_gun(doc) -> None:
 	gets a per-gun Item as a counter intake would."""
 	from ffl_core.api.firearm_intake import _resolve_item
 	from ffl_core.api.receive_goods import _create_receive
-	from ffl_core.api.trade_in import customer_address_line, seller_defaults
+	from ffl_core.api.trade_in import seller_defaults
 
 	missing = [label for field, label in (("caliber", _("Caliber / Gauge")), ("firearm_type", _("Firearm Type")),
-		("id_type", _("Customer ID Type")), ("id_number", _("Customer ID Number"))) if not (doc.get(field) or "").strip()]
+		("id_type", _("ID Type")), ("id_number", _("ID Number"))) if not (doc.get(field) or "").strip()]
+	if not all((doc.get(f) or "").strip() for f in ("address_line1", "city", "state", "zip")):
+		# The register's intake takes the address from the customer, so point there.
+		missing.append(_("the customer's address (street, city, state, ZIP — on the work order, or a primary "
+			"address on the customer)"))
 	if missing:
 		frappe.throw(_("To log the gun in the bound book, fill in: {0}.").format(", ".join(missing)),
 			title=_("Bound book"))
 	who = seller_defaults(doc.customer)
 	if not (who.get("source_first_name") and who.get("source_last_name")):
 		frappe.throw(_("The bound book needs the customer's first and last name: add them on the customer."))
-	address = customer_address_line(doc.customer)
-	if not address:
-		frappe.throw(_("The bound book needs the customer's address: add a primary address on the customer."))
 	serial = doc.serial_number.strip()
 	item_code = frappe.db.get_value("Serial No", serial, "item_code")
 	if frappe.db.get_value("Serial No", serial, "status") == "Active":
@@ -513,9 +555,13 @@ def log_gun(doc) -> None:
 		"seller_middle_name": who.get("source_middle_name"),
 		"seller_last_name": who.get("source_last_name"),
 		"seller_suffix": who.get("source_suffix"),
-		"seller_address": address,
+		"seller_address_line1": doc.address_line1,
+		"seller_city": doc.city,
+		"seller_state": doc.state,
+		"seller_zip": doc.zip,
 		"id_type": doc.id_type,
 		"id_number": doc.id_number,
+		"id_document": doc.id_document,
 		"notes": _("Gunsmith work order {0}").format(doc.name),
 		"items": [{"item_code": item_code, "qty": 1, "rate": 0, "serials": [serial],
 			"manufacturer": doc.manufacturer, "model_name": doc.model, "caliber": doc.caliber,
@@ -526,7 +572,8 @@ def log_gun(doc) -> None:
 	logged = {"purchase_receipt": received["name"], "serial_no": serial, "item_code": item_code}
 	if not customer_id_numbers_enabled():
 		# The acquisition record keeps the ID the bound book needs; the job keeps none.
-		logged["id_number"] = None
+		# The scan's File already went to the acquisition with the receive.
+		logged["id_number"] = logged["id_document"] = None
 	doc.db_set(logged, update_modified=False)
 
 
@@ -602,15 +649,18 @@ def _pickup(doc) -> dict:
 	up now with nothing to bill, else the draft pick-up invoice — the job's charges and
 	a locked negative deposit line releasing what is held, up to the bill with tax."""
 	held = deposit_held(doc.name)
-	if not doc.get("lines"):
+	labor = setup.labor_item()
+	# The labor charge every job starts with, left at $0, is no labor billed; a $0 part
+	# still goes on the bill (it leaves stock).
+	lines = [r for r in doc.get("lines") or [] if not (r.item_code == labor and not flt(r.rate))]
+	if not lines:
 		# Nothing to bill: the gun goes back now, and any deposit is refunded after.
 		complete_pickup(doc)
 		return {"picked_up": True, "refund_due": held}
 	labor_desc = (doc.work_performed or "").strip()
-	labor = setup.labor_item()
 	items = [{"item_code": r.item_code, "qty": flt(r.qty) or 1, "rate": flt(r.rate), "price_list_rate": flt(r.rate),
 		"description": (r.description or (labor_desc if r.item_code == labor else "") or None), LINK_FIELD: doc.name}
-		for r in doc.lines]
+		for r in lines]
 	inv = _new_invoice(doc, items)
 	# The job's charges are the bill the work order set: no manager price approval for them here
 	# (price_approval.mark_system_priced); a lower price at the register asks as any other.
@@ -622,7 +672,7 @@ def _pickup(doc) -> dict:
 		inv.set_missing_values()
 	inv.insert()
 	# Pricing may have moved a charge on the way in; the job's charges are the bill.
-	want = {r.idx: flt(r.rate) for r in doc.lines}
+	want = {i: flt(r.rate) for i, r in enumerate(lines, 1)}
 	moved = False
 	for row in inv.items:
 		if row.item_code != DEPOSIT_ITEM and row.idx in want and flt(row.rate) != want[row.idx]:

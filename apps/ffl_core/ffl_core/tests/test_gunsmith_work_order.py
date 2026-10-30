@@ -50,6 +50,8 @@ def _job(customer, **fields):
 def _ready(job, lines=()):
 	job.reload()
 	job.work_performed = "Fitted a new extractor, function tested."
+	if lines:
+		job.set("lines", [])   # the given charges replace the labor line the job starts with
 	for item_code, rate in lines:
 		job.append("lines", {"item_code": item_code, "qty": 1, "rate": rate})
 	job.save(ignore_permissions=True)
@@ -163,8 +165,27 @@ class Status(_Base):
 		job = _job(_customer(mobile_no="555-0100"))
 		self.assertEqual(job.status, "Received")
 		self.assertEqual(job.phone, "555-0100")
-		self.assertIn("12 Main St", job.address)
+		self.assertEqual((job.address_line1, job.city, job.state, job.zip), ("12 Main St", "Springfield", "TX", "75024"))
 		self.assertTrue(job.name.startswith("GWO-"))
+
+	def test_a_new_job_starts_with_the_labor_at_the_estimate(self):
+		job = _job(self.cust, estimated_cost=120)
+		self.assertEqual([(r.item_code, flt(r.rate)) for r in job.lines], [(LABOR_ITEM, 120)])
+		job.estimated_cost = 150
+		job.save(ignore_permissions=True)
+		self.assertEqual(flt(job.lines[0].rate), 150, "follows the estimate")
+		job.lines[0].rate = 90
+		job.save(ignore_permissions=True)
+		job.estimated_cost = 200
+		job.save(ignore_permissions=True)
+		self.assertEqual(flt(job.lines[0].rate), 90, "a hand-set price stays")
+		job.lines = []
+		job.save(ignore_permissions=True)
+		self.assertFalse(job.lines, "a removed labor charge is not put back")
+
+	def test_a_part_scanned_before_the_first_save_goes_under_the_labor(self):
+		job = _job(self.cust, estimated_cost=80, lines=[{"item_code": "_Test GW Part", "qty": 1, "rate": 40}])
+		self.assertEqual([(r.idx, r.item_code) for r in job.lines], [(1, LABOR_ITEM), (2, "_Test GW Part")])
 
 	def test_status_moves_only_through_the_actions(self):
 		job = _job(self.cust)
@@ -744,6 +765,99 @@ class BoundBook(_Base):
 		disp = frappe.get_doc("FFL Disposition", job.disposition)
 		self.assertEqual((disp.docstatus, disp.disposition_type, disp.customer), (1, "Gunsmithing", self.cust.name))
 		self.assertNotEqual(frappe.db.get_value("Serial No", job.serial_number, "status"), "Active")
+
+	def test_the_bound_book_takes_the_address_on_the_job(self):
+		job = _job(self.cust, log_in_bound_book=1, id_type="Driver License", id_number="D8642097",
+			address_line1="9 Range Rd", city="Austin", state="TX", zip="78701")
+		acq = frappe.get_doc("FFL Acquisition", {"purchase_receipt": frappe.db.get_value(
+			gunsmith.DOCTYPE, job.name, "purchase_receipt")})
+		self.assertEqual(acq.source_address, "9 Range Rd, Austin TX 78701")
+
+	def test_a_spelled_out_state_is_filled_as_its_code(self):
+		cust = _customer()
+		frappe.db.set_value("Address", cust.customer_primary_address, "state", "Texas")
+		job = _job(cust, log_in_bound_book=1, id_type="Driver License", id_number="D1928374")
+		self.assertEqual(job.state, "TX")
+		self.assertTrue(frappe.db.get_value(gunsmith.DOCTYPE, job.name, "purchase_receipt"))
+
+	def test_the_state_on_the_job_is_a_us_state_code(self):
+		job = _job(self.cust, state="texas")
+		self.assertEqual(job.state, "TX")
+		job.state = "ZZ"
+		with self.assertRaisesRegex(frappe.ValidationError, "not a US state"):
+			job.save(ignore_permissions=True)
+
+	def test_a_part_charges_at_its_list_price(self):
+		price_list = frappe.db.get_single_value("Selling Settings", "selling_price_list")
+		if not frappe.db.exists("Item Price", {"item_code": "_Test GW Part", "price_list": price_list}):
+			frappe.get_doc({"doctype": "Item Price", "item_code": "_Test GW Part", "price_list": price_list,
+				"price_list_rate": 35}).insert(ignore_permissions=True)
+		rate = frappe.db.get_value("Item Price", {"item_code": "_Test GW Part", "price_list": price_list},
+			"price_list_rate")
+		self.assertEqual(gunsmith.charge_details("_Test GW Part", self.cust.name),
+			{"item_name": "Extractor", "rate": flt(rate)})
+
+	def test_a_scanned_licence_finds_the_customer_by_name(self):
+		from ffl_core.customer_flags import find_customers_by_scan
+
+		rows = find_customers_by_scan("Pat", "Owner")
+		self.assertIn(self.cust.name, [r["name"] for r in rows])
+		row = next(r for r in rows if r["name"] == self.cust.name)
+		self.assertEqual((row["address"], row["by_id"]), ("12 Main St, Springfield TX 75024", False))
+		self.assertEqual(find_customers_by_scan("Nobody", "Anywhere-" + frappe.generate_hash(length=6)), [])
+
+	def test_the_raw_scan_is_never_kept(self):
+		job = _job(self.cust, scan_id="@ANSI 636015 DCSOWNER DACPAT")
+		self.assertFalse(frappe.db.get_value(gunsmith.DOCTYPE, job.name, "scan_id"))
+
+	def test_the_form_gets_the_labor_item_from_the_server(self):
+		self.assertEqual(gunsmith.labor_item(), setup.labor_item())
+		self.assertEqual(gunsmith.get_state(_job(self.cust).name)["labor_item"], setup.labor_item())
+
+	def _scan(self, job):
+		return frappe.get_doc({"doctype": "File", "file_name": f"{job.name}-id.txt", "content": f"ID {job.name}",
+			"is_private": 1, "attached_to_doctype": gunsmith.DOCTYPE, "attached_to_name": job.name}
+			).insert(ignore_permissions=True).file_url
+
+	def test_an_unlogged_jobs_scan_is_deleted_when_ids_are_not_stored(self):
+		job = _job(self.cust)
+		url = self._scan(job)
+		with patch("ffl_core.feature_gate.customer_id_numbers_enabled", return_value=False):
+			job.reload()
+			job.id_document = url
+			job.save(ignore_permissions=True)
+		self.assertFalse(frappe.db.exists("File", {"file_url": url}))
+
+	def test_a_logged_scan_leaves_the_job_for_the_acquisition(self):
+		job = _job(self.cust)
+		url = self._scan(job)
+		job.db_set("id_document", url)
+		with patch("ffl_core.feature_gate.customer_id_numbers_enabled", return_value=False):
+			gunsmith.log_in_bound_book(job.name, "Driver License", "D6180339")
+		job.reload()
+		self.assertFalse(job.id_document)
+		self.assertEqual(frappe.db.get_value("File", {"file_url": url}, "attached_to_doctype"), "FFL Acquisition")
+		self.assertEqual(frappe.db.get_value("Purchase Receipt", job.purchase_receipt, "ffl_seller_id_document"), url)
+
+	def test_no_address_names_the_customers_address(self):
+		cust = _customer()
+		frappe.db.set_value("Customer", cust.name, "customer_primary_address", None)
+		with self.assertRaisesRegex(frappe.ValidationError, "customer's address"):
+			_job(cust, log_in_bound_book=1, id_type="Driver License", id_number="D5647382")
+
+	def test_a_firearm_is_not_a_charge(self):
+		logged = _job(self.cust, log_in_bound_book=1, id_type="Driver License", id_number="D3141592")
+		gun = frappe.db.get_value(gunsmith.DOCTYPE, logged.name, "item_code")
+		job = _job(self.cust)
+		job.append("lines", {"item_code": gun, "qty": 1, "rate": 0})
+		with self.assertRaisesRegex(frappe.ValidationError, "is a firearm"):
+			job.save(ignore_permissions=True)
+
+	def test_the_id_scan_goes_with_the_number_when_ids_are_not_stored(self):
+		with patch("ffl_core.feature_gate.customer_id_numbers_enabled", return_value=False):
+			job = _job(self.cust, id_type="Driver License", id_number="D2718281",
+				id_document="/private/files/_test_gw_id.jpg")
+		self.assertFalse(frappe.db.get_value(gunsmith.DOCTYPE, job.name, "id_document"))
 
 	def test_the_job_keeps_no_id_number_when_ids_are_not_stored(self):
 		with patch("ffl_core.feature_gate.customer_id_numbers_enabled", return_value=False):

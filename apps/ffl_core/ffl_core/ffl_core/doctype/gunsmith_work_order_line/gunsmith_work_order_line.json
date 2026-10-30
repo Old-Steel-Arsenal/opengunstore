@@ -1,7 +1,7 @@
 {
  "actions": [],
  "creation": "2026-10-17 18:00:00.000000",
- "modified": "2026-10-17 18:00:00.000000",
+ "modified": "2026-10-30 12:00:00.000000",
  "modified_by": "Administrator",
  "doctype": "DocType",
  "editable_grid": 1,
@@ -17,6 +17,7 @@
  "fields": [
   {
    "fieldname": "item_code",
+   "columns": 3,
    "fieldtype": "Link",
    "label": "Item",
    "options": "Item",
@@ -25,12 +26,14 @@
   },
   {
    "fieldname": "description",
+   "columns": 2,
    "fieldtype": "Small Text",
    "label": "Description",
    "in_list_view": 1
   },
   {
    "fieldname": "qty",
+   "columns": 1,
    "fieldtype": "Float",
    "label": "Qty",
    "default": "1",
@@ -40,12 +43,14 @@
   },
   {
    "fieldname": "rate",
+   "columns": 2,
    "fieldtype": "Currency",
    "label": "Rate",
    "in_list_view": 1
   },
   {
    "fieldname": "amount",
+   "columns": 2,
    "fieldtype": "Currency",
    "label": "Amount",
    "read_only": 1,

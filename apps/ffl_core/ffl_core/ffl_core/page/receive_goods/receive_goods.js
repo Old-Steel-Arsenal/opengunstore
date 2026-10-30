@@ -598,12 +598,7 @@ class ReceiveGoodsApp {
 			}),
 			seller_state: f('#f-seller_state', {
 				label: __('State'), fieldtype: 'Select', fieldname: 'seller_state',
-				options: ['', 'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'DC', 'FL',
-					'GA', 'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME',
-					'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH',
-					'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI',
-					'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI',
-					'WY'].join('\n'),
+				options: [''].concat(frappe.boot.ffl_us_states || []).join('\n'),
 				change: () => this._reflectReadiness(),
 			}),
 			seller_zip: f('#f-seller_zip', {

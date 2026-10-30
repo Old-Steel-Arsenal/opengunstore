@@ -69,7 +69,6 @@ _REQUIRED = (
 )
 
 _ADDRESS_PART_KEYS = ("source_address_line1", "source_city", "source_state", "source_zip")
-_STATE_RE = _re.compile(r"^[A-Z]{2}$")
 _ZIP_RE = _re.compile(r"^\d{5}(-\d{4})?$")
 
 
@@ -92,8 +91,10 @@ def resolve_source_address(payload: dict) -> str:
 		if missing:
 			frappe.throw(_("Seller address is incomplete — missing: {0}").format(
 				", ".join(missing)))
+		from ffl_core.compliance.interstate_tax import US_CODES
+
 		state = parts["source_state"].upper()
-		if not _STATE_RE.match(state):
+		if state not in US_CODES:
 			frappe.throw(_("Seller address state must be the 2-letter code (got '{0}').").format(
 				parts["source_state"]))
 		if not _ZIP_RE.match(parts["source_zip"]):
@@ -566,8 +567,11 @@ def seller_defaults(customer: str) -> dict:
 def customer_address_parts(customer: str) -> dict:
 	"""The Customer's primary Address as structured parts ({address_line1,
 	city, state, zip}) straight off the Address record — the dialog prefill
-	maps these onto its split fields with no string parsing anywhere. Empty
-	dict when the customer has no usable primary address."""
+	maps these onto its split fields with no string parsing anywhere. A
+	spelled-out state ("Texas") comes back as its code. Empty dict when the
+	customer has no usable primary address."""
+	from ffl_core.compliance.interstate_tax import normalize_us_state
+
 	primary = frappe.db.get_value("Customer", customer, "customer_primary_address")
 	if not primary:
 		return {}
@@ -580,7 +584,7 @@ def customer_address_parts(customer: str) -> dict:
 	return {
 		"address_line1": a.address_line1.strip(),
 		"city": (a.city or "").strip(),
-		"state": (a.state or "").strip(),
+		"state": normalize_us_state(a.state) or (a.state or "").strip(),
 		"zip": (a.pincode or "").strip(),
 	}
 

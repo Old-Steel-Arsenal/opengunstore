@@ -1372,13 +1372,13 @@
         "type": "object",
         "description": "Custom DocType (ffl_core); CRUD via /api/resource/Gunsmith%20Work%20Order — see docs/api/frappe-rest.md.",
         "properties": {
+          "scan_id": {
+            "type": "string",
+            "description": "Scan ID"
+          },
           "customer": {
             "type": "string",
             "description": "Customer (Link: Customer)"
-          },
-          "customer_name": {
-            "type": "string",
-            "description": "Customer Name"
           },
           "phone": {
             "type": "string",
@@ -1388,48 +1388,52 @@
             "type": "string",
             "description": "Email"
           },
-          "address": {
+          "address_line1": {
             "type": "string",
-            "description": "Address"
+            "description": "Street Address"
           },
-          "status": {
+          "city": {
+            "type": "string",
+            "description": "City"
+          },
+          "state": {
+            "type": "string",
+            "description": "State"
+          },
+          "zip": {
+            "type": "string",
+            "description": "ZIP"
+          },
+          "id_type": {
             "type": "string",
             "enum": [
-              "Received",
-              "In Progress",
-              "Ready",
-              "Picked Up",
-              "Cancelled"
+              "Driver License",
+              "State ID",
+              "Passport",
+              "Military ID",
+              "Other"
             ],
-            "description": "Status"
+            "description": "ID Type"
           },
-          "company": {
+          "id_number": {
             "type": "string",
-            "description": "Company (Link: Company)"
+            "description": "ID Number"
           },
-          "received_by": {
+          "id_document": {
             "type": "string",
-            "description": "Received By (Link: User)"
-          },
-          "received_on": {
-            "type": "string",
-            "description": "Date Received"
+            "description": "ID Scan"
           },
           "manufacturer": {
             "type": "string",
             "description": "Manufacturer"
           },
-          "model": {
-            "type": "string",
-            "description": "Model"
-          },
           "caliber": {
             "type": "string",
             "description": "Caliber / Gauge"
           },
-          "serial_number": {
+          "model": {
             "type": "string",
-            "description": "Serial Number"
+            "description": "Model"
           },
           "firearm_type": {
             "type": "string",
@@ -1449,17 +1453,9 @@
             ],
             "description": "Firearm Type"
           },
-          "accessories": {
+          "serial_number": {
             "type": "string",
-            "description": "Accessories"
-          },
-          "condition": {
-            "type": "string",
-            "description": "Condition"
-          },
-          "firearm_notes": {
-            "type": "string",
-            "description": "Notes"
+            "description": "Serial Number"
           },
           "log_in_bound_book": {
             "type": "integer",
@@ -1469,36 +1465,17 @@
             ],
             "description": "Log in Bound Book"
           },
-          "id_type": {
+          "accessories": {
             "type": "string",
-            "enum": [
-              "Driver License",
-              "State ID",
-              "Passport",
-              "Military ID",
-              "Other"
-            ],
-            "description": "Customer ID Type"
+            "description": "Came In With"
           },
-          "id_number": {
+          "condition": {
             "type": "string",
-            "description": "Customer ID Number"
+            "description": "Condition"
           },
-          "purchase_receipt": {
+          "firearm_notes": {
             "type": "string",
-            "description": "Custody Receipt (Link: Purchase Receipt)"
-          },
-          "item_code": {
-            "type": "string",
-            "description": "Item (Link: Item)"
-          },
-          "serial_no": {
-            "type": "string",
-            "description": "Serial No (Link: Serial No)"
-          },
-          "disposition": {
-            "type": "string",
-            "description": "Disposition (Link: FFL Disposition)"
+            "description": "Notes"
           },
           "work_requested": {
             "type": "string",
@@ -1506,35 +1483,15 @@
           },
           "estimated_cost": {
             "type": "number",
-            "description": "Estimated Cost"
-          },
-          "deposit_amount": {
-            "type": "number",
-            "description": "Paid at Intake"
+            "description": "Estimate"
           },
           "estimated_completion": {
             "type": "string",
-            "description": "Estimated Completion"
+            "description": "Ready By"
           },
-          "intake_agreement": {
+          "scan_barcode": {
             "type": "string",
-            "description": "Intake Authorization (Link: Customer Agreement)"
-          },
-          "deposit_invoice": {
-            "type": "string",
-            "description": "Deposit Invoice (Link: POS Invoice)"
-          },
-          "deposit_held": {
-            "type": "number",
-            "description": "Deposit Held"
-          },
-          "gunsmith": {
-            "type": "string",
-            "description": "Gunsmith (Link: User)"
-          },
-          "work_performed": {
-            "type": "string",
-            "description": "Work Performed"
+            "description": "Scan"
           },
           "lines": {
             "type": "array",
@@ -1545,7 +1502,15 @@
           },
           "final_cost": {
             "type": "number",
-            "description": "Final Cost"
+            "description": "Total Before Tax"
+          },
+          "gunsmith": {
+            "type": "string",
+            "description": "Gunsmith (Link: User)"
+          },
+          "work_performed": {
+            "type": "string",
+            "description": "Work Performed"
           },
           "completed_on": {
             "type": "string",
@@ -1568,10 +1533,6 @@
             "type": "string",
             "description": "Notified By (Link: User)"
           },
-          "pickup_invoice": {
-            "type": "string",
-            "description": "Pick-up Invoice (Link: POS Invoice)"
-          },
           "picked_up_on": {
             "type": "string",
             "description": "Date Picked Up"
@@ -1579,16 +1540,79 @@
           "cancel_reason": {
             "type": "string",
             "description": "Cancel Reason"
+          },
+          "received_on": {
+            "type": "string",
+            "description": "Date Received"
+          },
+          "received_by": {
+            "type": "string",
+            "description": "Received By (Link: User)"
+          },
+          "company": {
+            "type": "string",
+            "description": "Company (Link: Company)"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Received",
+              "In Progress",
+              "Ready",
+              "Picked Up",
+              "Cancelled"
+            ],
+            "description": "Status"
+          },
+          "customer_name": {
+            "type": "string",
+            "description": "Customer Name"
+          },
+          "deposit_amount": {
+            "type": "number",
+            "description": "Paid at Intake"
+          },
+          "deposit_held": {
+            "type": "number",
+            "description": "Deposit Held"
+          },
+          "deposit_invoice": {
+            "type": "string",
+            "description": "Deposit Invoice (Link: POS Invoice)"
+          },
+          "pickup_invoice": {
+            "type": "string",
+            "description": "Pick-up Invoice (Link: POS Invoice)"
+          },
+          "intake_agreement": {
+            "type": "string",
+            "description": "Intake Authorization (Link: Customer Agreement)"
+          },
+          "purchase_receipt": {
+            "type": "string",
+            "description": "Custody Receipt (Link: Purchase Receipt)"
+          },
+          "item_code": {
+            "type": "string",
+            "description": "Item (Link: Item)"
+          },
+          "serial_no": {
+            "type": "string",
+            "description": "Serial No (Link: Serial No)"
+          },
+          "disposition": {
+            "type": "string",
+            "description": "Disposition (Link: FFL Disposition)"
           }
         },
         "required": [
           "customer",
-          "company",
-          "received_on",
           "manufacturer",
           "model",
           "serial_number",
-          "work_requested"
+          "work_requested",
+          "received_on",
+          "company"
         ]
       },
       "Gunsmith_Work_Order_Line": {
@@ -12501,7 +12525,7 @@
           "ffl_core"
         ],
         "summary": "Make a new accessory / ammo / parts Item from the Trade-in dialog, for something the store has never stocked.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Stock Manager / System Manager\n\n**Permissions:** roles.TRADE_IN_ROLES, like the trade-in itself: the counter takes in what the seller brings. Only a non-serialized, non-firearm stock Item can be made here; any other Item stays a stock job (receive_goods.create_item).\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:359`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Stock Manager / System Manager\n\n**Permissions:** roles.TRADE_IN_ROLES, like the trade-in itself: the counter takes in what the seller brings. Only a non-serialized, non-firearm stock Item can be made here; any other Item stays a stock job (receive_goods.create_item).\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:360`",
         "operationId": "ffl_core.api.trade_in.create_accessory_item",
         "responses": {
           "200": {
@@ -12561,7 +12585,7 @@
           "ffl_core"
         ],
         "summary": "Create a Used Firearm Item + FFL Acquisition for an individual trade-in.",
-        "description": "With payload.apply_credit truthy, the acquisition is parked as a DRAFT\n(booked at checkout submit) and the result carries `credit` — a locked\nnegative TRADE-IN-CREDIT line payload for the POS cart. Re-running the\ndialog for a serial that already has a pending draft refreshes that\ndraft (new cost honoured) instead of duplicating it.\n\nWithout apply_credit the store buys the gun and pays the seller now:\npayload.payout_method (Cash / Zelle / Check / ACH, and payout_reference\nunless Cash) is required. The gun is received on a Purchase Receipt from\nthe seller, dated today, and the payment booked with it (Dr Stock Received\nBut Not Billed / Cr Cash or the bank) so the cash drawer count includes it\n(_buy_now).\n\nAccessories / ammo (payload.accessories, [{item_code, qty, rate}] with\nrate the per-unit value) come in alone (has_firearm 0) or with the gun:\nwith apply_credit a draft Material Receipt and a credit line of their own\n(_park_accessories), without it lines on the same paid receipt.\n\n**Auth (derived from code):** Roles: Sales User / Stock Manager / System Manager\n\n**Permissions:** roles.TRADE_IN_ROLES: the counter's sales role plus the stock roles; holding only the sales manager role is refused. Gated at entry, covering BOTH branches — the refresh branch (_refresh_pending_draft) rewrites A&D draft seller identity/cost and historically ran ungated (endpoint-gates hardening, 2026-08-07). A caller without a stock role files the gun under no Item (one is made for this gun) or an existing per-gun priced firearm Item (_check_counter_item); making or choosing any other Item stays a stock job. Everything behind the gate runs gate-free (firearm_intake.create_intake, receive_goods._create_receive), each of our writes with ignore_permissions; the ERPNext-internal checks against the session user (the gun's stock bundle) rest on the DocPerm setup/pos_compat.ROLE_GRANTS gives the counter.\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:114`",
+        "description": "With payload.apply_credit truthy, the acquisition is parked as a DRAFT\n(booked at checkout submit) and the result carries `credit` — a locked\nnegative TRADE-IN-CREDIT line payload for the POS cart. Re-running the\ndialog for a serial that already has a pending draft refreshes that\ndraft (new cost honoured) instead of duplicating it.\n\nWithout apply_credit the store buys the gun and pays the seller now:\npayload.payout_method (Cash / Zelle / Check / ACH, and payout_reference\nunless Cash) is required. The gun is received on a Purchase Receipt from\nthe seller, dated today, and the payment booked with it (Dr Stock Received\nBut Not Billed / Cr Cash or the bank) so the cash drawer count includes it\n(_buy_now).\n\nAccessories / ammo (payload.accessories, [{item_code, qty, rate}] with\nrate the per-unit value) come in alone (has_firearm 0) or with the gun:\nwith apply_credit a draft Material Receipt and a credit line of their own\n(_park_accessories), without it lines on the same paid receipt.\n\n**Auth (derived from code):** Roles: Sales User / Stock Manager / System Manager\n\n**Permissions:** roles.TRADE_IN_ROLES: the counter's sales role plus the stock roles; holding only the sales manager role is refused. Gated at entry, covering BOTH branches — the refresh branch (_refresh_pending_draft) rewrites A&D draft seller identity/cost and historically ran ungated (endpoint-gates hardening, 2026-08-07). A caller without a stock role files the gun under no Item (one is made for this gun) or an existing per-gun priced firearm Item (_check_counter_item); making or choosing any other Item stays a stock job. Everything behind the gate runs gate-free (firearm_intake.create_intake, receive_goods._create_receive), each of our writes with ignore_permissions; the ERPNext-internal checks against the session user (the gun's stock bundle) rest on the DocPerm setup/pos_compat.ROLE_GRANTS gives the counter.\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:115`",
         "operationId": "ffl_core.api.trade_in.create_trade_in_intake",
         "responses": {
           "200": {
@@ -12608,7 +12632,7 @@
           "ffl_core"
         ],
         "summary": "Prefill for the POS Trade-in dialog's seller section.",
-        "description": "A best-effort structured-name split of the Customer (generational\nsuffix pulled out even mid-name — 'pat lee IV Sampleton' →\nfirst pat, middle lee, last Sampleton, suffix IV) plus their\nprimary address as a single line ('addr1, City ST zip' — the shape the\nFastBound push parses). Everything is editable in the dialog; this only\nsaves retyping.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:501`",
+        "description": "A best-effort structured-name split of the Customer (generational\nsuffix pulled out even mid-name — 'pat lee IV Sampleton' →\nfirst pat, middle lee, last Sampleton, suffix IV) plus their\nprimary address as a single line ('addr1, City ST zip' — the shape the\nFastBound push parses). Everything is editable in the dialog; this only\nsaves retyping.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:502`",
         "operationId": "ffl_core.api.trade_in.seller_defaults",
         "responses": {
           "200": {
@@ -12656,7 +12680,7 @@
           "ffl_core"
         ],
         "summary": "Which Pending Order rows belong to a Banned customer, for the page's red badge.",
-        "description": "A web or GunBroker order is booked to a customer only once it has shipped, so\nits buyer is looked up the way that booking will: a Woo order by its billing\nemail (customer email, then merged-email alias); a GunBroker order by its linked\ncustomer, then the buyer's GunBroker id (field, then alias), then email.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:326`",
+        "description": "A web or GunBroker order is booked to a customer only once it has shipped, so\nits buyer is looked up the way that booking will: a Woo order by its billing\nemail (customer email, then merged-email alias); a GunBroker order by its linked\ncustomer, then the buyer's GunBroker id (field, then alias), then email.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:358`",
         "operationId": "ffl_core.customer_flags.banned_order_rows",
         "responses": {
           "200": {
@@ -12748,13 +12772,75 @@
         }
       }
     },
+    "/api/method/ffl_core.customer_flags.find_customers_by_scan": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Customers a scanned licence may belong to (the gunsmith work order's Scan ID): by",
+        "description": "its number (only while ID numbers are stored, as :func:`find_customers_by_id_number`),\nthen by first + last name. A name match is only a guess, so the caller lets the clerk\npick; a number match is the person.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:265`",
+        "operationId": "ffl_core.customer_flags.find_customers_by_scan",
+        "responses": {
+          "200": {
+            "description": "[{\"name\", \"customer_name\", \"customer_status\", \"address\": primary address on one line, \"by_id\": matched on the ID number}], at most 5.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "array"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "first": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "First name read from the ID."
+                  },
+                  "last": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Last name read from the ID."
+                  },
+                  "id_number": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The licence number read from the ID, if any."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.customer_flags.find_possible_duplicates": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "Existing customers a new one may duplicate, for the New Customer dialog.",
-        "description": "Matches the customer's email (or an email merged into it), mobile number\n(last 10 digits) and — while the store keeps ID numbers — an ID number.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:271`",
+        "description": "Matches the customer's email (or an email merged into it), mobile number\n(last 10 digits) and — while the store keeps ID numbers — an ID number.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:303`",
         "operationId": "ffl_core.customer_flags.find_possible_duplicates",
         "responses": {
           "200": {
@@ -13389,7 +13475,7 @@
           "ffl_core"
         ],
         "summary": "Close a job that will not be done. A gun in the bound book still goes back through",
-        "description": "pick-up (its disposition), so a logged job is not cancelled: clear its charges and\npick it up instead. A deposit held is refunded afterwards (:func:`refund_deposit`).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:414`",
+        "description": "pick-up (its disposition), so a logged job is not cancelled: clear its charges and\npick it up instead. A deposit held is refunded afterwards (:func:`refund_deposit`).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:455`",
         "operationId": "ffl_core.gunsmith.cancel_work_order",
         "responses": {
           "200": {
@@ -13436,13 +13522,68 @@
         }
       }
     },
+    "/api/method/ffl_core.gunsmith.charge_details": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "A part picked or scanned onto a job's charges: its name and its list price for the",
+        "description": "customer, as Create Order prices a line (``price_approval.list_rate``). The counter\ncan't read Item Price itself.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:286`",
+        "operationId": "ffl_core.gunsmith.charge_details",
+        "responses": {
+          "200": {
+            "description": "{\"item_name\", \"rate\": the list price, 0 when there is none}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "item_code": {
+                    "type": "string",
+                    "description": "The Item charged."
+                  },
+                  "customer": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The job's customer, whose price list applies; else the default selling list."
+                  }
+                },
+                "required": [
+                  "item_code"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.gunsmith.complete_work": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "The register's Complete: the clerk confirms what was done and what it costs; the",
-        "description": "job keeps them, is Ready, and is handed back as :func:`open_pickup` does — at once\nwith nothing to bill and nothing held, else through the draft pick-up invoice the\nregister loads into its cart.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:273`",
+        "description": "job keeps them, is Ready, and is handed back as :func:`open_pickup` does — at once\nwith nothing to bill and nothing held, else through the draft pick-up invoice the\nregister loads into its cart.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:314`",
         "operationId": "ffl_core.gunsmith.complete_work",
         "responses": {
           "200": {
@@ -13498,7 +13639,7 @@
           "ffl_core"
         ],
         "summary": "Take a gun in at the register (its Work Order button): the job, logged in the",
-        "description": "bound book now when asked, and the payment line for what the customer pays now.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:159`",
+        "description": "bound book now when asked, and the payment line for what the customer pays now.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:160`",
         "operationId": "ffl_core.gunsmith.create_work_order",
         "responses": {
           "200": {
@@ -13545,7 +13686,7 @@
           "ffl_core"
         ],
         "summary": "A payment towards an open job (Recent Orders › Take payment): the locked",
-        "description": "GUNSMITH-DEPOSIT row for the register's cart. Booked when that sale is paid.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:191`",
+        "description": "GUNSMITH-DEPOSIT row for the register's cart. Booked when that sale is paid.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:192`",
         "operationId": "ffl_core.gunsmith.deposit_line",
         "responses": {
           "200": {
@@ -13602,7 +13743,7 @@
         "operationId": "ffl_core.gunsmith.get_state",
         "responses": {
           "200": {
-            "description": "{\"deposit_held\", \"charges\", \"authorization\": {\"template\", \"state\", \"agreement\"} or None, \"drafts\": {\"deposit\", \"pickup\", \"refund\"}}.",
+            "description": "{\"labor_item\", \"deposit_held\", \"charges\", \"authorization\": {\"template\", \"state\", \"agreement\"} or None, \"drafts\": {\"deposit\", \"pickup\", \"refund\"}}.",
             "content": {
               "application/json": {
                 "schema": {
@@ -13640,13 +13781,43 @@
         }
       }
     },
+    "/api/method/ffl_core.gunsmith.labor_item": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "The labor item a new job's first charge line uses (FFL Settings › Gunsmithing,",
+        "description": "which the counter can't read itself).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:274`",
+        "operationId": "ffl_core.gunsmith.labor_item",
+        "responses": {
+          "200": {
+            "description": "The Item name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.gunsmith.log_in_bound_book": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "Log a job's gun in the bound book now (a job created unlogged, or one whose",
-        "description": "first attempt failed).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:449`",
+        "description": "first attempt failed).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:490`",
         "operationId": "ffl_core.gunsmith.log_in_bound_book",
         "responses": {
           "200": {
@@ -13708,7 +13879,7 @@
           "ffl_core"
         ],
         "summary": "Received / In Progress → Ready: the work is done and recorded.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:351`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:392`",
         "operationId": "ffl_core.gunsmith.mark_ready",
         "responses": {
           "200": {
@@ -13756,7 +13927,7 @@
           "ffl_core"
         ],
         "summary": "Tell the customer the gun is ready, and record who told them, how and when.",
-        "description": "Email sends the store's \"Gunsmith Work Ready\" email now (the customer needs an\nemail address). Phone and Text are made by staff; this records them.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:373`",
+        "description": "Email sends the store's \"Gunsmith Work Ready\" email now (the customer needs an\nemail address). Phone and Text are made by staff; this records them.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:414`",
         "operationId": "ffl_core.gunsmith.notify_customer",
         "responses": {
           "200": {
@@ -13809,7 +13980,7 @@
           "ffl_core"
         ],
         "summary": "Hand the gun back. With nothing to charge and no deposit held, the job is",
-        "description": "picked up now; otherwise this opens (or returns) the draft register invoice with\nthe charges and the deposit held coming off them, and its submit picks the job up.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:574`",
+        "description": "picked up now; otherwise this opens (or returns) the draft register invoice with\nthe charges and the deposit held coming off them, and its submit picks the job up.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:621`",
         "operationId": "ffl_core.gunsmith.open_pickup",
         "responses": {
           "200": {
@@ -13857,7 +14028,7 @@
           "ffl_core"
         ],
         "summary": "Open (or return) the draft register return that pays back the deposit still held",
-        "description": "— a cancelled job's, or what a smaller bill left over. A return goes against one\npayment and refunds at most that payment, newest first; with several payments held\nthe rest is refunded with the next return.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:638`",
+        "description": "— a cancelled job's, or what a smaller bill left over. A return goes against one\npayment and refunds at most that payment, newest first; with several payments held\nthe rest is refunded with the next return.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:688`",
         "operationId": "ffl_core.gunsmith.refund_deposit",
         "responses": {
           "200": {
@@ -13905,7 +14076,7 @@
           "ffl_core"
         ],
         "summary": "The open jobs for the register's Recent Orders › Work Orders list, with what its",
-        "description": "Take payment and Complete actions need.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:215`",
+        "description": "Take payment and Complete actions need.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:216`",
         "operationId": "ffl_core.gunsmith.register_work_orders",
         "responses": {
           "200": {
@@ -13960,7 +14131,7 @@
           "ffl_core"
         ],
         "summary": "Received (or Ready, reopened) → In Progress.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:329`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:370`",
         "operationId": "ffl_core.gunsmith.start_work",
         "responses": {
           "200": {
