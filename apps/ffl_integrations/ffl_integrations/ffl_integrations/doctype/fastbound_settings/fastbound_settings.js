@@ -124,10 +124,20 @@ function runImport(frm, values) {
 }
 
 function showResultDialog(stats, dry) {
-	const summaryRows = [
+	// Rows mirror ImportStats.as_dict so they add up to Fetched. A dry run
+	// counts every in-stock gun under "skipped" (nothing is written).
+	const summaryRows = dry ? [
 		[__('Fetched'), stats.fetched],
-		[dry ? __('Would create') : __('Created'), dry ? stats.fetched - (stats.error_count || 0) : stats.created],
-		[__('Skipped (already imported)'), stats.skipped],
+		[__('Would import / resync'), stats.skipped],
+		[__('Sold / deleted in FastBound (not imported)'), stats.disposed_skipped || 0],
+		[__('Items it would group into'), stats.projected_items || 0],
+		[__('Errors'), stats.error_count || 0],
+	] : [
+		[__('Fetched'), stats.fetched],
+		[__('Created'), stats.created],
+		[__('Updated (resynced)'), stats.updated || 0],
+		[__('Skipped'), stats.skipped],
+		[__('Sold / deleted in FastBound (not imported)'), stats.disposed_skipped || 0],
 		[__('Errors'), stats.error_count || 0],
 	];
 	const summaryHtml = `<table class="table table-bordered" style="margin-top:12px">${

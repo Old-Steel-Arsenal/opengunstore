@@ -86,8 +86,12 @@ def execute(filters=None):
 		frappe.throw(_("From Date must be on or before To Date"))
 
 	statement = _parse_statement(_statement_source(filters))
-	pos_rows = (_fetch_pos_fees(filters) if statement_type == FEE_STATEMENT
-		else _fetch_pos_tax(filters))
+	# The statement's own orders are fetched whatever their posting date: an
+	# order on January's statement whose invoice posted on 2 February is a
+	# timing gap, and only reaches `_classify` if the fetch returns it.
+	ids = sorted({_id(r.get("order_id")) for r in statement} - {""})
+	pos_rows = (_fetch_pos_fees(filters, ids) if statement_type == FEE_STATEMENT
+		else _fetch_pos_tax(filters, ids))
 	rows = _reconcile(statement, pos_rows,
 		from_date=filters.from_date, to_date=filters.to_date)
 	return _columns(), rows, _preamble(statement_type), None, _summary(rows)
@@ -450,7 +454,15 @@ _ACCRUAL_STATE = """
 		     ELSE 'posted' END AS accrual"""
 
 
-def _fetch_pos_fees(filters):
+def _period_or_listed(ids):
+	"""Invoices posted in the period, plus any order the statement lists — so a
+	month-straddling order comes back and is classified as timing, not as
+	missing. The OR is left out when there are no ids: `IN ()` is a SQL error."""
+	period = "si.posting_date BETWEEN %(from_date)s AND %(to_date)s"
+	return f"({period} OR o.gb_order_id IN %(ids)s)" if ids else period
+
+
+def _fetch_pos_fees(filters, ids=()):
 	"""What we accrued, per item: the value fee plus the FFL document fee that
 	`GunBroker Order Line` carries. Per item because that is how GunBroker
 	charges — the tiers are applied to each item's own price, and an order-level
@@ -476,11 +488,12 @@ def _fetch_pos_fees(filters):
 		JOIN `tabGunBroker Order Line` l ON l.parent = o.name
 		JOIN `tabSales Invoice` si ON si.name = o.sales_invoice AND si.docstatus = 1
 		LEFT JOIN `tabJournal Entry` je ON je.name = o.fee_accrual_je
-		WHERE si.posting_date BETWEEN %(from_date)s AND %(to_date)s
-	""", {"from_date": filters.from_date, "to_date": filters.to_date}, as_dict=True)]
+		WHERE {_period_or_listed(ids)}
+	""", {"from_date": filters.from_date, "to_date": filters.to_date,
+		"ids": tuple(ids)}, as_dict=True)]
 
 
-def _fetch_pos_tax(filters):
+def _fetch_pos_tax(filters, ids=()):
 	"""What the marketplace collected in sales tax on our behalf, per order —
 	`salesTaxTotal` less the buyer service fee, the same split the invoice's
 	two liability rows carry.
@@ -503,5 +516,6 @@ def _fetch_pos_tax(filters):
 		FROM `tabGunBroker Order` o
 		JOIN `tabSales Invoice` si ON si.name = o.sales_invoice AND si.docstatus = 1
 		LEFT JOIN `tabJournal Entry` je ON je.name = o.fee_accrual_je
-		WHERE si.posting_date BETWEEN %(from_date)s AND %(to_date)s
-	""", {"from_date": filters.from_date, "to_date": filters.to_date}, as_dict=True)]
+		WHERE {_period_or_listed(ids)}
+	""", {"from_date": filters.from_date, "to_date": filters.to_date,
+		"ids": tuple(ids)}, as_dict=True)]

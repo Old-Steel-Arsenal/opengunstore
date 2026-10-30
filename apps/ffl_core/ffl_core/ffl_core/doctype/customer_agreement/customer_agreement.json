@@ -94,8 +94,7 @@
    "options": "Serial No",
    "label": "Firearm (Serial No)",
    "read_only": 1,
-   "search_index": 1,
-   "description": "For an agreement signed for each firearm sold: the first gun it names (all of them are under Firearms)."
+   "search_index": 1
   },
   {
    "fieldname": "item_code",
@@ -111,8 +110,7 @@
    "options": "Customer Agreement Firearm",
    "label": "Firearms",
    "read_only": 1,
-   "depends_on": "eval:doc.serial_no",
-   "description": "For an agreement signed for each firearm sold: every gun this one signature covers."
+   "depends_on": "eval:doc.serial_no"
   },
   {
    "fieldname": "status",
@@ -246,8 +244,7 @@
    "fieldtype": "Select",
    "label": "Sent As",
    "options": "\nQR\nEmail\nTerminal",
-   "read_only": 1,
-   "description": "How the signing link last went out: QR = shown at the counter, Email = sent to the customer, Terminal = sent to a paired store tablet."
+   "read_only": 1
   },
   {
    "fieldname": "token_expires",
@@ -289,8 +286,7 @@
    "fieldtype": "Dynamic Link",
    "label": "Reference",
    "options": "reference_doctype",
-   "read_only": 1,
-   "description": "For an agreement signed for each firearm sold: the sale it was used for."
+   "read_only": 1
   },
   {
    "fieldname": "section_body",

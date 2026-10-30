@@ -30,7 +30,6 @@
    "label": "Items Total"
   },
   {
-   "description": "The Create Order page's form state, verbatim. Serials in a draft are NOT reserved — they are re-validated when the draft is resumed.",
    "fieldname": "payload",
    "fieldtype": "Long Text",
    "label": "Payload (JSON)"

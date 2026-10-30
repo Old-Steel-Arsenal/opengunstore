@@ -39,7 +39,7 @@ frappe.query_reports["Pending 4473 Orders"] = {
 		}
 		// Past the Brady date and still no Proceed — flag the row's date.
 		if (column.fieldname === "brady_date" && data && data.brady_date) {
-			const past = frappe.datetime.get_diff(frappe.datetime.get_today(), data.brady_date) >= 0;
+			const past = frappe.datetime.get_diff(frappe.datetime.get_today(), data.brady_date) > 0;
 			if (past && data.nics_status === "Delayed") {
 				value = `<span style="color:var(--orange-600);font-weight:600">${value}</span>`;
 			}

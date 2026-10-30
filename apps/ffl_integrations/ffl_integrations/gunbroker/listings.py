@@ -209,6 +209,23 @@ def _log_sync_error(serial_no: str, message: str) -> None:
 # Guards
 # ---------------------------------------------------------------------------
 
+def _title_guard(name: str, settings, rename_hint: str) -> dict | None:
+	"""The title-policy guard every push matrix shares (serial, model, item).
+
+	GunBroker's own rejection never says which words were the problem, so this
+	is the only place an operator learns what to rename. Returns a skip dict,
+	or None when the title is clean.
+	"""
+	title, _title_warnings = mapping.gb_title(name)
+	phrase = mapping.banned_title_phrase(title, settings.get("title_banned_phrases"))
+	if not phrase:
+		return None
+	return skip(BANNED_TITLE, _(
+		"The title contains {0!r}, which GunBroker rejects under its listing "
+		"policies. {1}"
+	).format(phrase, rename_hint))
+
+
 def _config_gap(settings) -> str:
 	"""Which credential/setting is missing, in operator words, or ""."""
 	missing = []
@@ -383,14 +400,11 @@ def check_push_guards(serial_no: str, *, relist: bool = False,
 
 	# 12. Title policy. GunBroker's own rejection never says which words were the
 	#     problem, so this one is checked here or not at all.
-	title, _title_warnings = mapping.gb_title(
-		serial.get("item_name") or item.get("item_name") or serial.get("item_code"))
-	phrase = mapping.banned_title_phrase(title, settings.get("title_banned_phrases"))
-	if phrase:
-		return skip(BANNED_TITLE, _(
-			"The title contains {0!r}, which GunBroker rejects under its listing "
-			"policies. Rename the Item or the serial and try again."
-		).format(phrase))
+	blocked = _title_guard(
+		serial.get("item_name") or item.get("item_name") or serial.get("item_code"),
+		settings, _("Rename the Item or the serial and try again."))
+	if blocked:
+		return blocked
 
 	# 13. No photos. Answered from the gallery rows alone — deliberately WITHOUT
 	#     reading any of them. Resolving the bytes means disk reads and, for a

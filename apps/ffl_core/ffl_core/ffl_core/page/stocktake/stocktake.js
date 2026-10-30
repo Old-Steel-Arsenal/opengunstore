@@ -56,14 +56,7 @@ function stkcMergeItems(items, counted) {
 }
 
 // Counted rows the item list has no row for yet (another device scanned something this
-// page has not heard of): the page reloads the full list when there are any.
-function stkcMissingItemKeys(items, counted) {
-	const have = new Set((items || []).map((r) => stkcKey(r.item_code, r.warehouse)));
-	return (counted || []).filter((c) => !have.has(stkcKey(c.item_code, c.warehouse)))
-		.map((c) => stkcKey(c.item_code, c.warehouse));
-}
-
-// The same, as {item_code, warehouse} rows to fetch.
+// page has not heard of), as {item_code, warehouse} pairs for fillMissing to fetch.
 function stkcMissingRows(items, counted) {
 	const have = new Set((items || []).map((r) => stkcKey(r.item_code, r.warehouse)));
 	return (counted || []).filter((c) => !have.has(stkcKey(c.item_code, c.warehouse)))
@@ -812,7 +805,6 @@ if (typeof module !== 'undefined' && module.exports) {
 		stkcKey,
 		stkcMergeSerials,
 		stkcMergeItems,
-		stkcMissingItemKeys,
 		stkcMissingRows,
 		stkcBlockedRows,
 		stkcFilterSerials,

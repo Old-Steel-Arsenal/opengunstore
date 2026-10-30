@@ -34,7 +34,7 @@ booking it here would write a disposition to ourselves into the bound book.
 
 **Permissions:** Counter roles.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/fulfillment.py:598`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/fulfillment.py:596`</sub>
 
 ## `get_dispose_stock_lines`
 
@@ -52,7 +52,7 @@ from, for the "where did these come from?" step of Dispose.
 
 **Returns:** [{line, item_code, item_name, qty, locations: [{location, label, qty}], unassigned, chosen}] -- one per line that ships from the shelf as loose stock. ``chosen`` is the location already recorded for the line, or the sole place the item can only have come from (exactly one holds it, none is unassigned).
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/fulfillment.py:551`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/fulfillment.py:549`</sub>
 
 ## `list_pending_web_orders`
 
@@ -74,7 +74,7 @@ firearm line stays listed and is logged.
 
 **Permissions:** Counter roles.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/fulfillment.py:295`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/fulfillment.py:293`</sub>
 
 ## `reserved_web_serials`
 
@@ -97,4 +97,4 @@ Numbers tab.
 
 **Permissions:** Canonical shipping roles (passive read, same gate as reserved_counter_serials). A caller WITHOUT the role gets an empty {} back silently — no error is raised — so an empty result is not proof of "no holds".
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/fulfillment.py:1026`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/fulfillment.py:977`</sub>

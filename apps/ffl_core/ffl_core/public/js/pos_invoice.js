@@ -130,8 +130,7 @@ frappe.ui.form.on('POS Invoice', {
 
 // The active card processor's name for messages ("Payroc" on a Payroc store).
 function cardLabel() {
-	const s = window.ffl && window.ffl.switches;
-	return (s && s.cardProcessorLabel) ? s.cardProcessorLabel() : __('card processor');
+	return window.ffl.switches.cardProcessorLabel();
 }
 
 function unlockCardRefund(frm) {

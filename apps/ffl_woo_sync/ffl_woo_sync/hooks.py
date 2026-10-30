@@ -226,6 +226,13 @@ store_stock_for_item = [
     "ffl_woo_sync.woocommerce.mapping.store_stock_for_item",
 ]
 
+# ffl_core fires this with the Sales Invoice when a submitted counter order starts
+# holding a gun without a submit/cancel event (Fulfill from local stock): the
+# same reconcile the invoice's on_submit runs.
+ffl_counter_hold_changed = [
+    "ffl_woo_sync.woocommerce.doc_events.on_invoice_change",
+]
+
 # Document Events
 # ---------------
 # Auto-push to WooCommerce when POS records change.

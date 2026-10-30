@@ -57,7 +57,7 @@ from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.utils import flt, getdate
+from frappe.utils import cint, flt, getdate
 
 from ffl_core import report_cards
 from ffl_core.compliance.shipping_charge import SHIPPING_TAX_DESCRIPTION
@@ -100,9 +100,7 @@ def _execute_order_view(filters):
 	headers = _apply_channel_filter(headers, filters.get("channel"))
 	lines = _fetch_lines(headers)
 	item_meta = _fetch_item_meta(lines)
-	serial_cost = _fetch_serial_costs(lines)
-	consignment = _fetch_serial_consignment(lines)
-	transfer_serials = _fetch_transfer_serials(lines)
+	serial_cost, consignment, transfer_serials = _fetch_serial_facts(lines)
 	dropship_cost = _fetch_dropship_costs(headers, lines)
 	# Tax rows only for the tickets that carry a trade-in credit: that is all trade_in_applied reads them for.
 	credit_headers = [h for h in headers if any(
@@ -400,7 +398,19 @@ def _fetch_item_meta(lines_by_invoice):
 	}
 
 
-def _fetch_serial_costs(lines_by_invoice):
+def _fetch_serial_facts(lines_by_invoice) -> tuple[dict, dict, set]:
+	"""One Serial No read for the invoice lines' serials, returning
+	``(serial_cost, consignment, transfer_serials)``:
+
+	- serial_cost: ``{serial_no: purchase_rate}`` for every serial;
+	- consignment: ``{serial_no: {"is_consignment": 1, "commission_pct": <serial default>}}``
+	  for consigned serials ONLY (``_consigned`` tests membership);
+	- transfer_serials: the serials that are CUSTOMER property held on an FFL
+	  transfer (Serial No.is_transfer_gun). This is the real classification that
+	  replaced the net-0 heuristic: the store never bought these guns, so their
+	  cost is 0 by fact rather than by inference, on every view and regardless
+	  of what the line's net came to.
+	"""
 	serials = {
 		s
 		for ls in lines_by_invoice.values()
@@ -408,14 +418,19 @@ def _fetch_serial_costs(lines_by_invoice):
 		for s in split_serials(l.get("serial_no"))
 	}
 	if not serials:
-		return {}
-	return {
-		s["name"]: flt(s.get("purchase_rate"))
-		for s in frappe.get_all(
-			"Serial No", filters={"name": ["in", list(serials)]},
-			fields=["name", "purchase_rate"],
-		)
-	}
+		return {}, {}, set()
+	serial_cost, consignment, transfer_serials = {}, {}, set()
+	for s in frappe.get_all(
+		"Serial No", filters={"name": ["in", list(serials)]},
+		fields=["name", "purchase_rate", "is_consignment", "consignment_commission_pct", "is_transfer_gun"],
+	):
+		serial_cost[s["name"]] = flt(s.get("purchase_rate"))
+		if cint(s.get("is_consignment")):
+			consignment[s["name"]] = {
+				"is_consignment": 1, "commission_pct": flt(s.get("consignment_commission_pct"))}
+		if cint(s.get("is_transfer_gun")):
+			transfer_serials.add(s["name"])
+	return serial_cost, consignment, transfer_serials
 
 
 def _dropship_source_keys(headers):
@@ -504,26 +519,6 @@ def _fetch_dropship_costs(headers, lines_by_invoice):
 	return out
 
 
-def _fetch_serial_consignment(lines_by_invoice):
-	"""{serial_no: {"is_consignment": 1, "commission_pct": <serial default>}}
-	for the invoice lines' consigned serials only (mirrors _fetch_serial_costs)."""
-	serials = {
-		s
-		for ls in lines_by_invoice.values()
-		for l in ls
-		for s in split_serials(l.get("serial_no"))
-	}
-	if not serials:
-		return {}
-	return {
-		s["name"]: {"is_consignment": 1, "commission_pct": flt(s.get("consignment_commission_pct"))}
-		for s in frappe.get_all(
-			"Serial No", filters={"name": ["in", list(serials)], "is_consignment": 1},
-			fields=["name", "consignment_commission_pct"],
-		)
-	}
-
-
 def _consigned(line, serials, consignment):
 	"""The consignment facts for one sold line, or None when THAT sale was not a
 	consignment sale (ffl_core.consignment.sold_on_consignment: the line's own
@@ -537,28 +532,6 @@ def _consigned(line, serials, consignment):
 	if not sold_on_consignment(line.get("consignment_commission_pct"), line.get("posting_date"), stamped):
 		return None
 	return stamped or {"is_consignment": 1, "commission_pct": 0.0}
-
-
-def _fetch_transfer_serials(lines_by_invoice) -> set:
-	"""The invoice lines' serials that are CUSTOMER property held on an FFL
-	transfer (Serial No.is_transfer_gun) — mirrors _fetch_serial_consignment.
-
-	This is the real classification that replaced the net-0 heuristic: the
-	store never bought these guns, so their cost is 0 by fact rather than by
-	inference, on every view and regardless of what the line's net came to."""
-	serials = {
-		s
-		for ls in lines_by_invoice.values()
-		for l in ls
-		for s in split_serials(l.get("serial_no"))
-	}
-	if not serials:
-		return set()
-	return set(frappe.get_all(
-		"Serial No",
-		filters={"name": ["in", list(serials)], "is_transfer_gun": 1},
-		pluck="name",
-	))
 
 
 # ----------------------------------------------------------- row construction
@@ -715,6 +688,43 @@ def _trade_in_settlement(header, lines, trade_in_net, tax_rows) -> tuple[float, 
 	return min(credit, goods), max(0.0, -(flt(header.get("rounded_total")) or flt(header.get("grand_total"))))
 
 
+def _order_facts(h, lines, item_meta) -> dict:
+	"""The order-level facts the Order view (_build_rows) and the Order Detail
+	parent row (_build_product_rows) must agree on: one definition of each.
+
+	Firearm flag drives the Firearms/Non-Firearms filter; the Category column
+	shows the line's real Item Group ("Mixed" for the rare invoice spanning more
+	than one group).
+
+	trade_in_net is the (negative) trade-in credit lines' net: an inventory
+	purchase, not negative revenue, so Net Sales is reported gross of it.
+
+	A gunsmith deposit row is customer money held, never revenue: the collecting
+	invoice is all deposit (+100 → Net 0) and the pick-up invoice releases it
+	(−100 → the work's full amount). deposit_net comes out of the net, the same
+	way a trade-in allowance does.
+
+	order_ref: Woo storefront order # ("2134"), "" for a POS/counter sale; falls
+	back to the WOO-ORD doc name, then the GunBroker order, when po_no is blank.
+	"""
+	groups = sorted({
+		item_meta.get(l.get("item_code"), {}).get("item_group")
+		for l in lines if item_meta.get(l.get("item_code"), {}).get("item_group")
+	})
+	return {
+		"is_firearm": any(item_meta.get(l.get("item_code"), {}).get("is_firearm") for l in lines),
+		"groups": groups,
+		"category": groups[0] if len(groups) == 1 else ("Mixed" if groups else ""),
+		"trade_in_net": sum(
+			flt(l.get("base_net_amount")) for l in lines
+			if l.get("item_code") == TRADE_IN_CREDIT_ITEM),
+		"deposit_net": sum(
+			flt(l.get("base_net_amount")) for l in lines
+			if l.get("item_code") == DEPOSIT_ITEM),
+		"order_ref": h.get("po_no") or h.get("woo_online_order") or h.get("gunbroker_order") or "",
+	}
+
+
 def _build_rows(headers, lines_by_invoice, item_meta, serial_cost, product_type, consignment=None,
 		transfer_serials=None, dropship_cost=None, taxes_by_invoice=None):
 	rows = []
@@ -723,18 +733,10 @@ def _build_rows(headers, lines_by_invoice, item_meta, serial_cost, product_type,
 	for h in sorted(headers, key=lambda x: (str(x.get("posting_date") or ""), x.get("name") or "")):
 		lines = lines_by_invoice.get(h["name"], [])
 		fees = _channel_fees(h)
-		# Firearm flag drives the Firearms/Non-Firearms filter; the Category
-		# column shows the line's real Item Group ("Mixed" for the rare invoice
-		# spanning more than one group).
-		is_firearm = any(item_meta.get(l.get("item_code"), {}).get("is_firearm") for l in lines)
-		groups = sorted({
-			item_meta.get(l.get("item_code"), {}).get("item_group")
-			for l in lines if item_meta.get(l.get("item_code"), {}).get("item_group")
-		})
-		category = groups[0] if len(groups) == 1 else ("Mixed" if groups else "")
-		if product_type == "Firearms" and not is_firearm:
+		f = _order_facts(h, lines, item_meta)
+		if product_type == "Firearms" and not f["is_firearm"]:
 			continue
-		if product_type == "Non-Firearms" and is_firearm:
+		if product_type == "Non-Firearms" and f["is_firearm"]:
 			continue
 
 		qty = cost = 0.0
@@ -758,18 +760,10 @@ def _build_rows(headers, lines_by_invoice, item_meta, serial_cost, product_type,
 		# gross base (a 15% gun would read ~44% on the netted figure). The
 		# Total column stays grand_total — what was actually charged after the
 		# credit — and the GL income account still nets the credit, so report
-		# Net Sales exceeds GL income by exactly the allowance.
-		trade_in_net = sum(
-			flt(l.get("base_net_amount")) for l in lines
-			if l.get("item_code") == TRADE_IN_CREDIT_ITEM)
-		# A gunsmith deposit row is customer money held, never revenue: the
-		# collecting invoice is all deposit (+100 → Net 0) and the pick-up invoice
-		# releases it (−100 → the work's full amount). Both come out of the net,
-		# the same way a trade-in allowance does.
-		deposit_net = sum(
-			flt(l.get("base_net_amount")) for l in lines
-			if l.get("item_code") == DEPOSIT_ITEM)
-		net = flt(h.get("base_net_total")) - trade_in_net - deposit_net
+		# Net Sales exceeds GL income by exactly the allowance. A gunsmith
+		# deposit comes out of the net the same way (_order_facts).
+		trade_in_net = f["trade_in_net"]
+		net = flt(h.get("base_net_total")) - trade_in_net - f["deposit_net"]
 		total = flt(h.get("grand_total"))
 		profit = net - cost
 		applied, payout = _trade_in_settlement(h, lines, trade_in_net, (taxes_by_invoice or {}).get(h["name"]))
@@ -783,7 +777,7 @@ def _build_rows(headers, lines_by_invoice, item_meta, serial_cost, product_type,
 			"channel": _channel(h.get("voucher_type"), h.get("woo_online_order"),
 				h.get("gunbroker_order")),
 			"customer": h.get("customer"),
-			"category": category,
+			"category": f["category"],
 			"qty": qty,
 			"net_sales": net,
 			"total": total,
@@ -801,10 +795,9 @@ def _build_rows(headers, lines_by_invoice, item_meta, serial_cost, product_type,
 			#   category_detail  sorted item groups ", "-joined — the Mixed tooltip
 			#              source; a single-group invoice repeats its one group.
 			#   is_consignment   any consigned line → the ▲ profit marker.
-			"order_ref": h.get("po_no") or h.get("woo_online_order")
-				or h.get("gunbroker_order") or "",
+			"order_ref": f["order_ref"],
 			"serials": "; ".join(serials),
-			"category_detail": ", ".join(groups),
+			"category_detail": ", ".join(f["groups"]),
 			"is_consignment": any(_consigned(l, split_serials(l.get("serial_no")), consignment) for l in lines),
 			# Data-only trade-in keys (no column): net_sales is gross while Total
 			# stays the charged amount, so a trade-in row is the one place
@@ -1127,9 +1120,7 @@ def _execute_product_view(filters, detail):
 	headers = _apply_channel_filter(headers, filters.get("channel"))
 	lines = _fetch_lines(headers, extended=True)
 	item_meta = _fetch_item_meta(lines)
-	serial_cost = _fetch_serial_costs(lines)
-	consignment = _fetch_serial_consignment(lines)
-	transfer_serials = _fetch_transfer_serials(lines)
+	serial_cost, consignment, transfer_serials = _fetch_serial_facts(lines)
 	iwt = _fetch_item_wise_tax(headers)
 	taxes = _fetch_taxes(headers)
 	acct_class = _fetch_account_classes(taxes)
@@ -1243,15 +1234,11 @@ def _build_product_rows(headers, lines_by_invoice, item_meta, serial_cost, consi
 	for h in sorted(headers, key=lambda x: (str(x.get("posting_date") or ""), x.get("name") or "")):
 		name = h["name"]
 		lines = lines_by_invoice.get(name, [])
-		is_firearm = any(item_meta.get(l.get("item_code"), {}).get("is_firearm") for l in lines)
-		if product_type == "Firearms" and not is_firearm:
+		f = _order_facts(h, lines, item_meta)
+		if product_type == "Firearms" and not f["is_firearm"]:
 			continue
-		if product_type == "Non-Firearms" and is_firearm:
+		if product_type == "Non-Firearms" and f["is_firearm"]:
 			continue
-		groups = sorted({
-			item_meta.get(l.get("item_code"), {}).get("item_group")
-			for l in lines if item_meta.get(l.get("item_code"), {}).get("item_group")})
-		category = groups[0] if len(groups) == 1 else ("Mixed" if groups else "")
 		bd = _tax_breakdown(taxes_by_invoice.get(name, []), iwt_by_invoice.get(name, []), acct_class)
 		channel = _channel(h.get("voucher_type"), h.get("woo_online_order"),
 			h.get("gunbroker_order"))
@@ -1333,10 +1320,8 @@ def _build_product_rows(headers, lines_by_invoice, item_meta, serial_cost, consi
 			})
 
 		# A gunsmith deposit is customer money held, never a sale (Order view, same rule).
-		order_net = flt(h.get("base_net_total")) - sum(flt(l.get("base_net_amount")) for l in lines
-			if l.get("item_code") == DEPOSIT_ITEM)
-		trade_in_net = sum(flt(l.get("base_net_amount")) for l in lines
-			if l.get("item_code") == TRADE_IN_CREDIT_ITEM)
+		order_net = flt(h.get("base_net_total")) - f["deposit_net"]
+		trade_in_net = f["trade_in_net"]
 		applied, payout = _trade_in_settlement(h, lines, trade_in_net, taxes_by_invoice.get(name))
 		if detail:
 			# Parent mirrors the Order view (net_sales / total), so the tree is
@@ -1350,14 +1335,11 @@ def _build_product_rows(headers, lines_by_invoice, item_meta, serial_cost, consi
 				**carry,
 				"row_kind": "order",
 				"indent": 0,
-				# order_ref: same expression as the Order view's _build_rows
-				# — Woo storefront # or the WOO-ORD doc name, "" for POS. Added to the
-				# PARENT order row ONLY (FE pass-through so the tree's parent shows the
-				# same Woo #), NOT to the flat product/CSV rows (19.5-A rejected) and
-				# NOT to carry, so the flat Product view is untouched. FE renders "#…".
-				"order_ref": h.get("po_no") or h.get("woo_online_order")
-				or h.get("gunbroker_order") or "",
-				"category": category,
+				# order_ref on the PARENT order row ONLY (FE pass-through so the
+				# tree's parent shows the same Woo #), NOT on the flat product/CSV
+				# rows (19.5-A rejected) and NOT in carry. FE renders "#…".
+				"order_ref": f["order_ref"],
+				"category": f["category"],
 				"qty": order_qty,
 				"net_sales": order_net - trade_in_net,
 				"gross_merch": order_net - trade_in_net,

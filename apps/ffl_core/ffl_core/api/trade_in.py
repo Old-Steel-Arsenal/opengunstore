@@ -34,11 +34,12 @@ from frappe import _
 from frappe.utils import flt
 
 from ffl_core.acquisition import TRADE_IN_SOURCE
+from ffl_core.api._helpers import coerce_payload
 from ffl_core.cash_drawer import PAYOUT_METHODS
 from ffl_core.customer_name import split_display_name
 from ffl_core.firearm import ACCESSORY, AMMUNITION, PARTS, _is_firearm_row, is_per_serial_priced
 from ffl_core.roles import COUNTER_ROLES, STOCK_ROLES, TRADE_IN_ROLES
-from ffl_core.api.firearm_intake import create_intake
+from ffl_core.api.firearm_intake import _check_serial_free, create_intake
 
 
 # Fields the POS dialog collects. Mapped onto firearm_intake's schema below.
@@ -167,13 +168,7 @@ def create_trade_in_intake(payload) -> dict:
 	"""
 	if not set(frappe.get_roles()) & set(TRADE_IN_ROLES):
 		frappe.throw(_("Taking a trade-in needs the Sales User role."), frappe.PermissionError)
-	if isinstance(payload, str):
-		try:
-			payload = _json.loads(payload)
-		except _json.JSONDecodeError:
-			frappe.throw(_("Invalid payload (not JSON)"))
-	if not isinstance(payload, dict):
-		frappe.throw(_("Invalid payload"))
+	payload = coerce_payload(payload)
 
 	accessories = _accessory_lines(payload.get("accessories"))
 	# The dialog's "Includes a firearm" box; an API caller that never sends it is trading in a gun, as always.
@@ -227,6 +222,8 @@ def create_trade_in_intake(payload) -> dict:
 		"storage_location": (str(payload.get("storage_location") or "").strip()) or None,
 	}
 	if has_gun:
+		# A gun the store sold and takes back is filed under its own Item: decide that before the Item check.
+		_check_serial_free(intake_payload)
 		_check_counter_item(intake_payload["item_code"])
 
 	apply_credit = frappe.utils.cint(payload.get("apply_credit"))
@@ -409,7 +406,7 @@ def _buy_now(intake: dict, has_gun: bool, accessories: list[dict], method: str, 
 	per-unit facts (condition, sell price, description) are stamped as an intake's are. ``intake`` always carries
 	the seller; its gun half only when ``has_gun``."""
 	from ffl_core.api.firearm_intake import (
-		_company, _default_warehouse, _lookup_serial, _resolve_item, _stamp_serial, _validate_required, _validate_source)
+		_company, _default_warehouse, _resolve_item, _stamp_serial, _validate_required, _validate_source)
 	from ffl_core.api.receive_goods import _create_receive
 
 	if not intake["source_customer"]:
@@ -419,8 +416,20 @@ def _buy_now(intake: dict, has_gun: bool, accessories: list[dict], method: str, 
 	if has_gun:
 		_validate_required(intake)
 		_validate_source(intake)
-		if _lookup_serial(intake["serial"]).get("found"):
-			frappe.throw(_("Serial '{0}' is already on file. Edit the existing item instead.").format(intake["serial"]))
+		# A credit run for this gun that was never checked out left a draft acquisition: paying now replaces it,
+		# keeping the Item that run made for the gun. Rolled back with the rest if the buy fails.
+		draft = frappe.db.get_value("FFL Acquisition",
+			{"serial": intake["serial"].strip(), "docstatus": 0, "source_type": TRADE_IN_SOURCE},
+			["name", "item"], as_dict=True)
+		if draft:
+			held = frappe.db.get_value("POS Invoice Item",
+				{"ffl_trade_in_acquisition": draft.name, "docstatus": 0}, "parent")
+			if held:
+				frappe.throw(_("This gun's trade-in credit is on held sale {0}. Remove the credit line there "
+					"first.").format(held))
+			intake["item_code"] = intake["item_code"] or draft.item
+			frappe.delete_doc("FFL Acquisition", draft.name, ignore_permissions=True)
+		_check_serial_free(intake)
 		if flt(intake["acquisition_cost"], 2) <= 0:  # a receipt that pays nobody would still reach the bound book
 			frappe.throw(_("Enter what the store pays the seller."))
 		item_code = _resolve_item(intake)

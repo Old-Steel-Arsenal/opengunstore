@@ -136,7 +136,7 @@ function _confirm(frm) {
 // in — unless the operator says the house has already confirmed the
 // cancellation, in which case that alert would only be noise.
 function _cancel(frm) {
-	const live = ['Placed', 'Acknowledged', 'Hold', 'Partially Shipped'].includes(frm.doc.status);
+	const live = ['Placed', 'Acknowledged', 'Hold', 'Partially Shipped', 'Error'].includes(frm.doc.status);
 	const fields = [{ fieldtype: 'Small Text', fieldname: 'reason', label: __('Reason'), reqd: 0 }];
 	if (live) {
 		fields.push({

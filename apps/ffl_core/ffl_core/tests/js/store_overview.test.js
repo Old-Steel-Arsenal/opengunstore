@@ -1,14 +1,13 @@
 'use strict';
 // Pure kernel of the Overview page: the 4473 tabs, the pickup amber, the header sentence, the sales
-// figures, the drawer totals (pinned to the Cash Drawer page's rule), arrivals and the records filter.
+// figures, arrivals and the records filter.
 const test = require('node:test');
 const assert = require('node:assert');
 const {
 	sovMoney, sovEyebrow, sovWeekday, sovStarted, sovAgo, sovInitials, sovNicsState, sovNicsPill, sovTabs, sovTabRows,
-	sovRowAction, sovGunLabel, sovDaysClass, sovSales, sovBars, sovDrawerTotals, sovArrival, sovSummary,
+	sovRowAction, sovGunLabel, sovDaysClass, sovSales, sovBars, sovArrival, sovSummary,
 	sovFilterRecords, sovRoute, sovRecordHref, sovNeedRecords,
 } = require('../../ffl_core/page/store_overview/store_overview.js');
-const { cdrwTotals } = require('../../ffl_core/page/cash_drawer/cash_drawer.js');
 
 // Report order (oldest first); started = when the order was opened. New orders carry 'N/A' (pos_4473).
 const ROWS = [
@@ -137,17 +136,6 @@ test('an All records link goes through the route builder, a URL as it is, anythi
 	assert.strictEqual(sovRecordHref({ link_type: 'URL', link_to: '/desk/range-board' }, gen), '/desk/range-board');
 	assert.strictEqual(sovRecordHref({ link_type: 'Help', link_to: 'x' }, gen), '');
 	assert.strictEqual(seen.length, 3);
-});
-
-test('the drawer totals are the Cash Drawer page totals (same lines left out)', () => {
-	const fixtures = [
-		[],
-		[{ kind: 'sale', amount: 120.5 }, { kind: 'expense', amount: -40 }, { kind: 'variance', amount: -3 }],
-		[{ kind: 'cutoff', amount: 880 }, { kind: 'cutoff_trueup', amount: -12 }, { kind: 'deposit', amount: -500 },
-			{ kind: 'from_bank', amount: 200 }, { kind: 'payout', amount: -0.1 }, { kind: 'sale', amount: 0.2 }],
-	];
-	for (const lines of fixtures) assert.deepStrictEqual(sovDrawerTotals(lines), cdrwTotals(lines));
-	assert.deepStrictEqual(sovDrawerTotals(fixtures[1]), { cashIn: 120.5, cashOut: 40 });
 });
 
 test('an arriving order shows progress once something came in, its state before', () => {

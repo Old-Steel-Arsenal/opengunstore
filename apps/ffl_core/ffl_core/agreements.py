@@ -971,7 +971,11 @@ def _refresh_text(doc) -> bool:
 	if cint(doc.template_version) == cint(tpl.version or 1):
 		return False
 	cust = frappe.get_doc("Customer", doc.customer)
-	firearm = [firearm_context(r.serial_no, r.price) for r in doc.get("firearms") or []] or None
+	# The same context _request rendered it with: its guns, else (Per document) its record.
+	firearm = [firearm_context(r.serial_no, r.price) for r in doc.get("firearms") or []] or (
+		document_context(doc.reference_doctype, doc.reference_name)
+		if tpl.scope == PER_DOCUMENT and doc.reference_doctype and doc.reference_name
+		and frappe.db.exists(doc.reference_doctype, doc.reference_name) else None)
 	doc.db_set({"body_snapshot": render_body(tpl, cust, doc.company, firearm), "template_version": tpl.version or 1},
 		update_modified=False)
 	return True

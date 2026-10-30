@@ -78,7 +78,6 @@
    "fieldtype": "Check",
    "label": "Placed Outside POS",
    "in_standard_filter": 1,
-   "description": "No Distributor Order in this POS matches this invoice: it was ordered on the distributor's website, by phone, or by another system.",
    "read_only": 1
   },
   {
@@ -148,31 +147,27 @@
    "default": "Unknown",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "read_only": 1,
-   "description": "Where the goods went: Store (shipped to the shop, receivable on Receive Goods), Drop-ship (shipped to the buyer), or Unknown (the distributor did not say)."
+   "read_only": 1
   },
   {
    "fieldname": "received",
    "fieldtype": "Check",
    "label": "Received",
    "in_standard_filter": 1,
-   "read_only": 1,
-   "description": "Every line of this invoice has been received into stock through Receive Goods (or the invoice predates that feature)."
+   "read_only": 1
   },
   {
    "fieldname": "received_receipts",
    "fieldtype": "Small Text",
    "label": "Purchase Receipts",
-   "read_only": 1,
-   "description": "The Purchase Receipts that booked this invoice's goods, one per receive."
+   "read_only": 1
   },
   {
    "fieldname": "destination_note",
    "fieldtype": "Select",
    "label": "Destination Note",
    "options": "\nLookup failed\nNo answer on file",
-   "read_only": 1,
-   "description": "Why the destination is Unknown: the house's lookup failed (asked again on the next sync) or it gave no usable answer (not asked again)."
+   "read_only": 1
   }
  ],
  "in_create": 1,

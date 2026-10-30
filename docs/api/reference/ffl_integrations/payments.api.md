@@ -46,7 +46,7 @@ was charged, so it is recorded and booked, never stranded.
 
 **Permissions:** POS charge roles (_check_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1107`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1119`</sub>
 
 ## `charge_pos_invoice`
 
@@ -100,7 +100,7 @@ one while an earlier approval on this invoice is unrecorded.
 
 **Permissions:** POS charge roles (_check_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:957`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:978`</sub>
 
 ## `confirm_out_of_band_refund`
 
@@ -128,7 +128,7 @@ evidence another rule force-collects clears itself).
 
 **Permissions:** Manager role (_check_manager).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:2214`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:2234`</sub>
 
 ## `list_terminals`
 
@@ -145,7 +145,7 @@ response's allowedTerminals).
 
 **Permissions:** Manager role.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1140`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1152`</sub>
 
 ## `poll_pos_charge`
 
@@ -191,7 +191,7 @@ the new balance.
 
 **Permissions:** POS charge roles (_check_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1076`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1088`</sub>
 
 ## `refund_pos_invoice`
 
@@ -217,7 +217,7 @@ originals refund across rows within per-original-card caps.
 
 **Permissions:** Manager-gated refund roles (gate at entry).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1477`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1489`</sub>
 
 ## `unlock_refund_lock`
 
@@ -254,7 +254,7 @@ mirroring manager_override_4473's audit posture.
 
 **Permissions:** Manager gate (roles per the derived Auth line) + required reason — the reason must record what was verified in the processor's portal.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1852`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1872`</sub>
 
 ## `void_pos_invoice`
 
@@ -278,4 +278,4 @@ charge row's unique_reference when more than one live capture exists.
 
 **Permissions:** Refund/void roles (_check_refund_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1164`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1176`</sub>

@@ -241,7 +241,7 @@
   "unique": 0
  },
  {
-  "description": "Set when this disposition was auto-booked from a web (WooCommerce) order. Links the bound-book exit back to its Woo Online Order.",
+  "description": "Set when this bound-book exit was auto-booked from a web order.",
   "docstatus": 0,
   "doctype": "Custom Field",
   "dt": "FFL Disposition",
@@ -260,7 +260,7 @@
   "unique": 0
  },
  {
-  "description": "Set when this Sales Invoice is the auto-booked revenue for a web (WooCommerce) order \u2014 accounting only (update_stock=0; fulfillment lives on the Woo Online Order). The Pending Order queue and the interstate-tax engine key off this.",
+  "description": "Set on invoices auto-booked from a web order, which are accounting only.",
   "docstatus": 0,
   "doctype": "Custom Field",
   "dt": "Sales Invoice",
@@ -281,7 +281,7 @@
   "unique": 0
  },
  {
-  "description": "The web order this counter sale is the in-store pickup for. The buyer chose this store as the receiving dealer and collects here on a retail 4473. Submitting this invoice closes the web order; cancelling it puts the order back in the pickup queue.",
+  "description": "The web order this counter sale is the in-store pickup for.",
   "docstatus": 0,
   "doctype": "Custom Field",
   "dt": "POS Invoice",

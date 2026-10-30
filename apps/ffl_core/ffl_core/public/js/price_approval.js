@@ -90,19 +90,10 @@
 	var esc = function (s) { return frappe.utils.escape_html(s == null ? '' : String(s)); };
 	var on = function () { return !!(frappe.boot && frappe.boot.ffl_price_approval); };
 
-	// A plain POST: frappe.call's error pop-up would sit over the dialog, so the dialog shows it.
+	// A plain POST (staff_switch.js): frappe.call's error pop-up would sit over the dialog,
+	// so the dialog shows it. No fallback → an empty error message, as before.
 	function post(method, args, fallback) {
-		return fetch('/api/method/' + method, {
-			method: 'POST', credentials: 'same-origin',
-			headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Frappe-CSRF-Token': frappe.csrf_token },
-			body: JSON.stringify(args || {}),
-		}).then(function (r) {
-			return r.json().catch(function () { return {}; }).then(function (body) {
-				if (r.status === 429) throw new Error(__('Too many tries. Wait a few minutes.'));
-				if (!r.ok) throw new Error((ffl.staffSwitch && ffl.staffSwitch.serverMessage(body)) || fallback || '');
-				return body.message;
-			});
-		});
+		return ffl.staffSwitch.post(method, args, fallback || '').then(function (body) { return body.message; });
 	}
 
 	// The dialog. `request` is what the server prices again ({doc} or {payload, sales_invoice}).

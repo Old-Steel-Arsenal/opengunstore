@@ -17,7 +17,6 @@
  "fields": [
   {
    "columns": 2,
-   "description": "WooCommerce refund id — the idempotency key. A re-delivered webhook carrying the same id must never book the refund twice.",
    "fieldname": "woo_refund_id",
    "fieldtype": "Data",
    "in_list_view": 1,
@@ -26,7 +25,7 @@
   },
   {
    "columns": 2,
-   "description": "Absolute amount WooCommerce refunded for this refund id (Woo reports it negative; stored positive here). The net booked on the Sales Invoice is order_total minus the sum of these.",
+   "description": "Stored as a positive amount (WooCommerce reports it negative).",
    "fieldname": "refund_amount",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -34,7 +33,7 @@
   },
   {
    "columns": 1,
-   "description": "Sales tax WooCommerce gave back in this refund (line, shipping and fee taxes), from the refund's own breakdown. Reverses the Woo tax row on the Sales Invoice instead of discounting the goods.",
+   "description": "Reverses the Woo tax row on the Sales Invoice instead of discounting the goods.",
    "fieldname": "tax_refunded",
    "fieldtype": "Currency",
    "label": "Tax Refunded",
@@ -42,14 +41,14 @@
   },
   {
    "columns": 1,
-   "description": "Shipping WooCommerce gave back in this refund (shipping lines, before tax). Reduces the invoice's shipping instead of discounting the goods.",
+   "description": "Reduces the invoice's shipping instead of discounting the goods.",
    "fieldname": "shipping_refunded",
    "fieldtype": "Currency",
    "label": "Shipping Refunded",
    "read_only": 1
   },
   {
-   "description": "Fetched: tax/shipping come from WooCommerce's refund breakdown. Pending: not read yet — the whole refund books as a goods discount (the old way) until the reconcile job reads it. Not in Woo: WooCommerce did not list this refund; Rejected: its breakdown did not add up — both book the old way, were alerted, and are not read again. Blank: recorded before breakdowns were read; never read.",
+   "description": "Fetched means tax and shipping came from WooCommerce's refund breakdown; any other status books the whole refund as a goods discount.",
    "fieldname": "breakdown_status",
    "fieldtype": "Select",
    "options": "\nFetched\nPending\nNot in Woo\nRejected",
@@ -63,7 +62,6 @@
    "label": "Reason"
   },
   {
-   "description": "When the POS recorded this refund from a WooCommerce webhook / reconcile.",
    "fieldname": "recorded_on",
    "fieldtype": "Datetime",
    "label": "Recorded On",

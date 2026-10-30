@@ -73,7 +73,6 @@
   },
   {
    "default": "Pending Fulfillment",
-   "description": "Internal POS fulfillment lifecycle that drives the Pending Order queue / Dispose eligibility / serial write-back. Hidden from the form (managed automatically); the visible status is WooCommerce Status.",
    "fieldname": "order_status",
    "fieldtype": "Select",
    "hidden": 1,
@@ -82,7 +81,6 @@
    "reqd": 1
   },
   {
-   "description": "Live WooCommerce order status (processing, completed, on-hold, cancelled, refunded, …). Mirrors the WC side; distinct from the POS fulfillment Order Status above.",
    "fieldname": "woo_status",
    "fieldtype": "Data",
    "in_list_view": 1,
@@ -90,7 +88,7 @@
    "read_only": 1
   },
   {
-   "description": "When the POS fulfillment status became Transferred (the order left: disposed, auto-cleared or picked up). Revenue is recognised on this date, even when the booking job runs later.",
+   "description": "Revenue is recognised on this date, even if the booking job runs later.",
    "fieldname": "transferred_at",
    "fieldtype": "Datetime",
    "label": "Transferred At",
@@ -106,7 +104,7 @@
    "read_only": 1
   },
   {
-   "description": "Distributor fulfilment progress. Blank = no drop-ship line. order_status keeps its three values (#10).",
+   "description": "Blank means no drop-ship line.",
    "fieldname": "dropship_status",
    "fieldtype": "Select",
    "in_standard_filter": 1,
@@ -148,7 +146,7 @@
   },
   {
    "default": "0",
-   "description": "Derived from the licence number itself (segment 4 == 03), never hand-set. A Type 03 collector receives the firearm at their own licensed premises, so this order ships to the buyer and is verified by staff at dispose.",
+   "description": "Set from the licence number (Type 03): the order ships to the buyer and staff verify the licence at dispose.",
    "fieldname": "is_cr_transfer",
    "fieldtype": "Check",
    "label": "C&R (03) Transfer",
@@ -156,7 +154,6 @@
   },
   {
    "default": "0",
-   "description": "Monotonic revision of the FFL selection on WooCommerce. A webhook may only overwrite the FFL fields when it carries a HIGHER revision than the one stored here — that is what makes a staff edit on Woo authoritative while leaving ordinary order.updated traffic (status, refunds, serial backfill) unable to touch the FFL.",
    "fieldname": "woo_ffl_rev",
    "fieldtype": "Int",
    "label": "Woo FFL Revision",
@@ -203,7 +200,6 @@
    "label": "FFL Expiration"
   },
   {
-   "description": "Resolved ATF FFL Record for the receiving dealer (cached when the order is disposed). Powers the expiry gate + the disposition destination.",
    "fieldname": "atf_ffl_record",
    "fieldtype": "Link",
    "label": "ATF FFL Record",
@@ -223,14 +219,14 @@
    "label": "C&R Verification (staff-entered at dispose)"
   },
   {
-   "description": "Exactly as printed on the collector's licence — this becomes the FastBound contact's licenseName.",
+   "description": "Exactly as printed on the collector's licence.",
    "fieldname": "cr_contact_name",
    "fieldtype": "Data",
    "label": "Collector Name (as printed on license)",
    "length": 140
   },
   {
-   "description": "Read off the licence copy at dispose. Deliberately NOT pre-filled across orders: a licence that was valid last time may have lapsed since.",
+   "description": "Read off the licence copy at dispose; never pre-filled, because a licence may have lapsed since last time.",
    "fieldname": "cr_license_expiry",
    "fieldtype": "Date",
    "label": "C&R License Expiration"
@@ -266,7 +262,6 @@
    "length": 10
   },
   {
-   "description": "Who compared these details against the licence. Deliberate semantics: a dispose RETRY that submits identical values keeps the original verifier (the retry changed no fact, so it must not rewrite history), while CHANGED values re-stamp to whoever entered them. The A&D trail must answer \"who vouches for the data stored now\", not \"who touched this order first\" — do not \"simplify\" this to an unconditional overwrite or an unconditional keep.",
    "fieldname": "cr_verified_by",
    "fieldtype": "Link",
    "label": "Verified By",
@@ -275,7 +270,6 @@
    "read_only": 1
   },
   {
-   "description": "When the details on this order were attested to. Follows cr_verified_by: preserved across an identical re-submission, refreshed when the verified values actually change.",
    "fieldname": "cr_verified_at",
    "fieldtype": "Datetime",
    "label": "Verified At",
@@ -292,21 +286,19 @@
    "fieldtype": "Data",
    "label": "Ship To Name",
    "read_only": 1,
-   "description": "Captured from the Woo order payload (#16 — the buyer's original ship-to). Fix it on WooCommerce and it re-syncs while the order awaits routing; not hand-edited here."
+   "description": "To correct the address, fix it on WooCommerce; it re-syncs while the order awaits routing."
   },
   {
    "fieldname": "ship_to_line1",
    "fieldtype": "Data",
    "label": "Address Line 1",
-   "read_only": 1,
-   "description": "Captured from the Woo order payload (#16 — the buyer's original ship-to). Fix it on WooCommerce and it re-syncs while the order awaits routing; not hand-edited here."
+   "read_only": 1
   },
   {
    "fieldname": "ship_to_line2",
    "fieldtype": "Data",
    "label": "Address Line 2",
-   "read_only": 1,
-   "description": "Captured from the Woo order payload (#16 — the buyer's original ship-to). Fix it on WooCommerce and it re-syncs while the order awaits routing; not hand-edited here."
+   "read_only": 1
   },
   {
    "fieldname": "col_ship_to",
@@ -316,22 +308,19 @@
    "fieldname": "ship_to_city",
    "fieldtype": "Data",
    "label": "City",
-   "read_only": 1,
-   "description": "Captured from the Woo order payload (#16 — the buyer's original ship-to). Fix it on WooCommerce and it re-syncs while the order awaits routing; not hand-edited here."
+   "read_only": 1
   },
   {
    "fieldname": "ship_to_state",
    "fieldtype": "Data",
    "label": "State",
-   "read_only": 1,
-   "description": "Captured from the Woo order payload (#16 — the buyer's original ship-to). Fix it on WooCommerce and it re-syncs while the order awaits routing; not hand-edited here."
+   "read_only": 1
   },
   {
    "fieldname": "ship_to_zip",
    "fieldtype": "Data",
    "label": "ZIP",
-   "read_only": 1,
-   "description": "Captured from the Woo order payload (#16 — the buyer's original ship-to). Fix it on WooCommerce and it re-syncs while the order awaits routing; not hand-edited here."
+   "read_only": 1
   },
   {
    "fieldname": "section_amounts",
@@ -393,7 +382,7 @@
    "label": "Firearm Serials"
   },
   {
-   "description": "One row per physical firearm unit. confirmed_serial is what ships (blank until entered in WooCommerce).",
+   "description": "One row per firearm; Confirmed Serial is what ships, blank until entered in WooCommerce.",
    "fieldname": "serials",
    "fieldtype": "Table",
    "label": "Firearm Serials",
@@ -405,7 +394,7 @@
    "label": "WooCommerce Refunds"
   },
   {
-   "description": "Partial refunds / amount adjustments pulled from WooCommerce, deduped by refund id. The web Sales Invoice is booked (or amended) to order_total minus the sum of these — a discount, never a phantom -1 firearm line.",
+   "description": "Refunds pulled from WooCommerce; the web Sales Invoice is booked at the order total minus these.",
    "fieldname": "refunds",
    "fieldtype": "Table",
    "label": "Refunds",

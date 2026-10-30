@@ -45,8 +45,9 @@ def send_sale_receipt(doc, method=None) -> None:
 	# order confirmation at checkout — don't double-mail. Mirrors interstate_tax /
 	# customer_tax_exempt, which skip the same invoices. Both channels book the
 	# real buyer (with their email) onto the invoice, so without this guard every
-	# web and GunBroker sale would send a second, POS-branded receipt.
-	if doc.doctype == "Sales Invoice" and is_channel_mirrored_invoice(doc):
+	# web and GunBroker sale would send a second, POS-branded receipt. A web
+	# order's in-store pickup ticket (a POS Invoice) is the same sale.
+	if is_channel_mirrored_invoice(doc):
 		return
 	# A counter pickup's 4473 ticket (api/counter_pickup): the sale, its price
 	# and its receipt all belong to the counter order the ticket links; the

@@ -21,4 +21,4 @@ FFL Acquisition.serial in case the Item has been deleted.
 
 **Returns:** {found: false} — nothing on file; {found: true, source: "erpnext", item, acquisition} — already an Item (acquisition may be null); {found: true, source: "acquisition_only", acquisition} — an FFL Acquisition exists but its Item is gone.
 
-<sub>`apps/ffl_core/ffl_core/api/firearm_intake.py:49`</sub>
+<sub>`apps/ffl_core/ffl_core/api/firearm_intake.py:52`</sub>

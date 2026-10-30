@@ -48,7 +48,7 @@ OTHERS = "others"
 # (import path, function name, the predicate it must consult, which question,
 #  why it matters)
 READ_POINTS = (
-	("ffl_core.api.manual_order", "_serial_status", "channel_reservation", ANY,
+	("ffl_core.api.manual_order", "_serial_status", "serial_shelf_state", ANY,
 		"scan-to-add at the counter"),
 	("ffl_core.api.manual_order", "_serial_status", "channel_claim_block_reason", ANY,
 		"scan-to-add: units any channel has sold and not yet matched to a gun"),

@@ -200,6 +200,79 @@ class TestCreateSalesInvoice(FrappeTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			create_sales_invoice_for_web_order(_order(status="Pending Fulfillment"))
 
+	def test_a_submitted_pickup_ticket_is_the_booking(self):
+		"""A firearm pickup is booked on its POS Invoice; the Sales Invoice only
+		appears when the ticket consolidates. While that merge is stuck, the
+		backstop must not mint a second revenue SI (and clearing payment) that
+		the consolidated invoice would then double."""
+		from ffl_woo_sync.woocommerce import revenue
+		order = _order()
+
+		def _db_get_value(doctype, filters=None, *a, **k):
+			if doctype == "POS Invoice":
+				self.assertEqual(filters, {"woo_online_order": order.name,
+					"docstatus": 1, "is_return": 0})
+				return "ACC-PSINV-TEST-1"
+			return None
+
+		with patch.object(revenue, "_default_company", return_value="Test Store A LLC"), \
+			 patch.object(revenue, "_ensure_paid") as paid, \
+			 patch("frappe.db.get_value", side_effect=_db_get_value), \
+			 patch("frappe.new_doc") as new_doc:
+			result = revenue.create_sales_invoice_for_web_order(order)
+		self.assertEqual(result["status"], "counter_sale")
+		self.assertEqual(result["pos_invoice"], "ACC-PSINV-TEST-1")
+		new_doc.assert_not_called()
+		paid.assert_not_called()
+
+
+class TestSalesTaxAccount(FrappeTestCase):
+	"""The Woo-collected tax goes to the template's FIRST row. Child rows share
+	their parent's `creation`, so an unordered get_value returned whichever row
+	the database liked — on a CA store, possibly the CFET excise row."""
+
+	def test_first_row_by_idx_wins_over_a_later_created_row(self):
+		from ffl_core.setup import test_bootstrap
+		from ffl_woo_sync.woocommerce import revenue
+
+		test_bootstrap.run()
+		company = frappe.db.get_value("Company", {"company_name": "FFL Test"}, "name")
+		parent = frappe.db.get_value(
+			"Account", {"company": company, "root_type": "Liability", "is_group": 1},
+			"name", order_by="lft")
+		heads = []
+		for account_name in ("WRT Sales Tax Payable", "WRT Excise Tax Payable"):
+			name = frappe.db.get_value(
+				"Account", {"company": company, "account_name": account_name}, "name")
+			if not name:
+				acct = frappe.get_doc({
+					"doctype": "Account", "account_name": account_name,
+					"company": company, "parent_account": parent, "account_type": "Tax",
+				})
+				acct.insert(ignore_permissions=True)
+				name = acct.name
+			heads.append(name)
+		template = frappe.get_doc({
+			"doctype": "Sales Taxes and Charges Template",
+			"title": f"WRT Two Row {frappe.generate_hash(length=6)}",
+			"company": company, "is_default": 0,
+			"taxes": [
+				{"charge_type": "On Net Total", "account_head": heads[0],
+					"rate": 8.25, "description": "Sales tax"},
+				{"charge_type": "On Net Total", "account_head": heads[1],
+					"rate": 0, "description": "Excise"},
+			],
+		}).insert(ignore_permissions=True)
+		# Make the idx-2 row the "newest": the default `creation desc` order
+		# would pick it.
+		frappe.db.set_value("Sales Taxes and Charges", template.taxes[1].name,
+			"creation", frappe.utils.add_to_date(template.creation, seconds=5),
+			update_modified=False)
+
+		with patch("ffl_core.compliance.interstate_tax._default_template",
+				return_value=template.name):
+			self.assertEqual(revenue._sales_tax_account(company), heads[0])
+
 
 class TestDisposeHookWiring(FrappeTestCase):
 

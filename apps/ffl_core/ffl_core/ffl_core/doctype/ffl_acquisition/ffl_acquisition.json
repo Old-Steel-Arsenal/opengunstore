@@ -61,13 +61,12 @@
    "reqd": 1
   },
   {
-   "description": "Procurement channel, carried from the Purchase Receipt's Source. Choices managed in FFL Settings → Receive Sources.",
    "fieldname": "receive_source",
    "fieldtype": "Select",
    "label": "Receive Source"
   },
   {
-   "description": "FastBound acquisition type (presets + custom). Choices are synced from FastBound — refresh via FastBound Settings → 'Sync Acquire Types'. Leave blank to fall back to the source-type default.",
+   "description": "Leave blank to use the default for the source type.",
    "fieldname": "transaction_type",
    "fieldtype": "Select",
    "label": "Acquisition Type"
@@ -165,7 +164,7 @@
    "options": "Customer"
   },
   {
-   "description": "Set when this gun was received as an inbound customer transfer (a transfer-in on behalf of the customer): the customer who will pick it up. Drives the Pending Transfer Pickups report.",
+   "description": "For a transfer-in: the customer who will pick the gun up.",
    "fieldname": "transfer_for_customer",
    "fieldtype": "Link",
    "in_standard_filter": 1,
@@ -193,7 +192,6 @@
    "search_index": 1
   },
   {
-   "description": "Auto-picked when the Item has exactly one in-stock Serial No.",
    "fetch_if_empty": 1,
    "fieldname": "serial",
    "fieldtype": "Data",

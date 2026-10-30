@@ -279,3 +279,70 @@ class CacheLayer(FrappeTestCase):
 		with patch.object(ATFFormScraperProvider, "verify", return_value=stub):
 			with self.assertRaises(frappe.ValidationError):
 				ez_check.lookup_and_create("9-99-999-99-9X-99999")
+
+
+class NotFoundKeepsRecord(FrappeTestCase):
+	"""A NotFound from EZ Check must not blank the ATF FFL Record. Type 03
+	collectors are never in EZ Check, so their hand-entered rows stay as they
+	are; a dealer that dropped out keeps name/address but loses its expiry so
+	atf_record_block refuses to ship to it; an unknown number inserts nothing."""
+
+	CR = "5-99-888-03-XX-54321"
+	DEALER = "1-99-888-01-XX-54321"
+	UNKNOWN = "9-99-999-01-9X-54321"
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		from ffl_integrations.tests.site_fixtures import snapshot_single_values
+		cls.addClassCleanup(snapshot_single_values("FFL Settings", ("live_check_provider",)))
+		frappe.db.set_single_value("FFL Settings", "live_check_provider", "ATF Form Scraper")
+
+	def setUp(self):
+		frappe.db.delete("ATF FFL Record", {"ffl_number": ("in", [self.CR, self.DEALER, self.UNKNOWN])})
+		for ffl in (self.CR, self.DEALER):
+			frappe.get_doc({
+				"doctype": "ATF FFL Record",
+				"ffl_number": ffl,
+				"licensee_name": "KEEP ME",
+				"street": "1 MAIN ST",
+				"city": "AUSTIN",
+				"state": "TX",
+				"zip": "78701",
+				"expiry_date": date(2029, 1, 31),
+				"loaded_from": "manual",
+				"loaded_at": now_datetime(),
+			}).insert(ignore_permissions=True)
+
+	def _not_found(self, ffl):
+		stub = ez_check.EZCheckResult(ffl_number=ffl, found=False, status="NotFound")
+		return patch.object(ATFFormScraperProvider, "verify", return_value=stub)
+
+	def test_cr_record_untouched(self):
+		with self._not_found(self.CR):
+			r = ez_check.verify(self.CR, force_live=True)
+		self.assertFalse(r.found)
+		row = frappe.db.get_value("ATF FFL Record", self.CR,
+			["licensee_name", "street", "state", "expiry_date"], as_dict=True)
+		self.assertEqual(row.licensee_name, "KEEP ME")
+		self.assertEqual(row.street, "1 MAIN ST")
+		self.assertEqual(row.state, "TX")
+		self.assertEqual(row.expiry_date, date(2029, 1, 31))
+
+	def test_dealer_keeps_name_but_expiry_voided_and_blocked(self):
+		from ffl_core.compliance.dealer_transfer import FFL_BLOCK_EXPIRED, atf_record_block
+		self.assertIsNone(atf_record_block(self.DEALER))
+		with self._not_found(self.DEALER):
+			ez_check.verify(self.DEALER, force_live=True)
+		row = frappe.db.get_value("ATF FFL Record", self.DEALER,
+			["licensee_name", "street", "expiry_date"], as_dict=True)
+		self.assertEqual(row.licensee_name, "KEEP ME")
+		self.assertEqual(row.street, "1 MAIN ST")
+		self.assertIsNone(row.expiry_date)
+		self.assertEqual(atf_record_block(self.DEALER)[0], FFL_BLOCK_EXPIRED)
+
+	def test_unknown_number_inserts_nothing(self):
+		with self._not_found(self.UNKNOWN):
+			with self.assertRaises(frappe.ValidationError):
+				ez_check.lookup_and_create(self.UNKNOWN)
+		self.assertFalse(frappe.db.exists("ATF FFL Record", self.UNKNOWN))

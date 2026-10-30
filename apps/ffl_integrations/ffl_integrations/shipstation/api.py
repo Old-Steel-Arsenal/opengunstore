@@ -294,7 +294,6 @@ def push_shipment(sales_invoice: str) -> dict:
 		invoice_ship_address,
 		ship_arrival_block,
 		ship_payment_block,
-		shipstation_pushed,
 		warn_unresolved_stock_lines,
 	)
 
@@ -306,20 +305,9 @@ def push_shipment(sales_invoice: str) -> dict:
 			"ShipStation is disabled — configure and enable it in ShipStation "
 			"Settings first."))
 
-	# Serialize concurrent pushes: row-lock the invoice and re-read the guard
-	# fields under the lock. A second click (other tab/user) blocks here until
-	# the first request commits, then sees its write and no-ops.
-	locked = frappe.db.get_value(
-		"Sales Invoice", si.name,
-		["shipstation_order_id", "shipstation_status"],
-		as_dict=True, for_update=True) or frappe._dict()
-	if shipstation_pushed(locked.shipstation_order_id, locked.shipstation_status):
-		return {
-			"ok": True,
-			"already": True,
-			"shipstation_order_id": locked.shipstation_order_id,
-			"shipstation_status": locked.shipstation_status,
-		}
+	already = _locked_push_state("Sales Invoice", si.name)
+	if already:
+		return already
 	# Same rules as dispose_order / mark_shipped_manually, from the shared predicates.
 	block = ship_payment_block(si) or ship_arrival_block(si)
 	if block:
@@ -359,24 +347,56 @@ def push_shipment(sales_invoice: str) -> dict:
 	deliver_pending_stock_lines(si)
 	warn_unresolved_stock_lines(si)
 
+	return _create_or_adopt_and_stamp("Sales Invoice", si.name,
+		lambda client: build_shipment(sales_invoice, config=client.config))
+
+
+def _locked_push_state(doctype: str, name: str) -> dict | None:
+	"""Serialize concurrent pushes: row-lock the document and re-read the guard
+	fields under the lock. A second click (other tab/user) blocks here until
+	the first request commits, then sees its write and no-ops. Returns the
+	``already`` result when it was pushed before, else None. Shared by
+	push_shipment and the GunBroker pre-invoice push."""
+	from ffl_core.api.manual_order import shipstation_pushed
+
+	locked = frappe.db.get_value(
+		doctype, name, ["shipstation_order_id", "shipstation_status"],
+		as_dict=True, for_update=True) or frappe._dict()
+	if shipstation_pushed(locked.shipstation_order_id, locked.shipstation_status):
+		return {
+			"ok": True,
+			"already": True,
+			"shipstation_order_id": locked.shipstation_order_id,
+			"shipstation_status": locked.shipstation_status,
+		}
+	return None
+
+
+def _create_or_adopt_and_stamp(doctype: str, name: str, build_body) -> dict:
+	"""Create the ShipStation shipment for ``doctype``/``name`` — or adopt the
+	one an earlier push created — and stamp its id on the document.
+
+	``build_body(client)`` returns the shipment body; it is only called when
+	there is nothing to adopt. Runs after the caller's own gates and under the
+	row lock taken by :func:`_locked_push_state`.
+	"""
 	try:
 		client = ShipStationClient.from_settings()
 		# Lost-response healing: if an earlier push created the shipment but
 		# its response never landed (nothing persisted), adopt it instead of
-		# double-creating — external_shipment_id carries the invoice name.
-		shipment = client.find_shipment_by_external_id(si.name)
+		# double-creating — external_shipment_id carries the document name.
+		shipment = client.find_shipment_by_external_id(name)
 		adopted = bool(shipment)
 		if not shipment:
-			shipment = client.create_shipment(
-				build_shipment(sales_invoice, config=client.config))
+			shipment = client.create_shipment(build_body(client))
 	except ShipStationConfigError as exc:
 		frappe.throw(_("ShipStation is not configured: {0}").format(exc))
 	except ShipStationError as exc:
 		frappe.throw(_("ShipStation API error: {0}").format(exc))
 
-	# allow_on_submit fields, stamped in place on the submitted doc.
+	# allow_on_submit fields on a Sales Invoice, stamped in place.
 	frappe.db.set_value(
-		"Sales Invoice", si.name,
+		doctype, name,
 		{"shipstation_order_id": shipment["shipment_id"], "shipstation_status": "Pending"},
 		update_modified=False)
 	result = {"ok": True, "shipstation_order_id": shipment["shipment_id"]}

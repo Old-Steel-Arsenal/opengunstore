@@ -10,6 +10,39 @@ from ffl_core.roles import STOCK_ROLES
 from ffl_integrations.atf import ez_check
 
 
+def _verify_party_ffl(doctype: str, name: str) -> dict:
+	"""Live-verify a Customer/Supplier FFL and stamp the result on the record."""
+	doc = frappe.get_doc(doctype, name)
+	if not doc.get("ffl_number"):
+		frappe.throw(_("{0} has no FFL number to verify.").format(_(doctype)))
+
+	try:
+		result = ez_check.verify(doc.ffl_number, force_live=True)
+		new_status = result.status if result.found else "Failed"
+	except ez_check.EZCheckUnavailable as exc:
+		new_status = "Failed"
+		result = ez_check.EZCheckResult(
+			ffl_number=doc.ffl_number, found=False, status="Failed",
+			raw={"error": str(exc)},
+		)
+
+	frappe.db.set_value(doctype, name, {
+		"ez_check_status": new_status,
+		"ez_check_last_run": now_datetime(),
+		"licensee_name": result.licensee_name or doc.get("licensee_name"),
+		"licensee_address": result.address or doc.get("licensee_address"),
+		"ffl_expiry_date": result.expiry_date or doc.get("ffl_expiry_date"),
+	}, update_modified=False)
+	frappe.db.commit()
+
+	return {
+		"ok": True,
+		"status": new_status,
+		"licensee_name": result.licensee_name,
+		"expiry_date": result.expiry_date.isoformat() if result.expiry_date else None,
+	}
+
+
 @frappe.whitelist()
 def verify_customer_ffl(customer_name: str) -> dict:
 	"""Live-verify a dealer customer's FFL and stamp the result on the Customer.
@@ -27,35 +60,7 @@ def verify_customer_ffl(customer_name: str) -> dict:
 	    {ok, status, licensee_name, expiry_date}.
 	"""
 	frappe.only_for(STOCK_ROLES)
-	customer = frappe.get_doc("Customer", customer_name)
-	if not customer.get("ffl_number"):
-		frappe.throw(_("Customer has no FFL number to verify."))
-
-	try:
-		result = ez_check.verify(customer.ffl_number, force_live=True)
-		new_status = result.status if result.found else "Failed"
-	except ez_check.EZCheckUnavailable as exc:
-		new_status = "Failed"
-		result = ez_check.EZCheckResult(
-			ffl_number=customer.ffl_number, found=False, status="Failed",
-			raw={"error": str(exc)},
-		)
-
-	frappe.db.set_value("Customer", customer_name, {
-		"ez_check_status": new_status,
-		"ez_check_last_run": now_datetime(),
-		"licensee_name": result.licensee_name or customer.get("licensee_name"),
-		"licensee_address": result.address or customer.get("licensee_address"),
-		"ffl_expiry_date": result.expiry_date or customer.get("ffl_expiry_date"),
-	}, update_modified=False)
-	frappe.db.commit()
-
-	return {
-		"ok": True,
-		"status": new_status,
-		"licensee_name": result.licensee_name,
-		"expiry_date": result.expiry_date.isoformat() if result.expiry_date else None,
-	}
+	return _verify_party_ffl("Customer", customer_name)
 
 
 @frappe.whitelist()
@@ -73,35 +78,7 @@ def verify_supplier_ffl(supplier_name: str) -> dict:
 	    {ok, status, licensee_name, expiry_date}.
 	"""
 	frappe.only_for(STOCK_ROLES)
-	supplier = frappe.get_doc("Supplier", supplier_name)
-	if not supplier.ffl_number:
-		frappe.throw(_("Supplier has no FFL number to verify."))
-
-	try:
-		result = ez_check.verify(supplier.ffl_number, force_live=True)
-		new_status = result.status if result.found else "Failed"
-	except ez_check.EZCheckUnavailable as exc:
-		new_status = "Failed"
-		result = ez_check.EZCheckResult(
-			ffl_number=supplier.ffl_number, found=False, status="Failed",
-			raw={"error": str(exc)},
-		)
-
-	frappe.db.set_value("Supplier", supplier_name, {
-		"ez_check_status": new_status,
-		"ez_check_last_run": now_datetime(),
-		"licensee_name": result.licensee_name or supplier.licensee_name,
-		"licensee_address": result.address or supplier.licensee_address,
-		"ffl_expiry_date": result.expiry_date or supplier.ffl_expiry_date,
-	}, update_modified=False)
-	frappe.db.commit()
-
-	return {
-		"ok": True,
-		"status": new_status,
-		"licensee_name": result.licensee_name,
-		"expiry_date": result.expiry_date.isoformat() if result.expiry_date else None,
-	}
+	return _verify_party_ffl("Supplier", supplier_name)
 
 
 @frappe.whitelist()

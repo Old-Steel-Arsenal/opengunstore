@@ -24,7 +24,7 @@ cancelled; a refund is a credit note.
 
 **Returns:** The membership's panel row.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:616`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:606`</sub>
 
 ## `change_card`
 
@@ -43,7 +43,7 @@ charges.
 
 **Returns:** The membership's panel row.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:590`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:580`</sub>
 
 ## `discard_membership`
 
@@ -62,7 +62,7 @@ refused once any payment or card charge touched it.
 
 **Returns:** The membership's panel row (status Cancelled).
 
-<sub>`apps/ffl_core/ffl_core/membership.py:690`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:680`</sub>
 
 ## `get_memberships`
 
@@ -80,7 +80,7 @@ A membership whose invoice has since been paid another way is settled here.
 
 **Returns:** {plans: [{name, price, billing_period, registration_fee, auto_renew_default, terms_template}], memberships: [panel rows, live first; a row says whether its renewal is overdue, can be retried on the card, or has a card charge waiting], cards: the customer's active recurring-use saved cards [{name, card_summary}], can_cancel: whether the caller may cancel}.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:477`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:467`</sub>
 
 ## `invoice_membership`
 
@@ -98,7 +98,7 @@ already made), after the plan's terms are signed. The counter takes payment agai
 
 **Returns:** {sales_invoice, outstanding, customer, auto_renew}.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:248`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:238`</sub>
 
 ## `invoice_renewal`
 
@@ -116,7 +116,7 @@ original due date), for the counter to take payment by any tender. Paid: Active 
 
 **Returns:** {sales_invoice, outstanding, customer, auto_renew: 0 (no card charge from this flow)}.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:1130`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:1119`</sub>
 
 ## `needs_attention`
 
@@ -130,7 +130,7 @@ confirmed, a renewal the job could not charge, and sign-ups still unpaid after a
 
 **Returns:** {renewals_on: whether the daily renewal job runs, rows: [{membership, customer, customer_name, plan, status, reason, detail, current_period_end, sales_invoice, outstanding, can_retry, can_cancel, can_drop}]}.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:1174`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:1163`</sub>
 
 ## `page_members`
 
@@ -149,7 +149,7 @@ One page of the Memberships page's member list, by customer name.
 
 **Returns:** {rows: [{name, customer, customer_name, plan, status, next_charge_date, ends_on, auto_renew, card_summary}], more: whether another page follows}.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:1360`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:1349`</sub>
 
 ## `page_overview`
 
@@ -161,7 +161,7 @@ Everything the Memberships page shows above the member list, in one round trip.
 
 **Returns:** {plans: [{name, active, billing_period, price, registration_fee, auto_renew_default, grace_enabled, grace_days, terms_template, description, members}], totals: {active, monthly, renewing_soon, attention}, attention: the Needs attention answer (managers only, else null), can_manage: may act on memberships, can_edit_plans: may create and change plans}. ``monthly`` is what the Active and Past Due members bill per month (a yearly price counts a twelfth); ``renewing_soon`` counts auto-renewing Active members charged in the next 7 days.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:1317`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:1306`</sub>
 
 ## `retry_renewal`
 
@@ -180,7 +180,7 @@ card charge still waiting for the gateway's answer is looked up, never sent agai
 
 **Returns:** {outcome: renewed / declined / unknown / not_started, message: what happened, row: the membership's panel row}.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:1101`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:1090`</sub>
 
 ## `set_auto_renew`
 
@@ -200,7 +200,7 @@ is a manager's cancellation and stays off.
 
 **Returns:** The membership's panel row.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:548`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:538`</sub>
 
 ## `start_membership`
 
@@ -220,4 +220,4 @@ already there is picked up again, with the new auto-renew choice).
 
 **Returns:** The panel row of the membership ({name, plan, status, auto_renew, terms_template, terms_state, ...}).
 
-<sub>`apps/ffl_core/ffl_core/membership.py:190`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:180`</sub>

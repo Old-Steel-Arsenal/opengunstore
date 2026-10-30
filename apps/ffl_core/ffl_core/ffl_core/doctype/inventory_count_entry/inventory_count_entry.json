@@ -49,8 +49,7 @@
    "reqd": 1,
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "read_only": 1,
-   "description": "serial = a firearm found by serial number; qty = units of a non-serialized item; unknown = a barcode the system does not recognise."
+   "read_only": 1
   },
   {
    "fieldname": "method",
@@ -83,8 +82,7 @@
    "fieldname": "code",
    "fieldtype": "Data",
    "label": "Scanned Code",
-   "read_only": 1,
-   "description": "The barcode as scanned. Only filled in for codes the system did not recognise."
+   "read_only": 1
   },
   {
    "fieldname": "warehouse",
@@ -98,8 +96,7 @@
    "fieldtype": "Float",
    "label": "Quantity Change",
    "default": "0",
-   "read_only": 1,
-   "description": "A scan adds 1. A typed-in quantity adds the difference from what was already counted."
+   "read_only": 1
   },
   {
    "fieldname": "serial_key",
@@ -108,8 +105,7 @@
    "unique": 1,
    "hidden": 1,
    "read_only": 1,
-   "no_copy": 1,
-   "description": "Stops the same gun being counted twice in one count."
+   "no_copy": 1
   }
  ],
  "permissions": [

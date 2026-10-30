@@ -491,6 +491,48 @@ class CounterDropshipIntegration(CounterDropshipFixtures):
 		self.assertAlmostEqual(flt(line["cost"]), cogs, places=2,
 			msg="report cost must equal the PI's COGS leg after an amend")
 
+	def test_cost_invoice_is_booked_once_per_order(self):
+		"""A completed DO's cost PI job runs more than once (the poll's save fires
+		on_update AND the poll calls maybe_complete_source itself). With no bill_no
+		the PI stores bill_no NULL, so the dedup lookup must match NULL — else every
+		run drafts another PI and COGS + the payable double-book."""
+		from ffl_integrations.distributor import accounting
+
+		out = self._counter(
+			items=[{"item_code": ACC_ITEM, "qty": 1, "rate": 90, "source": "dropship"}],
+			ship_to=self._ACC_SHIP_TO)
+		do = frappe.get_doc("Distributor Order", self._orders_for(out["sales_invoice"])[0]["name"])
+		for line in do.lines:
+			line.db_set("ack_qty", 1)
+			line.db_set("unit_cost", 62.5)
+		for step in ("Queued", "Placed", "Complete"):
+			do.db_set("status", step)
+		first = accounting.ensure_cost_invoice(do.name)
+		self.assertEqual(first["status"], "draft")
+		again = accounting.ensure_cost_invoice(do.name)
+		self.assertEqual(again, {"purchase_invoice": first["purchase_invoice"], "status": "exists"})
+		self.assertEqual(frappe.db.count("Purchase Invoice",
+			{"distributor_order": do.name, "docstatus": ("<", 2)}), 1)
+
+	def test_a_sales_user_can_ring_and_place_a_dropship_order(self):
+		"""The counter roles hold no Distributor Order DocPerm: the hook's insert and
+		Pending Order's Place order run under the counter gate, not the DocPerm."""
+		from ffl_core.tests.test_trade_in_counter_roles import SALES_USER, _ensure_user
+
+		_ensure_user(SALES_USER, "Sales User")
+		frappe.set_user(SALES_USER)
+		try:
+			out = self._counter(
+				items=[{"item_code": ACC_ITEM, "qty": 1, "rate": 40, "source": "dropship"}],
+				ship_to=self._ACC_SHIP_TO)
+			self.assertEqual(len(self._orders_for(out["sales_invoice"])), 1)
+			result = manual_order.release_order_legs(out["sales_invoice"])
+		finally:
+			frappe.set_user("Administrator")
+		self.assertEqual(result["failed"], [])
+		self.assertEqual(frappe.db.get_value(
+			"Distributor Order", result["released"][0], "status"), "Queued")
+
 	def test_the_counter_hook_is_registered(self):
 		self.assertIn(
 			"ffl_integrations.distributor.counter.ffl_counter_order_distributor",

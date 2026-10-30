@@ -101,7 +101,7 @@ Five minutes, starting on the [Dashboard](../getting-started/dashboard.md).
 1. **Cash drawer card.** Yesterday should have been counted. If the card still
    reads **Not counted** from yesterday, count the drawer now. See
    [The cash drawer](cash-drawer.md).
-2. **Open 4473s.** Ring the Delayed customers whose Brady date has arrived, and
+2. **Open 4473s.** Ring the Delayed customers whose Brady date has passed, and
    clear out anything denied. See [Daily checks](../compliance/daily-checks.md).
 3. **Waiting on pickup.** Ring whoever's gun has sat longest. See
    [Customer transfers](transfers.md).

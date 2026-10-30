@@ -21,15 +21,16 @@ from ffl_core.api.manual_order import (
 	_ROLES,
 	_require_valid_ffl,
 	_shipstation_enabled,
+	ffl_premise,
 	invoice_ship_address,
 	overdue_limit_days,
 	stamp_stage,
 	shipstation_pushed,
 )
+from ffl_core.compliance.dealer_transfer import book_disposition, serial_company
 from ffl_core.compliance.cr_transfer import (
-	_persist_cr_details,
-	_validate_cr_details,
-	ensure_cr_ffl_record,
+	cr_note_suffix,
+	record_cr_verification,
 	reject_cr_details_on_non_cr_order,
 )
 from ffl_core.firearm import (
@@ -44,7 +45,6 @@ from ffl_core.reservations import (
 	notify_channel_commitments_changed,
 	uniform_free_serials,
 )
-from ffl_core.utils import commit as safe_commit
 from ffl_integrations.gunbroker import listings as gb_listings
 from ffl_integrations.gunbroker import mapping as gb_mapping
 from ffl_integrations.gunbroker import orders as gb_orders
@@ -370,13 +370,7 @@ def _ffl_record(order) -> dict:
 	# Before Dispose resolves it, the licence GunBroker sent is the record's name
 	# whenever this store has seen that dealer before (a local read, no eZ Check).
 	name = order.atf_ffl_record or (order.ffl_number or "").strip()
-	if not name:
-		return {}
-	return frappe.db.get_value(
-		"ATF FFL Record", name,
-		["licensee_name", "licensee_dba", "street", "street2", "city", "state",
-			"zip", "phone", "expiry_date"],
-		as_dict=True) or {}
+	return ffl_premise(name) if name else {}
 
 
 def _ffl_expiry(record: dict) -> tuple[object, bool]:
@@ -398,7 +392,7 @@ def _ship_to_preview(order, ffl: dict, invoice: dict, *, direct: bool = False) -
 	"""
 	if ffl:
 		return {
-			"company": ffl.get("licensee_dba") or ffl.get("licensee_name"),
+			"company": ffl.get("company"),
 			"line1": ffl.get("street"),
 			"line2": ffl.get("street2"),
 			"city": ffl.get("city"),
@@ -424,21 +418,17 @@ def _ship_to_preview(order, ffl: dict, invoice: dict, *, direct: bool = False) -
 
 
 def _ship_items(order) -> list[dict]:
-	"""The Ship dialog's payload — every gun on the order, disposed or not."""
-	by_item: dict[str, list[str]] = {}
-	for row in (order.serials or []):
-		serial = (row.confirmed_serial or "").strip()
-		if serial and row.item_code:
-			by_item.setdefault(row.item_code, []).append(serial)
-	out = []
-	for item_code, serials in by_item.items():
-		out.append({
-			"item_code": item_code,
-			"item_name": frappe.db.get_value("Item", item_code, "item_name") or item_code,
-			"qty": len(serials),
-			"serials": serials,
-		})
-	return out
+	"""The Ship dialog's payload — every unit the shipment will carry: guns by
+	serial, item-level stock (ammunition, optics, parts) by quantity. Built from
+	the same rows as _ship_envelope, so what the clerk confirms is what ships."""
+	from ffl_integrations.gunbroker.revenue import _invoice_items
+
+	return [{
+		"item_code": row["item_code"],
+		"item_name": frappe.db.get_value("Item", row["item_code"], "item_name") or row["item_code"],
+		"qty": row["qty"],
+		"serials": [s for s in (row.get("serial_no") or "").split("\n") if s],
+	} for row in _invoice_items(order) if row.get("item_code")]
 
 
 def _cr_prefill(order) -> dict:
@@ -1353,34 +1343,11 @@ def _resolve_and_validate_ffl(order, cr_details) -> str:
 	from ffl_core.compliance.dealer_transfer import _resolve_destination_ffl
 
 	if order.is_cr_transfer:
-		details = _validate_cr_details(cr_details, order)  # throws; nothing written
 		# license_field, not the default: GunBroker Order has no `ffl_license`
 		# column, and Document.__setattr__ accepts any attribute while save()
 		# keeps only real fields — so a corrected licence number would be
 		# silently dropped while atf_ffl_record was really cleared.
-		_persist_cr_details(order, details, license_field="ffl_number")
-		order.atf_ffl_record = ensure_cr_ffl_record(
-			ffl_number=details["license_number"],
-			licensee_name=details["contact_name"],
-			street=details["premise_street"],
-			street2=details["premise_street2"],
-			city=details["premise_city"],
-			state=details["premise_state"],
-			zip_code=details["premise_zip"],
-			expiry_date=details["license_expiry"],
-			phone=order.customer_phone or "",
-		)
-		order.flags.ignore_permissions = True
-		order.save()
-		order.add_comment("Comment", _(
-			"C&R verification recorded by {0}: {1} / {2} / {3} {4}."
-		).format(frappe.session.user, details["license_number"],
-			details["contact_name"], details["premise_city"],
-			details["premise_state"]))
-		# Commit boundary: the verification is a finished unit of work. Without
-		# this, a failure in the disposition below would roll it back and the
-		# operator would have to read and re-key the licence.
-		safe_commit()
+		record_cr_verification(order, cr_details, license_field="ffl_number")
 	else:
 		reject_cr_details_on_non_cr_order(cr_details, order,
 			license_field="ffl_number")
@@ -1638,32 +1605,16 @@ def _book_dispositions(order, destination: str, *,
 		serial = (row.confirmed_serial or "").strip()
 		if not serial:
 			continue
-		if frappe.db.exists("FFL Disposition", {
-			"serial": serial, "gunbroker_order": order.name, "docstatus": ("<", 2),
-		}):
+		name = book_disposition(
+			serial=serial, item=row.item_code, link_field="gunbroker_order",
+			link_name=order.name, destination=destination,
+			disposition_type="FFL Transfer", company=serial_company(serial),
+			notes=_disposition_note(order, row))
+		if not name:
 			continue  # idempotent — already booked
-		disp = frappe.get_doc({
-			"doctype": "FFL Disposition",
-			"disposition_date": now_datetime(),
-			"disposition_type": "FFL Transfer",
-			"company": _serial_company(serial),
-			"destination_ffl": destination,
-			"item": row.item_code,
-			"serial": serial,
-			"gunbroker_order": order.name,
-			"notes": _disposition_note(order, row),
-		})
-		disp.flags.ignore_permissions = True
-		disp.insert()
-		disp.submit()
-		created.append(disp.name)
+		created.append(name)
 		disposed.append(serial)
 	return created, disposed
-
-
-def _serial_company(serial: str) -> str | None:
-	warehouse = frappe.db.get_value("Serial No", serial, "warehouse")
-	return frappe.db.get_value("Warehouse", warehouse, "company") if warehouse else None
 
 
 def _disposition_note(order, row) -> str:
@@ -1673,13 +1624,7 @@ def _disposition_note(order, row) -> str:
 		order.gb_order_id, row.gb_item_id or "?")
 	if not order.is_cr_transfer:
 		return base
-	verified_at = order.cr_verified_at
-	stamp = (verified_at.strftime("%Y-%m-%d")
-		if hasattr(verified_at, "strftime") else str(verified_at or "")[:10])
-	return base + " " + _(
-		"C&R (Type 03) transfer — shipped to the collector's own licensed "
-		"premises. Verified by {0} on {1}."
-	).format(order.cr_verified_by or "—", stamp or "—")
+	return base + " " + cr_note_suffix(order)
 
 
 # ---------------------------------------------------------------------------
@@ -1737,8 +1682,6 @@ def push_gb_shipment(gunbroker_order: str) -> dict:
 	"""
 	frappe.only_for(_ROLES)
 	from ffl_integrations.shipstation import api as ss_api
-	from ffl_integrations.shipstation.client import (
-		ShipStationClient, ShipStationConfigError, ShipStationError)
 
 	order = frappe.get_doc(ORDER_DOCTYPE, gunbroker_order)
 	if order.sales_invoice:
@@ -1748,34 +1691,15 @@ def push_gb_shipment(gunbroker_order: str) -> dict:
 			"ShipStation is disabled — configure and enable it in ShipStation "
 			"Settings first."))
 	# Serialize concurrent pushes, as push_shipment does on the invoice.
-	locked = frappe.db.get_value(ORDER_DOCTYPE, order.name,
-		["shipstation_order_id", "shipstation_status"], as_dict=True, for_update=True)
-	if shipstation_pushed(locked.shipstation_order_id, locked.shipstation_status):
-		return {"ok": True, "already": True,
-			"shipstation_order_id": locked.shipstation_order_id,
-			"shipstation_status": locked.shipstation_status}
+	already = ss_api._locked_push_state(ORDER_DOCTYPE, order.name)
+	if already:
+		return already
 
 	_refuse_what_must_never_be_booked(order)
 	_require_ready_to_dispose(order)
-	try:
-		client = ShipStationClient.from_settings()
-		envelope = _ship_envelope(order, client.config.default_parcel_weight_oz)
-		shipment = client.find_shipment_by_external_id(order.name)
-		adopted = bool(shipment)
-		if not shipment:
-			shipment = client.create_shipment(ss_api.shipment_body(envelope, client.config))
-	except ShipStationConfigError as exc:
-		frappe.throw(_("ShipStation is not configured: {0}").format(exc))
-	except ShipStationError as exc:
-		frappe.throw(_("ShipStation API error: {0}").format(exc))
-
-	frappe.db.set_value(ORDER_DOCTYPE, order.name,
-		{"shipstation_order_id": shipment["shipment_id"], "shipstation_status": "Pending"},
-		update_modified=False)
-	result = {"ok": True, "shipstation_order_id": shipment["shipment_id"]}
-	if adopted:
-		result["already"] = True
-	return result
+	return ss_api._create_or_adopt_and_stamp(ORDER_DOCTYPE, order.name,
+		lambda client: ss_api.shipment_body(
+			_ship_envelope(order, client.config.default_parcel_weight_oz), client.config))
 
 
 def _ship_envelope(order, default_oz) -> dict:

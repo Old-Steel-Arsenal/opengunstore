@@ -274,6 +274,20 @@ class FilingProducts(_TreeCase):
 		self.assertEqual(it.item_group, "Optic")
 		self.assertEqual(it.catalog_category, "optics-red-dots")
 
+	def test_a_scanned_non_rsr_row_promotes_through_its_own_house(self):
+		# Receive Goods' scan-first dialog sends the offer's Distributor with the SKU;
+		# a Sports South SKU must not be looked up in the RSR catalog.
+		from ffl_integrations.rsr.promote import promote_to_item
+		if frappe.db.exists("Distributor", "M3B-SS"):
+			frappe.delete_doc("Distributor", "M3B-SS", ignore_permissions=True, force=True)
+		frappe.get_doc({"doctype": "Distributor", "code": "M3B-SS", "distributor_name": "M3B SS",
+			"provider": "ss", "enabled": 0, "dropship_enabled": 0, "stocking_enabled": 0,
+			"poll_enabled": 0}).insert(ignore_permissions=True)
+		out = promote_to_item(frappe.as_json({"rsr_stock_number": "M3B-SS-DOT",
+			"item_code": "M3B-SS-DOT", "distributor": "M3B-SS", "uniform_sell_price": 1}))
+		self.assertTrue(out["found"])
+		self.assertEqual(self._item("M3B-SS-DOT").item_group, "Optic")
+
 	def test_no_master_category_falls_back_to_the_title(self):
 		from ffl_integrations.rsr.promote import promote_to_item
 		promote_to_item({"rsr_stock_number": "M3B-FALLBACK", "item_code": "M3B-FALLBACK"})

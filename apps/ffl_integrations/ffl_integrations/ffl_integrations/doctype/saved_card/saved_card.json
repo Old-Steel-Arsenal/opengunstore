@@ -43,7 +43,6 @@
    "fieldtype": "Data",
    "label": "Card",
    "in_list_view": 1,
-   "description": "Card type + last digits from the gateway, e.g. \"Visa •1111\". Never the card number.",
    "read_only": 1
   },
   {
@@ -94,7 +93,6 @@
    "label": "Signed Authorization",
    "options": "Customer Agreement",
    "reqd": 1,
-   "description": "The card-on-file authorization the customer signed before the card was saved.",
    "read_only": 1
   },
   {
@@ -120,14 +118,12 @@
    "fieldtype": "Data",
    "label": "Processor",
    "reqd": 1,
-   "description": "The card processor that holds the card (its registry code).",
    "read_only": 1
   },
   {
    "fieldname": "initial_reference",
    "fieldtype": "Data",
    "label": "First Charge Reference",
-   "description": "Gateway reference of the sale that saved the card; later charges cite it.",
    "read_only": 1
   },
   {
@@ -141,7 +137,6 @@
    "fieldtype": "Data",
    "label": "Merchant Reference",
    "unique": 1,
-   "description": "The name the gateway files the card under.",
    "read_only": 1
   },
   {
@@ -150,7 +145,6 @@
    "label": "Gateway Token",
    "reqd": 1,
    "hidden": 1,
-   "description": "Encrypted at rest; never sent to a browser.",
    "read_only": 1
   },
   {

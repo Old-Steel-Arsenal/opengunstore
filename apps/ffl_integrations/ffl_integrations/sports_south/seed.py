@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import frappe
 
-from ffl_integrations.distributor.policy import POLICY_TO_STORE, ensure_scoped_policies
+from ffl_integrations.distributor.policy import (
+	POLICY_TO_STORE, ensure_distributor_row, ensure_scoped_policies,
+)
 from ffl_integrations.distributor.ss_provider import BLOCKED_BRANDS, PREAPPROVAL_BRANDS
 
 DISTRIBUTOR_NAME = "Sports South"
@@ -16,23 +18,7 @@ REASON_PREAPPROVAL = "Sports South requires pre-approval for this manufacturer"
 
 
 def ensure_distributor() -> bool:
-	if frappe.db.exists("Distributor", DISTRIBUTOR_NAME) or frappe.db.exists(
-			"Distributor", {"provider": "ss"}):
-		return False
-	frappe.get_doc({
-		"doctype": "Distributor",
-		"code": DISTRIBUTOR_NAME,
-		"distributor_name": "Sports South, LLC",
-		"provider": "ss",
-		"enabled": 0,
-		"stocking_enabled": 1,
-		"dropship_enabled": 1,
-		"poll_enabled": 0,
-		"priority": 2,
-		"safety_buffer": 3,
-		"display_cap": 5,
-	}).insert(ignore_permissions=True)
-	return True
+	return ensure_distributor_row(DISTRIBUTOR_NAME, "Sports South, LLC", "ss", priority=2)
 
 
 def ensure_brand_policies() -> dict:

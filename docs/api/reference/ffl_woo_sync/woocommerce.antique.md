@@ -22,4 +22,4 @@ For an antique web order whose retirement failed (Error Log).
 
 **Permissions:** Counter roles (same as the other fulfillment actions).
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/antique.py:150`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/antique.py:149`</sub>

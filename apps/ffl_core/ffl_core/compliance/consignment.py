@@ -201,11 +201,8 @@ def validate_consignment_serial(doc, method: str | None = None) -> None:
 			"(net of commission) are owed to them."
 		))
 	if not flt(getattr(doc, "consignment_commission_pct", None)):
-		from ffl_core.setup.consignment import DEFAULT_COMMISSION_PCT
-		doc.consignment_commission_pct = (
-			flt(frappe.db.get_single_value("FFL Settings", "consignment_default_commission_pct"))
-			or DEFAULT_COMMISSION_PCT
-		)
+		from ffl_core.setup.consignment import default_commission_pct
+		doc.consignment_commission_pct = default_commission_pct()
 
 
 def _sold_lines(doctype: str, sale: str) -> dict:

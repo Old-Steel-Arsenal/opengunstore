@@ -671,17 +671,9 @@ def check(doc=None, payload=None, sales_invoice: str | None = None) -> dict:
 
 def approvers() -> list[dict]:
 	"""Who may approve: enabled desk users holding a manager role (never Administrator), by name."""
-	from ffl_core.staff_switch import _pin_off, _users_with_pin
+	from ffl_core.staff_switch import _staff_rows
 
-	holders = set(frappe.get_all("Has Role", filters={"role": ("in", PRICE_APPROVER_ROLES), "parenttype": "User"},
-		pluck="parent")) - {"Guest", "Administrator"}
-	if not holders:
-		return []
-	rows = frappe.get_all("User", filters={"name": ("in", list(holders)), "enabled": 1, "user_type": "System User"},
-		fields=["name", "full_name", "user_image"], order_by="full_name asc")
-	pins = _users_with_pin([r.name for r in rows])
-	return [{"user": r.name, "full_name": r.full_name or r.name, "image": r.user_image, "has_pin": r.name in pins,
-		"pin_off": r.name in pins and _pin_off(r.name)} for r in rows]
+	return _staff_rows(PRICE_APPROVER_ROLES)
 
 
 def _check_approver(approver: str, pin: str | None, password: str | None) -> None:

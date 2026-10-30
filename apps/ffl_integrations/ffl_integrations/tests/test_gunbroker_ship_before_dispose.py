@@ -168,6 +168,6 @@ class TestThePreviewBeforeDispose(_FulfillmentCase):
 	def test_a_known_dealer_is_read_by_the_licence_gunbroker_sent(self):
 		order = fx.FakeDoc(atf_ffl_record="", ffl_number=DEALER)
 		with patch("frappe.db.get_value",
-				return_value={"street": "900 Dealer Row"}) as get_value:
-			self.assertEqual(fulfillment._ffl_record(order), {"street": "900 Dealer Row"})
+				return_value=frappe._dict(street="900 Dealer Row")) as get_value:
+			self.assertEqual(fulfillment._ffl_record(order)["street"], "900 Dealer Row")
 		self.assertEqual(get_value.call_args.args[:2], ("ATF FFL Record", DEALER))

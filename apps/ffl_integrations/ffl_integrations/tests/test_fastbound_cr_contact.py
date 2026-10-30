@@ -279,22 +279,6 @@ class LicenseTypeLabelConsistencyTest(unittest.TestCase):
 		self.assertEqual(_license_code(CR_LICENSE_TYPE_LABEL), "03")
 
 
-class NameSplitTest(unittest.TestCase):
-	def test_splits_on_the_last_whitespace_run(self):
-		from ffl_integrations.fastbound.client import _split_licensee_name
-		self.assertEqual(_split_licensee_name("Jane Q. Collector"), ("Jane Q.", "Collector"))
-		self.assertEqual(_split_licensee_name("Mary  Jo  Smith"), ("Mary Jo", "Smith"))
-
-	def test_single_token_duplicates(self):
-		from ffl_integrations.fastbound.client import _split_licensee_name
-		self.assertEqual(_split_licensee_name("Cher"), ("Cher", "Cher"))
-
-	def test_blank_yields_blanks(self):
-		from ffl_integrations.fastbound.client import _split_licensee_name
-		self.assertEqual(_split_licensee_name(""), ("", ""))
-		self.assertEqual(_split_licensee_name(None), ("", ""))
-
-
 class BaseUrlFailsClosedTest(FrappeTestCase):
 	"""A blank Base URL must stop the integration, not silently aim it at prod.
 

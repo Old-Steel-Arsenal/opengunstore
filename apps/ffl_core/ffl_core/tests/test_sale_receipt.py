@@ -76,6 +76,14 @@ class TestSaleReceipt(FrappeTestCase):
 		send_sale_receipt(doc)
 		mock_enqueue.assert_called_once()
 
+	@patch("frappe.enqueue")
+	def test_hook_skips_a_web_orders_pickup_ticket(self, mock_enqueue):
+		# The buyer already got the web order's receipt at checkout.
+		doc = frappe._dict(doctype="POS Invoice", name="PINV-2",
+			contact_email="buyer@example.com", customer="C1", woo_online_order="WOO-ORD-1")
+		send_sale_receipt(doc)
+		mock_enqueue.assert_not_called()
+
 	@patch("frappe.attach_print", return_value={"fname": "r.pdf", "fcontent": b"%PDF"})
 	@patch("frappe.sendmail")
 	def test_task_sends_receipt(self, mock_sendmail, _ap):

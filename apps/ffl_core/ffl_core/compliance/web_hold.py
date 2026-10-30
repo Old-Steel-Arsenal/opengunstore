@@ -25,10 +25,24 @@ STORE_STOCK_HOOK = "store_stock_for_item"
 
 def _free_on_shelf(item_code) -> int | None:
 	"""The shelf as the storefront counts it (ffl_woo_sync's local rules), or None
-	on a site without a webshop — nothing is held there."""
+	on a site without a webshop — nothing is held there.
+
+	Less today's register sales not merged yet: an accessory ticket leaves the Bin
+	only at the nightly close (ERPNext's own ``get_pos_reserved_qty`` counts them the
+	same way; a return's negative qty puts its unit back). A web pickup ticket is
+	left out — its order's lines already count as held. The ticket being submitted
+	is still a draft in the database, so it is not counted against itself."""
 	for path in frappe.get_hooks(STORE_STOCK_HOOK) or []:
 		stock = frappe.get_attr(path)(item_code)
-		return None if stock is None else int(stock.get("qty") or 0)
+		if stock is None:
+			return None
+		unmerged = frappe.db.sql(
+			"""SELECT COALESCE(SUM(pii.stock_qty), 0) FROM `tabPOS Invoice Item` pii
+			INNER JOIN `tabPOS Invoice` pi ON pi.name = pii.parent
+			WHERE pii.item_code = %s AND pii.docstatus = 1 AND pii.parenttype = 'POS Invoice'
+			  AND COALESCE(pi.consolidated_invoice, '') = ''
+			  AND COALESCE(pi.woo_online_order, '') = ''""", item_code)[0][0]
+		return int(stock.get("qty") or 0) - int(flt(unmerged))
 	return None
 
 

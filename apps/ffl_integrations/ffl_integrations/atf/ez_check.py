@@ -8,6 +8,7 @@ from typing import Protocol
 import frappe
 from frappe.utils import getdate, now_datetime
 
+from ffl_core.compliance.ffl_number import is_cr_license
 from ffl_core.roles import COUNTER_ROLES, SYSTEM_ROLES
 
 
@@ -72,7 +73,17 @@ def verify(ffl_number: str, *, force_live: bool = False) -> EZCheckResult:
 			return _result_from_cache(cache)
 		raise
 
-	_upsert_cache(result)
+	if result.found:
+		_upsert_cache(result)
+	elif cache and not is_cr_license(cache["ffl_number"]):
+		# EZ Check no longer lists this licence (lapsed / surrendered / revoked):
+		# void only the expiry so atf_record_block refuses to ship to it, and
+		# keep the name and address. A Type 03 is never in EZ Check, so a
+		# NotFound for one says nothing — leave the hand-entered record alone.
+		frappe.db.set_value("ATF FFL Record", cache["ffl_number"],
+			{"expiry_date": None, "live_verified_at": None}, update_modified=False)
+		frappe.db.commit()
+	# NotFound with no row on file inserts nothing (no blank rows from typos).
 	return result
 
 
@@ -86,20 +97,25 @@ def re_verify_all() -> dict:
 	upstream.
 
 	Returns:
-	    {updated, failed, total, errors: ["<record>: <error>", ...]}.
+	    {updated, not_found, failed, total, errors: ["<record>: <error>", ...]}.
+	    not_found counts rows EZ Check did not list (C&R records are left
+	    as entered; a dealer's expiry is voided).
 	"""
 	frappe.only_for(SYSTEM_ROLES)
 	codes = frappe.get_all("ATF FFL Record", pluck="name")
-	updated = failed = 0
+	updated = not_found = failed = 0
 	errors = []
 	for c in codes:
 		try:
-			verify(c, force_live=True)
-			updated += 1
+			if verify(c, force_live=True).found:
+				updated += 1
+			else:
+				not_found += 1
 		except Exception as e:
 			failed += 1
 			errors.append(f"{c}: {e}")
-	return {"updated": updated, "failed": failed, "total": len(codes), "errors": errors}
+	return {"updated": updated, "not_found": not_found, "failed": failed,
+		"total": len(codes), "errors": errors}
 
 
 @frappe.whitelist()

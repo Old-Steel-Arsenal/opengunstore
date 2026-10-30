@@ -23,6 +23,7 @@ from typing import Any
 import frappe
 from frappe.utils import now_datetime
 
+from ffl_core.alerts import safe_log_error
 from ffl_core.compliance.disposition_lock import book_disposition_once
 from ffl_core.utils import split_serials
 from ffl_integrations.fastbound.client import (
@@ -36,22 +37,8 @@ from ffl_integrations.integration_gate import fastbound_enabled
 SETTINGS_DOCTYPE = "FastBound Settings"
 
 
-def _log_error(*, title: str, message: str) -> None:
-	"""Webhook-safe error logging.
-
-	`frappe.log_error` writes to an Error Log doctype which needs
-	`frappe.flags.currently_saving` initialised — that's None in the bench
-	test runner (and occasionally None in worker contexts). Fall back to
-	the structured logger which writes to a log file and never blocks the
-	webhook ack.
-	"""
-	try:
-		frappe.log_error(title=title, message=message)
-	except Exception:  # noqa: BLE001
-		try:
-			frappe.logger("fastbound.webhook", allow_site=True).error(f"{title}: {message[:1000]}")
-		except Exception:  # noqa: BLE001
-			pass
+# Webhook-safe error logging: never blocks the webhook ack.
+_log_error = safe_log_error
 
 
 class WebhookAuthError(Exception):
@@ -931,20 +918,15 @@ def _serial_on_open_pos_invoice(serial: str) -> bool:
 
 
 def _invoice_firearm_serials(invoice_name: str) -> set[str]:
-	"""The regulated-firearm line serials on a POS Invoice (serial_no may hold a
-	newline-separated list). Non-firearm serialized lines are excluded so an
-	accessory serial never looks like an uncovered firearm."""
-	from ffl_core.firearm import is_regulated_firearm_item
+	"""The regulated-firearm line serials on a POS Invoice — the gate's own read
+	(regulated_firearm_serials), so the alarm previews exactly what the gate will
+	demand. Rows, not get_doc: a deleted invoice just reads as no serials."""
+	from ffl_core.compliance.firearm import regulated_firearm_serials
 
-	out: set[str] = set()
-	for row in frappe.get_all(
+	return set(regulated_firearm_serials(frappe.get_all(
 		"POS Invoice Item", filters={"parent": invoice_name},
-		fields=["item_code", "serial_no"],
-	):
-		if not is_regulated_firearm_item(row.item_code):
-			continue
-		out.update(split_serials(row.serial_no))  # canonical splitter
-	return out
+		fields=["item_code", "serial_no", "serial_and_batch_bundle"],
+	)))
 
 
 def _alert_invoice_serial_coverage(disposition_id: str, invoice_names: list[str]) -> None:

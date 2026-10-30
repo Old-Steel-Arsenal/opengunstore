@@ -88,6 +88,11 @@ function harness(doc, opts = {}) {
 			cardCharges,
 			negativeTicketState: kernel.negativeTicketState,
 			installClassHook: kernel.installClassHook,
+			// ffl.switches (fflIntegrationSwitches, earlier in the bundle) with every key absent from boot.
+			switches: {
+				cardMop: () => 'Credit Card', cardProcessorLabel: () => 'card processor', cardProcessorEnabled: () => true,
+				requireCardReference: () => false, paper4473Mode: () => false, fastboundEnabled: () => true,
+			},
 		},
 	};
 	if (opts.kernel !== false) sandbox.ffl.pickupTicketState = kernel.pickupTicketState;

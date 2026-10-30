@@ -101,6 +101,17 @@ def correct_serial(serial: str, new_serial: str, reason: str) -> dict:
 			"transferred. Correcting a disposed firearm's serial is out of scope."
 		).format(old))
 
+	# A gun on an open counter order / parked POS sale or reserved by a sales channel is
+	# held by its serial TEXT on that order (rename_doc cascades Link fields only): a
+	# rename would drop the hold, relist the gun and leave the order pointing at nothing.
+	from ffl_core.reservations import channel_reservation, counter_holds
+	hold = (counter_holds(sn.item_code).get(old) if sn.item_code else None) or channel_reservation(old)
+	if hold:
+		frappe.throw(_(
+			"Serial No {0} is held on {1}. Finish it or take the gun off that order first, "
+			"then correct the serial."
+		).format(old, hold.get("ref") or hold.get("tooltip") or _("an open order")))
+
 	# -------------------------------------------------- validation (FastBound last)
 	# Resolve the bound-book item BEFORE touching ERP: if FastBound is unreachable
 	# or the item can't be located, we must not rename locally and then fail to

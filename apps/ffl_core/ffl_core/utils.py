@@ -28,6 +28,18 @@ def split_serials(raw: str | None) -> list[str]:
 	return [s.strip() for s in (raw or "").split("\n") if s.strip()]
 
 
+def default_company() -> str:
+	"""The Company channel revenue / drop-ship cost books to: ERPNext's default,
+	else the first Company. Throws when the site has none."""
+	import erpnext
+
+	company = erpnext.get_default_company() or (
+		frappe.get_all("Company", pluck="name", limit=1) or [None])[0]
+	if not company:
+		frappe.throw(frappe._("No Company exists."))
+	return company
+
+
 def commit() -> None:
 	"""`frappe.db.commit()` that is a no-op inside the test transaction.
 

@@ -753,6 +753,9 @@ class TestOrderCancelRelease(FrappeTestCase):
 		ps = [c for c in mock_enq.call_args_list if "push_serial_task" in c[0][0]]
 		self.assertEqual(len(ps), 1)
 		self.assertEqual(ps[0][1]["serial_no"], "SN-1")
+		# A cancel frees the gun for sale: the re-push must pass the hidden-serial
+		# guard, as _release_serial's does, or a machine-delisted gun stays hidden.
+		self.assertIs(ps[0][1]["relist"], True)
 
 	def test_item_level_serial_enqueues_push_stock(self):
 		"""Serial without its own product → parent item push_stock_task enqueued."""
@@ -1577,3 +1580,47 @@ class AutoClearNonFirearmOnCompleted(FrappeTestCase):
 		from ffl_woo_sync.woocommerce.webhook import _auto_clear_non_firearm_if_completed
 		o = self._order(order_status="Transferred")
 		self.assertFalse(_auto_clear_non_firearm_if_completed(o))
+
+
+class AutoClearOnFirstWebhook(FrappeTestCase):
+	"""An order whose FIRST webhook is already 'completed' (the original was lost
+	and staff re-fired it from WooCommerce, as order_audit tells them to) gets no
+	later order.updated — the create path itself must clear it, or an
+	accessory-only order never books revenue nor issues its stock."""
+
+	def setUp(self):
+		super().setUp()
+		warm_channel_meta()
+
+	def _create(self, *, firearm_row: bool):
+		body = _order_body(line_items=[])
+		body["status"] = "completed"
+		patcher_new, doc = _patch_new_doc()
+
+		def _lines(order, items):
+			if firearm_row:
+				order.serials.append(frappe._dict(item_code="GLOCK-19", woo_line_id="1"))
+			return []
+
+		with _patch_db_exists(return_value=None), \
+			 patcher_new, \
+			 patch("ffl_woo_sync.woocommerce.webhook._process_lines", side_effect=_lines), \
+			 patch("ffl_woo_sync.woocommerce.webhook.is_antique_item", return_value=False), \
+			 patch("ffl_woo_sync.woocommerce.webhook._book_revenue_after_auto_clear") as book, \
+			 patch("frappe.db.get_value", return_value={}), \
+			 patch("frappe.db.set_value"), \
+			 patch("frappe.enqueue"), \
+			 patch("ffl_woo_sync.woocommerce.webhook._log_error"):
+			_handle_order_created(body)
+		return doc, book
+
+	def test_an_accessory_only_completed_order_is_cleared_and_booked(self):
+		doc, book = self._create(firearm_row=False)
+		self.assertEqual(doc.order_status, "Transferred")
+		doc.insert.assert_called_once()
+		book.assert_called_once_with(doc)
+
+	def test_a_firearm_order_still_waits_for_dispose(self):
+		doc, book = self._create(firearm_row=True)
+		self.assertEqual(doc.order_status, "Pending Fulfillment")
+		book.assert_not_called()

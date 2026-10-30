@@ -49,8 +49,7 @@
    "label": "User",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "read_only": 1,
-   "description": "The user as recorded at the time (a snapshot, not a link: these rows are never deleted, so a link would stop the User from ever being deleted)."
+   "read_only": 1
   },
   {
    "fieldname": "full_name",

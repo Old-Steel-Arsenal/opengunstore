@@ -13,7 +13,7 @@
   {
    "columns": 4,
    "default": "0",
-   "description": "Applies to the portion of an item's price up to this amount. 0 means 'no upper limit' and belongs on the last row only.",
+   "description": "The tier covers the price up to this amount; 0 means no limit and belongs on the last row only.",
    "fieldname": "upper_bound",
    "fieldtype": "Currency",
    "in_list_view": 1,

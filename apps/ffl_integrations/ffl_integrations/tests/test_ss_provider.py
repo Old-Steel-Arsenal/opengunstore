@@ -400,7 +400,34 @@ if FrappeTestCase:
 			self.assertEqual(res["ack_lines"][0]["ack_qty"], 2)
 			self.assertEqual(res["freight"], 10.95)
 			self.assertEqual(frappe.db.get_value("Distributor Order", do.name, "web_ref"), "1119886")
-			self.assertEqual(do.web_ref, "1119886")   # survives a later do.save() on error
+			self.assertEqual(do.web_ref, "1119886")   # the provider's own copy
+
+		def test_place_job_error_after_add_header_keeps_the_web_ref(self):
+			"""place_order_job holds its OWN copy of the order across placement; a
+			failure after AddHeader must not save that stale copy over the SS order
+			number — a retry with no web_ref would place a second, duplicate order."""
+			from unittest import mock
+
+			from ffl_integrations.distributor import order_state, tasks
+			from ffl_integrations.sports_south.api_client import SSError
+
+			class _TimesOut(FakeClient):
+				def get_detail(self, order_number, customer_order_number=""):
+					raise SSError("GetDetail timed out", terminal=False)
+
+			do = self._do()
+			do.db_set("status", order_state.QUEUED)
+			fake = _TimesOut()
+			provider = ssp.SSProvider(client=fake)
+			provider.place_order = lambda name: provider._place(
+				frappe.get_doc("Distributor Order", name), fake, _settings())
+			with mock.patch.object(tasks, "_provider_for", return_value=provider), \
+					mock.patch.object(tasks, "notify_admins"):
+				tasks.place_order_job(do.name)
+			got = frappe.db.get_value("Distributor Order", do.name, ["status", "web_ref"],
+				as_dict=True)
+			self.assertEqual(got.status, order_state.ERROR)
+			self.assertEqual(got.web_ref, "1119886")
 
 		def test_store_order_without_a_store_address_is_refused_before_ss(self):
 			from ffl_integrations.sports_south.api_client import SSConfigError

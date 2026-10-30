@@ -525,7 +525,7 @@ function _gbShowWarnings(warnings, url) {
 		no_upc: __('No UPC, so GunBroker could not fill Manufacturer, Model and Caliber. Add them by hand: {0}, then Edit.', [link]),
 		title_truncated: __('The title was shortened to GunBroker\'s 75-character limit.'),
 		pictures_truncated: __('Some photos were left off — the listing hit the per-listing picture limit.'),
-		pictures_incomplete: __('The listing is live, but some of the extra photos failed to upload. Add them on GunBroker.'),
+		pictures_partial: __('The listing is live, but some of the extra photos failed to upload. Add them on GunBroker.'),
 		condition_antique_used: __('An antique is always listed as Used, so the condition you picked was not used.'),
 		image_format_skipped: __('A photo was skipped: GunBroker takes JPG, PNG and GIF only.'),
 		image_unreadable: __('A photo could not be read and was left off the listing.'),

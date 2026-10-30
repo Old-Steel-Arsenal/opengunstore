@@ -128,8 +128,8 @@ def counter_holds(item_code: str) -> dict:
 		"Sales Invoice Item",
 		filters={"item_code": item_code, "docstatus": 1},
 		pluck="parent"))
-	# Mirror of manual_order.list_pending_dispositions' base filter (the two must
-	# move together): the kinds of SI whose fulfilment does NOT live on the SI
+	# Same base filter as manual_order.list_pending_dispositions
+	# (channel_invoice.pending_si_base_filter): it drops the kinds of SI whose fulfilment does NOT live on the SI
 	# itself, so si_pending_firearm_serials can never see their guns disposed
 	# and would flag them "pending" for good — a web order's revenue SI (its
 	# disposition is booked BEFORE the SI exists, fulfillment.dispose_web_order,
@@ -141,7 +141,7 @@ def counter_holds(item_code: str) -> dict:
 	# dispositions link the GunBroker Order, so a shipped GunBroker gun would
 	# read as "still on an open counter order" for ever and never be sellable
 	# again. The exclusions are column-guarded — see channel_invoice.
-	from ffl_core.compliance.channel_invoice import pending_queue_exclusions
+	from ffl_core.compliance.channel_invoice import pending_si_base_filter
 
 	# An FFL shipment, OR a counter pickup whose gun was ordered to the store
 	# and hung on the line at receive (api/counter_pickup) — that gun is the
@@ -152,10 +152,7 @@ def counter_holds(item_code: str) -> dict:
 		arms.append(["Sales Invoice", "ffl_pickup_in_store", "=", 1])
 	pending_sis: list[str] = []
 	if si_item_parents:
-		base = {"name": ("in", list(si_item_parents)),
-			"docstatus": 1, "is_consolidated": 0, "is_return": 0,
-			"woo_online_order": ("is", "not set"),
-			**pending_queue_exclusions()}
+		base = {"name": ("in", list(si_item_parents)), **pending_si_base_filter()}
 		# One query, the arms OR-ed; the database de-duplicates an invoice that
 		# is both an FFL shipment and a pickup (it cannot be, but cheaply).
 		pending_sis = frappe.get_all("Sales Invoice", filters=base, or_filters=arms,

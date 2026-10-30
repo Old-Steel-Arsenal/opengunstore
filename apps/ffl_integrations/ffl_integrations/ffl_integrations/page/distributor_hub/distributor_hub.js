@@ -46,8 +46,6 @@ class DistributorHubApp {
 					.dist-hub .attn { color: var(--red-600, #c0392b); font-weight: 600; }
 					.dist-hub .foot { display: flex; gap: 8px; margin-top: 11px; flex-wrap: wrap; }
 					.dist-hub .empty { text-align: center; color: var(--text-muted); padding: 46px 0 26px; }
-					.dist-hub .chk { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-						margin-right: 7px; vertical-align: middle; }
 				</style>
 				<div class="cards"></div>
 				<div class="hub-actions" style="margin-top:14px"></div>
@@ -277,7 +275,6 @@ class DistributorHubApp {
 	}
 
 	testConnection(row, $btn) {
-		const esc = frappe.utils.escape_html;
 		$btn.prop('disabled', true).text(__('Testing…'));
 		frappe.call({
 			method: 'ffl_integrations.distributor.hub.test_connection',
@@ -285,20 +282,7 @@ class DistributorHubApp {
 			// Not a standard Promise: the reset button must use the always option, .finally throws a TypeError.
 			always: () => $btn.prop('disabled', false).text(__('Test Connection')),
 			callback: (r) => {
-				const checks = (r.message || {}).checks || [];
-				const color = (ok) => ok === true ? 'var(--green-500, #28a745)'
-					: ok === false ? 'var(--red-500, #dc3545)' : 'var(--gray-400, #adb5bd)';
-				const rows = checks.map((c) =>
-					`<tr><td style="white-space:nowrap;padding:4px 12px 4px 0">
-						<span class="chk" style="background:${color(c.ok)}"></span>${esc(c.label)}</td>
-					<td style="padding:4px 0">${esc(c.detail || '')}</td></tr>`).join('');
-				const allOk = checks.every((c) => c.ok !== false);
-				frappe.msgprint({
-					title: allOk ? __('{0} — connection OK', [row.name])
-						: __('{0} — connection problems', [row.name]),
-					indicator: allOk ? 'green' : 'red',
-					message: `<table class="dist-hub" style="width:100%">${rows}</table>`,
-				});
+				ffl.showConnectionChecks(row.name, (r.message || {}).checks || []);
 			},
 		});
 	}

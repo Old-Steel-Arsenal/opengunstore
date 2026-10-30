@@ -154,7 +154,14 @@ def _pos_refunded(doctype: str, name: str) -> float:
 			filters={"parent": name, "parenttype": "POS Invoice"}, pluck="refunded_amount"))
 		return max(rows, reconcile._pos_recorded_refund(name))
 	if doctype == "Sales Invoice":
-		return reconcile._cancel_order_refund(name)
+		# Card refund (si_reversal) records on the charge row; a void never
+		# reaches the gateway as a REFUND, so VOIDED rows are left out. Same
+		# max() rule as reconcile._captured_charges for a Cancel Order refund.
+		rows = sum(flt(r.refunded_amount) for r in frappe.get_all("Card Terminal Payment",
+			filters={"sales_invoice": name, "status": ("in", ["CHARGED", "REFUNDED"])},
+			fields=["refunded_amount", "processor"])
+			if (r.processor or reconcile.LEGACY_PROCESSOR) == reconcile.PROCESSOR)
+		return max(rows, reconcile._cancel_order_refund(name))
 	if doctype == "Woo Online Order":
 		return sum(flt(x) for x in frappe.get_all("Woo Online Order Refund",
 			filters={"parent": name, "parenttype": "Woo Online Order"},

@@ -22,4 +22,4 @@ Manual/enqueued entry point.
 
 **Permissions:** Counter roles (same as the other web-order accounting actions).
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/refunds.py:501`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/refunds.py:497`</sub>

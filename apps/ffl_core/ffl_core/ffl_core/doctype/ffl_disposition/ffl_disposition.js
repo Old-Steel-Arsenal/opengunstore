@@ -134,7 +134,7 @@ frappe.ui.form.on('FFL Disposition', {
 		// CLEAR a stale serial bound to the previous Item before refilling —
 		// auto-pick is guarded by `!frm.doc.serial`, so a leftover serial
 		// would silently persist (and the FastBound push would dispose the
-		// wrong firearm). Server-side _fill_serial_from_item won't catch it
+		// wrong firearm). Server-side only_active_serial fill won't catch it
 		// either (it short-circuits on truthy serial).
 		const ctrl = frm.fields_dict.serial;
 		if (!ctrl) return;

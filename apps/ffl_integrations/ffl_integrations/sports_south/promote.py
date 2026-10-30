@@ -7,6 +7,10 @@ files the Item the same way — under the catalog master's category
 (``catalog_master.classify``); no CATID → group table here. Shares the
 master-data helpers (brand / caliber / barcode / response) so the two promoters
 cannot drift on how a Brand or Caliber row gets created.
+
+``promote_catalog_row`` is the shared body for every Data Service catalog
+promoter (Sports South, Lipsey's); each house passes only its firearm-type
+mapping and its caliber-extraction gate.
 """
 from __future__ import annotations
 
@@ -25,13 +29,28 @@ from ffl_integrations.rsr.promote import (
 
 
 def promote_to_item(sku: str, opts: dict | None = None) -> dict:
+	def catid(r):
+		return str(r.get("department") or "").strip()
+
+	return promote_catalog_row(DISTRIBUTOR_CODE, "Sports South", sku, opts,
+		firearm_type=lambda r: FIREARM_TYPE_BY_CATEGORY.get(catid(r), "Other Firearm"),
+		extract_caliber=lambda r, filed: catid(r) in (FIREARM_CATEGORIES | AMMO_CATEGORIES))
+
+
+def promote_catalog_row(code: str, label: str, sku: str, opts: dict | None, *,
+		firearm_type, extract_caliber) -> dict:
+	"""Promote the Data Service catalog row ``code``/``sku`` to an Item.
+
+	``firearm_type(row)``: the Item.firearm_type for a firearm row.
+	``extract_caliber(row, filed)``: whether a blank caliber is read from the
+	description. ``label``: the house name in error messages."""
 	opts = dict(opts or {})
 	sku = (sku or "").strip()
 	if not sku:
-		frappe.throw(_("Sports South item number is required."))
-	r = remote_catalog.cached_row(DISTRIBUTOR_CODE, sku)
+		frappe.throw(_("{0} item number is required.").format(label))
+	r = remote_catalog.cached_row(code, sku)
 	if not r:
-		frappe.throw(_("Sports South item {0} not found in the catalog.").format(sku))
+		frappe.throw(_("{0} item {1} not found in the catalog.").format(label, sku))
 
 	upc = (r.get("upc") or "").strip()
 	item_code = (opts.get("item_code") or upc or sku).strip()
@@ -41,9 +60,8 @@ def promote_to_item(sku: str, opts: dict | None = None) -> dict:
 		_ensure_barcode(item_code, upc)
 		return _item_response(item_code)
 
-	catid = str(r.get("department") or "").strip()
 	from ffl_integrations.catalog_master import classify
-	filed = classify(r, DISTRIBUTOR_CODE)
+	filed = classify(r, code)
 	is_firearm = filed.is_firearm
 	item_group = (opts.get("item_group") or filed.item_group or "").strip()
 	# Every firearm is serial-tracked, whatever the caller asked for.
@@ -54,7 +72,7 @@ def promote_to_item(sku: str, opts: dict | None = None) -> dict:
 	brand = _ensure_brand(mfg) if mfg else None
 	caliber_name = (r.get("caliber") or "").strip() or (
 		_extract_caliber(r.get("long_description") or r.get("short_description"))
-		if catid in (FIREARM_CATEGORIES | AMMO_CATEGORIES) else None)
+		if extract_caliber(r, filed) else None)
 	caliber = _ensure_caliber(caliber_name)
 	name = (opts.get("item_name") or r.get("short_description") or r.get("model") or sku).strip()
 
@@ -75,7 +93,7 @@ def promote_to_item(sku: str, opts: dict | None = None) -> dict:
 		"mpn": (r.get("mfg_number") or "").strip() or None,
 		"uniform_sell_price": 1 if cint(opts.get("uniform_sell_price") or 0) else 0,
 		"caliber": caliber,
-		"firearm_type": FIREARM_TYPE_BY_CATEGORY.get(catid, "Other Firearm") if is_firearm else None,
+		"firearm_type": firearm_type(r) if is_firearm else None,
 		"is_firearm": 1 if is_firearm else 0,
 		"catalog_category": filed.category,
 		"is_used": 0,

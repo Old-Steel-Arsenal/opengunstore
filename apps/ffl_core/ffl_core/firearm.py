@@ -426,12 +426,9 @@ def firearm_items_in(item_codes: list[str] | str) -> list[str]:
 	    The subset of item_codes that are regulated firearms.
 	"""
 	frappe.only_for(COUNTER_ROLES)
-	if isinstance(item_codes, str):
-		import json
-		item_codes = json.loads(item_codes or "[]")
-	if not item_codes:
+	codes = list({c for c in _coerce_item_codes(item_codes) if c})
+	if not codes:
 		return []
-	codes = list({c for c in item_codes if c})
 	rows = frappe.get_all(
 		"Item",
 		filters={"name": ("in", codes)},
@@ -781,6 +778,29 @@ SERIAL_FIREARM_ATTRS = ("manufacturer", "importer", "model_name", "caliber", "fi
 # splitting it off into some other module is how the "added to one path, missed
 # in another" bug above happens. Same list, one line down.
 SERIAL_FIREARM_INT_ATTRS = ("year_made",)
+
+
+def _ensure_master(doctype: str, field: str, name: str | None) -> str | None:
+	"""Find-or-create a Brand / Caliber master by name; None for a blank name.
+	Exists-first so bulk imports skip the insert flow for known rows;
+	ignore_if_duplicate keeps two concurrent writers from erroring on a new one."""
+	if not name:
+		return None
+	if not frappe.db.exists(doctype, name):
+		frappe.get_doc({"doctype": doctype, field: name}).insert(
+			ignore_permissions=True, ignore_if_duplicate=True)
+	return name
+
+
+def ensure_brand(name: str | None) -> str | None:
+	"""The one find-or-create for Brand (RSR/Lipseys/SS promote, FastBound
+	import + reconcile, firearm intake)."""
+	return _ensure_master("Brand", "brand", name)
+
+
+def ensure_caliber(name: str | None) -> str | None:
+	"""The one find-or-create for Caliber (same callers as ensure_brand)."""
+	return _ensure_master("Caliber", "caliber_name", name)
 
 
 def sane_year_made(value) -> int | None:
@@ -1418,10 +1438,7 @@ def pos_pricing_summary(item_codes: list[str] | str) -> dict[str, dict]:
 	    come back with n=0 so the frontend can cache the negative.
 	"""
 	frappe.only_for(COUNTER_ROLES)
-	if isinstance(item_codes, str):
-		import json
-		item_codes = json.loads(item_codes or "[]")
-	codes = list({c for c in item_codes if c})
+	codes = list({c for c in _coerce_item_codes(item_codes) if c})
 	if not codes:
 		return {}
 

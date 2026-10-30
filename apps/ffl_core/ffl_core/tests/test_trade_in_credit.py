@@ -22,6 +22,7 @@ from unittest.mock import patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
+from frappe.utils import flt
 
 from ffl_core.api import trade_in
 
@@ -295,6 +296,89 @@ class TradeInCreditFlow(FrappeTestCase):
 		self.assertEqual(sn.condition_grade, "Good")
 		self.assertEqual(sn.importer, "Interarms")
 		self.assertEqual(float(sn.sell_price), 450.0)
+
+	# ---- a gun the store sold earlier, traded back in ------------------------
+
+	_STALE_STAMPS = {"is_consignment": 1, "consignment_commission_pct": 20, "pay_on_sale": 1, "srbnb_cost": 150,
+		"pay_on_sale_settled": 1, "is_transfer_gun": 1, "needs_service": 1}
+
+	def _sold_gun(self, suffix: str, disposed: bool = True) -> tuple[str, str]:
+		"""(item, serial) of a gun the store bought and sold before: its Serial No under its own Item with no
+		warehouse, a booked stay closed (``disposed``) by a submitted disposition, and the stamps that stay left."""
+		from frappe.utils import add_to_date, now_datetime
+		from ffl_core.acquisition import record_firearm_acquisition
+		from ffl_core.firearm import used_firearm_item_doc
+
+		item, serial = f"TIC-SOLD-{suffix}", f"TIC-{suffix}"
+		frappe.get_doc(used_firearm_item_doc(item_code=item, item_name=item, description=item,
+			manufacturer="Glock", model_name="19", firearm_type="Pistol")).insert(ignore_permissions=True)
+		frappe.get_doc({"doctype": "Serial No", "serial_no": serial, "item_code": item}).insert(ignore_permissions=True)
+		record_firearm_acquisition(item_code=item, serial=serial, source_type="Trade-in",
+			source_name="_Test Trade-in Seller", source_customer="_Test Trade-in Seller", cost=200,
+			company=self.company, source_id_type="Driver License", source_id_number="DL-EARLIER",
+			acquisition_date=add_to_date(now_datetime(), days=-30))
+		if disposed:
+			sold = frappe.get_doc({"doctype": "FFL Disposition", "disposition_date": add_to_date(now_datetime(), days=-10),
+				"disposition_type": "Retail Sale", "customer": "_Test Trade-in Seller", "company": self.company,
+				"item": item, "serial": serial, "form_4473_status": "Completed", "nics_status": "Proceed",
+				"fastbound_id": f"FB-{serial}"})
+			sold.insert(ignore_permissions=True)
+			sold.submit()
+		frappe.db.set_value("Serial No", serial, self._STALE_STAMPS, update_modified=False)
+		return item, serial
+
+	def _assert_new_stay(self, item: str, serial: str) -> None:
+		sn = frappe.db.get_value("Serial No", serial, ["item_code", "warehouse", *self._STALE_STAMPS], as_dict=True)
+		self.assertEqual(sn.item_code, item)
+		self.assertTrue(sn.warehouse, "the gun is back in stock")
+		self.assertEqual({f: flt(sn[f]) for f in self._STALE_STAMPS}, dict.fromkeys(self._STALE_STAMPS, 0),
+			"the earlier stay's owner / custody / service stamps must not carry over")
+		self.assertEqual(frappe.db.count("FFL Acquisition", {"serial": serial, "docstatus": 1}), 2)
+
+	def test_a_sold_gun_traded_back_for_credit_books_a_new_stay_under_its_own_item(self):
+		suffix = self._testMethodName
+		item, serial = self._sold_gun(suffix)
+		res = trade_in.create_trade_in_intake(self._payload(suffix, apply_credit=1))
+		self.assertEqual(res["item_code"], item)
+		inv = self._build_credit_invoice(res["acquisition"])
+		inv.payments = []
+		inv.append("payments", {"mode_of_payment": "Cash", "amount": inv.grand_total})
+		inv.save()
+		inv.submit()
+		self.assertEqual(frappe.db.get_value("FFL Acquisition", res["acquisition"], "docstatus"), 1)
+		self._assert_new_stay(item, serial)
+		self.assertEqual(flt(frappe.db.get_value("Serial No", serial, "purchase_rate")), 300)
+
+	def test_a_sold_gun_traded_back_for_cash_books_a_new_stay_under_its_own_item(self):
+		suffix = self._testMethodName
+		item, serial = self._sold_gun(suffix)
+		res = trade_in.create_trade_in_intake(self._payload(suffix))
+		self.assertEqual(res["item_code"], item)
+		self._assert_new_stay(item, serial)
+
+	def test_a_gun_whose_stay_is_still_open_is_refused(self):
+		"""Out of stock but never disposed of in the bound book: the store still has it on its books."""
+		suffix = self._testMethodName
+		self._sold_gun(suffix, disposed=False)
+		for over in ({"apply_credit": 1}, {}):
+			with self.subTest(**over), self.assertRaisesRegex(frappe.ValidationError, "already on file"):
+				trade_in.create_trade_in_intake(self._payload(suffix, **over))
+
+	def test_a_sold_gun_under_another_item_is_refused(self):
+		suffix = self._testMethodName
+		self._sold_gun(suffix)
+		with self.assertRaisesRegex(frappe.ValidationError, "filed under item"):
+			trade_in.create_trade_in_intake(self._payload(suffix, item_code=f"OTHER-{suffix}"))
+
+	def test_credit_then_pay_now_for_the_same_gun_replaces_the_draft(self):
+		"""The clerk ran it as credit, the customer then wanted cash: the pay-now run replaces the parked draft and
+		keeps the Item the credit run made for the gun."""
+		suffix = self._testMethodName
+		first = trade_in.create_trade_in_intake(self._payload(suffix, apply_credit=1))
+		second = trade_in.create_trade_in_intake(self._payload(suffix))
+		self.assertEqual(second["item_code"], first["item_code"])
+		self.assertFalse(frappe.db.exists("FFL Acquisition", first["acquisition"]))
+		self.assertEqual(frappe.get_all("FFL Acquisition", {"serial": f"TIC-{suffix}"}, pluck="docstatus"), [1])
 
 	def _submit_credit_invoice(self, suffix: str) -> "frappe.Document":
 		res = trade_in.create_trade_in_intake(self._payload(suffix, apply_credit=1))

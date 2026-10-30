@@ -65,20 +65,30 @@
 		}
 	}
 
-	// The 4473 label, in the cart badge's order: a complete FastBound 4473 first,
-	// then the configuration dead end, then paper mode, then the three levels.
-	function form4473Label(facts, env) {
+	// The 4473 label, for these chips and the cart's payment-screen badge
+	// (ffl_core.bundle.js getStatusBadge): a complete FastBound 4473 first, then
+	// the configuration dead end, then paper mode, then the three levels.
+	// opts.notStartedText replaces '4473 not started' (the badge says 'FastBound 4473').
+	function form4473Label(facts, env, opts) {
 		var state = env.state(facts.form_4473_status, facts.nics_status);
 		var paper = env.paperMode();
+		// A recorded 4473 is a recorded 4473 whatever the settings say — an order a
+		// manager already overrode, or one whose webhook landed before FastBound was
+		// switched off, submits fine and must not be painted as broken. So the
+		// dead-end check comes AFTER this.
 		if (state === 'complete' && !paper) return { color: 'green', text: __('4473 Complete') };
+		// The dead end: FastBound switched off, paper mode not switched on. Red,
+		// because this is a configuration fault, not a step in anyone's workflow.
 		if (!paper && !env.fastboundOn()) return { color: 'red', text: __('4473 Not Configured') };
 		if (paper) {
+			// Never "Awaiting": nothing is coming, and a cashier told to wait for a
+			// webhook this store does not receive is stuck with no way forward.
 			return state === 'complete'
 				? { color: 'green', text: __('4473 Recorded') }
 				: { color: 'gray', text: __('Record Paper 4473') };
 		}
 		if (state === 'awaiting') return { color: 'orange', text: __('Awaiting 4473') };
-		return { color: 'gray', text: __('4473 not started') };
+		return { color: 'gray', text: (opts && opts.notStartedText) || __('4473 not started') };
 	}
 
 	function enteredPills(summary, currency, env) {

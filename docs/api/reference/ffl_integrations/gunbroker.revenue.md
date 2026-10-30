@@ -23,4 +23,4 @@ its receipt (the payment was recorded after the guns had already shipped).
 
 **Permissions:** Counter roles (the same gate as the fulfillment actions).
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/revenue.py:227`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/revenue.py:217`</sub>

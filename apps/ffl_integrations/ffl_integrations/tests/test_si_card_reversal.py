@@ -72,8 +72,8 @@ class SalesInvoiceCardReversal(_CardOnFileBase):
 		row = frappe.db.get_value(api.TERMINAL_PAYMENT, {"sales_invoice": si, "status": "CHARGED"}, "name")
 		return si, row, owed
 
-	def _taxed_invoice(self, rate=100, qty=1) -> str:
-		"""A submitted invoice for a non-stock item with an 8.25% tax row."""
+	def _taxed_invoice(self, rate=100, qty=1, rates=None) -> str:
+		"""A submitted invoice for a non-stock item (one line per *rates* entry) with an 8.25% tax row."""
 		company = frappe.db.get_value("Company", {"company_name": "FFL Test"}, "name")
 		tax = frappe.db.get_value("Account", {"company": company, "account_name": "SIR Sales Tax"}, "name")
 		if not tax:
@@ -82,7 +82,7 @@ class SalesInvoiceCardReversal(_CardOnFileBase):
 			tax = frappe.get_doc({"doctype": "Account", "account_name": "SIR Sales Tax", "company": company,
 				"parent_account": parent, "account_type": "Tax"}).insert(ignore_permissions=True).name
 		si = frappe.get_doc({"doctype": "Sales Invoice", "customer": self._customer(), "company": company,
-			"items": [{"item_code": "BO-ACC", "qty": qty, "rate": rate}],
+			"items": [{"item_code": "BO-ACC", "qty": qty, "rate": r} for r in (rates or [rate])],
 			"taxes": [{"charge_type": "On Net Total", "account_head": tax, "rate": 8.25, "description": "Test tax"}]})
 		si.flags.ignore_permissions = True
 		si.insert()
@@ -167,6 +167,19 @@ class SalesInvoiceCardReversal(_CardOnFileBase):
 		self.assertAlmostEqual(self._outstanding(si), amt, 2)
 
 	# ---------------------------------------------------------------- refund
+
+	def test_partial_return_cent_gap_is_closed_not_doubled(self, cc):
+		"""Two lines leave a cent gap after the pro rata split (60 + 25 at 8.25%, $20 back comes to
+		$19.99): the correction must close it, not push the credit note to $19.98 and refuse."""
+		client = cc.from_settings.return_value
+		si, row, amt = self._charged(client, si=self._taxed_invoice(rates=[60, 25]))
+		self.assertAlmostEqual(amt, 92.01, 2)
+		client.refund.return_value = {"refundReference": "RF-GAP"}
+		out = rv.refund_sales_invoice_charge(row, 20.00, rv.RETURN, "one item returned")
+		cn = frappe.get_doc("Sales Invoice", out["credit_note"])
+		self.assertAlmostEqual(-flt(cn.grand_total), 20.00, 2)
+		self.assertAlmostEqual(out["amount"], 20.00, 2)
+		self.assertAlmostEqual(client.refund.call_args.kwargs["refund_amount"], 20.00, 2)
 
 	def test_partial_return_refund_credits_pro_rata(self, cc):
 		client = cc.from_settings.return_value

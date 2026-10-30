@@ -378,6 +378,11 @@ class CancelOrderAlertTest(unittest.TestCase):
 		self.assertFalse(alert.called)
 		self.assertIn("confirmed the cancellation", doc.hold_reason)
 
+	def test_error_order_cancelled_unconfirmed_alerts_ops(self):
+		# An Error order may have reached the house before it failed (LIVE_AT_DISTRIBUTOR).
+		_doc, _out, alert = self._cancel("Error")
+		self.assertTrue(alert.called)
+
 	def test_draft_cancel_never_alerts(self):
 		_doc, _out, alert = self._cancel("Draft")
 		self.assertFalse(alert.called)

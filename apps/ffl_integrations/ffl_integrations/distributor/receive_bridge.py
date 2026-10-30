@@ -44,10 +44,9 @@ import frappe
 from frappe.utils import add_days, nowdate
 
 from ffl_core.firearm import _is_firearm_row
+from ffl_core.roles import STOCK_ROLES as RECEIVE_ROLES  # create_receive's own gate
 from ffl_core.utils import commit as safe_commit  # no-op inside the test transaction
 from ffl_integrations.distributor import lanes
-
-RECEIVE_ROLES = ("Stock Manager", "System Manager")  # mirrors create_receive's own gate
 
 _FIREARM_DETAIL_FIELDS = ("manufacturer", "model_name", "firearm_type", "caliber", "importer")
 
@@ -1227,10 +1226,13 @@ def _bump_received(do, receivable: list) -> None:
 		delta = deltas.get(line.name)
 		if delta:
 			line.received_qty = (line.received_qty or 0) + delta
-	# Received when every line is fully booked OR Killed — a killed line will never
-	# arrive, so it must not pin receive_status at Partial forever.
+	# Received when every line is fully booked, covered from shelf stock
+	# (substituted_qty — that parcel books as plain restock, never against the DO)
+	# OR Killed — such a line will never be booked here, so it must not pin
+	# receive_status at Partial forever.
 	fully = all(
-		(line.received_qty or 0) >= (line.wish_qty or 0) or line.line_status == "Killed"
+		(line.received_qty or 0) + (line.substituted_qty or 0) >= (line.wish_qty or 0)
+		or line.line_status == "Killed"
 		for line in do.lines)
 	do.receive_status = "Received" if fully else "Partial"
 	do.save(ignore_permissions=True)

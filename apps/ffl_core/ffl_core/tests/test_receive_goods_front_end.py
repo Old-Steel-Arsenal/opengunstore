@@ -325,6 +325,45 @@ class ScanFirstReceiving(FrappeTestCase):
 		self.assertIn("list_incoming", warn)
 
 
+class ResetForNextReceive(FrappeTestCase):
+	"""After a fully successful receive the page stays loaded for the next one.
+	The private seller's identity is per receive: carried over, the next private
+	purchase would be booked to the previous seller's name, ID and address and
+	pushed to the bound book that way; a still-ticked transfer box would take the
+	next gun into custody at $0. The batch-receiving context (supplier, source,
+	acquisition type) is kept on purpose."""
+
+	SELLER_FIELDS = (
+		"seller_customer", "seller_first_name", "seller_middle_name", "seller_last_name",
+		"seller_suffix", "seller_id_type", "seller_id_number", "seller_id_document",
+		"seller_address_line1", "seller_city", "seller_state", "seller_zip",
+	)
+
+	def _reset(self) -> str:
+		return code_only(block(_js(), "\t_resetForNext() {", "\t"))
+
+	def test_the_reset_clears_every_seller_identity_field(self):
+		reset = self._reset()
+		for field in self.SELLER_FIELDS:
+			with self.subTest(field=field):
+				self.assertIn(f"'{field}'", reset)
+		self.assertIn("this.fields[f].set_value('')", reset)
+
+	def test_the_reset_unticks_the_transfer_box_and_its_customer(self):
+		reset = self._reset()
+		self.assertIn("this.fields.is_ffl_transfer.set_value(0)", reset)
+		self.assertIn("this._onTransferChange()", reset)
+		self.assertIn("this.fields.transfer_for_customer.set_value('')",
+			block(_js(), "\t_onTransferChange() {", "\t"))
+
+	def test_the_reset_keeps_the_batch_receiving_context(self):
+		reset = self._reset()
+		for field in ("supplier", "source", "acquisition_type", "acquisition_source"):
+			with self.subTest(field=field):
+				self.assertNotIn(f"fields.{field}.set_value", reset)
+				self.assertNotIn(f"'{field}'", reset)
+
+
 if __name__ == "__main__":
 	import unittest
 

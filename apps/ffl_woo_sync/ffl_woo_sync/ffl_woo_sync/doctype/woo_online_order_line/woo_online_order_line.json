@@ -29,7 +29,6 @@
    "search_index": 1
   },
   {
-   "description": "DEPRECATED / vestigial — firearm serials now live in the `serials` (Woo Online Order Serial) child table, one row per gun. Kept as a column for non-destructive migration; no longer read or written by the firearm flow. Hidden from the form.",
    "fieldname": "serial",
    "fieldtype": "Data",
    "hidden": 1,
@@ -58,20 +57,19 @@
    "label": "Unit Price"
   },
   {
-   "description": "WooCommerce line subtotal (before discounts).",
+   "description": "Before discounts.",
    "fieldname": "subtotal",
    "fieldtype": "Currency",
    "label": "Subtotal"
   },
   {
-   "description": "WooCommerce line total (after discounts, before tax).",
+   "description": "After discounts, before tax.",
    "fieldname": "line_total",
    "fieldtype": "Currency",
    "in_list_view": 1,
    "label": "Line Total"
   },
   {
-   "description": "WooCommerce line tax.",
    "fieldname": "line_tax",
    "fieldtype": "Currency",
    "label": "Line Tax"
@@ -83,14 +81,14 @@
    "read_only": 1
   },
   {
-   "description": "Who fills this line, recorded at checkout: local / to_store / fds / direct. Blank on lines taken before it was recorded.",
+   "description": "Who fills this line: local, to_store, fds or direct; blank on older orders.",
    "fieldname": "lane",
    "fieldtype": "Data",
    "label": "Lane",
    "read_only": 1
   },
   {
-   "description": "The distributor this line was sold under — routing and invoicing read it, not the product's current source.",
+   "description": "The distributor this line was sold under, whatever the product's source is now.",
    "fieldname": "source_distributor",
    "fieldtype": "Data",
    "label": "Source Distributor",
@@ -108,8 +106,7 @@
    "options": "Storage Location",
    "label": "Taken From Location",
    "read_only": 1,
-   "no_copy": 1,
-   "description": "Where in the store the staff took this line's units from when the order shipped. Carried to the order's invoice and delivery."
+   "no_copy": 1
   }
  ],
  "istable": 1,

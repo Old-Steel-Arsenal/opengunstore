@@ -79,3 +79,7 @@ class PosPricingSummary(FrappeTestCase):
 	def test_accepts_json_string_arg(self):
 		out = pos_pricing_summary('["PPS-U-GUN"]')
 		self.assertIn("PPS-U-GUN", out)
+
+	def test_accepts_bare_code_string_arg(self):
+		# A bare (non-JSON) code, as an MCP agent may pass it, is one code.
+		self.assertEqual(pos_pricing_summary("PPS-U-GUN"), pos_pricing_summary(["PPS-U-GUN"]))

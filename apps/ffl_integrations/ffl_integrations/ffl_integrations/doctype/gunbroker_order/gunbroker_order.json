@@ -130,7 +130,7 @@
   },
   {
    "default": "Pending Fulfillment",
-   "description": "Our own status. Transferred = the gun is out of the bound book.",
+   "description": "Transferred means the gun is out of the bound book.",
    "fieldname": "order_status",
    "fieldtype": "Select",
    "in_list_view": 1,
@@ -277,13 +277,11 @@
    "label": "Receiving FFL"
   },
   {
-   "description": "The receiving dealer's license, as GunBroker sent it.",
    "fieldname": "ffl_number",
    "fieldtype": "Data",
    "label": "FFL Number"
   },
   {
-   "description": "The verified dealer the gun ships to.",
    "fieldname": "atf_ffl_record",
    "fieldtype": "Link",
    "label": "ATF FFL Record",
@@ -299,7 +297,6 @@
   },
   {
    "default": "0",
-   "description": "All antiques: ships to the buyer, no dealer needed.",
    "fieldname": "ships_direct",
    "fieldtype": "Check",
    "label": "Ships Direct to Buyer (antique)",
@@ -404,7 +401,7 @@
    "label": "Payment"
   },
   {
-   "description": "Ticked on the GunBroker site. Does not count as paid here: use Mark Payment Received.",
+   "description": "Does not count as paid here; use Mark Payment Received.",
    "fieldname": "payment_received",
    "fieldtype": "Check",
    "label": "Payment Received (GunBroker flag)",
@@ -434,7 +431,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Filled in by Mark Payment Received.",
    "fieldname": "payment_mode_used",
    "fieldtype": "Data",
    "label": "Mode of Payment Recorded",
@@ -453,7 +449,6 @@
    "read_only": 1
   },
   {
-   "description": "The day the check was deposited.",
    "fieldname": "payment_received_on",
    "fieldtype": "Date",
    "label": "Deposited On",
@@ -467,7 +462,6 @@
    "read_only": 1
   },
   {
-   "description": "Booked when the check was for more than the invoice.",
    "fieldname": "gb_overpayment_pe",
    "fieldtype": "Link",
    "label": "Overpayment Entry",
@@ -521,7 +515,6 @@
    "read_only": 1
   },
   {
-   "description": "What the buyer owes on GunBroker.",
    "fieldname": "order_total",
    "fieldtype": "Currency",
    "label": "Order Total",
@@ -556,7 +549,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Includes GunBroker's 1% service fee.",
    "fieldname": "sales_tax_total",
    "fieldtype": "Currency",
    "label": "Sales Tax Total (incl. service fee)",
@@ -645,8 +637,7 @@
    "fieldtype": "Data",
    "label": "ShipStation Shipment ID",
    "read_only": 1,
-   "no_copy": 1,
-   "description": "Set when Ship was pressed before Dispose. Dispose copies it onto the Sales Invoice."
+   "no_copy": 1
   },
   {
    "fieldname": "shipstation_status",
@@ -672,7 +663,7 @@
    "read_only": 1
   },
   {
-   "description": "Tracking has not reached GunBroker yet. It retries on its own.",
+   "description": "Tracking has not reached GunBroker yet; it retries on its own.",
    "fieldname": "gb_ship_writeback_pending",
    "fieldtype": "Check",
    "label": "Ship Write-back Pending",
@@ -713,13 +704,13 @@
    "read_only": 1
   },
   {
-   "description": "Fill in once the chargeback is resolved. The daily audit stops flagging it.",
+   "description": "Fill in once the chargeback is resolved so the daily audit stops flagging it.",
    "fieldname": "chargeback_handled_at",
    "fieldtype": "Datetime",
    "label": "Chargeback Handled At"
   },
   {
-   "description": "Fill in once the refund is booked (Receive + Pay entries, Remarks \"GunBroker Order #<number>\", tick Custom Remarks first). The daily audit stops flagging it.",
+   "description": "Fill in once the refund is booked so the daily audit stops flagging it.",
    "fieldname": "refund_handled_at",
    "fieldtype": "Datetime",
    "label": "Refund Handled At"

@@ -161,7 +161,7 @@ function _gbItemButtons(frm) {
 								[m.gb_item_id, m.quantity]),
 							indicator: 'green',
 						}, 7);
-						_gbItemWarnings(m.warnings);
+						_gbItemWarnings(m.warnings, m.gb_url);
 					},
 				});
 			});
@@ -270,19 +270,29 @@ function _gbItemCall(frm, opts) {
 	});
 }
 
-function _gbItemWarnings(warnings) {
+function _gbItemWarnings(warnings, url) {
+	// Show every warning the server sent (unknown keys escaped) so a new one is
+	// never silently dropped; same table as _gbShowWarnings on the Serial No form.
+	const notable = (warnings || []).filter((w) => w !== 'claimed_existing');
+	if (!notable.length) return;
+	const link = url
+		? `<a href="${encodeURI(url)}" target="_blank" rel="noopener">${__('open the listing')}</a>`
+		: __('open the listing on GunBroker');
 	const LABELS = {
+		no_upc: __('No UPC, so GunBroker could not fill Manufacturer, Model and Caliber. Add them by hand: {0}, then Edit.', [link]),
 		title_truncated: __('The title was shortened to GunBroker\'s 75-character limit.'),
 		pictures_truncated: __('Some photos were left off — the listing hit the per-listing picture limit.'),
 		pictures_partial: __('The listing is live, but some of the extra photos failed to upload. Add them on GunBroker.'),
+		condition_antique_used: __('An antique is always listed as Used, so the condition you picked was not used.'),
 		image_format_skipped: __('A photo was skipped: GunBroker takes JPG, PNG and GIF only.'),
 		image_unreadable: __('A photo could not be read and was left off the listing.'),
+		insecure_image_removed: __('An image in the description pointed at a local address no buyer could reach, and was removed.'),
+		upgraded_to_https: __('Links in the description were switched to https so buyers\' browsers do not block them.'),
+		plain_http_in_text: __('The description mentions an http:// address in its text. Buyers can read it, but it will not be clickable as an asset.'),
 	};
-	const notable = (warnings || []).filter((w) => LABELS[w]);
-	if (!notable.length) return;
 	frappe.msgprint({
 		title: __('Listed, with notes'),
-		message: notable.map((w) => `<div>${LABELS[w]}</div>`).join(''),
+		message: notable.map((w) => `<div>${LABELS[w] || frappe.utils.escape_html(w)}</div>`).join(''),
 		indicator: 'orange',
 	});
 }

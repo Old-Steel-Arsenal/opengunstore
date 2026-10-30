@@ -814,40 +814,28 @@ class ReceiveGoodsApp {
 		// AcquireType list. Soft-coupled to ffl_integrations: silent on failure.
 		// Preserves a value the cashier picked before this async sync resolved
 		// — Frappe's Select.refresh() clears the value when it's not in the
-		// new options list; unshift it back in (mirrors ffl_acquisition.js).
-		frappe.call({
-			method: 'ffl_integrations.fastbound.client_api.get_acquire_types',
-			callback: (r) => {
-				const types = (r.message || []).slice();
-				const ctrl = this.fields.acquisition_type;
-				if (!ctrl) return;
-				const cur = ctrl.get_value && ctrl.get_value();
-				if (!types.length && !cur) return;
-				if (cur && !types.includes(cur)) types.unshift(cur);
-				ctrl.df.options = ['', ...types].join('\n');
-				ctrl.refresh();
-				if (cur) ctrl.set_value(cur);
-			},
-			error: () => {},
-		});
+		// new options list; unshift it back in (ffl.loadSelectOptions).
+		this._loadControlOptions('acquisition_type', 'ffl_integrations.fastbound.client_api.get_acquire_types', true);
 	}
 
 	_loadReceiveSources() {
 		// Populate the Source dropdown from FFL Settings → Receive Sources.
 		// Admin-managed list (one per line); edits take effect on next page load.
 		// Same unshift-current pattern as _loadAcquireTypes above.
-		frappe.call({
-			method: 'ffl_core.api.receive_goods.get_receive_sources',
-			callback: (r) => {
-				const list = (r.message || []).slice();
-				const ctrl = this.fields.source;
-				if (!ctrl) return;
-				const cur = ctrl.get_value && ctrl.get_value();
-				if (!list.length && !cur) return;
-				if (cur && !list.includes(cur)) list.unshift(cur);
-				ctrl.df.options = ['', ...list].join('\n');
-				ctrl.refresh();
-				if (cur) ctrl.set_value(cur);
+		this._loadControlOptions('source', 'ffl_core.api.receive_goods.get_receive_sources', false);
+	}
+
+	// A bare page control: set df.options and refresh, then put the value back.
+	_loadControlOptions(field, method, quiet) {
+		ffl.loadSelectOptions({
+			method, quiet,
+			get: () => { const c = this.fields[field]; return c && c.get_value && c.get_value(); },
+			set: (options, cur) => {
+				const c = this.fields[field];
+				if (!c) return;
+				c.df.options = options;
+				c.refresh();
+				if (cur) c.set_value(cur);
 			},
 		});
 	}
@@ -2415,6 +2403,16 @@ class ReceiveGoodsApp {
 		this.session = { choices: {} };
 		this.fields.scan.set_value('');
 		this.fields.notes.set_value('');
+		// The seller's identity and the transfer box belong to THIS receive: kept,
+		// the next private purchase would be booked (and pushed to the bound book)
+		// under the previous seller's name, ID and address. Supplier, source and
+		// acquisition type stay, so batch distributor receiving still works.
+		['seller_customer', 'seller_first_name', 'seller_middle_name', 'seller_last_name',
+			'seller_suffix', 'seller_id_type', 'seller_id_number', 'seller_id_document',
+			'seller_address_line1', 'seller_city', 'seller_state', 'seller_zip',
+		].forEach((f) => this.fields[f].set_value(''));
+		this.fields.is_ffl_transfer.set_value(0);
+		this._onTransferChange();  // hides transfer_for_customer and clears it
 		this.$body.find('#pending-area').empty();
 		if (this._itemPicker) this._itemPicker.close();
 		this._renderLines();

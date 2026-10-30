@@ -874,6 +874,35 @@ class TestUnwoundOrders(_OrderCase):
 		self.assertEqual(self.serial_rows["SN-001"], {"gb_reserved": 0, "gb_order": ""})
 		self.assertEqual(order.order_status, "Cancelled")
 
+	def test_a_cancellation_ends_the_sold_listing_on_the_serial(self):
+		# GunBroker does not un-sell an item when it cancels the order. Left on
+		# the serial, the sweep reads that listing as sold with no order holding
+		# the gun and raises "may have sold on GunBroker" for a gun on the shelf.
+		order = fx.FakeDoc(name="GB-ORD-1", gb_order_id="998877", gb_status=6,
+			order_status="Pending Fulfillment", sales_invoice=None)
+		order.append("lines", {"gb_item_id": "555111"})
+		order.append("serials", {"confirmed_serial": "SN-001"})
+		self._patch("frappe.db.get_value", return_value=frappe._dict(
+			{"gb_reserved": 1, "gb_order": "GB-ORD-1", "gb_item_id": "555111",
+			 "gb_item_history": "444000"}))
+		orders._detect_unwound(order)
+		row = self.serial_rows["SN-001"]
+		self.assertEqual(row["gb_reserved"], 0)
+		self.assertEqual(row["gb_item_id"], "")
+		self.assertEqual(row["gb_delisted"], 1)
+		self.assertIn("555111", row["gb_item_history"])
+		self.assertIn("444000", row["gb_item_history"])
+
+	def test_a_listing_that_is_not_this_orders_stays_on_the_serial(self):
+		order = fx.FakeDoc(name="GB-ORD-1", gb_order_id="998877", gb_status=6,
+			order_status="Pending Fulfillment", sales_invoice=None)
+		order.append("lines", {"gb_item_id": "555111"})
+		order.append("serials", {"confirmed_serial": "SN-001"})
+		self._patch("frappe.db.get_value", return_value=frappe._dict(
+			{"gb_reserved": 1, "gb_order": "GB-ORD-1", "gb_item_id": "777999"}))
+		orders._detect_unwound(order)
+		self.assertEqual(self.serial_rows["SN-001"], {"gb_reserved": 0, "gb_order": ""})
+
 	def test_another_channels_hold_is_never_released_by_ours(self):
 		order = fx.FakeDoc(name="GB-ORD-1", gb_order_id="998877", gb_status=6,
 			order_status="Pending Fulfillment", sales_invoice=None)

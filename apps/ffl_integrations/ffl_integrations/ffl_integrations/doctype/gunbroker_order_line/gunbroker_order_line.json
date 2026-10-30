@@ -51,13 +51,11 @@
    "label": "Unit Price"
   },
   {
-   "description": "The listing's SKU, item_code::serial. GunBroker keeps it unchanged across relists, which makes it the stable key for matching a sold listing back to a gun \u2014 the item number does not survive a relist.",
    "fieldname": "sku",
    "fieldtype": "Data",
    "label": "SKU"
   },
   {
-   "description": "The GunBroker item number this line sold under. A cache, not a key: GunBroker issues a new one every time it relists.",
    "fieldname": "gb_item_id",
    "fieldtype": "Data",
    "label": "GunBroker Item ID"
@@ -70,25 +68,22 @@
    "label": "Serial Number"
   },
   {
-   "description": "itemSubTotal as GunBroker reports it.",
    "fieldname": "subtotal",
    "fieldtype": "Currency",
    "label": "Line Subtotal"
   },
   {
-   "description": "The marketplace-facilitator tax GunBroker allocated to this line. Reported per line, booked per order.",
    "fieldname": "line_tax",
    "fieldtype": "Currency",
    "label": "Line Sales Tax"
   },
   {
-   "description": "OrderItem.isFFLRequired. Decides both whether the FFL-received gate applies to this order and whether the per-item licence document fee accrues.",
+   "description": "Decides whether the FFL-received check applies and whether the per-item licence document fee is charged.",
    "fieldname": "is_ffl_required",
    "fieldtype": "Check",
    "label": "FFL Required"
   },
   {
-   "description": "This line's own final value fee, tiered on its own price and rounded on its own. Summing per-line fees is what GunBroker bills; running one order total through the tiers under-charges every multi-gun order.",
    "fieldname": "fvf_amount",
    "fieldtype": "Currency",
    "label": "Final Value Fee",
@@ -101,7 +96,6 @@
    "read_only": 1
   },
   {
-   "description": "Why this line could not be matched to, or could not reserve, a gun in stock.",
    "fieldname": "reservation_error",
    "fieldtype": "Small Text",
    "label": "Reservation Error",

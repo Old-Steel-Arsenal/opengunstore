@@ -27,7 +27,7 @@
    "label": "Abbreviation"
   },
   {
-   "description": "Optional metric/imperial cross-reference, e.g. '9mm Luger' ↔ '.355'",
+   "description": "For example '9mm Luger' ↔ '.355'.",
    "fieldname": "metric_equivalent",
    "fieldtype": "Data",
    "label": "Metric / Equivalent"

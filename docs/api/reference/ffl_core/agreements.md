@@ -164,7 +164,7 @@ link and 300 per IP address.
 
 **Returns:** {"signed": true, "store_name"}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:1015`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:1019`</sub>
 
 ## `void_agreement`
 

@@ -168,6 +168,10 @@ test('4473 label table across FastBound, paper mode and neither', () => {
 	assert.strictEqual(lbl('Pending', 'N/A', { paper: true }), 'Record Paper 4473');
 	assert.strictEqual(lbl('N/A', 'N/A', { fastbound: false }), '4473 Not Configured');
 	assert.strictEqual(lbl('Completed', 'Proceed', { fastbound: false }), '4473 Complete', 'a recorded 4473 is never painted broken');
+	// The cart's payment-screen badge (ffl_core.bundle.js getStatusBadge) names the not-started state its own way.
+	const badge = (f, n) => status.form4473Label({ form_4473_status: f, nics_status: n }, env({}), { notStartedText: 'FastBound 4473' });
+	assert.deepStrictEqual(badge('N/A', 'N/A'), { color: 'gray', text: 'FastBound 4473' });
+	assert.deepStrictEqual(badge('Pending', 'N/A'), { color: 'orange', text: 'Awaiting 4473' });
 });
 
 test('payment labels', () => {

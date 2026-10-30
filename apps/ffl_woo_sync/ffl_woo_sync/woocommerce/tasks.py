@@ -1550,6 +1550,8 @@ def alert_shipped_undisposed_orders() -> dict:
     Permissions:
         Counter roles (manual path; the scheduler runs as Administrator).
     """
+    from ffl_core.api.manual_order import _ROLES
+
     if frappe.session.user != "Administrator":
         frappe.only_for(_ROLES)
     rows = frappe.db.sql(_SHIPPED_UNDISPOSED_SQL,

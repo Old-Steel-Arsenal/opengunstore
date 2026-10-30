@@ -36,6 +36,8 @@ except ImportError:  # pragma: no cover — ships with ERPNext, guard anyway
 
 from ffl_core.utils import commit as safe_commit
 from ffl_core.firearm import (
+	ensure_brand as _ensure_brand,
+	ensure_caliber as _ensure_caliber,
 	is_antique_item,
 	is_firearm_item,
 	issue_serial,
@@ -524,22 +526,6 @@ def _slug_from_attrs(*parts: str | None) -> str:
 		if slug:
 			chunks.append(slug)
 	return "-".join(chunks)[:140]
-
-
-def _ensure_brand(name: str) -> str | None:
-	if not name:
-		return None
-	if frappe.db.exists("Brand", name):
-		return name
-	frappe.get_doc({"doctype": "Brand", "brand": name}).insert(ignore_permissions=True)
-	return name
-
-
-def _ensure_caliber(name: str) -> str:
-	if frappe.db.exists("Caliber", name):
-		return name
-	frappe.get_doc({"doctype": "Caliber", "caliber_name": name}).insert(ignore_permissions=True)
-	return name
 
 
 def _map_firearm_type(fb_type: str | None) -> str | None:

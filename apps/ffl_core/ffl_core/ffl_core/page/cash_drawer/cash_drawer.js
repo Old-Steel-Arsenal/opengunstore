@@ -42,18 +42,6 @@ function cdrwNeedsReason(variance, threshold, firstCount) {
 	return Math.abs(Math.round((Number(variance) || 0) * 100) / 100) >= Number(threshold);
 }
 
-// The lines on screen, split into cash in and cash out (a count difference or a first-count entry counts as neither).
-function cdrwTotals(lines) {
-	let cashIn = 0;
-	let cashOut = 0;
-	(lines || []).forEach((l) => {
-		if (l.kind === 'variance' || l.kind === 'cutoff' || l.kind === 'cutoff_trueup') return;
-		const a = Number(l.amount) || 0;
-		if (a > 0) cashIn += a; else cashOut += -a;
-	});
-	return { cashIn: Math.round(cashIn * 100) / 100, cashOut: Math.round(cashOut * 100) / 100 };
-}
-
 // The message a form should show before it even asks the server, or ''.
 function cdrwCheckAmount(amount) {
 	const a = Number(amount);
@@ -295,7 +283,6 @@ class CashDrawerApp {
 
 	render() {
 		const d = this.data;
-		const totals = cdrwTotals(d.lines);
 		const counted = d.closed_today;
 		const status = counted
 			? `<span class="indicator-pill green">${__('Counted at {0}', [cdrwTime(counted.counted_at)])}: `
@@ -312,7 +299,7 @@ class CashDrawerApp {
 				<div class="cdrw-expected">${cdrwMoney(d.expected)}</div>
 				${pending}
 				<div class="text-muted small" style="margin-top:6px">
-					${__('Opening {0} · in {1} · out {2} since the last close', [cdrwMoney(d.opening), cdrwMoney(totals.cashIn), cdrwMoney(totals.cashOut)])}
+					${__('Opening {0} · in {1} · out {2} since the last close', [cdrwMoney(d.opening), cdrwMoney(d.cash_in), cdrwMoney(d.cash_out)])}
 				</div>
 				<div style="margin-top:8px">${status}${shifts}</div>
 			</div>`);
@@ -618,7 +605,7 @@ class CashDrawerApp {
 // Node (the unit tests) has `module`; the browser does not.
 if (typeof module !== 'undefined' && module.exports) {
 	module.exports = {
-		cdrwMoney, cdrwEsc, cdrwTime, cdrwDifferenceText, cdrwNeedsReason, cdrwTotals, cdrwCheckAmount,
+		cdrwMoney, cdrwEsc, cdrwTime, cdrwDifferenceText, cdrwNeedsReason, cdrwCheckAmount,
 		cdrwCheckExpense, cdrwRows, cdrwVoucherUrl, cdrwPreviewHtml, cdrwLogRows, cdrwLogCsv,
 	};
 }

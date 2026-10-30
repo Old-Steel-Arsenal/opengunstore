@@ -106,21 +106,7 @@ def push_acquisition_to_fastbound(
 		try:
 			client = FastBoundClient.from_settings()
 			result = client.post_acquisition(doc)
-			frappe.db.set_value("FFL Acquisition", acquisition_name, {
-				"fastbound_id": result["acquisitionId"],
-				"fastbound_synced_at": now_datetime(),
-				"fastbound_sync_error": "",
-			}, update_modified=False)
-			# Stamp Serial No records 1:1 with FastBound items so the bound
-			# book stays linkable per gun (4473 dispositions reference items
-			# by FB id; the Item form's Serial Numbers tab surfaces them).
-			for fb_item in result.get("items", []):
-				if not (fb_item.get("serial") and fb_item.get("fbItemId")):
-					continue
-				if frappe.db.exists("Serial No", fb_item["serial"]):
-					frappe.db.set_value("Serial No", fb_item["serial"],
-						"fastbound_item_id", fb_item["fbItemId"],
-						update_modified=False)
+			_record_acquisition_push(acquisition_name, result)
 			if _commit:
 				frappe.db.commit()
 			return
@@ -138,6 +124,23 @@ def push_acquisition_to_fastbound(
 		_notify_terminal("FFL Acquisition", acquisition_name, last_error or "")
 	if _commit:
 		frappe.db.commit()
+
+
+def _record_acquisition_push(acquisition_name: str, result: dict) -> None:
+	"""Record a successful CreateAndCommit (no commit — the caller owns it): the
+	FastBound id on the FFL Acquisition, and each returned item's FastBound id on
+	its Serial No so the bound book stays linkable per gun (4473 dispositions
+	reference items by FB id; the Item form's Serial Numbers tab surfaces them)."""
+	frappe.db.set_value("FFL Acquisition", acquisition_name, {
+		"fastbound_id": result["acquisitionId"],
+		"fastbound_synced_at": now_datetime(),
+		"fastbound_sync_error": "",
+	}, update_modified=False)
+	for fb_item in result.get("items", []):
+		if (fb_item.get("serial") and fb_item.get("fbItemId")
+				and frappe.db.exists("Serial No", fb_item["serial"])):
+			frappe.db.set_value("Serial No", fb_item["serial"],
+				"fastbound_item_id", fb_item["fbItemId"], update_modified=False)
 
 
 def _notify_terminal(doctype: str, name: str, error: str) -> None:
@@ -215,7 +218,11 @@ def push_receipt_acquisitions_sync(purchase_receipt: str) -> None:
 	except FastBoundConfigError:
 		return  # FastBound not set up — don't block receiving.
 
-	pushed: list[str] = []  # FastBound acquisition ids committed this call
+	# FastBound acquisition ids CREATED this call. Adopted ones (serial already
+	# in the book) are pre-existing records that may hold other guns, so they
+	# are never compensated; worst case an adopt after our own retried POST is
+	# left as an orphan the next receive re-adopts.
+	pushed: list[str] = []
 	for name in to_push:
 		doc = frappe.get_doc("FFL Acquisition", name)
 		try:
@@ -232,17 +239,9 @@ def push_receipt_acquisitions_sync(purchase_receipt: str) -> None:
 				_("FastBound rejected this firearm, so nothing was received — fix "
 					"the issue and receive again.\n\n{0}").format(exc),
 				title=_("FastBound Acquisition Failed"))
-		frappe.db.set_value("FFL Acquisition", name, {
-			"fastbound_id": result["acquisitionId"],
-			"fastbound_synced_at": now_datetime(),
-			"fastbound_sync_error": "",
-		}, update_modified=False)
-		for fb_item in result.get("items", []):
-			if (fb_item.get("serial") and fb_item.get("fbItemId")
-					and frappe.db.exists("Serial No", fb_item["serial"])):
-				frappe.db.set_value("Serial No", fb_item["serial"],
-					"fastbound_item_id", fb_item["fbItemId"], update_modified=False)
-		pushed.append(result["acquisitionId"])
+		_record_acquisition_push(name, result)
+		if not result.get("adopted"):
+			pushed.append(result["acquisitionId"])
 
 
 def enqueue_push_on_submit(doc, method: str | None = None) -> None:

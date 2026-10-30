@@ -427,19 +427,9 @@ def quote(item_code=None, sku=None, distributor=None) -> dict:
 	# panel) must read — never the raw flags, which a `Direct OK` brand
 	# authorization legitimately overrides. The raw flags stay in the response
 	# as FACTS for display ("flag overridden by brand authorization").
-	from ffl_integrations.distributor import policy as _policy
-	from ffl_integrations.distributor import router as _router
-
-	fulfillment_mode = _router.accessory_mode(
-		listing.get("fulfillment_mode"),
-		brand_policy=_policy.brand_policy_for(row.get("manufacturer"), dist_name),
-		dropship_blocked=bool(row.get("dropship_blocked")),
-		vendor_approval_required=bool(row.get("vendor_approval_required")))
-	fulfillment_reason = "" if fulfillment_mode == "Direct" else (
-		_policy.brand_policy_reason(row.get("manufacturer"), dist_name,
-			distributor_name=dist.distributor_name or dist_name)
-		or ("distributor block — ship to store only" if row.get("dropship_blocked")
-		else "vendor approval required — ship to store only"))
+	fulfillment_mode, fulfillment_reason = _resolve_fulfillment(
+		row, listing.get("fulfillment_mode"), dist_name,
+		distributor_name=dist.distributor_name or dist_name)
 
 	return {
 		"found": True,
@@ -463,6 +453,28 @@ def quote(item_code=None, sku=None, distributor=None) -> dict:
 		"model": row.get("model") or "",
 		"department": row.get("department") or "",
 	}
+
+
+def _resolve_fulfillment(row: dict, listing_mode, dist_name: str, *,
+		distributor_name: str | None = None) -> tuple[str, str]:
+	"""The resolved fulfilment mode and its clerk-facing reason ('' when Direct)
+	for one catalog row at one house — the single chain quote and the
+	Fulfillment-planner cell both read."""
+	from ffl_integrations.distributor import policy as _policy
+	from ffl_integrations.distributor import router as _router
+
+	mode = _router.accessory_mode(
+		listing_mode,
+		brand_policy=_policy.brand_policy_for(row.get("manufacturer"), dist_name),
+		dropship_blocked=bool(row.get("dropship_blocked")),
+		vendor_approval_required=bool(row.get("vendor_approval_required")))
+	if mode == "Direct":
+		return mode, ""
+	return mode, (
+		_policy.brand_policy_reason(row.get("manufacturer"), dist_name,
+			distributor_name=distributor_name)
+		or ("distributor block — ship to store only" if row.get("dropship_blocked")
+		else "vendor approval required — ship to store only"))
 
 
 @frappe.whitelist()
@@ -522,7 +534,15 @@ def ensure_dropship_item(sku: str, distributor: str | None = None, claim=1) -> d
 	# is when another house already sources it — never re-homed. The counter line
 	# carries its own house (distributor-settings-layout E); the stamp stays the web
 	# channel's.
-	item_code = (row.get("upc") or "").strip() or sku
+	# Resolve exactly as the promoters do: the UPC-named Item, else the Item already
+	# carrying the UPC as a barcode (named by an older stock number / by hand), else
+	# the SKU — so the owner and listing checks look at the Item that gets stamped.
+	from ffl_integrations.rsr.promote import barcode_owner
+
+	upc = (row.get("upc") or "").strip()
+	item_code = upc or sku
+	if not frappe.db.exists("Item", item_code):
+		item_code = barcode_owner(upc) or item_code
 	owner = frappe.db.get_value("Item", item_code, "dropship_distributor")
 	# A listed product's stamp is its listing's (automatic sourcing moves it with the
 	# listing, and a pinned-off listing has none): the counter never writes it.
@@ -629,14 +649,8 @@ def _matrix_cell(provider, dist_name: str, line: dict, qty: int, *,
 	if not row:
 		return {"distributor": dist_name, "feasible": False, "reason": "not carried"}
 
-	from ffl_integrations.distributor import policy as _policy
-	from ffl_integrations.distributor import router as _router
 	listing_mode = listing.get("fulfillment_mode") if listing else None
-	resolved = _router.accessory_mode(
-		listing_mode,
-		brand_policy=_policy.brand_policy_for(row.get("manufacturer"), dist_name),
-		dropship_blocked=bool(row.get("dropship_blocked")),
-		vendor_approval_required=bool(row.get("vendor_approval_required")))
+	resolved, policy_reason = _resolve_fulfillment(row, listing_mode, dist_name)
 	# P2: every carried cell offers BOTH ways to fulfil — the operator picks per
 	# line. Ship to store only needs stock; drop-ship also needs the house to
 	# drop-ship and the resolved mode to be Direct, and when either isn't, the
@@ -655,12 +669,8 @@ def _matrix_cell(provider, dist_name: str, line: dict, qty: int, *,
 		# refused part to the store): never plan a buyer's-door order the
 		# house may refuse.
 		direct_block = "this distributor ships it only to a dealer — ship to store"
-	elif resolved == "Direct":
-		direct_block = ""
 	else:
-		direct_block = (_policy.brand_policy_reason(row.get("manufacturer"), dist_name)
-			or ("distributor block — ship to store only" if row.get("dropship_blocked")
-			else "vendor approval required — ship to store only"))
+		direct_block = policy_reason
 	cell = {
 		"distributor": dist_name,
 		"sku": row.get("sku"),
@@ -947,7 +957,10 @@ def create_do_from_plan(dist, plan: dict, enriched_by_sku: dict, *,
 			"line_status": "Pending",
 			"fulfillment": lane or "",
 		})
-	do.insert()  # the controller's before_insert fills the provider's default service
+	# Every caller role-gates first (create_orders on ORDER_ROLES; the counter hook,
+	# Re-source and amend rebuild on the counter roles), and counter roles hold no
+	# Distributor Order DocPerm — so the insert itself must not re-check.
+	do.insert(ignore_permissions=True)  # the controller's before_insert fills the provider's default service
 	return do
 
 
@@ -1076,12 +1089,18 @@ def confirm_order(do_name: str) -> dict:
 	    Distributor order/console roles.
 	"""
 	frappe.only_for(ORDER_ROLES_WITH_CONSOLE)
+	return _confirm_order(do_name)
+
+
+def _confirm_order(do_name: str) -> dict:
+	"""Gate-free body of :func:`confirm_order` — Pending Order's Place order runs it
+	under its own (counter-role) gate, the way ``_create_orders`` serves Re-source."""
 	do = frappe.get_doc("Distributor Order", do_name)
 	block = placement_payment_block(do)
 	if block:
 		frappe.throw(block)
 	do.status = order_state.QUEUED  # controller.validate enforces legality
-	do.save()
+	do.save(ignore_permissions=True)
 	enqueue_distributor(
 		"ffl_integrations.distributor.tasks.place_order_job",
 		job_name=f"dist_place_{do.name}", do_name=do.name)
@@ -1114,7 +1133,7 @@ def cancel_order(do_name: str, reason: str | None = None, confirmed=False) -> di
 	confirmed = bool(cint(confirmed))
 	if confirmed and not reason:
 		reason = frappe._("Distributor confirmed the cancellation")
-	if do.status in order_state.POLLABLE_STATES and not confirmed:
+	if do.status in order_state.LIVE_AT_DISTRIBUTOR and not confirmed:
 		from ffl_integrations.notifications import notify_admins
 		notify_admins(
 			f"Distributor Order cancelled after placement: {do.name}",

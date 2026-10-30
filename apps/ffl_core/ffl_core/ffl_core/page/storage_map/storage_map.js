@@ -1595,6 +1595,9 @@ class StorageMapApp {
 			<div class="card-box"><b>${__('This session')}</b><div class="session muted" style="margin-top:6px"></div></div>`);
 		this.$scan = this.$tab.find('input.scan');
 		this.$feedback = this.$tab.find('.feedback');
+		// Opened with a destination already set (Map's "Put things here", or a
+		// tab switch back): setDestination is the one place that binds 'change'.
+		if (this.destination) this.setDestination(this.destination);
 		this.$scan.on('keydown', (ev) => {
 			if (ev.key !== 'Enter') return;
 			ev.preventDefault();

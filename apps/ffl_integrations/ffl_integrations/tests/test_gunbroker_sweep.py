@@ -517,6 +517,16 @@ class TheCandidateSet(FrappeTestCase):
 		self.assertIn("gb_end_pending", sql)
 		self.assertNotIn("gb_sku_watch_until", sql)
 
+	def test_it_selects_the_auction_columns_the_sweep_branches_on(self):
+		"""_handle_ok reads gb_listing_type (unsold auction vs ended externally)
+		and gb_bid_locked (lock once, not every hour) straight off this row."""
+		captured = {}
+		with patch("frappe.db.sql",
+				side_effect=lambda q, *a, **k: captured.setdefault("q", q) and []):
+			tasks.sweep_candidates()
+		self.assertIn("gb_listing_type", captured["q"])
+		self.assertIn("gb_bid_locked", captured["q"])
+
 
 class TheRoundAnswersFromItsSharedScans(_SweepCase):
 	"""One pull of each scan per round, not one per gun.

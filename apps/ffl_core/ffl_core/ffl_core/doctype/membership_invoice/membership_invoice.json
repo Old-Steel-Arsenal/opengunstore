@@ -55,8 +55,7 @@
    "options": "Sales Invoice",
    "label": "Credit Note",
    "read_only": 1,
-   "in_list_view": 1,
-   "description": "The credit note that voided this invoice, when cancelling it was not allowed."
+   "in_list_view": 1
   }
  ],
  "states": [],

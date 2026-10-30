@@ -105,6 +105,7 @@
 	if (typeof window === 'undefined' || typeof module === 'object') return;
 	var api = ffl.staffSwitch;
 	var M = 'ffl_core.staff_switch.';
+	api.post = post;   // price_approval.js posts through it too
 	var esc = function (s) { return frappe.utils.escape_html(s == null ? '' : String(s)); };
 	var overlay = null;
 	// Every desk tab of this browser shares the session: lock, unlock and a switch of
@@ -116,9 +117,10 @@
 		if (overlay) { overlay.remove(); overlay = null; }
 	}
 
-	// A plain POST: frappe.call's error pop-ups would sit under the overlay, so the
-	// overlay shows the error itself.
-	function post(method, args) {
+	// A plain POST: frappe.call's error pop-ups would sit under the overlay (or a dialog),
+	// so the caller shows the error itself. `fallback` is the error text when the server
+	// gives none (default: the password one). Resolves the whole response body.
+	function post(method, args, fallback) {
 		return fetch('/api/method/' + method, {
 			method: 'POST', credentials: 'same-origin',
 			headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Frappe-CSRF-Token': frappe.csrf_token },
@@ -126,7 +128,7 @@
 		}).then(function (r) {
 			return r.json().catch(function () { return {}; }).then(function (body) {
 				if (r.status === 429) throw new Error(__('Too many tries. Wait a few minutes.'));
-				if (!r.ok) throw new Error(api.serverMessage(body) || __('That password is not right.'));
+				if (!r.ok) throw new Error(api.serverMessage(body) || (fallback != null ? fallback : __('That password is not right.')));
 				return body;
 			});
 		});

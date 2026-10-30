@@ -148,7 +148,7 @@ def _fastbound_reconcile_test_masters() -> None:
 	Neither master exists on a fresh site (nothing in the normal intake/import
 	flow requires these TWO specific values in particular; production callers
 	auto-vivify whatever manufacturer/caliber they actually see, e.g.
-	fastbound/importer._ensure_brand / _ensure_caliber). Seeding them here means
+	ffl_core.firearm.ensure_brand / ensure_caliber). Seeding them here means
 	the CI bench-execute bootstrap doesn't silently depend on a long-lived dev
 	site having accumulated a Brand "Colt" from earlier real intake.
 

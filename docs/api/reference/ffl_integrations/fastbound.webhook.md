@@ -16,4 +16,4 @@ Single FastBound webhook entry point (guest, HMAC-verified).
 
 **Returns:** 200 with a minimal body ({ok, event/handled/error}) on success. 401 when the HMAC signature is missing, malformed or fails — and also, word for word, when the integration is switched off on this site (see below). Every other failure path logs + returns 200 to keep FastBound from retrying.
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/webhook.py:1138`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/webhook.py:1120`</sub>

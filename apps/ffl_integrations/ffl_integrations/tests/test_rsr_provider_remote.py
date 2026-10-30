@@ -5,16 +5,13 @@ instead of the local RSR Catalog Item / RSR Ship Restriction tables (Task 2's
 transport + in-memory test stub)."""
 from __future__ import annotations
 
-from datetime import datetime
 from unittest import mock
-from zoneinfo import ZoneInfo
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
-from frappe.utils import get_system_timezone
 
 from ffl_integrations.distributor import remote_catalog
-from ffl_integrations.distributor.rsr_provider import RSRProvider, _parse_service_ts
+from ffl_integrations.distributor.rsr_provider import RSRProvider
 from ffl_integrations.tests import catalog_stub
 
 
@@ -98,34 +95,3 @@ class TestRemoteCatalogProvider(FrappeTestCase):
 		self.stub.seed_restrictions("GLK19", [
 			["ALL", "NY", "S", "F"], ["ALL", "MA", "S", "H"]])
 		self.assertEqual(self.provider.blocked_states("GLK19"), ["NY"])
-
-
-class TestParseServiceTs(FrappeTestCase):
-	"""The provider's delegate. That it IS a delegate is the point being pinned
-	here — the conversion itself, and the timezone family it belongs to, are
-	covered on the real site's clock in `test_timezone_family`."""
-
-	def test_none_and_blank_are_none(self):
-		self.assertIsNone(_parse_service_ts(None))
-		self.assertIsNone(_parse_service_ts(""))
-
-	def test_tz_aware_iso_becomes_naive_site_local(self):
-		"""This assertion used to build its expectation with a bare
-		`.astimezone()` — the HOST's zone — which meant it agreed with the bug
-		instead of catching it, and passed on any machine where the two zones
-		happened to match. The site's own clock is the reference now,
-		and `now_datetime()` is where the site keeps it."""
-		dt = _parse_service_ts("2026-07-31T00:00:00+00:00")
-		self.assertIsNone(dt.tzinfo)
-		# Same instant, expressed through the site's zone rather than the host's.
-		expected = (datetime.fromisoformat("2026-07-31T00:00:00+00:00")
-			.astimezone(ZoneInfo(get_system_timezone())).replace(tzinfo=None))
-		self.assertEqual(dt, expected)
-
-	def test_it_is_the_shared_implementation_not_a_second_copy(self):
-		"""Two copies of a timezone conversion is how this defect spread from
-		`rsr_provider` to the Catalog Service page in the first place."""
-		with mock.patch.object(remote_catalog, "parse_service_ts",
-				return_value="sentinel") as shared:
-			self.assertEqual(_parse_service_ts("2026-07-31T00:00:00Z"), "sentinel")
-		shared.assert_called_once_with("2026-07-31T00:00:00Z")

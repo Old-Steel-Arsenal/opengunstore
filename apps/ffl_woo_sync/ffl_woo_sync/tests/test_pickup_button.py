@@ -230,6 +230,13 @@ class TestFirearmPickupOpensPaidDraft(FrappeTestCase):
 		_, cap, _ = _run(_order())
 		self.assertEqual(cap.payload["woo_online_order"], ORDER)
 
+	def test_the_posting_date_is_not_frozen_at_the_pickup_click(self):
+		"""With set_posting_time the draft kept the Pickup day; a submit days
+		later (NICS delayed, buyer back later) back-dated the stock issue,
+		revenue and sales tax away from the day the gun left."""
+		_, cap, _ = _run(_order())
+		self.assertFalse(cap.payload.get("set_posting_time"))
+
 	def test_it_stays_a_draft_and_the_order_stays_queued(self):
 		result, cap, _ = _run(_order())
 		cap.doc.insert.assert_called_once()

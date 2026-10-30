@@ -83,7 +83,6 @@
   },
   {
    "depends_on": "eval:['Retail Sale'].includes(doc.disposition_type)",
-   "description": "Only for Retail Sale (4473 / individual buyer). Dealer / FFL transfers use Destination FFL instead.",
    "fieldname": "customer",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -93,7 +92,7 @@
   },
   {
    "depends_on": "eval:['FFL Transfer','Dealer Transfer','Return'].includes(doc.disposition_type)",
-   "description": "Pick from your ATF FFL Record library. Use the 'Lookup FFL via ATF' button to add a new dealer from ATF EZ Check.",
+   "description": "Use the Lookup FFL via ATF button to add a dealer that is not in the list.",
    "fieldname": "destination_ffl",
    "fieldtype": "Link",
    "label": "Destination FFL",
@@ -110,7 +109,6 @@
   },
   {
    "depends_on": "eval:['Scrap','Destroyed'].includes(doc.disposition_type)",
-   "description": "Required by FastBound/ATF for a destruction.",
    "fieldname": "destroyed_witness1",
    "fieldtype": "Data",
    "label": "Witness 1",
@@ -137,7 +135,6 @@
    "reqd": 1
   },
   {
-   "description": "Pick an in-stock serial for the selected Item. Auto-picked when there's exactly one in stock.",
    "fieldname": "serial",
    "fieldtype": "Autocomplete",
    "in_list_view": 1,
@@ -183,7 +180,7 @@
   {
    "default": "0",
    "depends_on": "eval:['Retail Sale'].includes(doc.disposition_type)",
-   "description": "Set when a manager force-completed the sale because FastBound was unavailable/diverged (the 4473 was completed in FastBound but didn't sync back). Requires Sales Manager / System Manager + a reason.",
+   "description": "Set when a manager completed the sale because FastBound was unavailable or out of sync.",
    "fieldname": "manual_override",
    "fieldtype": "Check",
    "label": "Manual Override (4473 bypass)",

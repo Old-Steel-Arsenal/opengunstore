@@ -356,6 +356,27 @@ class FBAcquisitionPush(FrappeTestCase):
 				push_receipt_acquisitions_sync("PR-SYNC-FAIL")
 			client.delete_acquisition.assert_called_once_with("fb-ok-1")
 
+	def test_sync_push_never_deletes_adopted_acquisition(self):
+		"""Atomic receive: a gun whose serial was already in the book is ADOPTED
+		into a pre-existing FastBound acquisition (which can hold other guns).
+		When a later gun fails, compensation must delete only what this call
+		created — never the adopted acquisition."""
+		from ffl_integrations.fastbound.tasks import push_receipt_acquisitions_sync
+		names = [self._make_acquisition(self._testMethodName + s) for s in "ABC"]
+		for a in names:
+			frappe.db.set_value("FFL Acquisition", a, "purchase_receipt", "PR-SYNC-ADOPT",
+				update_modified=False)
+		with patch.object(FastBoundClient, "from_settings") as factory:
+			client = factory.return_value
+			client.post_acquisition.side_effect = [
+				{"acquisitionId": "fb-new-1", "items": []},
+				{"acquisitionId": "fb-shared", "adopted": True, "items": []},
+				FastBoundError("contact rejected", status_code=400),
+			]
+			with self.assertRaises(frappe.ValidationError):
+				push_receipt_acquisitions_sync("PR-SYNC-ADOPT")
+			client.delete_acquisition.assert_called_once_with("fb-new-1")
+
 	def test_payload_prefers_structured_name_with_optional_middle(self):
 		"""The FastBound contact uses the structured first/middle/last captured at
 		receive — a one-word customer_name no longer loses the last name."""

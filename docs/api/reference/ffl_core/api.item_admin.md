@@ -31,7 +31,7 @@ compliance flow runs.
 
 **Permissions:** Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:88`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:116`</sub>
 
 ## `force_delete`
 
@@ -57,7 +57,7 @@ history rows are left alone — they're audit trail.
 
 **Permissions:** System Manager only (destructive).
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:574`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:575`</sub>
 
 ## `get_item_stock`
 
@@ -77,7 +77,7 @@ show a stock badge without forcing the user to open Stock Balance.
 
 **Returns:** {item_code: total_actual_qty} — every requested code is present.
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:410`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:411`</sub>
 
 ## `preview_delete`
 
@@ -95,7 +95,7 @@ Preview a force_delete: per-doctype counts of rows that would be touched.
 
 **Permissions:** System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:498`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:499`</sub>
 
 ## `recompute_all_item_actual_qty`
 
@@ -116,7 +116,7 @@ Two statements:
 
 **Permissions:** System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:369`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:370`</sub>
 
 ## `set_stock`
 
@@ -145,4 +145,4 @@ when the user already knows the absolute target.
 
 **Permissions:** Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:187`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:193`</sub>

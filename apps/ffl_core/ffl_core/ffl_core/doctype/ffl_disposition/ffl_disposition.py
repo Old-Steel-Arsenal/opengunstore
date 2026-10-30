@@ -12,6 +12,7 @@ from frappe.model.document import Document
 
 from ffl_core.compliance.mode import paper_4473_mode
 from ffl_core.roles import COUNTER_4473_ROLES
+from ffl_core.serials import only_active_serial
 
 
 # Disposition types that exist in FastBound's DisposeType SmartList (and may be
@@ -26,7 +27,8 @@ _MANUAL_FORBIDDEN_DISPOSITIONS = frozenset({
 
 class FFLDisposition(Document):
 	def validate(self) -> None:
-		self._fill_serial_from_item()
+		if not self.serial:
+			self.serial = only_active_serial(self.item) or self.serial
 		self._validate_manual_override()
 		self._reject_manual_retail_sale()
 		self._reject_unsupported_disposition_types()
@@ -206,22 +208,6 @@ class FFLDisposition(Document):
 					.format(self.disposition_type, ", ".join(missing)),
 				title=_("Destruction Witnesses Required"),
 			)
-
-	def _fill_serial_from_item(self) -> None:
-		"""Server-side defence in depth: when there's exactly one active Serial
-		No for the selected Item and the field is blank, fill it. Mirrors the
-		auto-pick the doctype JS does, but also covers REST/script callers
-		that bypass the form. (All firearms are has_serial_no=1 now — the
-		Used Firearm + Item.firearm_serial path is gone.)"""
-		if not self.item or self.serial:
-			return
-		active = frappe.get_all(
-			"Serial No",
-			filters={"item_code": self.item, "status": "Active"},
-			pluck="name", limit=2,
-		)
-		if len(active) == 1:
-			self.serial = active[0]
 
 	def _enforce_compliance_for_retail_sale(self) -> None:
 		if self.disposition_type != "Retail Sale":

@@ -136,13 +136,7 @@ def apply_shipping_charge(doc, method: str | None = None) -> bool:
 
 	# Posting a row → make sure the account actually exists (creates it once).
 	account = ensure_shipping_account(company)
-	# A company without a default cost center would save fine but FAIL at submit
-	# with a cryptic GL error (the income charge row needs a cost center).
-	cost_center = (
-		frappe.db.get_value("Company", company, "cost_center")
-		or frappe.db.get_value(
-			"Cost Center", {"company": company, "is_group": 0, "disabled": 0},
-			"name", order_by="lft"))
+	cost_center = company_cost_center(company)
 
 	doc.set("taxes", [t for t in taxes if t.account_head != account and t not in mirrors])
 	doc.append("taxes", {
@@ -188,6 +182,20 @@ def apply_shipping_charge(doc, method: str | None = None) -> bool:
 		t.idx = i
 	doc.calculate_taxes_and_totals()
 	return True
+
+
+def company_cost_center(company: str) -> str | None:
+	"""The company's default cost center, else its first enabled leaf one.
+
+	A company without a default cost center would save a charge row fine but
+	FAIL at submit with a cryptic GL error (the income charge row needs a cost
+	center). GunBroker's own charge rows use this too, so the rows on one
+	invoice cannot disagree.
+	"""
+	return (frappe.db.get_value("Company", company, "cost_center")
+		or frappe.db.get_value(
+			"Cost Center", {"company": company, "is_group": 0, "disabled": 0},
+			"name", order_by="lft"))
 
 
 def shipping_tax_inclusive_setting() -> int:
