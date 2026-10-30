@@ -394,6 +394,7 @@ A customer's gun left for gunsmithing: intake, authorization, deposit, the work,
 
 | field | type | label | reqd | options |
 |---|---|---|---|---|
+| `scan_id` | Data | Scan ID |  |  |
 | `customer` | Link | Customer | ✓ | Customer |
 | `phone` | Data | Phone |  | Phone |
 | `email` | Data | Email |  | Email |

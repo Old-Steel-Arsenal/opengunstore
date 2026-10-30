@@ -1372,6 +1372,10 @@
         "type": "object",
         "description": "Custom DocType (ffl_core); CRUD via /api/resource/Gunsmith%20Work%20Order — see docs/api/frappe-rest.md.",
         "properties": {
+          "scan_id": {
+            "type": "string",
+            "description": "Scan ID"
+          },
           "customer": {
             "type": "string",
             "description": "Customer (Link: Customer)"
@@ -12676,7 +12680,7 @@
           "ffl_core"
         ],
         "summary": "Which Pending Order rows belong to a Banned customer, for the page's red badge.",
-        "description": "A web or GunBroker order is booked to a customer only once it has shipped, so\nits buyer is looked up the way that booking will: a Woo order by its billing\nemail (customer email, then merged-email alias); a GunBroker order by its linked\ncustomer, then the buyer's GunBroker id (field, then alias), then email.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:326`",
+        "description": "A web or GunBroker order is booked to a customer only once it has shipped, so\nits buyer is looked up the way that booking will: a Woo order by its billing\nemail (customer email, then merged-email alias); a GunBroker order by its linked\ncustomer, then the buyer's GunBroker id (field, then alias), then email.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:358`",
         "operationId": "ffl_core.customer_flags.banned_order_rows",
         "responses": {
           "200": {
@@ -12768,13 +12772,75 @@
         }
       }
     },
+    "/api/method/ffl_core.customer_flags.find_customers_by_scan": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Customers a scanned licence may belong to (the gunsmith work order's Scan ID): by",
+        "description": "its number (only while ID numbers are stored, as :func:`find_customers_by_id_number`),\nthen by first + last name. A name match is only a guess, so the caller lets the clerk\npick; a number match is the person.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:265`",
+        "operationId": "ffl_core.customer_flags.find_customers_by_scan",
+        "responses": {
+          "200": {
+            "description": "[{\"name\", \"customer_name\", \"customer_status\", \"address\": primary address on one line, \"by_id\": matched on the ID number}], at most 5.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "array"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "first": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "First name read from the ID."
+                  },
+                  "last": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Last name read from the ID."
+                  },
+                  "id_number": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The licence number read from the ID, if any."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.customer_flags.find_possible_duplicates": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "Existing customers a new one may duplicate, for the New Customer dialog.",
-        "description": "Matches the customer's email (or an email merged into it), mobile number\n(last 10 digits) and — while the store keeps ID numbers — an ID number.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:271`",
+        "description": "Matches the customer's email (or an email merged into it), mobile number\n(last 10 digits) and — while the store keeps ID numbers — an ID number.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:303`",
         "operationId": "ffl_core.customer_flags.find_possible_duplicates",
         "responses": {
           "200": {

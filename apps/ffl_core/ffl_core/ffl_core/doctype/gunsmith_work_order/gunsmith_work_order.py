@@ -24,6 +24,7 @@ class GunsmithWorkOrder(Document):
 			self.company = frappe.defaults.get_user_default("Company") \
 				or frappe.db.get_single_value("Global Defaults", "default_company")
 		self.serial_number = (self.serial_number or "").strip()
+		self.scan_id = None   # the raw licence barcode is read by the form, never kept
 		self._fill_contact()
 		if self.state:
 			# The dropdown's list is sent at login, so the value is checked here.

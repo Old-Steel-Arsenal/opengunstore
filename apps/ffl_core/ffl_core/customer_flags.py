@@ -261,6 +261,38 @@ def find_customers_by_id_number(id_number: str) -> list[dict]:
 	return _customer_rows(names)
 
 
+@frappe.whitelist()
+def find_customers_by_scan(first: str | None = None, last: str | None = None,
+		id_number: str | None = None) -> list[dict]:
+	"""Customers a scanned licence may belong to (the gunsmith work order's Scan ID): by
+	its number (only while ID numbers are stored, as :func:`find_customers_by_id_number`),
+	then by first + last name. A name match is only a guess, so the caller lets the clerk
+	pick; a number match is the person.
+
+	Args:
+	    first: First name read from the ID.
+	    last: Last name read from the ID.
+	    id_number: The licence number read from the ID, if any.
+
+	Returns:
+	    [{"name", "customer_name", "customer_status", "address": primary address on one
+	    line, "by_id": matched on the ID number}], at most 5.
+	"""
+	from ffl_core.api.trade_in import customer_address_line
+
+	frappe.has_permission("Customer", "read", throw=True)
+	by_id = [r.name for r in find_customers_by_id_number(id_number)] if id_number else []
+	by_name = frappe.get_all("Customer", pluck="name", limit=_MAX_MATCHES, order_by="modified desc",
+		filters={"ffl_first_name": (first or "").strip(), "ffl_last_name": (last or "").strip(), "disabled": 0}) \
+		if (first or "").strip() and (last or "").strip() else []
+	names = list(dict.fromkeys(by_id + by_name))[:_MAX_MATCHES]
+	rows = _customer_rows(names)
+	for r in rows:
+		r["address"] = customer_address_line(r.name)
+		r["by_id"] = r.name in by_id
+	return rows
+
+
 def _phone_key(value: str | None) -> str:
 	"""The last 10 digits of a phone number (drops +1, punctuation)."""
 	digits = re.sub(r"\D", "", value or "")

@@ -797,6 +797,19 @@ class BoundBook(_Base):
 		self.assertEqual(gunsmith.charge_details("_Test GW Part", self.cust.name),
 			{"item_name": "Extractor", "rate": flt(rate)})
 
+	def test_a_scanned_licence_finds_the_customer_by_name(self):
+		from ffl_core.customer_flags import find_customers_by_scan
+
+		rows = find_customers_by_scan("Pat", "Owner")
+		self.assertIn(self.cust.name, [r["name"] for r in rows])
+		row = next(r for r in rows if r["name"] == self.cust.name)
+		self.assertEqual((row["address"], row["by_id"]), ("12 Main St, Springfield TX 75024", False))
+		self.assertEqual(find_customers_by_scan("Nobody", "Anywhere-" + frappe.generate_hash(length=6)), [])
+
+	def test_the_raw_scan_is_never_kept(self):
+		job = _job(self.cust, scan_id="@ANSI 636015 DCSOWNER DACPAT")
+		self.assertFalse(frappe.db.get_value(gunsmith.DOCTYPE, job.name, "scan_id"))
+
 	def test_the_form_gets_the_labor_item_from_the_server(self):
 		self.assertEqual(gunsmith.labor_item(), setup.labor_item())
 		self.assertEqual(gunsmith.get_state(_job(self.cust).name)["labor_item"], setup.labor_item())

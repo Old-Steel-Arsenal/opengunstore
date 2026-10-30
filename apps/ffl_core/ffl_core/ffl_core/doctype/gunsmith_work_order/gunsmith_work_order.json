@@ -10,6 +10,7 @@
  "engine": "InnoDB",
  "field_order": [
   "section_customer",
+  "scan_id",
   "customer",
   "cb_customer_1",
   "phone",
@@ -92,6 +93,14 @@
    "fieldname": "section_customer",
    "fieldtype": "Section Break",
    "label": "Customer"
+  },
+  {
+   "fieldname": "scan_id",
+   "fieldtype": "Data",
+   "label": "Scan ID",
+   "placeholder": "Scan the back of the licence",
+   "depends_on": "eval:!doc.purchase_receipt && !['Picked Up', 'Cancelled'].includes(doc.status)",
+   "no_copy": 1
   },
   {
    "fieldname": "customer",
