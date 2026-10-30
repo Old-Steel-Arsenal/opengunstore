@@ -273,6 +273,9 @@ def _pending_row(order, *, ss_enabled: bool, limit_days: int = 7, today=None,
 		"is_cr": bool(order.is_cr_transfer),
 		"cr_prefill": _cr_prefill(order) if order.is_cr_transfer else None,
 		"sales_invoice": order.sales_invoice or None,
+		# A failed submit can leave the order linked to a Draft: Ship refuses it,
+		# Create Invoice is the way on.
+		"sales_invoice_posted": cint(invoice.get("docstatus")) == 1,
 		"sales_orders": [],
 		"legs": None,
 		"note": "",
@@ -332,7 +335,8 @@ def _invoice_row(sales_invoice: str | None) -> dict:
 		return {}
 	return frappe.db.get_value(
 		"Sales Invoice", sales_invoice,
-		["name", "outstanding_amount", "shipstation_order_id", "shipstation_status"],
+		["name", "docstatus", "outstanding_amount", "shipstation_order_id",
+			"shipstation_status"],
 		as_dict=True) or {}
 
 

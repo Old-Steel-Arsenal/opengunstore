@@ -360,6 +360,17 @@ class ItStaysOutOfTheWayOfBackgroundWork(_GateCase):
 		doc_events.block_sale_of_sold_gb_listing(self._invoice("SN-1", is_return=1))
 		self.assertEqual(session.calls, [])
 
+	def test_a_gunbroker_orders_own_invoice_is_exempt(self):
+		"""The revenue invoice raised at Dispose sells the gun to the buyer GunBroker
+		reports. Probing it finds its own listing sold and would strand the order
+		with no invoice."""
+		self._serial("SN-1", gb_item_id=ITEM_A)
+		session = self._gunbroker([])
+		doc_events.block_sale_of_sold_gb_listing(
+			self._invoice("SN-1", gunbroker_order="GB-ORD-0001"))
+		self.assertEqual(session.calls, [])
+		self.assertEqual(self.msgprints, [])
+
 
 class ItKeepsToItsTimeBudget(_GateCase):
 	def test_one_request_per_distinct_listing_however_many_lines(self):
