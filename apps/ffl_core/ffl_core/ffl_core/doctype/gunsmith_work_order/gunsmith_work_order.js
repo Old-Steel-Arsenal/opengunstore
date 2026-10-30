@@ -9,11 +9,32 @@ frappe.ui.form.on('Gunsmith Work Order', {
 		new erpnext.utils.BarcodeScanner({ frm, items_table_name: 'lines' }).process_scan();
 	},
 	refresh(frm) {
-		if (frm.is_new()) return;
+		frm._estimate = flt(frm.doc.estimated_cost);
+		if (frm.is_new()) {
+			// The labor charge is there from the start (the server adds it too); parts go under it.
+			if (!(frm.doc.lines || []).length) {
+				frappe.db.get_single_value('FFL Settings', 'gunsmith_labor_item').then((item) => {
+					if (item && !(frm.doc.lines || []).length) {
+						frm.add_child('lines', { item_code: item, qty: 1, rate: flt(frm.doc.estimated_cost) });
+						frm.refresh_field('lines');
+					}
+				});
+			}
+			return;
+		}
 		// A closed job is kept as it is (the server refuses changes too).
 		if (['Picked Up', 'Cancelled'].includes(frm.doc.status)) frm.disable_form();
 		frappe.call({ method: 'ffl_core.gunsmith.get_state', args: { name: frm.doc.name } })
 			.then((r) => draw(frm, r.message || {}));
+	},
+	estimated_cost(frm) {
+		// The labor charge follows the estimate until someone prices it by hand (as the server does).
+		const was = frm._estimate || 0;
+		frm._estimate = flt(frm.doc.estimated_cost);
+		frappe.db.get_single_value('FFL Settings', 'gunsmith_labor_item').then((item) => {
+			(frm.doc.lines || []).filter((r) => r.item_code === item && flt(r.rate) === was)
+				.forEach((r) => frappe.model.set_value(r.doctype, r.name, 'rate', frm._estimate));
+		});
 	},
 	customer(frm) {
 		if (!frm.doc.customer) return;
@@ -47,7 +68,7 @@ frappe.ui.form.on('Gunsmith Work Order Line', {
 			locals[cdt][cdn].qty = 0;
 			return;
 		}
-		// The first charge is usually the labor: offer the store's labor item.
+		// A first row (the labor charge removed and re-added) gets the labor item.
 		if ((frm.doc.lines || []).length === 1) {
 			frappe.db.get_single_value('FFL Settings', 'gunsmith_labor_item').then((item) => {
 				if (item && !locals[cdt][cdn].item_code) frappe.model.set_value(cdt, cdn, 'item_code', item);

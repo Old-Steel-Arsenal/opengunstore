@@ -33,6 +33,7 @@ class GunsmithWorkOrder(Document):
 			# Government-ID scans are PII: private, as Receive Goods keeps them.
 			from ffl_core.api.receive_goods import _ensure_private_file
 			self.id_document = _ensure_private_file(self.id_document)
+		self._labor_line(before)
 		for row in self.get("lines") or []:
 			row.qty = flt(row.qty) or 1
 			row.amount = flt(row.qty * flt(row.rate), 2)
@@ -64,6 +65,21 @@ class GunsmithWorkOrder(Document):
 		if self.purchase_receipt or self.deposit_invoice or self.pickup_invoice or self.intake_agreement:
 			frappe.throw(_("A work order with a bound-book entry, an invoice or a signed authorization is kept. "
 				"Cancel it instead."), frappe.PermissionError)
+
+	def _labor_line(self, before):
+		"""A job starts with the labor charge at the estimate, so a scanned part never leaves
+		the labor off the bill; it follows the estimate until someone prices it by hand."""
+		from ffl_core.setup.gunsmith import labor_item
+
+		labor = labor_item()
+		if before is None:
+			if not self.get("lines") and frappe.db.exists("Item", labor):
+				self.append("lines", {"item_code": labor, "qty": 1, "rate": flt(self.estimated_cost)})
+			return
+		if flt(self.estimated_cost) != flt(before.estimated_cost):
+			for row in self.get("lines") or []:
+				if row.item_code == labor and flt(row.rate) == flt(before.estimated_cost):
+					row.rate = flt(self.estimated_cost)
 
 	def _fill_contact(self):
 		"""The paper form's customer block, from the customer, where left blank."""

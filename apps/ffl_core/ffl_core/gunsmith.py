@@ -604,15 +604,18 @@ def _pickup(doc) -> dict:
 	up now with nothing to bill, else the draft pick-up invoice — the job's charges and
 	a locked negative deposit line releasing what is held, up to the bill with tax."""
 	held = deposit_held(doc.name)
-	if not doc.get("lines"):
+	labor = setup.labor_item()
+	# The labor charge every job starts with, left at $0, is no labor billed; a $0 part
+	# still goes on the bill (it leaves stock).
+	lines = [r for r in doc.get("lines") or [] if not (r.item_code == labor and not flt(r.rate))]
+	if not lines:
 		# Nothing to bill: the gun goes back now, and any deposit is refunded after.
 		complete_pickup(doc)
 		return {"picked_up": True, "refund_due": held}
 	labor_desc = (doc.work_performed or "").strip()
-	labor = setup.labor_item()
 	items = [{"item_code": r.item_code, "qty": flt(r.qty) or 1, "rate": flt(r.rate), "price_list_rate": flt(r.rate),
 		"description": (r.description or (labor_desc if r.item_code == labor else "") or None), LINK_FIELD: doc.name}
-		for r in doc.lines]
+		for r in lines]
 	inv = _new_invoice(doc, items)
 	# The job's charges are the bill the work order set: no manager price approval for them here
 	# (price_approval.mark_system_priced); a lower price at the register asks as any other.
@@ -624,7 +627,7 @@ def _pickup(doc) -> dict:
 		inv.set_missing_values()
 	inv.insert()
 	# Pricing may have moved a charge on the way in; the job's charges are the bill.
-	want = {r.idx: flt(r.rate) for r in doc.lines}
+	want = {i: flt(r.rate) for i, r in enumerate(lines, 1)}
 	moved = False
 	for row in inv.items:
 		if row.item_code != DEPOSIT_ITEM and row.idx in want and flt(row.rate) != want[row.idx]:

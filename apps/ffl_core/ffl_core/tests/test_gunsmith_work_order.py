@@ -50,6 +50,8 @@ def _job(customer, **fields):
 def _ready(job, lines=()):
 	job.reload()
 	job.work_performed = "Fitted a new extractor, function tested."
+	if lines:
+		job.set("lines", [])   # the given charges replace the labor line the job starts with
 	for item_code, rate in lines:
 		job.append("lines", {"item_code": item_code, "qty": 1, "rate": rate})
 	job.save(ignore_permissions=True)
@@ -165,6 +167,21 @@ class Status(_Base):
 		self.assertEqual(job.phone, "555-0100")
 		self.assertEqual((job.address_line1, job.city, job.state, job.zip), ("12 Main St", "Springfield", "TX", "75024"))
 		self.assertTrue(job.name.startswith("GWO-"))
+
+	def test_a_new_job_starts_with_the_labor_at_the_estimate(self):
+		job = _job(self.cust, estimated_cost=120)
+		self.assertEqual([(r.item_code, flt(r.rate)) for r in job.lines], [(LABOR_ITEM, 120)])
+		job.estimated_cost = 150
+		job.save(ignore_permissions=True)
+		self.assertEqual(flt(job.lines[0].rate), 150, "follows the estimate")
+		job.lines[0].rate = 90
+		job.save(ignore_permissions=True)
+		job.estimated_cost = 200
+		job.save(ignore_permissions=True)
+		self.assertEqual(flt(job.lines[0].rate), 90, "a hand-set price stays")
+		job.lines = []
+		job.save(ignore_permissions=True)
+		self.assertFalse(job.lines, "a removed labor charge is not put back")
 
 	def test_status_moves_only_through_the_actions(self):
 		job = _job(self.cust)
