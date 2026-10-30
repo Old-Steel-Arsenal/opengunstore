@@ -131,10 +131,6 @@ differs by more than**, 5.00 by default, sends an alert when the freight RSR
 invoices is further than that from the estimate booked when the order was
 placed.
 
-An order shipped to your store is priced at RSR's case price for every full case
-in a line, when RSR lists one for the item. See
-[Build and ship an order](../selling/create-order.md#the-summary-and-freight-estimate).
-
 **Buttons.** **Test Connection** on the toolbar checks the catalog service. With
 **Allow live orders** on, it also signs in to RSR with each account number you
 filled in, and flags a blank **Order email**. It places no order. The RSR card on
@@ -216,9 +212,8 @@ shop:
 | Long guns, ammunition and accessories | 500.00 | 5.00, **Long guns / ammo / accessories below that** |
 
 Those are the defaults. An order holding both pays the higher of the two
-charges. The same rule prices a Sports South order shipped to the store, both the
-shipping choices on the Distributor Order and the freight recorded when it is
-placed. Only the air upgrades keep the flat rates above. The Sports South card on the hub reads the rule back in one line.
+charges. Sports South orders to the store use this rule on the Distributor Order too. Only
+the air upgrades keep the flat rates above. The Sports South card on the hub reads the rule back in one line.
 **Alert when invoiced freight differs by more than**, 5.00 by default, works as
 it does for RSR.
 
@@ -281,14 +276,9 @@ and **Drop-ship accessory order**, 8.00. Each is per order. The freight Lipsey's
 invoices always replaces the estimate. Orders shipped to your store are not
 estimated, and Create Order reads **freight unknown** for them.
 
-**Status tab.** Lipsey's has no order status call. Once a day the POS reads the
-shipping list Lipsey's publishes for the day before: invoice number, Lipsey's
-order number, your PO and tracking. That list lands in the Invoices view with the
-hourly invoice pull, and the order poll then marks the order shipped.
-**Shipping polled through** shows the last day read for each login (dealer and
-drop-ship), and **Last shipping poll** when. A day that fails is read again on the
-next pull. A login that keeps failing does not hold up the other one. **Last
-error** holds the last failure.
+**Status tab.** The order is marked shipped the day after Lipsey's ships it.
+**Shipping polled through** shows the last day read for each login, and **Last
+shipping poll** when. **Last error** holds the last failure.
 
 **Buttons.** **Test Connection** on the toolbar checks the catalog service. With
 **Allow live orders** on, it also signs in with each login that is filled in and
@@ -296,10 +286,7 @@ makes one small read. It places no order.
 
 **Lipsey's orders in the POS.**
 
-- Lipsey's adds a new store order to an open order of the same kind, long guns
-  or handguns, when one exists. Several POS orders can then share one Lipsey's
-  order number. Each keeps its own PO, and a shipment is matched to every order on
-  that Lipsey's order that was placed by the invoice date.
+- Several POS orders can share one Lipsey's order number. Each keeps its own PO.
 - The order's lines take the quantity and price Lipsey's confirmed when the order
   was placed. A line Lipsey's could not fill is marked cancelled. A line Lipsey's
   answer does not name, while it did answer for an order, is counted as ordered,

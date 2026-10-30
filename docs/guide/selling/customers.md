@@ -92,8 +92,8 @@ family or be deleted.
 
 ## Memberships and saved cards
 
-Under **Agreements** on a customer, **Memberships** sells and manages their
-membership plans, and **Saved cards** lists the cards kept on file. See
+Under **Agreements** on a customer, **Memberships** sells and manages the
+customer's memberships, and **Saved cards** lists the cards kept on file. See
 [Memberships](memberships.md) and
 [Saving a card to charge later](payments.md#saving-a-card-to-charge-later).
 

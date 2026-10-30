@@ -154,7 +154,9 @@ See [Card refund on a counter order](#card-refund-on-a-counter-order).
 
 With the customer's signed authorization, a card paid at the terminal can be kept
 on file and charged later against a counter order's balance. It is off until a
-System Manager turns it on in the [Payments hub](#the-payments-hub): on the
+System Manager turns it on in the [Payments hub](#the-payments-hub). First create an
+agreement under **Customers → Agreement templates** that is **Active** and has
+**Signed** set to **Per customer**. Then, on the
 **Card on file** card, pick the **Authorization the customer signs first**, tick
 **Offer "Save this card"** and click **Save**. The card reads **on, but the
 active processor cannot save cards** when the processor cannot keep cards.
@@ -162,16 +164,15 @@ active processor cannot save cards** when the processor cannot keep cards.
 **Saving the card.** The customer must be a named customer, not the walk-in
 customer.
 
-1. Charge the card on the terminal. In the **Card payment** dialog on the
-   register, or in **Record Payment** on the
-   [Pending Order queue](pending-orders.md) with **Credit Card**, tick **Save this
-   card**.
+1. In the **Card payment** dialog on the register, or **Record Payment** with
+   **Credit Card** on the [Pending Order queue](pending-orders.md), tick **Save this
+   card**, then charge as usual.
 2. If the customer has not signed the card-on-file authorization, it goes to the
    signing tablet, or shows as a QR code. **Waiting for the signature** stays
    open for up to ten minutes. The card is charged once it is signed. **Cancel**
    goes back to the card dialog.
 
-The sale does not depend on the save. A green message reads **Card saved for later
+A green message reads **Card saved for later
 charges**. If the card was charged but could not be kept, **Card charged but not
 saved** says why, and the money stays recorded on the sale.
 
@@ -191,8 +192,9 @@ charged** and write what you checked under **What you checked in the portal**.
 
 The customer's saved cards are listed under **Saved cards** below **Agreements**
 on the customer. A manager can click **Remove** and give a reason. The processor
-forgets the card, and it can never be charged again. Memberships that renew
-automatically use a card saved this way. See [Memberships](memberships.md).
+forgets the card, and it can never be charged again. A card saved here is not used for membership renewals. A membership saves its own
+card when its first payment is charged with auto-renew. See
+[Memberships](memberships.md).
 
 ## The Card Charges table
 
@@ -299,10 +301,8 @@ refund it instead. A charge that was partly refunded cannot be voided.
 A **Return** is refused on an order that sells stock items, carries a serial
 number or a delivery, or has a bound book entry. The dialog says why. Use
 **Cancel Order** or a sales return for those, or choose **Collect again**. The
-amount must match what the credit note comes to, to the cent.
-
-A membership invoice can only be refunded as a **Return**, and only after the
-membership is ended with **End it today**. See [Memberships](memberships.md).
+A Return refunds what the credit note comes to, which can be a cent off the
+amount you typed. If it is further off, the dialog says what to enter.
 
 If the processor does not confirm a void or refund, the message reads **Not
 confirmed**. Do not try again, because the money may have moved. Look in the
@@ -354,9 +354,6 @@ Each processor card shows:
   found, including how many terminals the key is allowed to use and which
   terminal is set as the default.
 - A link into the processor's own settings, where the credentials live.
-
-Below the processor cards, the **Card on file** card holds the switch for
-[saving cards](#saving-a-card-to-charge-later).
 
 <figure markdown>
 ![Payroc Settings](../screenshots/settings-payroc.webp){ .screenshot }

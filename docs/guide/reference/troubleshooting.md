@@ -329,8 +329,7 @@ order's invoice did not post.
 
 **What to do.** Click **Create Invoice**. **Invoice … posted — this order can now
 ship.** means **Ship** is back. **Invoice … was left in Draft. Open it to see
-why.** means open that invoice and read the reason. Do not dispose the order
-again. See [GunBroker](../channels/gunbroker.md#working-the-order).
+why.** means open that invoice and read the reason. See [GunBroker](../channels/gunbroker.md#working-the-order).
 
 **Escalate to.** A manager if the invoice stays in Draft.
 

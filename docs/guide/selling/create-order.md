@@ -433,11 +433,7 @@ a case**. The Distributor Order line shows the same note under **Case Price**.
 Drop-ship lines pay the unit cost, and the cost RSR acknowledges replaces the
 estimate.
 
-A Lipsey's drop-ship order is estimated from its flat rates. An order to your
-store reads **freight unknown**. A Sports South order shipped to your store uses
-Sports South's store shipping rule, not the drop-ship rate: handguns ship free
-with 3 or more or $750 or more, and everything else free at $500 or more, below
-that 5.00 by default. Both thresholds are on the Sports South Freight tab.
+A Lipsey's order to your store is not estimated and reads **freight unknown**. A Sports South order to your store is priced by its store shipping rule in [Sports South Settings](../settings/integrations.md#sports-south-settings), not the drop-ship rates.
 
 A Sports South order also shows **Signature**, **Adult signature** and **Insurance**
 checkboxes. They start from the delivery options in
@@ -580,9 +576,7 @@ list, and turns green with "Ready to create." when nothing is. Click
 9. Deletes the draft you resumed, if any.
 10. When the buyer has not signed an agreement the sale needs (the Used Item
     Agreement, or one an item names), emails the signing link to the order's
-    email, or the customer's when there is none. One link covers every gun on
-    the order, unless the agreement has **One copy per gun** ticked. The order
-    is created either
+    email, or the customer's when there is none. The order is created either
     way. With **Dispose & ship now** the order is not disposed: the gun waits on
     the Pending Order queue until it is signed.
 

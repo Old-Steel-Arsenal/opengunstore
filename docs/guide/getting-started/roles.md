@@ -126,9 +126,10 @@ click them, regardless of which page you are on:
 - **Card refund** (**Void**, **Refund**, **Resolve card reversal**), **Charge saved
   card** and **Remove** on a saved card, on a counter order's Sales Invoice and the
   customer. See [Taking payment](../selling/payments.md).
-- On the [Memberships](../selling/memberships.md) page: creating and changing
-  plans, **Needs attention**, **Retry card**, **Look up card charge** and
-  **Cancel**. Selling a membership and **Take payment** are for counter staff.
+- Memberships: creating and changing plans, **Needs attention**, **Retry card**,
+  **Look up card charge** and **Cancel**, on the
+  [Memberships](../selling/memberships.md) page and the customer's panel. Selling a
+  membership and **Take payment** are for counter staff.
 - **Manager Override 4473** on a parked firearm order, whether its 4473 is
   pending or was done straight in the bound book. See
   [Selling a firearm](../selling/firearm-sale.md#manager-override).
