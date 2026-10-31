@@ -4,24 +4,33 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "tab_connection",
   "section_status",
   "enabled",
-  "sandbox_mode",
-  "section_creds",
   "api_key",
-  "column_creds",
-  "base_url_override",
-  "request_timeout_seconds",
+  "column_status",
+  "sandbox_mode",
   "section_shipping",
   "store_id",
   "ship_from_warehouse_id",
-  "default_parcel_weight_oz"
+  "column_shipping",
+  "default_parcel_weight_oz",
+  "tab_advanced",
+  "section_creds",
+  "base_url_override",
+  "column_creds",
+  "request_timeout_seconds"
  ],
  "fields": [
   {
+   "fieldname": "tab_connection",
+   "fieldtype": "Tab Break",
+   "label": "Connection"
+  },
+  {
    "fieldname": "section_status",
    "fieldtype": "Section Break",
-   "label": "Status"
+   "label": "Connection"
   },
   {
    "default": "0",
@@ -31,38 +40,20 @@
    "label": "Enabled"
   },
   {
-   "default": "0",
-   "fieldname": "sandbox_mode",
-   "fieldtype": "Check",
-   "label": "Sandbox Mode"
-  },
-  {
-   "fieldname": "section_creds",
-   "fieldtype": "Section Break",
-   "label": "Credentials"
-  },
-  {
    "description": "A V2 key from ShipStation → Account → API Settings; sandbox keys start with TEST_.",
    "fieldname": "api_key",
    "fieldtype": "Password",
    "label": "API Key"
   },
   {
-   "fieldname": "column_creds",
+   "fieldname": "column_status",
    "fieldtype": "Column Break"
   },
   {
-   "default": "https://api.shipstation.com/v2",
-   "description": "Leave blank unless pointing at a sandbox host.",
-   "fieldname": "base_url_override",
-   "fieldtype": "Data",
-   "label": "Base URL Override"
-  },
-  {
-   "default": "30",
-   "fieldname": "request_timeout_seconds",
-   "fieldtype": "Int",
-   "label": "Request Timeout (s)"
+   "default": "0",
+   "fieldname": "sandbox_mode",
+   "fieldtype": "Check",
+   "label": "Sandbox Mode"
   },
   {
    "fieldname": "section_shipping",
@@ -80,16 +71,47 @@
    "label": "Ship-From Warehouse ID"
   },
   {
+   "fieldname": "column_shipping",
+   "fieldtype": "Column Break"
+  },
+  {
    "default": "16",
    "description": "Fallback parcel weight (ounces) when an Item has no weight on file.",
    "fieldname": "default_parcel_weight_oz",
    "fieldtype": "Float",
    "label": "Default Parcel Weight (oz)"
+  },
+  {
+   "fieldname": "tab_advanced",
+   "fieldtype": "Tab Break",
+   "label": "Advanced"
+  },
+  {
+   "fieldname": "section_creds",
+   "fieldtype": "Section Break",
+   "label": "Advanced"
+  },
+  {
+   "default": "https://api.shipstation.com/v2",
+   "description": "Leave blank unless pointing at a sandbox host.",
+   "fieldname": "base_url_override",
+   "fieldtype": "Data",
+   "label": "Base URL Override"
+  },
+  {
+   "fieldname": "column_creds",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "30",
+   "fieldname": "request_timeout_seconds",
+   "fieldtype": "Int",
+   "label": "Request Timeout (s)"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-07-02 12:00:00",
+ "modified": "2026-10-30 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "ShipStation Settings",

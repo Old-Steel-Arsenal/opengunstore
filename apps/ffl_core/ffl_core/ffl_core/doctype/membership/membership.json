@@ -1,7 +1,7 @@
 {
  "actions": [],
  "creation": "2026-10-27 12:00:00.000000",
- "modified": "2026-10-28 12:00:00.000000",
+ "modified": "2026-10-30 18:00:00.000000",
  "modified_by": "Administrator",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -23,16 +23,16 @@
   "section_renewal",
   "auto_renew",
   "saved_card",
-  "column_break_b",
   "grace_until",
+  "column_break_b",
   "last_charge_status",
   "last_charge_attempt",
   "renewal_reminder_for",
   "section_cancel",
   "cancel_at_period_end",
   "cancelled_on",
-  "cancelled_by",
   "column_break_c",
+  "cancelled_by",
   "cancel_reason",
   "section_invoices",
   "invoices"
@@ -126,14 +126,14 @@
    "description": "Renewals are charged to this card."
   },
   {
-   "fieldname": "column_break_b",
-   "fieldtype": "Column Break"
-  },
-  {
    "fieldname": "grace_until",
    "fieldtype": "Date",
    "label": "Grace Until",
    "read_only": 1
+  },
+  {
+   "fieldname": "column_break_b",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "last_charge_status",
@@ -176,15 +176,15 @@
    "read_only": 1
   },
   {
+   "fieldname": "column_break_c",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "cancelled_by",
    "fieldtype": "Link",
    "label": "Cancelled By",
    "options": "User",
    "read_only": 1
-  },
-  {
-   "fieldname": "column_break_c",
-   "fieldtype": "Column Break"
   },
   {
    "fieldname": "cancel_reason",

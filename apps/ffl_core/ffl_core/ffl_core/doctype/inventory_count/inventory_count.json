@@ -5,7 +5,7 @@
  "engine": "InnoDB",
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-01 12:00:00.000000",
+ "modified": "2026-10-30 19:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Inventory Count",
@@ -16,21 +16,22 @@
  "istable": 0,
  "sort_field": "creation",
  "sort_order": "DESC",
- "title_field": "name",
  "track_changes": 1,
  "field_order": [
   "company",
   "status",
   "column_break_1",
   "include_custody",
+  "notes",
   "section_scope",
   "warehouses",
   "item_groups",
   "section_result",
   "stock_reconciliation",
+  "column_break_result",
   "finalized_by",
   "finalized_at",
-  "notes",
+  "section_serial_report",
   "serial_report"
  ],
  "fields": [
@@ -68,6 +69,11 @@
    "set_only_once": 1
   },
   {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  },
+  {
    "fieldname": "section_scope",
    "fieldtype": "Section Break",
    "label": "Scope"
@@ -102,6 +108,10 @@
    "no_copy": 1
   },
   {
+   "fieldname": "column_break_result",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "finalized_by",
    "fieldtype": "Link",
    "options": "User",
@@ -117,9 +127,8 @@
    "no_copy": 1
   },
   {
-   "fieldname": "notes",
-   "fieldtype": "Small Text",
-   "label": "Notes"
+   "fieldname": "section_serial_report",
+   "fieldtype": "Section Break"
   },
   {
    "fieldname": "serial_report",

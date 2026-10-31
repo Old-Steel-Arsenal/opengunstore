@@ -20,6 +20,7 @@ frappe.pages['serial-photos'].on_page_load = function (wrapper) {
 		.sp-card .sp-thumbs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; min-height: 8px; }
 		.sp-card .sp-thumbs img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border-color); }
 		.sp-card .sp-thumbs .sp-more { width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px dashed var(--border-color); color: var(--text-muted); font-size: 12px; }
+		.sp-body { padding: 0 15px 24px; }
 		.sp-empty { color: var(--text-muted); margin-top: 16px; }
 	`).appendTo(page.body);
 
@@ -29,13 +30,14 @@ frappe.pages['serial-photos'].on_page_load = function (wrapper) {
 		get_query: () => ({ filters: { has_serial_no: 1 } }),
 		change() { state.item = item.get_value(); load(); },
 	});
-	const only = page.add_field({
-		fieldtype: 'Check', label: __('In stock only'), fieldname: 'in_stock_only', default: 1,
-		change() { state.in_stock_only = only.get_value() ? 1 : 0; load(); },
-	});
+	// Text filters side by side, the checkbox last (no gap between the two inputs).
 	const search = page.add_field({
 		fieldtype: 'Data', label: __('Serial contains'), fieldname: 'search',
 		change() { state.search = search.get_value() || ''; load(); },
+	});
+	const only = page.add_field({
+		fieldtype: 'Check', label: __('In stock only'), fieldname: 'in_stock_only', default: 1,
+		change() { state.in_stock_only = only.get_value() ? 1 : 0; load(); },
 	});
 	const $body = $('<div class="sp-body"></div>').appendTo(page.body);
 	const escape = frappe.utils.escape_html;
@@ -69,7 +71,6 @@ frappe.pages['serial-photos'].on_page_load = function (wrapper) {
 					<div class="sp-thumbs">${thumbs}</div>
 					<div class="pm-drop" role="button" tabindex="0">
 						<div>${__('Drop this gun\'s photos here, or click to choose')}</div>
-						<div class="pm-drop-sub">${__('several at once is fine')}</div>
 					</div>
 				</div>`;
 		}).join('');

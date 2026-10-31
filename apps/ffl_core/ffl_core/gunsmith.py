@@ -212,6 +212,41 @@ def deposit_line(name: str, amount: float) -> dict:
 	return {"customer": doc.customer, "deposit_line": _deposit_row(doc, amount)}
 
 
+@frappe.whitelist(methods=["POST"])
+def open_deposit(name: str, amount: float) -> dict:
+	"""A payment towards an open job parked as its own draft register invoice — what an
+	agent opens instead of the register cart's :func:`deposit_line`. One open deposit
+	draft per job: a second call returns the one already open, at its own amount.
+
+	Args:
+	    name: Gunsmith Work Order name; Received, In Progress or Ready.
+	    amount: What the customer pays now, above 0.
+
+	Returns:
+	    {"pos_invoice", "already": bool, "amount": the draft's deposit amount}.
+	"""
+	frappe.only_for(COUNTER_ROLES)
+	doc = _job(name)
+	setup.ensure()
+	if doc.status not in OPEN:
+		frappe.throw(_("A {0} work order takes no payment.").format(_(doc.status)))
+	amount = flt(amount, 2)
+	if amount <= 0:
+		frappe.throw(_("Enter the amount the customer pays now."))
+	existing = _open_draft(doc.name, "deposit")
+	if existing:
+		held = frappe.get_all("POS Invoice Item", filters={"parent": existing, "item_code": DEPOSIT_ITEM},
+			pluck="amount")
+		return {"pos_invoice": existing, "already": True, "amount": flt(sum(flt(a) for a in held), 2)}
+	if _open_draft(doc.name, "pickup"):
+		# The pick-up's release was sized to the deposit held when it was built.
+		frappe.throw(_("A pick-up invoice for this work order is still open at the register. Complete or delete "
+			"it first."))
+	inv = _new_invoice(doc, [_deposit_row(doc, amount)])
+	inv.insert()
+	return {"pos_invoice": inv.name, "already": False, "amount": amount}
+
+
 @frappe.whitelist()
 def register_work_orders(search_term: str | None = None, name: str | None = None) -> dict:
 	"""The open jobs for the register's Recent Orders › Work Orders list, with what its

@@ -558,6 +558,24 @@ def _still_on_device(res) -> bool:
     return res.status in (PENDING, UNKNOWN)
 
 
+@frappe.whitelist()
+def card_tender_mode() -> dict:
+    """Whether a Credit Card tender must go through the counter terminal.
+
+    Read-only. With a card processor switched on, configured and holding a
+    device, a card is charged on the terminal (charge_pos_invoice); otherwise a
+    Credit Card row is a plain tender typed from a standalone terminal.
+
+    Args:
+        (none)
+
+    Returns:
+        {"integrated": bool}.
+    """
+    _check_perm()
+    return {"integrated": _integration_ready(require_device=True)}
+
+
 @frappe.whitelist(methods=["POST"])
 def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
         amount=None, description: str | None = None, save_card=0) -> dict:

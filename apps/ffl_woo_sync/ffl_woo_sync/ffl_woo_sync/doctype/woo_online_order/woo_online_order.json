@@ -8,32 +8,47 @@
   "woo_order_id",
   "order_status",
   "woo_status",
-  "transferred_at",
   "site",
+  "column_break_head",
   "dropship_status",
+  "transferred_at",
   "section_customer",
   "customer_name",
-  "customer_email",
   "customer_phone",
+  "column_break_customer",
+  "customer_email",
+  "section_lines",
+  "lines",
+  "section_serials",
+  "serials",
+  "section_amounts",
+  "currency",
+  "order_total",
+  "total_tax",
+  "col_amounts_1",
+  "shipping_total",
+  "discount_total",
   "section_ffl",
   "ffl_license",
   "is_cr_transfer",
   "woo_ffl_rev",
   "ffl_business_name",
   "ffl_phone",
-  "ffl_premise_street",
+  "ffl_expiration",
   "col_ffl_1",
+  "ffl_premise_street",
   "ffl_premise_city",
   "ffl_premise_state",
   "ffl_premise_zip",
-  "ffl_expiration",
   "atf_ffl_record",
+  "section_ffl_raw",
   "ffl_raw",
   "section_cr",
   "cr_contact_name",
   "cr_license_expiry",
   "cr_premise_street",
   "cr_premise_street2",
+  "col_cr_1",
   "cr_premise_city",
   "cr_premise_state",
   "cr_premise_zip",
@@ -47,17 +62,6 @@
   "ship_to_city",
   "ship_to_state",
   "ship_to_zip",
-  "section_amounts",
-  "currency",
-  "order_total",
-  "total_tax",
-  "col_amounts_1",
-  "shipping_total",
-  "discount_total",
-  "section_lines",
-  "lines",
-  "section_serials",
-  "serials",
   "section_refunds",
   "refunds"
  ],
@@ -88,13 +92,6 @@
    "read_only": 1
   },
   {
-   "description": "Revenue is recognised on this date, even if the booking job runs later.",
-   "fieldname": "transferred_at",
-   "fieldtype": "Datetime",
-   "label": "Transferred At",
-   "read_only": 1
-  },
-  {
    "default": "retail",
    "fieldname": "site",
    "fieldtype": "Select",
@@ -104,12 +101,23 @@
    "read_only": 1
   },
   {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
    "description": "Blank means no drop-ship line.",
    "fieldname": "dropship_status",
    "fieldtype": "Select",
    "in_standard_filter": 1,
    "label": "Drop-ship Status",
    "options": "\nPending Route\nOrdered\nComplete\nError",
+   "read_only": 1
+  },
+  {
+   "description": "Revenue is recognised on this date, even if the booking job runs later.",
+   "fieldname": "transferred_at",
+   "fieldtype": "Datetime",
+   "label": "Transferred At",
    "read_only": 1
   },
   {
@@ -124,15 +132,85 @@
    "label": "Customer Name"
   },
   {
+   "fieldname": "customer_phone",
+   "fieldtype": "Data",
+   "label": "Phone"
+  },
+  {
+   "fieldname": "column_break_customer",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "customer_email",
    "fieldtype": "Data",
    "label": "Email",
    "options": "Email"
   },
   {
-   "fieldname": "customer_phone",
+   "fieldname": "section_lines",
+   "fieldtype": "Section Break",
+   "label": "Order Lines"
+  },
+  {
+   "fieldname": "lines",
+   "fieldtype": "Table",
+   "label": "Lines",
+   "options": "Woo Online Order Line"
+  },
+  {
+   "fieldname": "section_serials",
+   "fieldtype": "Section Break",
+   "label": "Firearm Serials"
+  },
+  {
+   "description": "One row per firearm; Confirmed Serial is what ships, blank until entered in WooCommerce.",
+   "fieldname": "serials",
+   "fieldtype": "Table",
+   "label": "Firearm Serials",
+   "options": "Woo Online Order Serial"
+  },
+  {
+   "fieldname": "section_amounts",
+   "fieldtype": "Section Break",
+   "label": "Amounts (from WooCommerce)"
+  },
+  {
+   "fieldname": "currency",
    "fieldtype": "Data",
-   "label": "Phone"
+   "label": "Currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "order_total",
+   "fieldtype": "Currency",
+   "label": "Order Total",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_tax",
+   "fieldtype": "Currency",
+   "label": "Total Tax",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "col_amounts_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "shipping_total",
+   "fieldtype": "Currency",
+   "label": "Shipping Total",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "discount_total",
+   "fieldtype": "Currency",
+   "label": "Discount Total",
+   "options": "currency",
+   "read_only": 1
   },
   {
    "fieldname": "section_ffl",
@@ -171,13 +249,18 @@
    "label": "FFL Phone"
   },
   {
-   "fieldname": "ffl_premise_street",
+   "fieldname": "ffl_expiration",
    "fieldtype": "Data",
-   "label": "Street"
+   "label": "FFL Expiration"
   },
   {
    "fieldname": "col_ffl_1",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ffl_premise_street",
+   "fieldtype": "Data",
+   "label": "Street"
   },
   {
    "fieldname": "ffl_premise_city",
@@ -195,16 +278,17 @@
    "label": "ZIP"
   },
   {
-   "fieldname": "ffl_expiration",
-   "fieldtype": "Data",
-   "label": "FFL Expiration"
-  },
-  {
    "fieldname": "atf_ffl_record",
    "fieldtype": "Link",
    "label": "ATF FFL Record",
    "options": "ATF FFL Record",
    "read_only": 1
+  },
+  {
+   "fieldname": "section_ffl_raw",
+   "fieldtype": "Section Break",
+   "label": "FFL data as received",
+   "collapsible": 1
   },
   {
    "fieldname": "ffl_raw",
@@ -242,6 +326,10 @@
    "fieldtype": "Data",
    "label": "Address 2",
    "length": 140
+  },
+  {
+   "fieldname": "col_cr_1",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "cr_premise_city",
@@ -323,72 +411,6 @@
    "read_only": 1
   },
   {
-   "fieldname": "section_amounts",
-   "fieldtype": "Section Break",
-   "label": "Amounts (from WooCommerce)"
-  },
-  {
-   "fieldname": "currency",
-   "fieldtype": "Data",
-   "label": "Currency",
-   "read_only": 1
-  },
-  {
-   "fieldname": "order_total",
-   "fieldtype": "Currency",
-   "label": "Order Total",
-   "options": "currency",
-   "read_only": 1
-  },
-  {
-   "fieldname": "total_tax",
-   "fieldtype": "Currency",
-   "label": "Total Tax",
-   "options": "currency",
-   "read_only": 1
-  },
-  {
-   "fieldname": "col_amounts_1",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "shipping_total",
-   "fieldtype": "Currency",
-   "label": "Shipping Total",
-   "options": "currency",
-   "read_only": 1
-  },
-  {
-   "fieldname": "discount_total",
-   "fieldtype": "Currency",
-   "label": "Discount Total",
-   "options": "currency",
-   "read_only": 1
-  },
-  {
-   "fieldname": "section_lines",
-   "fieldtype": "Section Break",
-   "label": "Order Lines"
-  },
-  {
-   "fieldname": "lines",
-   "fieldtype": "Table",
-   "label": "Lines",
-   "options": "Woo Online Order Line"
-  },
-  {
-   "fieldname": "section_serials",
-   "fieldtype": "Section Break",
-   "label": "Firearm Serials"
-  },
-  {
-   "description": "One row per firearm; Confirmed Serial is what ships, blank until entered in WooCommerce.",
-   "fieldname": "serials",
-   "fieldtype": "Table",
-   "label": "Firearm Serials",
-   "options": "Woo Online Order Serial"
-  },
-  {
    "fieldname": "section_refunds",
    "fieldtype": "Section Break",
    "label": "WooCommerce Refunds"
@@ -402,7 +424,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-09 18:00:00",
+ "modified": "2026-10-30 12:30:00",
  "modified_by": "Administrator",
  "module": "FFL Woo Sync",
  "name": "Woo Online Order",

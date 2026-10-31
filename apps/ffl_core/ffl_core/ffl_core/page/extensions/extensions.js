@@ -857,7 +857,7 @@ gunstore.ExtensionsPage = class ExtensionsPage {
 	// --- styles (Frappe tokens only; verified against v16 at runtime) ---------
 	static css() {
 		return `
-			.xt-wrap{max-width:1100px}
+			.xt-wrap{max-width:1100px;margin:0 auto;padding:0 16px 40px}
 			.xt-mono{font-family:var(--font-family-monospace);font-size:12px}
 			.xt-link{padding:0;border:0;background:none;color:var(--text-muted);text-decoration:underline;font-size:inherit;cursor:pointer}
 			.xt-link:focus-visible{outline:2px solid var(--blue-500);outline-offset:2px}

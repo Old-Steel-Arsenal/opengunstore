@@ -23,8 +23,7 @@
    "fieldtype": "Data",
    "label": "Tablet Name",
    "reqd": 1,
-   "unique": 1,
-   "description": "For example \"Counter 1 iPad\"."
+   "unique": 1
   },
   {
    "fieldname": "active",
@@ -37,8 +36,7 @@
    "fieldname": "pos_profile",
    "fieldtype": "Link",
    "options": "POS Profile",
-   "label": "Register",
-   "description": "The register this tablet sits next to; Send to tablet picks it there by default."
+   "label": "Register"
   },
   {
    "fieldname": "column_break_main",
@@ -78,7 +76,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-17 09:00:00.000000",
+ "modified": "2026-10-30 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Signing Terminal",

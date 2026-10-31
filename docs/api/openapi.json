@@ -73,6 +73,14 @@
             "type": "string",
             "description": "Doing Business As"
           },
+          "phone": {
+            "type": "string",
+            "description": "Phone"
+          },
+          "expiry_date": {
+            "type": "string",
+            "description": "Expiry Date"
+          },
           "street": {
             "type": "string",
             "description": "Street"
@@ -92,14 +100,6 @@
           "zip": {
             "type": "string",
             "description": "ZIP"
-          },
-          "phone": {
-            "type": "string",
-            "description": "Phone"
-          },
-          "expiry_date": {
-            "type": "string",
-            "description": "Expiry Date"
           },
           "loaded_from": {
             "type": "string",
@@ -126,6 +126,27 @@
             "type": "string",
             "description": "Title"
           },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "Per customer",
+              "Each firearm sold",
+              "Per document"
+            ],
+            "description": "Signed"
+          },
+          "valid_days": {
+            "type": "integer",
+            "description": "Valid For (Days)"
+          },
+          "one_copy_per_gun": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "One copy per gun"
+          },
           "active": {
             "type": "integer",
             "enum": [
@@ -138,10 +159,6 @@
             "type": "integer",
             "description": "Version"
           },
-          "valid_days": {
-            "type": "integer",
-            "description": "Valid For (Days)"
-          },
           "requirement": {
             "type": "string",
             "enum": [
@@ -150,23 +167,6 @@
               "Required for every sale"
             ],
             "description": "Required"
-          },
-          "scope": {
-            "type": "string",
-            "enum": [
-              "Per customer",
-              "Each firearm sold",
-              "Per document"
-            ],
-            "description": "Signed"
-          },
-          "one_copy_per_gun": {
-            "type": "integer",
-            "enum": [
-              0,
-              1
-            ],
-            "description": "One copy per gun"
           },
           "show_on_counter_panel": {
             "type": "integer",
@@ -519,14 +519,6 @@
             "type": "string",
             "description": "Parent (Link: Catalog Category)"
           },
-          "level": {
-            "type": "integer",
-            "description": "Level"
-          },
-          "position": {
-            "type": "integer",
-            "description": "Position"
-          },
           "active": {
             "type": "integer",
             "enum": [
@@ -547,10 +539,6 @@
             "type": "string",
             "description": "Store category slug (first link)"
           },
-          "seq": {
-            "type": "integer",
-            "description": "Tree sequence"
-          },
           "item_group": {
             "type": "string",
             "description": "Item Group (Link: Item Group)"
@@ -562,6 +550,18 @@
           "woo_term_retail": {
             "type": "integer",
             "description": "Retail store category id"
+          },
+          "level": {
+            "type": "integer",
+            "description": "Level"
+          },
+          "position": {
+            "type": "integer",
+            "description": "Position"
+          },
+          "seq": {
+            "type": "integer",
+            "description": "Tree sequence"
           }
         },
         "required": [
@@ -661,9 +661,19 @@
             "type": "string",
             "description": "Customer Name"
           },
-          "company": {
+          "status": {
             "type": "string",
-            "description": "Company (Link: Company)"
+            "enum": [
+              "Pending",
+              "Signed",
+              "Void",
+              "Expired"
+            ],
+            "description": "Status"
+          },
+          "expires_on": {
+            "type": "string",
+            "description": "Expires On"
           },
           "template": {
             "type": "string",
@@ -681,26 +691,16 @@
             "type": "string",
             "description": "Item (Link: Item)"
           },
+          "company": {
+            "type": "string",
+            "description": "Company (Link: Company)"
+          },
           "firearms": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Customer_Agreement_Firearm"
             },
             "description": "Firearms"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "Pending",
-              "Signed",
-              "Void",
-              "Expired"
-            ],
-            "description": "Status"
-          },
-          "expires_on": {
-            "type": "string",
-            "description": "Expires On"
           },
           "signed_on": {
             "type": "string",
@@ -728,23 +728,6 @@
             ],
             "description": "Signer Is"
           },
-          "participant_is_minor": {
-            "type": "integer",
-            "enum": [
-              0,
-              1
-            ],
-            "description": "Participant Under 18"
-          },
-          "minor_determined_by": {
-            "type": "string",
-            "enum": [
-              "Date of Birth",
-              "Self-declared",
-              "Paper"
-            ],
-            "description": "Age Taken From"
-          },
           "signature": {
             "type": "string",
             "description": "Signature"
@@ -761,17 +744,22 @@
             "type": "string",
             "description": "Paper Copy Recorded By (Link: User)"
           },
-          "signer_ip": {
-            "type": "string",
-            "description": "Signer IP"
+          "participant_is_minor": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Participant Under 18"
           },
-          "signer_user_agent": {
+          "minor_determined_by": {
             "type": "string",
-            "description": "Signer Device"
-          },
-          "signing_terminal": {
-            "type": "string",
-            "description": "Signing Terminal (Link: Signing Terminal)"
+            "enum": [
+              "Date of Birth",
+              "Self-declared",
+              "Paper"
+            ],
+            "description": "Age Taken From"
           },
           "requested_by": {
             "type": "string",
@@ -805,6 +793,18 @@
           "reference_name": {
             "type": "string",
             "description": "Reference (Link: reference_doctype)"
+          },
+          "signing_terminal": {
+            "type": "string",
+            "description": "Signing Terminal (Link: Signing Terminal)"
+          },
+          "signer_ip": {
+            "type": "string",
+            "description": "Signer IP"
+          },
+          "signer_user_agent": {
+            "type": "string",
+            "description": "Signer Device"
           },
           "body_snapshot": {
             "type": "string",
@@ -959,6 +959,10 @@
             ],
             "description": "Source Type"
           },
+          "company": {
+            "type": "string",
+            "description": "Company (Link: Company)"
+          },
           "receive_source": {
             "type": "string",
             "description": "Receive Source"
@@ -966,10 +970,6 @@
           "transaction_type": {
             "type": "string",
             "description": "Acquisition Type"
-          },
-          "company": {
-            "type": "string",
-            "description": "Company (Link: Company)"
           },
           "amended_from": {
             "type": "string",
@@ -1092,10 +1092,6 @@
             "type": "string",
             "description": "Company (Link: Company)"
           },
-          "amended_from": {
-            "type": "string",
-            "description": "Amended From (Link: FFL Disposition)"
-          },
           "customer": {
             "type": "string",
             "description": "Customer (Link: Customer)"
@@ -1103,6 +1099,10 @@
           "destination_ffl": {
             "type": "string",
             "description": "Destination FFL (Link: ATF FFL Record)"
+          },
+          "amended_from": {
+            "type": "string",
+            "description": "Amended From (Link: FFL Disposition)"
           },
           "destroyed_witness1": {
             "type": "string",
@@ -1204,6 +1204,18 @@
             "type": "integer",
             "description": "Pending Order overdue after (days)"
           },
+          "counter_lock_minutes": {
+            "type": "integer",
+            "description": "Lock Idle Screen After (minutes)"
+          },
+          "require_price_approval": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Require Manager Approval for Price Reductions"
+          },
           "receipt_footer_note": {
             "type": "string",
             "description": "Receipt Footer Note"
@@ -1219,18 +1231,6 @@
           "peace_officer_exempt_tax_account": {
             "type": "string",
             "description": "Peace-Officer Exempt Tax Account (Link: Account)"
-          },
-          "counter_lock_minutes": {
-            "type": "integer",
-            "description": "Lock Idle Screen After (minutes)"
-          },
-          "require_price_approval": {
-            "type": "integer",
-            "enum": [
-              0,
-              1
-            ],
-            "description": "Require Manager Approval for Price Reductions"
           },
           "gunsmith_labor_item": {
             "type": "string",
@@ -1248,14 +1248,6 @@
             ],
             "description": "Paper 4473 Mode"
           },
-          "transfer_fee_item": {
-            "type": "string",
-            "description": "Transfer Fee Item (Link: Item)"
-          },
-          "transfer_fee_amount": {
-            "type": "number",
-            "description": "Default Transfer Fee"
-          },
           "store_customer_id_numbers": {
             "type": "integer",
             "enum": [
@@ -1263,6 +1255,14 @@
               1
             ],
             "description": "Store Customer ID Numbers"
+          },
+          "transfer_fee_item": {
+            "type": "string",
+            "description": "Transfer Fee Item (Link: Item)"
+          },
+          "transfer_fee_amount": {
+            "type": "number",
+            "description": "Default Transfer Fee"
           },
           "enforce_sale_agreements": {
             "type": "integer",
@@ -1489,16 +1489,16 @@
             "type": "string",
             "description": "Ready By"
           },
-          "scan_barcode": {
-            "type": "string",
-            "description": "Scan"
-          },
           "lines": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Gunsmith_Work_Order_Line"
             },
             "description": "Charges"
+          },
+          "scan_barcode": {
+            "type": "string",
+            "description": "Scan"
           },
           "final_cost": {
             "type": "number",
@@ -1516,6 +1516,14 @@
             "type": "string",
             "description": "Date Completed"
           },
+          "notified_on": {
+            "type": "string",
+            "description": "Date Notified"
+          },
+          "picked_up_on": {
+            "type": "string",
+            "description": "Date Picked Up"
+          },
           "notified_via": {
             "type": "string",
             "enum": [
@@ -1525,17 +1533,9 @@
             ],
             "description": "Customer Notified By"
           },
-          "notified_on": {
-            "type": "string",
-            "description": "Date Notified"
-          },
           "notified_by": {
             "type": "string",
             "description": "Notified By (Link: User)"
-          },
-          "picked_up_on": {
-            "type": "string",
-            "description": "Date Picked Up"
           },
           "cancel_reason": {
             "type": "string",
@@ -1670,6 +1670,10 @@
             ],
             "description": "Include Customer-Custody Warehouses"
           },
+          "notes": {
+            "type": "string",
+            "description": "Notes"
+          },
           "warehouses": {
             "type": "array",
             "items": {
@@ -1695,10 +1699,6 @@
           "finalized_at": {
             "type": "string",
             "description": "Finalized At"
-          },
-          "notes": {
-            "type": "string",
-            "description": "Notes"
           },
           "serial_report": {
             "type": "string",
@@ -2130,6 +2130,22 @@
             "type": "string",
             "description": "Why not compatible"
           },
+          "latest_version": {
+            "type": "string",
+            "description": "Newer Version Offered"
+          },
+          "latest_requires_core": {
+            "type": "string",
+            "description": "It Requires Core"
+          },
+          "latest_sha256": {
+            "type": "string",
+            "description": "Its SHA-256"
+          },
+          "latest_checked_at": {
+            "type": "string",
+            "description": "Last Checked For Updates"
+          },
           "publisher": {
             "type": "string",
             "description": "Publisher"
@@ -2205,22 +2221,6 @@
           "last_synced": {
             "type": "string",
             "description": "Last synced"
-          },
-          "latest_version": {
-            "type": "string",
-            "description": "Newer Version Offered"
-          },
-          "latest_requires_core": {
-            "type": "string",
-            "description": "It Requires Core"
-          },
-          "latest_sha256": {
-            "type": "string",
-            "description": "Its SHA-256"
-          },
-          "latest_checked_at": {
-            "type": "string",
-            "description": "Last Checked For Updates"
           }
         },
         "required": [
@@ -2345,10 +2345,6 @@
         "type": "object",
         "description": "Custom DocType (ffl_core); CRUD via /api/resource/Storage%20Location%20Qty — see docs/api/frappe-rest.md.",
         "properties": {
-          "company": {
-            "type": "string",
-            "description": "Company (Link: Company)"
-          },
           "location": {
             "type": "string",
             "description": "Location (Link: Storage Location)"
@@ -2360,18 +2356,46 @@
           "qty": {
             "type": "number",
             "description": "Quantity"
+          },
+          "company": {
+            "type": "string",
+            "description": "Company (Link: Company)"
           }
         },
         "required": [
-          "company",
           "location",
-          "item_code"
+          "item_code",
+          "company"
         ]
       },
       "Storage_Move": {
         "type": "object",
         "description": "Custom DocType (ffl_core); CRUD via /api/resource/Storage%20Move — see docs/api/frappe-rest.md.",
         "properties": {
+          "serial_no": {
+            "type": "string",
+            "description": "Serial No"
+          },
+          "item_code": {
+            "type": "string",
+            "description": "Item (Link: Item)"
+          },
+          "qty": {
+            "type": "number",
+            "description": "Quantity"
+          },
+          "company": {
+            "type": "string",
+            "description": "Company (Link: Company)"
+          },
+          "from_location": {
+            "type": "string",
+            "description": "From (Link: Storage Location)"
+          },
+          "to_location": {
+            "type": "string",
+            "description": "To (Link: Storage Location)"
+          },
           "kind": {
             "type": "string",
             "enum": [
@@ -2394,30 +2418,6 @@
               "confirm"
             ],
             "description": "Reason"
-          },
-          "company": {
-            "type": "string",
-            "description": "Company (Link: Company)"
-          },
-          "serial_no": {
-            "type": "string",
-            "description": "Serial No"
-          },
-          "item_code": {
-            "type": "string",
-            "description": "Item (Link: Item)"
-          },
-          "qty": {
-            "type": "number",
-            "description": "Quantity"
-          },
-          "from_location": {
-            "type": "string",
-            "description": "From (Link: Storage Location)"
-          },
-          "to_location": {
-            "type": "string",
-            "description": "To (Link: Storage Location)"
           },
           "voucher_type": {
             "type": "string",
@@ -2445,10 +2445,6 @@
         "type": "object",
         "description": "Custom DocType (ffl_core); CRUD via /api/resource/Storage%20Zone — see docs/api/frappe-rest.md.",
         "properties": {
-          "company": {
-            "type": "string",
-            "description": "Company (Link: Company)"
-          },
           "zone_name": {
             "type": "string",
             "description": "Zone"
@@ -2464,6 +2460,10 @@
           "slot_count": {
             "type": "integer",
             "description": "Positions"
+          },
+          "company": {
+            "type": "string",
+            "description": "Company (Link: Company)"
           },
           "slot_lines": {
             "type": "integer",
@@ -2491,9 +2491,9 @@
           }
         },
         "required": [
-          "company",
           "zone_name",
-          "kind"
+          "kind",
+          "company"
         ]
       },
       "Card_Charge": {
@@ -2604,17 +2604,17 @@
             ],
             "description": "Status"
           },
-          "unique_reference": {
+          "card_summary": {
             "type": "string",
-            "description": "Gateway Reference"
+            "description": "Card"
           },
           "approval_code": {
             "type": "string",
             "description": "Approval Code"
           },
-          "card_summary": {
+          "unique_reference": {
             "type": "string",
-            "description": "Card"
+            "description": "Gateway Reference"
           },
           "payment_entry": {
             "type": "string",
@@ -2644,6 +2644,10 @@
             "type": "string",
             "description": "Instruction ID"
           },
+          "response": {
+            "type": "string",
+            "description": "Gateway Response"
+          },
           "save_card": {
             "type": "integer",
             "enum": [
@@ -2663,10 +2667,6 @@
           "saved_card": {
             "type": "string",
             "description": "Saved Card (Link: Saved Card)"
-          },
-          "response": {
-            "type": "string",
-            "description": "Gateway Response"
           }
         },
         "required": [
@@ -2804,6 +2804,10 @@
             "type": "integer",
             "description": "Priority"
           },
+          "notes": {
+            "type": "string",
+            "description": "Notes"
+          },
           "override_dropship_defaults": {
             "type": "integer",
             "enum": [
@@ -2832,6 +2836,10 @@
             },
             "description": "Markup rules (retired)"
           },
+          "lead_days_min": {
+            "type": "integer",
+            "description": "Lead time (business days, from)"
+          },
           "safety_buffer": {
             "type": "integer",
             "description": "Safety buffer"
@@ -2840,6 +2848,10 @@
             "type": "integer",
             "description": "Display cap"
           },
+          "lead_days_max": {
+            "type": "integer",
+            "description": "Lead time (business days, to)"
+          },
           "zero_stock_when_feed_stale": {
             "type": "integer",
             "enum": [
@@ -2847,14 +2859,6 @@
               1
             ],
             "description": "Zero stock when the feed is stale"
-          },
-          "lead_days_min": {
-            "type": "integer",
-            "description": "Lead time (business days, from)"
-          },
-          "lead_days_max": {
-            "type": "integer",
-            "description": "Lead time (business days, to)"
           },
           "catalog_endpoint": {
             "type": "string",
@@ -2871,10 +2875,6 @@
           "last_poll_run_at": {
             "type": "string",
             "description": "Last order poll"
-          },
-          "notes": {
-            "type": "string",
-            "description": "Notes"
           }
         },
         "required": [
@@ -2902,6 +2902,14 @@
             "type": "string",
             "description": "Account"
           },
+          "po_number": {
+            "type": "string",
+            "description": "PO Number"
+          },
+          "order_ref": {
+            "type": "string",
+            "description": "Distributor Order Number"
+          },
           "distributor_order": {
             "type": "string",
             "description": "Distributor Order (Link: Distributor Order)"
@@ -2914,37 +2922,6 @@
             ],
             "description": "Placed Outside POS"
           },
-          "po_number": {
-            "type": "string",
-            "description": "PO Number"
-          },
-          "order_ref": {
-            "type": "string",
-            "description": "Distributor Order Number"
-          },
-          "total": {
-            "type": "number",
-            "description": "Invoice Total"
-          },
-          "freight": {
-            "type": "number",
-            "description": "Freight"
-          },
-          "fees": {
-            "type": "number",
-            "description": "Fees"
-          },
-          "tracking_numbers": {
-            "type": "string",
-            "description": "Tracking Numbers"
-          },
-          "lines": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Distributor_Invoice_Line"
-            },
-            "description": "Lines"
-          },
           "destination": {
             "type": "string",
             "enum": [
@@ -2953,6 +2930,14 @@
               "Unknown"
             ],
             "description": "Destination"
+          },
+          "destination_note": {
+            "type": "string",
+            "enum": [
+              "Lookup failed",
+              "No answer on file"
+            ],
+            "description": "Destination Note"
           },
           "received": {
             "type": "integer",
@@ -2966,13 +2951,28 @@
             "type": "string",
             "description": "Purchase Receipts"
           },
-          "destination_note": {
+          "tracking_numbers": {
             "type": "string",
-            "enum": [
-              "Lookup failed",
-              "No answer on file"
-            ],
-            "description": "Destination Note"
+            "description": "Tracking Numbers"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Distributor_Invoice_Line"
+            },
+            "description": "Lines"
+          },
+          "total": {
+            "type": "number",
+            "description": "Invoice Total"
+          },
+          "freight": {
+            "type": "number",
+            "description": "Freight"
+          },
+          "fees": {
+            "type": "number",
+            "description": "Fees"
           }
         },
         "required": [
@@ -3132,13 +3132,20 @@
             "type": "string",
             "description": "Distributor Order No."
           },
-          "fill_or_kill": {
-            "type": "integer",
-            "enum": [
-              0,
-              1
-            ],
-            "description": "Fill or Kill"
+          "hold_status": {
+            "type": "string",
+            "description": "Hold Status"
+          },
+          "hold_reason": {
+            "type": "string",
+            "description": "Hold / Cancel Reason"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Distributor_Order_Line"
+            },
+            "description": "Lines"
           },
           "shipping_service": {
             "type": "string",
@@ -3147,6 +3154,14 @@
           "shipping_service_label": {
             "type": "string",
             "description": "Shipping service"
+          },
+          "fill_or_kill": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Fill or Kill"
           },
           "delivery_options_set": {
             "type": "integer",
@@ -3179,14 +3194,6 @@
               1
             ],
             "description": "Insurance"
-          },
-          "hold_status": {
-            "type": "string",
-            "description": "Hold Status"
-          },
-          "hold_reason": {
-            "type": "string",
-            "description": "Hold / Cancel Reason"
           },
           "source_doctype": {
             "type": "string",
@@ -3248,13 +3255,6 @@
             "type": "string",
             "description": "Transfer FFL Record (Link: ATF FFL Record)"
           },
-          "lines": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Distributor_Order_Line"
-            },
-            "description": "Lines"
-          },
           "placed_at": {
             "type": "string",
             "description": "Placed At"
@@ -3266,6 +3266,19 @@
           "next_poll_at": {
             "type": "string",
             "description": "Next Poll At"
+          },
+          "receive_status": {
+            "type": "string",
+            "enum": [
+              "Not Received",
+              "Partial",
+              "Received"
+            ],
+            "description": "Receive Status"
+          },
+          "woo_notified_status": {
+            "type": "string",
+            "description": "Shop Notified Status"
           },
           "total_cost": {
             "type": "number",
@@ -3279,15 +3292,6 @@
             "type": "number",
             "description": "Invoiced Freight"
           },
-          "receive_status": {
-            "type": "string",
-            "enum": [
-              "Not Received",
-              "Partial",
-              "Received"
-            ],
-            "description": "Receive Status"
-          },
           "error": {
             "type": "string",
             "description": "Error"
@@ -3295,10 +3299,6 @@
           "notes_posted": {
             "type": "string",
             "description": "Tracking Notes Posted"
-          },
-          "woo_notified_status": {
-            "type": "string",
-            "description": "Shop Notified Status"
           },
           "raw_request": {
             "type": "string",
@@ -3609,6 +3609,10 @@
             ],
             "description": "Status"
           },
+          "order_date": {
+            "type": "string",
+            "description": "Order Date"
+          },
           "gb_status": {
             "type": "integer",
             "description": "GunBroker Status Code"
@@ -3616,10 +3620,6 @@
           "gb_status_label": {
             "type": "string",
             "description": "GunBroker Status"
-          },
-          "order_date": {
-            "type": "string",
-            "description": "Order Date"
           },
           "gb_last_modified": {
             "type": "string",
@@ -3660,6 +3660,20 @@
               1
             ],
             "description": "Tax Exempt"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GunBroker_Order_Line"
+            },
+            "description": "Lines"
+          },
+          "serials": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GunBroker_Order_Serial"
+            },
+            "description": "Serials"
           },
           "ship_to_name": {
             "type": "string",
@@ -3964,20 +3978,6 @@
           "refund_handled_at": {
             "type": "string",
             "description": "Refund Handled At"
-          },
-          "lines": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/GunBroker_Order_Line"
-            },
-            "description": "Lines"
-          },
-          "serials": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/GunBroker_Order_Serial"
-            },
-            "description": "Serials"
           },
           "sync_error": {
             "type": "string",
@@ -4566,6 +4566,10 @@
             "type": "string",
             "description": "Merchant API Key"
           },
+          "default_currency": {
+            "type": "string",
+            "description": "Default Currency (Link: Currency)"
+          },
           "default_terminal": {
             "type": "string",
             "description": "Gateway Terminal Number"
@@ -4578,14 +4582,6 @@
             "type": "string",
             "description": "Saved-Card Terminal Number"
           },
-          "default_currency": {
-            "type": "string",
-            "description": "Default Currency (Link: Currency)"
-          },
-          "integration_id": {
-            "type": "string",
-            "description": "X-Integration-ID (ISV only)"
-          },
           "sandbox_mode": {
             "type": "integer",
             "enum": [
@@ -4594,14 +4590,6 @@
             ],
             "description": "Sandbox Mode"
           },
-          "base_url_override": {
-            "type": "string",
-            "description": "Base URL Override"
-          },
-          "request_timeout_seconds": {
-            "type": "integer",
-            "description": "Request Timeout (seconds)"
-          },
           "last_token_refreshed_at": {
             "type": "string",
             "description": "Last Token Refreshed At"
@@ -4609,6 +4597,18 @@
           "last_charge_at": {
             "type": "string",
             "description": "Last Charge At"
+          },
+          "integration_id": {
+            "type": "string",
+            "description": "X-Integration-ID (ISV only)"
+          },
+          "base_url_override": {
+            "type": "string",
+            "description": "Base URL Override"
+          },
+          "request_timeout_seconds": {
+            "type": "integer",
+            "description": "Request Timeout (seconds)"
           }
         }
       },
@@ -4628,6 +4628,10 @@
             "type": "string",
             "description": "Mfg Part #"
           },
+          "department_number": {
+            "type": "string",
+            "description": "Department #"
+          },
           "manufacturer": {
             "type": "string",
             "description": "Manufacturer"
@@ -4639,10 +4643,6 @@
           "caliber": {
             "type": "string",
             "description": "Caliber"
-          },
-          "department_number": {
-            "type": "string",
-            "description": "Department #"
           },
           "short_description": {
             "type": "string",
@@ -5023,6 +5023,10 @@
             ],
             "description": "Enabled"
           },
+          "api_key": {
+            "type": "string",
+            "description": "API Key"
+          },
           "sandbox_mode": {
             "type": "integer",
             "enum": [
@@ -5030,18 +5034,6 @@
               1
             ],
             "description": "Sandbox Mode"
-          },
-          "api_key": {
-            "type": "string",
-            "description": "API Key"
-          },
-          "base_url_override": {
-            "type": "string",
-            "description": "Base URL Override"
-          },
-          "request_timeout_seconds": {
-            "type": "integer",
-            "description": "Request Timeout (s)"
           },
           "store_id": {
             "type": "string",
@@ -5054,6 +5046,14 @@
           "default_parcel_weight_oz": {
             "type": "number",
             "description": "Default Parcel Weight (oz)"
+          },
+          "base_url_override": {
+            "type": "string",
+            "description": "Base URL Override"
+          },
+          "request_timeout_seconds": {
+            "type": "integer",
+            "description": "Request Timeout (s)"
           }
         }
       },
@@ -5312,10 +5312,6 @@
             "type": "string",
             "description": "WooCommerce Status"
           },
-          "transferred_at": {
-            "type": "string",
-            "description": "Transferred At"
-          },
           "site": {
             "type": "string",
             "enum": [
@@ -5333,17 +5329,55 @@
             ],
             "description": "Drop-ship Status"
           },
+          "transferred_at": {
+            "type": "string",
+            "description": "Transferred At"
+          },
           "customer_name": {
             "type": "string",
             "description": "Customer Name"
+          },
+          "customer_phone": {
+            "type": "string",
+            "description": "Phone"
           },
           "customer_email": {
             "type": "string",
             "description": "Email"
           },
-          "customer_phone": {
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Woo_Online_Order_Line"
+            },
+            "description": "Lines"
+          },
+          "serials": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Woo_Online_Order_Serial"
+            },
+            "description": "Firearm Serials"
+          },
+          "currency": {
             "type": "string",
-            "description": "Phone"
+            "description": "Currency"
+          },
+          "order_total": {
+            "type": "number",
+            "description": "Order Total"
+          },
+          "total_tax": {
+            "type": "number",
+            "description": "Total Tax"
+          },
+          "shipping_total": {
+            "type": "number",
+            "description": "Shipping Total"
+          },
+          "discount_total": {
+            "type": "number",
+            "description": "Discount Total"
           },
           "ffl_license": {
             "type": "string",
@@ -5369,6 +5403,10 @@
             "type": "string",
             "description": "FFL Phone"
           },
+          "ffl_expiration": {
+            "type": "string",
+            "description": "FFL Expiration"
+          },
           "ffl_premise_street": {
             "type": "string",
             "description": "Street"
@@ -5384,10 +5422,6 @@
           "ffl_premise_zip": {
             "type": "string",
             "description": "ZIP"
-          },
-          "ffl_expiration": {
-            "type": "string",
-            "description": "FFL Expiration"
           },
           "atf_ffl_record": {
             "type": "string",
@@ -5456,40 +5490,6 @@
           "ship_to_zip": {
             "type": "string",
             "description": "ZIP"
-          },
-          "currency": {
-            "type": "string",
-            "description": "Currency"
-          },
-          "order_total": {
-            "type": "number",
-            "description": "Order Total"
-          },
-          "total_tax": {
-            "type": "number",
-            "description": "Total Tax"
-          },
-          "shipping_total": {
-            "type": "number",
-            "description": "Shipping Total"
-          },
-          "discount_total": {
-            "type": "number",
-            "description": "Discount Total"
-          },
-          "lines": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Woo_Online_Order_Line"
-            },
-            "description": "Lines"
-          },
-          "serials": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Woo_Online_Order_Serial"
-            },
-            "description": "Firearm Serials"
           },
           "refunds": {
             "type": "array",
@@ -5687,6 +5687,10 @@
             ],
             "description": "Reconcile frequency"
           },
+          "request_timeout_seconds": {
+            "type": "integer",
+            "description": "Request Timeout (s)"
+          },
           "follow_category_tree": {
             "type": "integer",
             "enum": [
@@ -5694,10 +5698,6 @@
               1
             ],
             "description": "Follow the catalog category tree"
-          },
-          "request_timeout_seconds": {
-            "type": "integer",
-            "description": "Request Timeout (s)"
           },
           "last_push_at": {
             "type": "string",
@@ -6234,6 +6234,60 @@
                   "name",
                   "reason"
                 ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.api.action_catalog.list_actions": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Search the server endpoints the signed-in user can run, across every installed app.",
+        "description": "Reads the api_catalog.json each app ships (core apps and installed extensions),\ndrops guest endpoints (webhooks), and keeps the rows whose derived gate the caller\npasses: a role list the caller holds some role of, or a DocType permission the\ncaller has. Rows only the call itself can decide (soft filters, runtime role lists,\nan extension switch, no gate at entry) are kept with runnable \"checked at call time\".\nThe endpoint still checks the caller when it is called.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\n**Permissions:** Any signed-in desk user (System User); each user sees only the endpoints their roles and DocType permissions reach.\n\nSource: `apps/ffl_core/ffl_core/api/action_catalog.py:142`",
+        "operationId": "ffl_core.api.action_catalog.list_actions",
+        "responses": {
+          "200": {
+            "description": "list: Rows of {method, module, summary, args [{name, type, required}], http, roles or perm or gate, switch (when an extension switch applies), runnable (true or \"checked at call time\")}; with method, at most one row that also carries description, returns, source and each argument's desc."
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Words matched against the dotted path, argument names and summary; best matches first."
+                  },
+                  "module": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "A dotted prefix, e.g. \"ffl_integrations.gunbroker\"; only endpoints under it."
+                  },
+                  "method": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "One exact dotted path; returns that endpoint's full row (description, Returns text and every argument's description) or an empty list."
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "description": "Rows returned, 1 to 100 (default 25)."
+                  }
+                }
               }
             }
           }
@@ -10999,6 +11053,65 @@
         }
       }
     },
+    "/api/method/ffl_core.api.pos_ticket.open_ticket": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Open a draft register ticket (POS Invoice) on the open POS shift.",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/pos_ticket.py:72`",
+        "operationId": "ffl_core.api.pos_ticket.open_ticket",
+        "responses": {
+          "200": {
+            "description": "{\"pos_invoice\", \"grand_total\", \"payment_modes\": the profile's modes of payment on the ticket}. Refused when no shift is open.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "customer": {
+                    "type": "string",
+                    "description": "Customer name."
+                  },
+                  "items": {
+                    "description": "JSON list of lines ``[{item_code, qty=1, rate?, serial_no?, storage_location?}]``; rate blank = the item's price for the customer, a serial is one unit."
+                  },
+                  "company": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Company the shift is on; blank = the user's default company."
+                  }
+                },
+                "required": [
+                  "customer",
+                  "items"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.api.receive_goods.create_item": {
       "post": {
         "tags": [
@@ -13475,7 +13588,7 @@
           "ffl_core"
         ],
         "summary": "Close a job that will not be done. A gun in the bound book still goes back through",
-        "description": "pick-up (its disposition), so a logged job is not cancelled: clear its charges and\npick it up instead. A deposit held is refunded afterwards (:func:`refund_deposit`).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:455`",
+        "description": "pick-up (its disposition), so a logged job is not cancelled: clear its charges and\npick it up instead. A deposit held is refunded afterwards (:func:`refund_deposit`).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:490`",
         "operationId": "ffl_core.gunsmith.cancel_work_order",
         "responses": {
           "200": {
@@ -13528,7 +13641,7 @@
           "ffl_core"
         ],
         "summary": "A part picked or scanned onto a job's charges: its name and its list price for the",
-        "description": "customer, as Create Order prices a line (``price_approval.list_rate``). The counter\ncan't read Item Price itself.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:286`",
+        "description": "customer, as Create Order prices a line (``price_approval.list_rate``). The counter\ncan't read Item Price itself.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:321`",
         "operationId": "ffl_core.gunsmith.charge_details",
         "responses": {
           "200": {
@@ -13583,7 +13696,7 @@
           "ffl_core"
         ],
         "summary": "The register's Complete: the clerk confirms what was done and what it costs; the",
-        "description": "job keeps them, is Ready, and is handed back as :func:`open_pickup` does — at once\nwith nothing to bill and nothing held, else through the draft pick-up invoice the\nregister loads into its cart.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:314`",
+        "description": "job keeps them, is Ready, and is handed back as :func:`open_pickup` does — at once\nwith nothing to bill and nothing held, else through the draft pick-up invoice the\nregister loads into its cart.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:349`",
         "operationId": "ffl_core.gunsmith.complete_work",
         "responses": {
           "200": {
@@ -13787,7 +13900,7 @@
           "ffl_core"
         ],
         "summary": "The labor item a new job's first charge line uses (FFL Settings › Gunsmithing,",
-        "description": "which the counter can't read itself).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:274`",
+        "description": "which the counter can't read itself).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:309`",
         "operationId": "ffl_core.gunsmith.labor_item",
         "responses": {
           "200": {
@@ -13817,7 +13930,7 @@
           "ffl_core"
         ],
         "summary": "Log a job's gun in the bound book now (a job created unlogged, or one whose",
-        "description": "first attempt failed).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:490`",
+        "description": "first attempt failed).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:525`",
         "operationId": "ffl_core.gunsmith.log_in_bound_book",
         "responses": {
           "200": {
@@ -13879,7 +13992,7 @@
           "ffl_core"
         ],
         "summary": "Received / In Progress → Ready: the work is done and recorded.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:392`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:427`",
         "operationId": "ffl_core.gunsmith.mark_ready",
         "responses": {
           "200": {
@@ -13927,7 +14040,7 @@
           "ffl_core"
         ],
         "summary": "Tell the customer the gun is ready, and record who told them, how and when.",
-        "description": "Email sends the store's \"Gunsmith Work Ready\" email now (the customer needs an\nemail address). Phone and Text are made by staff; this records them.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:414`",
+        "description": "Email sends the store's \"Gunsmith Work Ready\" email now (the customer needs an\nemail address). Phone and Text are made by staff; this records them.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:449`",
         "operationId": "ffl_core.gunsmith.notify_customer",
         "responses": {
           "200": {
@@ -13974,13 +14087,66 @@
         }
       }
     },
+    "/api/method/ffl_core.gunsmith.open_deposit": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "A payment towards an open job parked as its own draft register invoice — what an",
+        "description": "agent opens instead of the register cart's :func:`deposit_line`. One open deposit\ndraft per job: a second call returns the one already open, at its own amount.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:216`",
+        "operationId": "ffl_core.gunsmith.open_deposit",
+        "responses": {
+          "200": {
+            "description": "{\"pos_invoice\", \"already\": bool, \"amount\": the draft's deposit amount}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Gunsmith Work Order name; Received, In Progress or Ready."
+                  },
+                  "amount": {
+                    "type": "number",
+                    "description": "What the customer pays now, above 0."
+                  }
+                },
+                "required": [
+                  "name",
+                  "amount"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.gunsmith.open_pickup": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "Hand the gun back. With nothing to charge and no deposit held, the job is",
-        "description": "picked up now; otherwise this opens (or returns) the draft register invoice with\nthe charges and the deposit held coming off them, and its submit picks the job up.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:621`",
+        "description": "picked up now; otherwise this opens (or returns) the draft register invoice with\nthe charges and the deposit held coming off them, and its submit picks the job up.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:656`",
         "operationId": "ffl_core.gunsmith.open_pickup",
         "responses": {
           "200": {
@@ -14028,7 +14194,7 @@
           "ffl_core"
         ],
         "summary": "Open (or return) the draft register return that pays back the deposit still held",
-        "description": "— a cancelled job's, or what a smaller bill left over. A return goes against one\npayment and refunds at most that payment, newest first; with several payments held\nthe rest is refunded with the next return.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:688`",
+        "description": "— a cancelled job's, or what a smaller bill left over. A return goes against one\npayment and refunds at most that payment, newest first; with several payments held\nthe rest is refunded with the next return.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:723`",
         "operationId": "ffl_core.gunsmith.refund_deposit",
         "responses": {
           "200": {
@@ -14076,7 +14242,7 @@
           "ffl_core"
         ],
         "summary": "The open jobs for the register's Recent Orders › Work Orders list, with what its",
-        "description": "Take payment and Complete actions need.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:216`",
+        "description": "Take payment and Complete actions need.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:251`",
         "operationId": "ffl_core.gunsmith.register_work_orders",
         "responses": {
           "200": {
@@ -14131,7 +14297,7 @@
           "ffl_core"
         ],
         "summary": "Received (or Ready, reopened) → In Progress.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:370`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:405`",
         "operationId": "ffl_core.gunsmith.start_work",
         "responses": {
           "200": {
@@ -20266,7 +20432,7 @@
           "ffl_integrations"
         ],
         "summary": "Cancel an in-flight card charge (race-safe).",
-        "description": "If the cancel RACES an approval (card just captured), the capture is\nreconciled instead of stranding it / letting a retry double-charge.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:776`",
+        "description": "If the cancel RACES an approval (card just captured), the capture is\nreconciled instead of stranding it / letting a retry double-charge.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:794`",
         "operationId": "ffl_integrations.payments.api.cancel_pos_charge",
         "responses": {
           "200": {
@@ -20319,7 +20485,7 @@
           "ffl_integrations"
         ],
         "summary": "Cancel an in-flight terminal charge on a Sales Invoice (race-safe).",
-        "description": "A cancel that races an approval settles the approval instead — the card\nwas charged, so it is recorded and booked, never stranded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1119`",
+        "description": "A cancel that races an approval settles the approval instead — the card\nwas charged, so it is recorded and booked, never stranded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1137`",
         "operationId": "ffl_integrations.payments.api.cancel_sales_invoice_charge",
         "responses": {
           "200": {
@@ -20366,13 +20532,43 @@
         }
       }
     },
+    "/api/method/ffl_integrations.payments.api.card_tender_mode": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Whether a Credit Card tender must go through the counter terminal.",
+        "description": "Read-only. With a card processor switched on, configured and holding a\ndevice, a card is charged on the terminal (charge_pos_invoice); otherwise a\nCredit Card row is a plain tender typed from a standalone terminal.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:562`",
+        "operationId": "ffl_integrations.payments.api.card_tender_mode",
+        "responses": {
+          "200": {
+            "description": "{\"integrated\": bool}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        }
+      }
+    },
     "/api/method/ffl_integrations.payments.api.charge_pos_invoice": {
       "post": {
         "tags": [
           "ffl_integrations"
         ],
         "summary": "Start a card charge on the card processor's terminal for a POS invoice.",
-        "description": "Starts the charge on the active processor's card device; the frontend then\npolls poll_pos_charge() until the terminal returns. Reuses an in-flight\ncharge rather than double-charging.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:562`",
+        "description": "Starts the charge on the active processor's card device; the frontend then\npolls poll_pos_charge() until the terminal returns. Reuses an in-flight\ncharge rather than double-charging.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:580`",
         "operationId": "ffl_integrations.payments.api.charge_pos_invoice",
         "responses": {
           "200": {
@@ -20441,7 +20637,7 @@
           "ffl_integrations"
         ],
         "summary": "Start a card charge on the card processor's terminal against a counter Sales Invoice.",
-        "description": "The counter's card tender for an on-account order (Create Order right\nafter the order books; Pending Order → Record Payment for a balance).\nStarts a charge on the active processor's card device; the frontend polls it with\npoll_sales_invoice_charge(); the approval books a Payment Entry. Reuses\nan in-flight instruction rather than double-charging, and never starts\none while an earlier approval on this invoice is unrecorded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:978`",
+        "description": "The counter's card tender for an on-account order (Create Order right\nafter the order books; Pending Order → Record Payment for a balance).\nStarts a charge on the active processor's card device; the frontend polls it with\npoll_sales_invoice_charge(); the approval books a Payment Entry. Reuses\nan in-flight instruction rather than double-charging, and never starts\none while an earlier approval on this invoice is unrecorded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:996`",
         "operationId": "ffl_integrations.payments.api.charge_sales_invoice",
         "responses": {
           "200": {
@@ -20503,7 +20699,7 @@
           "ffl_integrations"
         ],
         "summary": "Record that a gateway-charged sale's refund was issued in the card processor's portal.",
-        "description": "The manager-level exit for the switched-off refund guard. Deliberately its\nown field plus a timeline entry — never the tender row's ``reference_no``,\nwhich the standalone-terminal flow collects for a different purpose and\nwhich therefore cannot double as this guard's evidence (a guard whose\nevidence another rule force-collects clears itself).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role (_check_manager).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:2234`",
+        "description": "The manager-level exit for the switched-off refund guard. Deliberately its\nown field plus a timeline entry — never the tender row's ``reference_no``,\nwhich the standalone-terminal flow collects for a different purpose and\nwhich therefore cannot double as this guard's evidence (a guard whose\nevidence another rule force-collects clears itself).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role (_check_manager).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:2252`",
         "operationId": "ffl_integrations.payments.api.confirm_out_of_band_refund",
         "responses": {
           "200": {
@@ -20561,7 +20757,7 @@
           "ffl_integrations"
         ],
         "summary": "List the terminals the active card processor's credentials may use (connectivity smoke test).",
-        "description": "A zero-risk connectivity + pairing check (Payroc: the authenticate\nresponse's allowedTerminals).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1152`",
+        "description": "A zero-risk connectivity + pairing check (Payroc: the authenticate\nresponse's allowedTerminals).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1170`",
         "operationId": "ffl_integrations.payments.api.list_terminals",
         "responses": {
           "200": {
@@ -20591,7 +20787,7 @@
           "ffl_integrations"
         ],
         "summary": "Poll a card charge once, on the processor that started it.",
-        "description": "In progress → {ok: False} (frontend loops). Finished → verify full\napproval, stamp the reference on the invoice.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:726`",
+        "description": "In progress → {ok: False} (frontend loops). Finished → verify full\napproval, stamp the reference on the invoice.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:744`",
         "operationId": "ffl_integrations.payments.api.poll_pos_charge",
         "responses": {
           "200": {
@@ -20647,7 +20843,7 @@
           "ffl_integrations"
         ],
         "summary": "Poll a terminal charge started by charge_sales_invoice once.",
-        "description": "IN_PROGRESS → {ok: False} (frontend loops). On approval the record goes\nCHARGED and a Payment Entry books against the invoice; the answer carries\nthe new balance.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1088`",
+        "description": "IN_PROGRESS → {ok: False} (frontend loops). On approval the record goes\nCHARGED and a Payment Entry books against the invoice; the answer carries\nthe new balance.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1106`",
         "operationId": "ffl_integrations.payments.api.poll_sales_invoice_charge",
         "responses": {
           "200": {
@@ -20700,7 +20896,7 @@
           "ffl_integrations"
         ],
         "summary": "Refund a POS return's card portion to the original card(s).",
-        "description": "Referenced refund of the Credit Card portion of a POS RETURN invoice,\nsent to the processor that took each original charge. Firearm returns\nare blocked (bound-book reversal is a separate project). Multi-card\noriginals refund across rows within per-original-card caps.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager-gated refund roles (gate at entry).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1489`",
+        "description": "Referenced refund of the Credit Card portion of a POS RETURN invoice,\nsent to the processor that took each original charge. Firearm returns\nare blocked (bound-book reversal is a separate project). Multi-card\noriginals refund across rows within per-original-card caps.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager-gated refund roles (gate at entry).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1507`",
         "operationId": "ffl_integrations.payments.api.refund_pos_invoice",
         "responses": {
           "200": {
@@ -20755,7 +20951,7 @@
           "ffl_integrations"
         ],
         "summary": "Manager unlock for a return whose automatic card refund armed the",
-        "description": "UNKNOWN-OUTCOME re-refund lock (the amplifier: the\nlock had no product-side unlock, so a locked return died in bench\nconsole).\n\nONLY ``UNKNOWN-OUTCOME`` unlocks — zero slices booked, so a full-amount\nretry is exactly the original entitlement. A ``PARTIAL:*`` sentinel is\nthe ONE record of how much this return already pushed back; clearing it\nre-arms a full-amount retry that the per-ORIGINAL-card caps cannot bound\n(an original with headroom would refund the booked slices again).\nIts residue goes to back-office manual processing.\nA real refund reference means the refund COMPLETED and never unlocks.\n\nThe unlock is an attestation, not a reconciliation: the gateway may\nactually have refunded (rows still show headroom), so the manager must\nverify in the processor's portal FIRST — the reason is required and the whole\naction lands in the document timeline (who/when/why/previous lock),\nmirroring manager_override_4473's audit posture.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager gate (roles per the derived Auth line) + required reason — the reason must record what was verified in the processor's portal.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1872`",
+        "description": "UNKNOWN-OUTCOME re-refund lock (the amplifier: the\nlock had no product-side unlock, so a locked return died in bench\nconsole).\n\nONLY ``UNKNOWN-OUTCOME`` unlocks — zero slices booked, so a full-amount\nretry is exactly the original entitlement. A ``PARTIAL:*`` sentinel is\nthe ONE record of how much this return already pushed back; clearing it\nre-arms a full-amount retry that the per-ORIGINAL-card caps cannot bound\n(an original with headroom would refund the booked slices again).\nIts residue goes to back-office manual processing.\nA real refund reference means the refund COMPLETED and never unlocks.\n\nThe unlock is an attestation, not a reconciliation: the gateway may\nactually have refunded (rows still show headroom), so the manager must\nverify in the processor's portal FIRST — the reason is required and the whole\naction lands in the document timeline (who/when/why/previous lock),\nmirroring manager_override_4473's audit posture.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager gate (roles per the derived Auth line) + required reason — the reason must record what was verified in the processor's portal.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1890`",
         "operationId": "ffl_integrations.payments.api.unlock_refund_lock",
         "responses": {
           "200": {
@@ -20808,7 +21004,7 @@
           "ffl_integrations"
         ],
         "summary": "Reverse an unsettled card charge (back-office; per-card on multi-card).",
-        "description": "Books the gateway reversal on the processor that took the charge (Payroc\nhas no /void: it reverses). Multi-card invoices void PER CARD: pass the\ncharge row's unique_reference when more than one live capture exists.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Refund/void roles (_check_refund_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1176`",
+        "description": "Books the gateway reversal on the processor that took the charge (Payroc\nhas no /void: it reverses). Multi-card invoices void PER CARD: pass the\ncharge row's unique_reference when more than one live capture exists.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Refund/void roles (_check_refund_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1194`",
         "operationId": "ffl_integrations.payments.api.void_pos_invoice",
         "responses": {
           "200": {
@@ -21312,7 +21508,7 @@
           "ffl_integrations"
         ],
         "summary": "The card charges on a Sales Invoice that a manager can void or refund, for the form.",
-        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:453`",
+        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:453`",
         "operationId": "ffl_integrations.payments.si_reversal.card_charges",
         "responses": {
           "200": {
@@ -21360,7 +21556,7 @@
           "ffl_integrations"
         ],
         "summary": "Refund part or all of a card charge on a counter Sales Invoice to the card it came from.",
-        "description": "Return: a credit note takes the amount back from the sale, pro rata over its lines and tax, and\na Pay Payment Entry settles it (only for invoices that never touched stock or the bound book;\nmembership lines once the membership has ended). Collect again: a Journal Entry puts the amount\nback on the invoice to be collected another way.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:332`",
+        "description": "Return: a credit note takes the amount back from the sale, pro rata over its lines and tax, and\na Pay Payment Entry settles it (only for invoices that never touched stock or the bound book;\nmembership lines once the membership has ended). Collect again: a Journal Entry puts the amount\nback on the invoice to be collected another way.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:332`",
         "operationId": "ffl_integrations.payments.si_reversal.refund_sales_invoice_charge",
         "responses": {
           "200": {
@@ -21422,7 +21618,7 @@
           "ffl_integrations"
         ],
         "summary": "Settle a void or refund the card processor never confirmed, after looking in its portal.",
-        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:410`",
+        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:410`",
         "operationId": "ffl_integrations.payments.si_reversal.resolve_card_reversal",
         "responses": {
           "200": {
@@ -21486,7 +21682,7 @@
           "ffl_integrations"
         ],
         "summary": "Void a card charge on a counter Sales Invoice: the processor reverses the whole capture",
-        "description": "(before it settles) and the invoice owes the amount again.\n\nThe charge's Payment Entry is cancelled when it was posted today, settles only this charge and\nis not bank-cleared; otherwise a Journal Entry today books the reversal. Membership invoices\nare refunded instead (type Return).\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:298`",
+        "description": "(before it settles) and the invoice owes the amount again.\n\nThe charge's Payment Entry is cancelled when it was posted today, settles only this charge and\nis not bank-cleared; otherwise a Journal Entry today books the reversal. Membership invoices\nare refunded instead (type Return).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:298`",
         "operationId": "ffl_integrations.payments.si_reversal.void_sales_invoice_charge",
         "responses": {
           "200": {
@@ -23272,7 +23468,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Run the web revenue / stock backstop sweep by hand.",
-        "description": "Same sweep the 2-hourly cron runs (``scheduled_web_revenue_backstop``):\nbooks the revenue of Transferred web orders that never got an invoice and\nissues the missing accessory stock legs, alerting instead of acting on\nanything a person already touched.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (same as the other web-order accounting actions).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/order_audit.py:428`",
+        "description": "Same sweep the 2-hourly cron runs (``scheduled_web_revenue_backstop``):\nbooks the revenue of Transferred web orders that never got an invoice and\nissues the missing accessory stock legs, alerting instead of acting on\nanything a person already touched.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (same as the other web-order accounting actions).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/order_audit.py:456`",
         "operationId": "ffl_woo_sync.woocommerce.order_audit.run_web_revenue_backstop_now",
         "responses": {
           "200": {
@@ -23296,13 +23492,43 @@
         }
       }
     },
+    "/api/method/ffl_woo_sync.woocommerce.order_audit.shipped_undisposed_orders": {
+      "post": {
+        "tags": [
+          "ffl_woo_sync"
+        ],
+        "summary": "List web orders WooCommerce says shipped while POS still has them open.",
+        "description": "Read-only: the same query (and grace period) as the daily\n``tasks.alert_shipped_undisposed_orders`` alarm, without its Error Log, so\nthe list and the alarm cannot disagree. Each one is a firearm that may have\nleft with no disposition booked: confirm the serial against ShipStation and\nFastBound, then dispose the order in POS.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/order_audit.py:432`",
+        "operationId": "ffl_woo_sync.woocommerce.order_audit.shipped_undisposed_orders",
+        "responses": {
+          "200": {
+            "description": "``[{\"name\", \"woo_order_id\", \"customer_name\", \"modified\"}, ...]``, oldest first; empty when nothing is outstanding.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "array"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        }
+      }
+    },
     "/api/method/ffl_woo_sync.woocommerce.order_audit.web_stock_legs_outstanding": {
       "post": {
         "tags": [
           "ffl_woo_sync"
         ],
         "summary": "List web invoices whose accessory stock never left — the month-end control.",
-        "description": "Read-only. Before closing a month, call this for that month (first to last\nday) and expect an empty list: a web invoice whose accessory Delivery Note\nnever posted still shows a cost in the Sales Report (its cost column is\nqty x Bin valuation rate, not the GL), so the report cannot reveal the gap\nand its cost can only be trusted against GL COGS once this is empty. A\nnon-zero count lists the invoices: run ``run_web_revenue_backstop_now`` to\nissue the ones that can be issued, handle the rest by hand. Also before\nclosing: no open ToDo on a Sales Invoice or Woo Online Order from this\nmachinery (a stock leg that could not be issued, a revenue booking that\nkeeps failing, an order whose only invoice is cancelled, a refund held\nbecause a person is holding the stock leg, an invoice left in Draft on a\ntotal mismatch) — each is an unbooked sale or an overstated shelf. A\nbackfilled Delivery Note is posted on the invoice's own date while the\nperiod is open (no Period Closing Voucher, no accounts/stock freeze, month\nnot yet handed to an outside accountant), otherwise on the correction date\nwith a comment saying so. After a submitted sales return against a web\nDelivery Note, expect report cost to exceed GL COGS by the returned amount.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (same as the other web-order accounting actions).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/order_audit.py:387`",
+        "description": "Read-only. Before closing a month, call this for that month (first to last\nday) and expect an empty list: a web invoice whose accessory Delivery Note\nnever posted still shows a cost in the Sales Report (its cost column is\nqty x Bin valuation rate, not the GL), so the report cannot reveal the gap\nand its cost can only be trusted against GL COGS once this is empty. A\nnon-zero count lists the invoices: run ``run_web_revenue_backstop_now`` to\nissue the ones that can be issued, handle the rest by hand. Also before\nclosing: no open ToDo on a Sales Invoice or Woo Online Order from this\nmachinery (a stock leg that could not be issued, a revenue booking that\nkeeps failing, an order whose only invoice is cancelled, a refund held\nbecause a person is holding the stock leg, an invoice left in Draft on a\ntotal mismatch) — each is an unbooked sale or an overstated shelf. A\nbackfilled Delivery Note is posted on the invoice's own date while the\nperiod is open (no Period Closing Voucher, no accounts/stock freeze, month\nnot yet handed to an outside accountant), otherwise on the correction date\nwith a comment saying so. After a submitted sales return against a web\nDelivery Note, expect report cost to exceed GL COGS by the returned amount.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (same as the other web-order accounting actions).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/order_audit.py:391`",
         "operationId": "ffl_woo_sync.woocommerce.order_audit.web_stock_legs_outstanding",
         "responses": {
           "200": {

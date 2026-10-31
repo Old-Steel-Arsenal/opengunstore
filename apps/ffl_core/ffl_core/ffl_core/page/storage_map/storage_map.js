@@ -531,6 +531,7 @@ class StorageMapApp {
 			<div class="stg">
 				<style>
 					.stg { max-width: 1100px; margin: 0 auto; padding: 4px 0 80px; }
+					@media (max-width: 767px) { .stg { padding-inline: 15px; } }
 					.stg .card-box { background: var(--card-bg); border: 1px solid var(--border-color);
 						border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; }
 					.stg .muted { color: var(--text-muted); }
@@ -574,7 +575,14 @@ class StorageMapApp {
 					.stg .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px;
 						border: 1px solid var(--border-color); margin-right: 4px; vertical-align: -2px; }
 					.stg .card-box:has(table) { overflow-x: auto; } /* wide tables scroll on a phone */
-					.stg.wide { max-width: none; }
+					/* Zones on a phone: the action links get their own full-width line under each zone. */
+					@media (max-width: 767px) {
+						.stg table.zones tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) 6em minmax(0, 1.5fr); }
+						.stg table.zones th:last-child { display: none; }
+						.stg table.zones td:not(:last-child) { border-bottom: 0; }
+						.stg table.zones td:last-child { grid-column: 1 / -1; text-align: left; padding-top: 0; }
+					}
+					.stg.wide { max-width: none; padding-inline: 15px; }
 					.stg .plan-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
 					.stg .plan-tabs { display: flex; gap: 6px; overflow-x: auto; flex: 1 1 200px; min-width: 0;
 						-webkit-overflow-scrolling: touch; padding-bottom: 2px; }
@@ -1235,11 +1243,11 @@ class StorageMapApp {
 		const d = new frappe.ui.Dialog({
 			title: __('New floor plan'),
 			fields: [
-				{ fieldname: 'plan_name', fieldtype: 'Data', label: __('Name'), reqd: 1,
-					description: __('One plan per room or floor, like Showroom or Back Room.') },
+				{ fieldname: 'plan_name', fieldtype: 'Data', label: __('Name'), reqd: 1 },
+				{ fieldtype: 'Section Break' },
 				{ fieldname: 'width', fieldtype: 'Float', label: __('Width (ft)'), reqd: 1, default: 60 },
-				{ fieldname: 'height', fieldtype: 'Float', label: __('Depth (ft)'), reqd: 1, default: 40,
-					description: __('A rough size is fine.') },
+				{ fieldtype: 'Column Break' },
+				{ fieldname: 'height', fieldtype: 'Float', label: __('Depth (ft)'), reqd: 1, default: 40 },
 			],
 			primary_action_label: __('Create'),
 			primary_action: (v) => {
@@ -1500,7 +1508,9 @@ class StorageMapApp {
 			title: __('Plan settings'),
 			fields: [
 				{ fieldname: 'plan_name', fieldtype: 'Data', label: __('Name'), reqd: 1, default: ed.plan_name },
+				{ fieldtype: 'Section Break' },
 				{ fieldname: 'width', fieldtype: 'Float', label: __('Width (ft)'), reqd: 1, default: ed.width },
+				{ fieldtype: 'Column Break' },
 				{ fieldname: 'height', fieldtype: 'Float', label: __('Depth (ft)'), reqd: 1, default: ed.height },
 			],
 			primary_action_label: __('Apply'),
@@ -1568,8 +1578,6 @@ class StorageMapApp {
 				} : null,
 			});
 			d.fields_dict.body.$wrapper.html(`
-				<div class="muted" style="margin-bottom:8px">${r.location.kind === 'Slots'
-					? __('A slot holds one firearm.') : __('Holds firearms and everything else.')}</div>
 				${guns ? `<table class="stg"><thead><tr><th>${__('Serial')}</th><th>${__('Item')}</th><th>${__('Details')}</th></tr></thead><tbody>${guns}</tbody></table>` : ''}
 				${items ? `<table class="stg" style="margin-top:8px"><thead><tr><th>${__('Item')}</th><th class="num">${__('Qty')}</th></tr></thead><tbody>${items}</tbody></table>` : ''}
 				${!guns && !items ? `<div class="muted">${__('Nothing in here.')}</div>` : ''}`);
@@ -1801,9 +1809,8 @@ class StorageMapApp {
 					· <a class="link-btn toggle-zone" data-zone="${this.e(z.name)}" data-disabled="${z.disabled ? 1 : 0}">${z.disabled ? __('Enable') : __('Disable')}</a>
 					· <a class="link-btn delete-zone text-danger" data-zone="${this.e(z.name)}">${__('Delete')}</a></td></tr>`;
 		}).join('');
-		this.$tab.html(`<div class="card-box"><table><thead><tr><th>${__('Zone')}</th><th>${__('Kind')}</th>
-			<th class="num">${__('Positions')}</th><th>${__('In use')}</th><th></th></tr></thead><tbody>${rows}</tbody></table>
-			<div class="muted" style="margin-top:8px">${__('Remove slots deletes the last ones (A30, A29…) and Delete removes a whole zone; either needs the places to be empty.')}</div></div>`);
+		this.$tab.html(`<div class="card-box"><table class="zones"><thead><tr><th>${__('Zone')}</th><th>${__('Kind')}</th>
+			<th class="num">${__('Positions')}</th><th>${__('In use')}</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`);
 		this.$tab.find('.zone-layout').on('click', (ev) => this.layoutDialog($(ev.currentTarget).attr('data-zone')));
 		this.$tab.find('.add-pos').on('click', (ev) => this.addPositionsDialog($(ev.currentTarget).attr('data-zone')));
 		this.$tab.find('.remove-pos').on('click', (ev) => this.removePositionsDialog($(ev.currentTarget).attr('data-zone')));
@@ -1827,12 +1834,13 @@ class StorageMapApp {
 		const d = new frappe.ui.Dialog({
 			title: __('New Zone'),
 			fields: [
-				{ fieldname: 'zone_name', fieldtype: 'Data', label: __('Zone name'), reqd: 1,
-					description: __('Short, like A or Display Case.'), change: () => paint() },
+				{ fieldname: 'zone_name', fieldtype: 'Data', label: __('Zone name'), reqd: 1, change: () => paint() },
+				{ fieldtype: 'Column Break' },
 				{ fieldname: 'kind', fieldtype: 'Select', label: __('Kind'), reqd: 1, default: 'Slots',
 					options: 'Slots\nOpen', change: () => paint(),
-					description: __('Slots: numbered places, one firearm each. Open: one location with no limit, for a rack, case or safe.') },
-				{ fieldname: 'count', fieldtype: 'Int', label: __('How many slots (one firearm each)'), default: 10,
+					description: __('Slots hold one firearm each; Open holds anything.') },
+				{ fieldtype: 'Section Break' },
+				{ fieldname: 'count', fieldtype: 'Int', label: __('How many slots'), default: 10,
 					depends_on: "eval:doc.kind=='Slots'", mandatory_depends_on: "eval:doc.kind=='Slots'",
 					change: () => paint() },
 				...this.layoutFields(() => paint(), "doc.kind=='Slots'"),
@@ -1863,16 +1871,17 @@ class StorageMapApp {
 	}
 
 	// Sides and Numbering, as New Zone and Sides & numbering ask for them.
+	// The live preview under these shows what both do, so they carry no help text.
+	// No Section/Column Breaks here: a dialog never re-checks whether a section
+	// whose fields depends_on hid at first render is empty, so it would stay hidden.
 	layoutFields(paint, when, z) {
 		return [
 			{ fieldname: 'sides', fieldtype: 'Int', label: __('Sides'), default: z && z.slot_lines ? z.slot_lines : undefined,
-				depends_on: `eval:${when}`, change: () => paint(),
-				description: __('A two-sided rack is 2; leave empty to fit the slots to the shape on the map.') },
+				depends_on: `eval:${when}`, change: () => paint() },
 			{ fieldname: 'numbering', fieldtype: 'Select', label: __('Numbering on two sides'),
 				default: z && z.numbering === STG_IN_ORDER ? STG_IN_ORDER : 'Odd / even',
 				options: `Odd / even\n${STG_IN_ORDER}`, depends_on: `eval:${when} && (!doc.sides || doc.sides == 2)`,
-				change: () => paint(),
-				description: __('Odd / even runs 1, 3, 5 down one side and 2, 4, 6 facing them; in order runs 1, 2, 3 down the first side, then the second.') },
+				change: () => paint() },
 		];
 	}
 

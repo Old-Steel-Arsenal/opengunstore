@@ -34,7 +34,7 @@ class DistributorOrdersApp {
 		this.$body = $(`
 			<div class="dist-restock">
 				<style>
-					.dist-restock { max-width: 1100px; margin: 0 auto; padding: 4px 0 80px; }
+					.dist-restock { max-width: 1100px; margin: 0 auto; padding: 4px 16px 80px; }
 					.dist-restock .section { background: var(--card-bg); border: 1px solid var(--border-color);
 						border-radius: 8px; padding: 16px 18px; margin-bottom: 14px; }
 					.dist-restock h3 { margin: 0 0 12px; font-size: 15px; font-weight: 600; }

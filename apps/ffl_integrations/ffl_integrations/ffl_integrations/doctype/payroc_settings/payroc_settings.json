@@ -4,30 +4,39 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "tab_connection",
   "section_creds",
   "enabled",
   "require_card_reference",
   "api_key",
+  "default_currency",
+  "column_creds",
   "default_terminal",
   "device_serial_number",
   "saved_card_terminal",
-  "column_creds",
-  "default_currency",
-  "integration_id",
-  "section_advanced",
   "sandbox_mode",
-  "base_url_override",
-  "column_advanced",
-  "request_timeout_seconds",
+  "tab_status",
   "section_status",
   "last_token_refreshed_at",
-  "last_charge_at"
+  "column_status",
+  "last_charge_at",
+  "tab_advanced",
+  "section_advanced",
+  "integration_id",
+  "column_advanced",
+  "base_url_override",
+  "request_timeout_seconds"
  ],
  "fields": [
   {
+   "fieldname": "tab_connection",
+   "fieldtype": "Tab Break",
+   "label": "Connection"
+  },
+  {
    "fieldname": "section_creds",
    "fieldtype": "Section Break",
-   "label": "Credentials"
+   "label": "Connection"
   },
   {
    "default": "1",
@@ -51,6 +60,17 @@
    "mandatory_depends_on": "eval:doc.enabled"
   },
   {
+   "default": "USD",
+   "fieldname": "default_currency",
+   "fieldtype": "Link",
+   "label": "Default Currency",
+   "options": "Currency"
+  },
+  {
+   "fieldname": "column_creds",
+   "fieldtype": "Column Break"
+  },
+  {
    "description": "The gateway terminal number, not the device serial number.",
    "fieldname": "default_terminal",
    "fieldtype": "Data",
@@ -69,28 +89,6 @@
    "label": "Saved-Card Terminal Number"
   },
   {
-   "fieldname": "column_creds",
-   "fieldtype": "Column Break"
-  },
-  {
-   "default": "USD",
-   "fieldname": "default_currency",
-   "fieldtype": "Link",
-   "label": "Default Currency",
-   "options": "Currency"
-  },
-  {
-   "description": "Required only if the Merchant API Key sits under an ISV integration; otherwise leave blank.",
-   "fieldname": "integration_id",
-   "fieldtype": "Data",
-   "label": "X-Integration-ID (ISV only)"
-  },
-  {
-   "fieldname": "section_advanced",
-   "fieldtype": "Section Break",
-   "label": "Advanced"
-  },
-  {
    "default": "0",
    "description": "Test charges only; uncheck for production.",
    "fieldname": "sandbox_mode",
@@ -98,25 +96,14 @@
    "label": "Sandbox Mode"
   },
   {
-   "description": "Must end in /merchant; leave blank to use the default for Sandbox Mode.",
-   "fieldname": "base_url_override",
-   "fieldtype": "Data",
-   "label": "Base URL Override"
-  },
-  {
-   "fieldname": "column_advanced",
-   "fieldtype": "Column Break"
-  },
-  {
-   "default": "30",
-   "fieldname": "request_timeout_seconds",
-   "fieldtype": "Int",
-   "label": "Request Timeout (seconds)"
+   "fieldname": "tab_status",
+   "fieldtype": "Tab Break",
+   "label": "Status"
   },
   {
    "fieldname": "section_status",
    "fieldtype": "Section Break",
-   "label": "Status"
+   "label": "Last activity"
   },
   {
    "fieldname": "last_token_refreshed_at",
@@ -125,15 +112,51 @@
    "read_only": 1
   },
   {
+   "fieldname": "column_status",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "last_charge_at",
    "fieldtype": "Datetime",
    "label": "Last Charge At",
    "read_only": 1
+  },
+  {
+   "fieldname": "tab_advanced",
+   "fieldtype": "Tab Break",
+   "label": "Advanced"
+  },
+  {
+   "fieldname": "section_advanced",
+   "fieldtype": "Section Break",
+   "label": "Advanced"
+  },
+  {
+   "description": "Required only if the Merchant API Key sits under an ISV integration; otherwise leave blank.",
+   "fieldname": "integration_id",
+   "fieldtype": "Data",
+   "label": "X-Integration-ID (ISV only)"
+  },
+  {
+   "fieldname": "column_advanced",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Must end in /merchant; leave blank to use the default for Sandbox Mode.",
+   "fieldname": "base_url_override",
+   "fieldtype": "Data",
+   "label": "Base URL Override"
+  },
+  {
+   "default": "30",
+   "fieldname": "request_timeout_seconds",
+   "fieldtype": "Int",
+   "label": "Request Timeout (seconds)"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-27 12:00:00.000000",
+ "modified": "2026-10-30 12:30:00",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "Payroc Settings",

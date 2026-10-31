@@ -48,9 +48,9 @@
   "pay_certified_check",
   "pay_usps_money_order",
   "pay_money_order",
+  "column_payment",
   "pay_personal_check",
   "pay_cod",
-  "column_payment",
   "card_checkout_enabled",
   "pay_visa_mastercard",
   "pay_amex",
@@ -70,6 +70,7 @@
   "card_clearing_account",
   "column_accounting",
   "ffl_doc_fee",
+  "section_fee_tiers",
   "fee_tiers",
   "tab_advanced",
   "section_sync",
@@ -358,6 +359,10 @@
    "label": "Money order"
   },
   {
+   "fieldname": "column_payment",
+   "fieldtype": "Column Break"
+  },
+  {
    "default": "0",
    "description": "Off by default: it can bounce after the gun has shipped.",
    "fieldname": "pay_personal_check",
@@ -369,10 +374,6 @@
    "fieldname": "pay_cod",
    "fieldtype": "Check",
    "label": "COD"
-  },
-  {
-   "fieldname": "column_payment",
-   "fieldtype": "Column Break"
   },
   {
    "default": "0",
@@ -488,6 +489,10 @@
    "fieldname": "ffl_doc_fee",
    "fieldtype": "Currency",
    "label": "FFL doc fee (per item)"
+  },
+  {
+   "fieldname": "section_fee_tiers",
+   "fieldtype": "Section Break"
   },
   {
    "description": "Applied to each item's price, not the order total.",
@@ -625,7 +630,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-12 10:00:00",
+ "modified": "2026-10-30 12:30:00",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "GunBroker Settings",

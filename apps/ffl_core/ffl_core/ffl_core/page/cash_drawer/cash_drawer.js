@@ -158,6 +158,10 @@ class CashDrawerApp {
 					.cdrw .cdrw-expected { font-size: 34px; font-weight: 700; line-height: 1.1; }
 					.cdrw .cdrw-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 					.cdrw .cdrw-actions .btn { min-height: 44px; padding: 8px 18px; font-size: 14px; }
+					@media (max-width: 767px) {
+						.cdrw { padding-inline: 15px; }
+						.cdrw .cdrw-actions { display: grid; grid-template-columns: 1fr 1fr; }
+					}
 					.cdrw table { width: 100%; border-collapse: collapse; }
 					.cdrw th, .cdrw td { padding: 7px 8px; border-bottom: 1px solid var(--border-color);
 						font-size: 13px; vertical-align: middle; text-align: left; }
@@ -437,8 +441,10 @@ class CashDrawerApp {
 			fields: [
 				{ fieldtype: 'Currency', fieldname: 'amount', label: __('Amount paid (tax included)'), reqd: 1,
 					description: __('Up to {0} each.', [cdrwMoney(d.expense_cap)]) },
+				{ fieldtype: 'Column Break' },
 				{ fieldtype: 'Select', fieldname: 'account', label: __('What it was for'), reqd: 1,
 					options: [{ value: '', label: '' }, ...d.expense_accounts.map((a) => ({ value: a.name, label: a.label }))] },
+				{ fieldtype: 'Section Break' },
 				{ fieldtype: 'Small Text', fieldname: 'memo', label: __('What was bought'), reqd: 1 },
 				{ fieldtype: 'Attach', fieldname: 'receipt', label: __('Photo of the receipt (optional)') },
 			],

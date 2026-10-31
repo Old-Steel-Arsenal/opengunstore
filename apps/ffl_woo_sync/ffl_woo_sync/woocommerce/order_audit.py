@@ -17,7 +17,11 @@ import frappe
 from frappe.utils import add_to_date, get_datetime, now_datetime
 
 from ffl_core.utils import commit as safe_commit
-from ffl_woo_sync.woocommerce.tasks import _due
+from ffl_woo_sync.woocommerce.tasks import (
+	_SHIPPED_UNDISPOSED_GRACE_HOURS,
+	_SHIPPED_UNDISPOSED_SQL,
+	_due,
+)
 from ffl_woo_sync.woocommerce.webhook import _RELEASE_STATUSES
 
 _AUDIT_LOOKBACK_DAYS = 10
@@ -422,6 +426,30 @@ def web_stock_legs_outstanding(from_date=None, to_date=None) -> dict:
 	names = _invoiced_without_delivery(
 		limit=_BACKSTOP_BATCH_MAX, from_date=from_date, to_date=to_date)
 	return {"invoices": names, "count": len(names)}
+
+
+@frappe.whitelist()
+def shipped_undisposed_orders() -> list[dict]:
+	"""List web orders WooCommerce says shipped while POS still has them open.
+
+	Read-only: the same query (and grace period) as the daily
+	``tasks.alert_shipped_undisposed_orders`` alarm, without its Error Log, so
+	the list and the alarm cannot disagree. Each one is a firearm that may have
+	left with no disposition booked: confirm the serial against ShipStation and
+	FastBound, then dispose the order in POS.
+
+	Args:
+	    (none)
+
+	Returns:
+	    ``[{"name", "woo_order_id", "customer_name", "modified"}, ...]``, oldest
+	    first; empty when nothing is outstanding.
+	"""
+	from ffl_core.api.manual_order import _ROLES
+
+	frappe.only_for(_ROLES)
+	return frappe.db.sql(_SHIPPED_UNDISPOSED_SQL,
+		{"grace": _SHIPPED_UNDISPOSED_GRACE_HOURS}, as_dict=True)
 
 
 @frappe.whitelist()

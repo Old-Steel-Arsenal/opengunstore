@@ -19,7 +19,7 @@ class DistributorHubApp {
 		this.$body = $(`
 			<div class="dist-hub">
 				<style>
-					.dist-hub { max-width: 860px; margin: 0 auto; padding: 4px 0 60px; }
+					.dist-hub { max-width: 860px; margin: 0 auto; padding: 4px 16px 60px; }
 					.dist-hub .hub-card { background: var(--card-bg); border: 1px solid var(--border-color);
 						border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; }
 					.dist-hub .hub-card.off { opacity: .62; }
@@ -48,7 +48,6 @@ class DistributorHubApp {
 					.dist-hub .empty { text-align: center; color: var(--text-muted); padding: 46px 0 26px; }
 				</style>
 				<div class="cards"></div>
-				<div class="hub-actions" style="margin-top:14px"></div>
 			</div>`);
 		this.$body.appendTo(this.page.main);
 		this.refresh();
@@ -82,13 +81,8 @@ class DistributorHubApp {
 		}
 		d.distributors.forEach((row, idx) => this.renderCard($cards, row, idx));
 
-		const $actions = this.$body.find('.hub-actions').empty();
-		if (d.can_write) {
-			$('<button class="btn btn-primary btn-sm"></button>')
-				.text(__('Add Distributor'))
-				.on('click', () => this.addDialog())
-				.appendTo($actions);
-		}
+		if (d.can_write) this.page.set_primary_action(__('Add Distributor'), () => this.addDialog(), 'add');
+		else this.page.clear_primary_action();
 	}
 
 	renderCard($cards, row, idx) {
@@ -146,8 +140,9 @@ class DistributorHubApp {
 
 		// ---- read-only summary (Ordering / Ship to store): each item opens its tab
 		// on the provider's settings page — the URL hash picks the tab.
+		const $meta = $('<div class="meta"></div>').appendTo($card);
 		if ((row.summary || []).length) {
-			const $sum = $('<div class="meta"></div>').appendTo($card);
+			const $sum = $meta;
 			row.summary.forEach((item) => {
 				const text = `${esc(item.label)}: ${esc(item.value)}`;
 				if (!row.settings_doctype) {
@@ -161,8 +156,7 @@ class DistributorHubApp {
 			});
 		}
 
-		// ---- health line
-		const $meta = $('<div class="meta"></div>').appendTo($card);
+		// ---- health
 		if (row.health.catalog_off) {
 			// A state, not a fault (the notice above says what to do).
 			$meta.append(`<span>${__('Catalog')}: ${__('off')}</span>`);

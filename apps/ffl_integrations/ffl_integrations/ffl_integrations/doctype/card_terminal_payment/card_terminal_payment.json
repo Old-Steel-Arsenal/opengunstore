@@ -8,10 +8,10 @@
   "sales_invoice",
   "amount",
   "status",
+  "card_summary",
+  "approval_code",
   "column_break_a",
   "unique_reference",
-  "approval_code",
-  "card_summary",
   "payment_entry",
   "refunded_amount",
   "reversal_entry_type",
@@ -20,11 +20,12 @@
   "section_gateway",
   "processor",
   "instruction_id",
+  "response",
+  "column_break_gateway",
   "save_card",
   "save_reference",
   "save_usage",
-  "saved_card",
-  "response"
+  "saved_card"
  ],
  "fields": [
   {
@@ -54,14 +55,9 @@
    "read_only": 1
   },
   {
-   "fieldname": "column_break_a",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "unique_reference",
+   "fieldname": "card_summary",
    "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Gateway Reference",
+   "label": "Card",
    "read_only": 1
   },
   {
@@ -71,9 +67,14 @@
    "read_only": 1
   },
   {
-   "fieldname": "card_summary",
+   "fieldname": "column_break_a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "unique_reference",
    "fieldtype": "Data",
-   "label": "Card",
+   "in_list_view": 1,
+   "label": "Gateway Reference",
    "read_only": 1
   },
   {
@@ -131,6 +132,16 @@
    "read_only": 1
   },
   {
+   "fieldname": "response",
+   "fieldtype": "Code",
+   "label": "Gateway Response",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_gateway",
+   "fieldtype": "Column Break"
+  },
+  {
    "default": "0",
    "fieldname": "save_card",
    "fieldtype": "Check",
@@ -155,19 +166,13 @@
    "label": "Saved Card",
    "options": "Saved Card",
    "read_only": 1
-  },
-  {
-   "fieldname": "response",
-   "fieldtype": "Code",
-   "label": "Gateway Response",
-   "read_only": 1
   }
  ],
  "in_create": 1,
  "index_web_pages_for_search": 0,
  "istable": 0,
  "links": [],
- "modified": "2026-10-29 18:00:00.000000",
+ "modified": "2026-10-30 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "Card Terminal Payment",

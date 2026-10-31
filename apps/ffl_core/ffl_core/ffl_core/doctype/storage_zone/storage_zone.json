@@ -5,7 +5,7 @@
  "engine": "InnoDB",
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-07 12:30:00.000000",
+ "modified": "2026-10-30 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "owner": "Administrator",
@@ -43,27 +43,17 @@
  "naming_rule": "By script",
  "allow_rename": 0,
  "field_order": [
-  "company",
   "zone_name",
   "kind",
-  "column_break_1",
   "slot_count",
+  "company",
+  "column_break_1",
   "slot_lines",
   "numbering",
   "sort_order",
   "disabled"
  ],
  "fields": [
-  {
-   "fieldname": "company",
-   "fieldtype": "Link",
-   "options": "Company",
-   "label": "Company",
-   "reqd": 1,
-   "read_only": 1,
-   "in_list_view": 1,
-   "in_standard_filter": 1
-  },
   {
    "fieldname": "zone_name",
    "fieldtype": "Data",
@@ -80,12 +70,7 @@
    "label": "Kind",
    "reqd": 1,
    "read_only": 1,
-   "in_list_view": 1,
-   "description": "Slots are numbered and hold one firearm each; Open is a single location with no limit, for firearms and anything else."
-  },
-  {
-   "fieldname": "column_break_1",
-   "fieldtype": "Column Break"
+   "in_list_view": 1
   },
   {
    "fieldname": "slot_count",
@@ -95,11 +80,24 @@
    "description": "Positions are only ever added, never removed."
   },
   {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "options": "Company",
+   "label": "Company",
+   "reqd": 1,
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "slot_lines",
    "fieldtype": "Int",
    "label": "Sides",
-   "read_only": 1,
-   "description": "How many lines of slots the zone has on the map: a two-sided rack is 2; 0 fits them to the drawn shape."
+   "read_only": 1
   },
   {
    "fieldname": "numbering",
@@ -107,8 +105,7 @@
    "label": "Numbering",
    "options": "Odd / even\nIn order",
    "default": "Odd / even",
-   "read_only": 1,
-   "description": "Odd / even runs 1, 3, 5 … down one side and 2, 4, 6 … facing them; In order runs 1, 2, 3 … down the first side, then the second."
+   "read_only": 1
   },
   {
    "fieldname": "sort_order",

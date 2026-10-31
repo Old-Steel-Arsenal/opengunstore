@@ -38,6 +38,7 @@
   "other_insurance",
   "section_price",
   "price_drift_alert_pct",
+  "column_price",
   "hold_escalate_days",
   "section_store",
   "store_ship_name",
@@ -278,6 +279,10 @@
    "description": "Sports South charges its current price, not the price on the order; an alert is sent when the difference is above this."
   },
   {
+   "fieldname": "column_price",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "hold_escalate_days",
    "fieldtype": "Int",
    "label": "Flag a hold after (days)",
@@ -498,7 +503,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-09-08 12:00:00",
+ "modified": "2026-10-30 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "Sports South Settings",

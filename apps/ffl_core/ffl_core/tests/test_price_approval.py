@@ -150,6 +150,18 @@ class Wiring(FrappeTestCase):
 				self.assertTrue(meta.get_field(field), f"{dt}.{field}")
 				self.assertTrue(meta.get_field(field).no_copy, f"{dt}.{field} no_copy")
 
+	def test_the_record_sits_in_its_own_section(self):
+		"""Not inside the discount section, which Sales Invoice / Sales Order hide when
+		additional discounts are off (the record vanished with it)."""
+		from ffl_core.setup import price_approval as setup_pa
+		for dt in pa.GATED:
+			section = None
+			for df in frappe.get_meta(dt).fields:
+				if df.fieldtype in ("Section Break", "Tab Break"):
+					section = df.fieldname
+				if df.fieldname in pa.RECORD_FIELDS:
+					self.assertEqual(section, setup_pa.SECTION, f"{dt}.{df.fieldname}")
+
 
 class Setting(SettingsSandbox, FrappeTestCase):
 

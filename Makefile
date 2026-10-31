@@ -237,18 +237,18 @@ bump-version: ## Set the product version in all three apps (needs the release no
 	@test -n "$(VERSION)" || { echo "usage: make bump-version VERSION=x.y.z"; exit 2; }
 	python3 scripts/bump_version.py $(VERSION)
 
-api-docs: ## Regenerate the API reference (docs/api/) from source — no bench needed
+api-docs: ## Regenerate the API reference (docs/api/) and each app's api_catalog.json from source — no bench needed
 	python3 scripts/generate_api_docs.py
 
 api-docs-check: ## Verify (parity+conformance), regenerate, fail if docs/api is stale (CI gate)
 	python3 scripts/generate_api_docs.py --check
 	python3 scripts/generate_api_docs.py
-	@git diff --exit-code HEAD -- docs/api || { \
+	@git diff --exit-code HEAD -- docs/api 'apps/*/*/api_catalog.json' || { \
 		echo "ERROR: docs/api out of sync with HEAD — if generated files"; \
 		echo "changed, run 'make api-docs' and commit; if a hand-written"; \
 		echo "page (README.md/frappe-rest.md/index.html) changed, commit it."; \
 		exit 1; }
-	@untracked=$$(git ls-files --others --exclude-standard docs/api); \
+	@untracked=$$(git ls-files --others --exclude-standard docs/api 'apps/*/*/api_catalog.json'); \
 	if [ -n "$$untracked" ]; then \
 		echo "ERROR: untracked generated files — commit them:"; echo "$$untracked"; exit 1; fi
 

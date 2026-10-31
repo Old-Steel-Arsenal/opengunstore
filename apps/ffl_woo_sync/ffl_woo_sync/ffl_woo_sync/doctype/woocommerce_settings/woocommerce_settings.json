@@ -12,6 +12,7 @@
   "consumer_secret",
   "section_webhook",
   "webhook_secret",
+  "column_webhook",
   "outbound_webhook_secret",
   "tab_sync",
   "section_sync",
@@ -77,6 +78,10 @@
    "label": "Webhook secret"
   },
   {
+   "fieldname": "column_webhook",
+   "fieldtype": "Column Break"
+  },
+  {
    "description": "Must match the secret in the shop's WooCommerce FFL plugin (Dropship \u2192 Settings); blank turns drop-ship status events off.",
    "fieldname": "outbound_webhook_secret",
    "fieldtype": "Password",
@@ -111,17 +116,17 @@
    "fieldtype": "Column Break"
   },
   {
+   "default": "30",
+   "fieldname": "request_timeout_seconds",
+   "fieldtype": "Int",
+   "label": "Request Timeout (s)"
+  },
+  {
    "default": "1",
    "description": "On: the catalog master's category tree sets this store's product categories; off leaves them as they are.",
    "fieldname": "follow_category_tree",
    "fieldtype": "Check",
    "label": "Follow the catalog category tree"
-  },
-  {
-   "default": "30",
-   "fieldname": "request_timeout_seconds",
-   "fieldtype": "Int",
-   "label": "Request Timeout (s)"
   },
   {
    "fieldname": "tab_status",
@@ -170,7 +175,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-09-26 20:00:00.000000",
+ "modified": "2026-10-30 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Woo Sync",
  "name": "WooCommerce Settings",

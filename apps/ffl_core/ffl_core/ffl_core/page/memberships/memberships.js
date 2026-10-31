@@ -34,7 +34,7 @@ class MembershipsPage {
 		this.start = 0;
 		page.set_primary_action(__('Sell membership'), () => this.sell());
 		page.add_button(__('Renewal settings'), () => frappe.set_route('Form', 'Membership Settings'));
-		this.$body = $(`<div class="mshp" style="padding:4px 0 24px">
+		this.$body = $(`<div class="mshp" style="padding:4px 16px 24px">
 			<style>
 				.mshp .mshp-tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:20px; }
 				.mshp .mshp-tile { border:1px solid var(--border-color); border-radius:var(--border-radius-md); padding:10px 14px; background:var(--card-bg); }
@@ -50,7 +50,9 @@ class MembershipsPage {
 				.mshp .mshp-plan.new { border-style:dashed; display:flex; align-items:center; justify-content:center; color:var(--text-muted); }
 				.mshp .mshp-members tbody tr { cursor:pointer; }
 				.mshp .mshp-controls { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
-				.mshp .mshp-controls > * { max-width:220px; }
+				.mshp .mshp-controls > * { flex:1 1 100px; max-width:220px; min-width:0; }
+				@media (max-width:480px) { .mshp .mshp-controls > input { flex-basis:100%; max-width:none; } }
+				.mshp .mshp-scroll { overflow-x:auto; }
 			</style>
 			<div class="mshp-tiles"></div>
 			<div class="mshp-attention"></div>
@@ -120,7 +122,7 @@ class MembershipsPage {
 				<td>${row.sales_invoice ? `<a href="/app/sales-invoice/${encodeURIComponent(row.sales_invoice)}">${mshpEsc(row.sales_invoice)}</a> ${format_currency(row.outstanding)}` : ''}</td>
 				<td class="text-right" style="white-space:nowrap">${buttons}</td></tr>`);
 		});
-		$w.append($t);
+		$w.append($('<div class="mshp-scroll"></div>').append($t));
 	}
 
 	renderPlans() {
@@ -130,7 +132,6 @@ class MembershipsPage {
 		if (!plans.length) {
 			$w.append(`<div class="text-center" style="padding:40px 0">
 				<h4>${mshpEsc(__('Start your first membership plan'))}</h4>
-				<p class="text-muted">${mshpEsc(__('A plan sets the price and how often members are billed, monthly or yearly.'))}</p>
 				${canEdit ? `<button class="btn btn-primary btn-sm" data-act="new-plan">${mshpEsc(__('New plan'))}</button>`
 					: `<p class="text-muted">${mshpEsc(__('Ask a manager to create one.'))}</p>`}
 			</div>`);
@@ -159,7 +160,8 @@ class MembershipsPage {
 			${MSHP_STATUSES.map((s) => `<option value="${mshpEsc(s)}" ${s === this.filters.status ? 'selected' : ''}>${mshpEsc(__(s))}</option>`).join('')}</select>`).appendTo($c);
 		this.$members = $(`<table class="table table-sm mshp-members"><thead><tr>
 			<th>${mshpEsc(__('Member'))}</th><th>${mshpEsc(__('Plan'))}</th><th>${mshpEsc(__('Status'))}</th>
-			<th>${mshpEsc(__('Next charge'))}</th><th>${mshpEsc(__('Card'))}</th></tr></thead><tbody></tbody></table>`).appendTo($w);
+			<th>${mshpEsc(__('Next charge'))}</th><th>${mshpEsc(__('Card'))}</th></tr></thead><tbody></tbody></table>`)
+			.appendTo($('<div class="mshp-scroll"></div>').appendTo($w));
 		this.$more = $(`<button class="btn btn-xs btn-default" style="display:none">${mshpEsc(__('Show more'))}</button>`).appendTo($w);
 		$search.on('input', frappe.utils.debounce(() => { this.filters.search = $search.val(); this.loadMembers(true); }, 300));
 		this.$planFilter.on('change', () => { this.filters.plan = this.$planFilter.val(); this.loadMembers(true); });
