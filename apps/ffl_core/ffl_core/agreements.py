@@ -335,9 +335,9 @@ def sale_requirements(doc) -> list[dict]:
 
 	* Required for every sale — every sale (an Each firearm sold one: every gun in it),
 	  except an FFL dealer's;
-	* Required by item — the Items (or their Item Groups) that name it, and whatever
-	  ``gunshop_required_agreements`` providers name (a failing provider is logged and
-	  adds nothing);
+	* Required by item — the Items (or their Item Groups) that name it, except on an
+	  FFL dealer's sale, and whatever ``gunshop_required_agreements`` providers name
+	  (a failing provider is logged and adds nothing);
 	* Optional — never; it is offered from the Agreements button only.
 
 	An Each firearm sold template applies to the sale's serial-numbered lines only; a
@@ -348,8 +348,11 @@ def sale_requirements(doc) -> list[dict]:
 	if not sale_agreements_enforced():
 		return []
 	rows = [r for r in doc.get("items") or [] if r.get("item_code")]
+	# An FFL dealer buying wholesale is not who a store-wide waiver or a retail buyer's
+	# acknowledgment (a used gun's, say) is for.
+	dealer = bool(doc.get("customer") and frappe.db.get_value("Customer", doc.get("customer"), "is_ffl_dealer"))
 	named: dict[str, list] = {}
-	for r in rows:
+	for r in [] if dealer else rows:
 		t = required_for_item(r.item_code)
 		if t:
 			named.setdefault(t, []).append(r)
@@ -361,8 +364,6 @@ def sale_requirements(doc) -> list[dict]:
 		except Exception:
 			frappe.log_error(title=f"gunshop_required_agreements provider failed: {hook}")
 	templates = _template_rows()
-	# An FFL dealer buying wholesale is not who a store-wide waiver is for.
-	dealer = bool(doc.get("customer") and frappe.db.get_value("Customer", doc.get("customer"), "is_ffl_dealer"))
 	out, seen = [], set()
 
 	def add(t, serial, item):

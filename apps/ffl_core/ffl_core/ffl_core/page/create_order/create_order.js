@@ -61,6 +61,10 @@ class CreateOrderApp {
 		['pincode', 'ship_zip'],
 	];
 
+	// Edit Order, buyer changed on a paid order: update_order's carry_payment 0 / 1.
+	static REFUND_OLD = 'Refund old buyer';
+	static CARRY_NEW = 'Carry payment to new buyer';
+
 	constructor(page) {
 		this.page = page;
 		this.lines = [];
@@ -2357,6 +2361,7 @@ class CreateOrderApp {
 			missing.push(this._isCr() ? __('Destination FFL (click "Use this C&R license")') : __('Destination FFL'));
 		}
 		if (this._leExempt && !this.fields.le_exempt_buyer.get_value()) missing.push(__('Exempt buyer'));
+		if (this._needsPaidChoice() && !this._paidChoiceCtl.get_value()) missing.push(__('What happens to the payment'));
 		if (this._leExempt && !this._leCertOk()) missing.push(__('CDTFA-230-FET certificate'));
 		const tenderRef = this._tenderReference();
 		if (tenderRef && !(this.fields.transaction_number.get_value() || '').trim()) {
@@ -2412,6 +2417,7 @@ class CreateOrderApp {
 				// must pass ignore_invoice=si, or the order's own held guns get rejected
 				// as "already held" and stripped from the prefilled form.
 				this._editing = { si, ctx: m.edit_ctx };
+				this._paidChoiceCtl = null; // a previous edit's; _renderEditChrome makes this one's
 				this._applyPayload(m.payload);
 				this._renderEditChrome();
 			},
@@ -2421,6 +2427,7 @@ class CreateOrderApp {
 
 	_exitEditMode() {
 		this._editing = null;
+		this._paidChoiceCtl = null;
 		// Re-home the Order Note BEFORE removing #edit-note, or removing that
 		// block would take the live control with it.
 		this._restoreNoteHome();
@@ -2465,16 +2472,29 @@ class CreateOrderApp {
 		this.$body.find('#seg-dispose').closest('.section').hide();
 		this.$body.find('#btn-save-draft, #btn-drafts').hide();
 		const paidLine = ctx.paid_total > 0
-			? __('Paid so far: {0} ({1}) — carries to the edited order on save.',
-				[format_currency(ctx.paid_total), esc(ctx.last_payment_mode || __('recorded payments'))])
+			? __('Paid so far: {0} ({1})', [format_currency(ctx.paid_total), esc(ctx.last_payment_mode || __('recorded payments'))])
+				// A changed buyer's choice decides that instead (_syncEditDelta).
+				+ `<span id="edit-paid-carries"> — ${__('carries to the edited order on save.')}</span>`
 			: __('Nothing paid yet.');
 		this.$body.find('#edit-banner').after(`
 			<div id="edit-money" class="section">
 				<h3>${__('Money')}</h3>
 				<div>${paidLine}</div>
 				<div id="edit-delta" style="margin-top:6px"></div>
+				<div id="edit-paid-choice" style="display:none; margin-top:8px; max-width:340px"></div>
 				<div id="edit-refund-controls" style="display:none; margin-top:8px; max-width:340px"></div>
 			</div>`);
+		// A changed buyer on a paid order: staff say where the money goes — no
+		// default, so a payment is never refunded (or moved) by accident.
+		this._paidChoiceCtl = this._f('#edit-paid-choice', {
+			label: __('Payment'), fieldtype: 'Select', fieldname: 'paid_choice',
+			options: ['', CreateOrderApp.REFUND_OLD, ...(ctx.carry_block ? [] : [CreateOrderApp.CARRY_NEW])].join('\n'),
+			description: ctx.carry_block
+				? __("Can't move it to the new buyer: {0}. If {1} is not getting the money back, don't save — ask the bookkeeper to move the payment.",
+					[esc(ctx.carry_block), esc(ctx.customer_name || ctx.customer)])
+				: '',
+			change: () => this._reflectReadiness(),
+		});
 		this._refundModeCtl = this._f('#edit-refund-controls', {
 			label: __('Refund Method'), fieldtype: 'Select', fieldname: 'refund_mode',
 			options: ['Cash', 'Credit Card', 'Zelle', 'ACH', 'Check/Money Order'].join('\n'),
@@ -2507,8 +2527,19 @@ class CreateOrderApp {
 		if (!this._editing) return 0;
 		const ctx = this._editing.ctx;
 		if (ctx.paid_total <= 0) return 0;
-		if ((this._currentCustomer() || '') !== ctx.customer) return ctx.paid_total;
+		if (this._needsPaidChoice()) {
+			const choice = this._paidChoiceCtl.get_value();
+			if (choice === CreateOrderApp.REFUND_OLD) return ctx.paid_total;
+			if (choice !== CreateOrderApp.CARRY_NEW) return 0;
+		}
 		return Math.max(0, ctx.paid_total - (this._lastTotal || 0));
+	}
+
+	// The buyer changed on an order with money on it (update_order's carry_payment).
+	_needsPaidChoice() {
+		const ctx = this._editing?.ctx;
+		return !!ctx && !!this._paidChoiceCtl && ctx.paid_total > 0
+			&& (this._currentCustomer() || '') !== ctx.customer;
 	}
 
 	_syncEditDelta() {
@@ -2516,17 +2547,30 @@ class CreateOrderApp {
 		const ctx = this._editing.ctx;
 		const $d = this.$body.find('#edit-delta');
 		const refund = this._projectedRefund();
-		const swapped = (this._currentCustomer() || '') !== ctx.customer;
+		const choosing = this._needsPaidChoice();
+		const choice = choosing ? this._paidChoiceCtl.get_value() : '';
+		const payer = frappe.utils.escape_html(ctx.customer_name || ctx.customer);
 		let html = '';
-		if (ctx.paid_total > 0 && swapped) {
+		if (choosing && choice === CreateOrderApp.REFUND_OLD) {
 			html = `<span style="color:var(--orange-600)">${__('Buyer changed — the full {0} refunds to {1}; the new order starts unpaid.',
-				[format_currency(ctx.paid_total), frappe.utils.escape_html(ctx.customer_name || ctx.customer)])}</span>`;
+				[format_currency(ctx.paid_total), payer])}</span>`;
+		} else if (choosing && choice === CreateOrderApp.CARRY_NEW) {
+			html = __('Buyer changed — the {0} {1} paid now pays the new order.', [format_currency(ctx.paid_total), payer]);
+			if (refund > 0.01) {
+				html += ` <span style="color:var(--orange-600)">${__('New total is lower — {0} goes back to {1} the way it was paid.', [format_currency(refund), payer])}</span>`;
+			} else if ((this._lastTotal || 0) - ctx.paid_total > 0.01) {
+				html += ' ' + __('Balance to collect after save: {0}', [format_currency(this._lastTotal - ctx.paid_total)]);
+			}
+		} else if (choosing) {
+			html = `<span style="color:var(--orange-600)">${__('Buyer changed — choose what happens to the {0} {1} paid.', [format_currency(ctx.paid_total), payer])}</span>`;
 		} else if (refund > 0.01) {
 			html = `<span style="color:var(--orange-600)">${__('New total is lower — {0} will be refunded.', [format_currency(refund)])}</span>`;
 		} else if (ctx.paid_total > 0 && (this._lastTotal || 0) - ctx.paid_total > 0.01) {
 			html = __('Balance to collect after save: {0}', [format_currency(this._lastTotal - ctx.paid_total)]);
 		}
 		$d.html(html);
+		this.$body.find('#edit-paid-choice').toggle(choosing);
+		this.$body.find('#edit-paid-carries').toggle(!choosing);
 		this.$body.find('#edit-refund-controls').toggle(refund > 0.01);
 		this._refundRefCtl?.$wrapper.toggle(
 			refund > 0.01 && this._refundNeedsReference());
@@ -2546,6 +2590,7 @@ class CreateOrderApp {
 			sales_invoice: this._editing.si,
 			payload: JSON.stringify(payload),
 		};
+		if (this._needsPaidChoice()) args.carry_payment = this._paidChoiceCtl.get_value() === CreateOrderApp.CARRY_NEW ? 1 : 0;
 		const refund = this._projectedRefund();
 		if (refund > 0.01) {
 			args.refund_mode = this._refundModeCtl.get_value();

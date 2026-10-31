@@ -433,7 +433,7 @@ Per-house override of the site-wide Catalog API service on FFL Settings (docs/ca
 
 **Agreement Text.** Placeholders for a gunsmith work order (Per document): {{ work_order }}, {{ manufacturer }}, {{ model }}, {{ caliber }}, {{ serial_no }}, {{ firearm_type }}, {{ accessories }}, {{ condition }}, {{ work_requested }}, {{ estimated_cost }}, {{ deposit }}, {{ estimated_completion }}, besides the general ones. For Each firearm sold, one copy covers every gun of a sale: with several guns, each gun placeholder lists them all.
 
-**Required.** Optional: only offered from the Agreements button. Required for every sale: every counter sale waits for it (not an FFL dealer's; a walk-in sale needs a named customer to sign).
+**Required.** Optional: only offered from the Agreements button. Required by item: a sale of an Item or Item Group that names it, or of a used Item when it is the Used Item Agreement (not an FFL dealer's). Required for every sale: every counter sale waits for it (not an FFL dealer's; a walk-in sale needs a named customer to sign).
 
 **Signed.** Per customer: one signature covers every visit until it expires. Each firearm sold: a new signed copy for the guns sold, naming them (a no-return agreement); one copy covers every gun of a sale unless One copy per gun is ticked, in which case the customer signs a separate copy for each gun. Per document: a copy for one record, signed from that record (a gunsmith work order's intake authorization).
 

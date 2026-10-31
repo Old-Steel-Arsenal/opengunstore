@@ -80,7 +80,7 @@
    "options": "Optional\nRequired by item\nRequired for every sale",
    "default": "Required by item",
    "in_list_view": 1,
-   "description": "Required by item applies to a counter sale of an Item or Item Group that names this agreement. Required for every sale blocks every counter sale until it is signed, so a walk-in sale needs a named customer."
+   "description": "Required by item applies to a counter sale of an Item or Item Group that names this agreement. Required for every sale blocks every counter sale until it is signed, so a walk-in sale needs a named customer. An FFL dealer signs neither."
   },
   {
    "fieldname": "show_on_counter_panel",
