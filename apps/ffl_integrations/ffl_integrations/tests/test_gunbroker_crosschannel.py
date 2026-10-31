@@ -197,6 +197,9 @@ class TheWooRegistrantTakesGunsOffTheStore(FrappeTestCase):
 		patcher = patch("frappe.db.get_value", side_effect=_get_value)
 		patcher.start()
 		self.addCleanup(patcher.stop)
+		patcher = patch("frappe.db.set_value")  # the exit's woo_channel_delisted mark
+		patcher.start()
+		self.addCleanup(patcher.stop)
 
 	def test_a_listed_serial_is_delisted_on_the_retail_store(self):
 		from ffl_woo_sync.woocommerce import channel
@@ -220,11 +223,12 @@ class TheWooRegistrantTakesGunsOffTheStore(FrappeTestCase):
 		self.assertEqual(self.enqueued, [])
 
 	def test_a_released_serial_is_relisted_on_the_retail_store(self):
-		"""The exit drafted the page and set ``woo_delisted``; only a relist push
-		lifts that, so the return must ask for one explicitly."""
+		"""The exit drafted the page and set ``woo_delisted`` (marking
+		``woo_channel_delisted``); only a relist push lifts that, so the return
+		must ask for one explicitly."""
 		from ffl_woo_sync.woocommerce import channel
 
-		self._serial(woo_product_id="11")
+		self._serial(woo_product_id="11", woo_channel_delisted=1)
 		channel.serial_channel_return("SN-1", channel="gunbroker", reason="released")
 		self.assertEqual(len(self.enqueued), 1)
 		job = self.enqueued[0]

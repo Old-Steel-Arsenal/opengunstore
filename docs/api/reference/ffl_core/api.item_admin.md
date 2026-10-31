@@ -57,7 +57,7 @@ history rows are left alone — they're audit trail.
 
 **Permissions:** System Manager only (destructive).
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:578`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:587`</sub>
 
 ## `get_item_stock`
 
@@ -77,7 +77,7 @@ show a stock badge without forcing the user to open Stock Balance.
 
 **Returns:** {item_code: total_actual_qty} — every requested code is present.
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:414`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:423`</sub>
 
 ## `preview_delete`
 
@@ -95,7 +95,7 @@ Preview a force_delete: per-doctype counts of rows that would be touched.
 
 **Permissions:** System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:502`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:511`</sub>
 
 ## `recompute_all_item_actual_qty`
 
@@ -116,7 +116,7 @@ Two statements:
 
 **Permissions:** System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:373`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:382`</sub>
 
 ## `set_stock`
 
@@ -146,7 +146,7 @@ plus those units; once the close posts them the Bin reads the entered figure.
 
 **Returns:** {ok, name (Stock Reconciliation #), prev_qty, new_qty (as entered), open_register_qty (units on register sales not closed yet), delta (what the reconciliation changed the Bin by), warehouse}.
 
-**Raises:** ValidationError: Serial-tracked item, invalid qty, missing warehouse, or no qty change.
+**Raises:** ValidationError: Serial-tracked item, invalid qty, missing warehouse, no qty change, or a count below the units on an open register return.
 
 **Permissions:** Stock Manager / System Manager.
 

@@ -241,6 +241,25 @@
   "unique": 0
  },
  {
+  "default": "0",
+  "description": "Set when a GunBroker exit (not a person) delisted this gun; a GunBroker release relists only these.",
+  "docstatus": 0,
+  "doctype": "Custom Field",
+  "dt": "Serial No",
+  "fieldname": "woo_channel_delisted",
+  "fieldtype": "Check",
+  "insert_after": "woo_sold_archived",
+  "label": "Woo Delisted By Channel",
+  "module": "FFL Woo Sync",
+  "name": "Serial No-woo_channel_delisted",
+  "no_copy": 1,
+  "permlevel": 0,
+  "read_only": 1,
+  "reqd": 0,
+  "translatable": 0,
+  "unique": 0
+ },
+ {
   "description": "Set when this bound-book exit was auto-booked from a web order.",
   "docstatus": 0,
   "doctype": "Custom Field",

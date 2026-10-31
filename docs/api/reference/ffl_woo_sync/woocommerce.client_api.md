@@ -64,7 +64,7 @@ push the change straight back at WooCommerce.
 
 **Returns:** {"ok": True, "doctype": ..., "name": ..., "updated": {field: summary}, "images_imported": n, "image_errors": [...]} — plus "price_note" (optional) when the price was deliberately not written (uniform-priced parent). The Item branch reports the applied price as updated["selling_price"] (it lands via the canonical selling-price helper, not a bare standard_rate write). Refusals (unknown record, never pushed, missing write permission, product deleted on the store) raise a ValidationError with the reason.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:450`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:452`</sub>
 
 ## `push_all_serials`
 
@@ -173,7 +173,7 @@ to the scheduled reconcile, which is pos_fields_only and content-safe.
 
 **Returns:** {ok, item_result, item_error, dangling, pushed_serials, serial_errors, skipped_serials, ...}.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:371`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:373`</sub>
 
 ## `test_connection`
 
