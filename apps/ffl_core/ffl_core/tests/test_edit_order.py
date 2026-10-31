@@ -803,7 +803,7 @@ class TestEditCarryPayment(EditOrderFixtures):
 		self.assertTrue(out["refund_entry"])
 		# The receipt now holds an unapplied part netted by that refund: no carry,
 		# and the reason names it.
-		self.assertIn("earlier refund",
+		self.assertIn("not applied to this order",
 			manual_order.get_order_for_edit(out["sales_invoice"])["edit_ctx"]["carry_block"])
 
 	def test_carry_overpay_refunds_the_original_payer_the_way_it_was_paid(self):

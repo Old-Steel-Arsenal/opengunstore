@@ -3009,9 +3009,9 @@ def _carry_block(si, pes, inline_gl, paid_total) -> str | None:
 		return _("a payment also covers something other than this order")
 	alloc = {p.name: flt(p.allocated) for p in pes}
 	if any(abs(flt(r.paid_amount) - alloc[r.name]) > 0.01 for r in rows):
-		# Typically an earlier edit lowered the total and refunded the difference:
-		# the receipt keeps that part unapplied, netted by a separate refund.
-		return _("part of a payment is not applied to this order (an earlier refund left it unapplied)")
+		# E.g. an earlier edit refunded a lowered total, or the receipt was taken
+		# for more than the balance: the unapplied part sits on it as credit.
+		return _("part of a payment is not applied to this order")
 	if frappe.db.exists("Payment Entry Deduction", {"parent": ("in", names or [""])}):
 		return _("a payment carries a deduction or write-off")
 	if any(r.clearance_date for r in rows) or frappe.db.exists("Bank Transaction Payments",
