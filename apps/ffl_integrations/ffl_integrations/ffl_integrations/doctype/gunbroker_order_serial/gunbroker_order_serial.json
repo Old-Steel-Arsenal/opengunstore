@@ -27,7 +27,6 @@
   },
   {
    "columns": 3,
-   "description": "The physical gun reserved for this unit of the order.",
    "fieldname": "confirmed_serial",
    "fieldtype": "Data",
    "in_list_view": 1,
@@ -36,7 +35,6 @@
   {
    "columns": 1,
    "default": "0",
-   "description": "Which unit of a multi-quantity line this row covers.",
    "fieldname": "unit_index",
    "fieldtype": "Int",
    "in_list_view": 1,
@@ -52,7 +50,7 @@
   {
    "columns": 1,
    "default": "0",
-   "description": "A unit of a model-level (uniform-price) listing: the order owes a unit of this model, and staff name the gun. Blank Confirmed Serial = an open claim.",
+   "description": "A unit of a model-level listing: staff name the gun, and a blank Confirmed Serial is an open claim.",
    "fieldname": "is_model_unit",
    "fieldtype": "Check",
    "label": "Model Unit",
@@ -73,7 +71,7 @@
   },
   {
    "default": "0",
-   "description": "This unit was refunded on GunBroker (oversold): it is left out of the invoice and the bound book, and no longer counts as a claim.",
+   "description": "Refunded on GunBroker (oversold): left out of the invoice and the bound book.",
    "fieldname": "refunded_on_gb",
    "fieldtype": "Check",
    "label": "Refunded on GunBroker",

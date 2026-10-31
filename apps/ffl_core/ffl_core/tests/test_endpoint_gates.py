@@ -37,6 +37,10 @@ OPEN_BY_DESIGN = {
 	# http://localhost). A registered client still needs a user to sign in and
 	# approve on the POS before it holds any token.
 	"ffl_core.api.oauth_dcr.register_client",
+	# Reviewed 2026-10-30: the action catalog lists only what the caller's roles and
+	# DocType permissions reach; desk users only (_require_desk_user), and every
+	# listed endpoint still checks the caller when it is called.
+	"ffl_core.api.action_catalog.list_actions",
 }
 
 

@@ -558,6 +558,24 @@ def _still_on_device(res) -> bool:
     return res.status in (PENDING, UNKNOWN)
 
 
+@frappe.whitelist()
+def card_tender_mode() -> dict:
+    """Whether a Credit Card tender must go through the counter terminal.
+
+    Read-only. With a card processor switched on, configured and holding a
+    device, a card is charged on the terminal (charge_pos_invoice); otherwise a
+    Credit Card row is a plain tender typed from a standalone terminal.
+
+    Args:
+        (none)
+
+    Returns:
+        {"integrated": bool}.
+    """
+    _check_perm()
+    return {"integrated": _integration_ready(require_device=True)}
+
+
 @frappe.whitelist(methods=["POST"])
 def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
         amount=None, description: str | None = None, save_card=0) -> dict:
@@ -877,6 +895,10 @@ def _settle_terminal_payment(p, res, row) -> dict:
     """A finished charge (``res``, never PENDING) → the record's outcome, and for
     an approval the Payment Entry. Money first, ledger second: the CHARGED stamp
     is committed before the booking so a failed booking can never hide a capture."""
+    # Two settlers (a poll and a cancel from one screen, or two screens) must not both book:
+    # a locking read sees the other's committed CHARGED stamp (a plain read is a stale snapshot).
+    row = frappe.db.get_value(TERMINAL_PAYMENT, row.name, _TP_FIELDS, as_dict=True,
+        for_update=True) or row
     if row.status != "IN_PROGRESS":
         return _terminal_payment_result(row)
     if res.stored_credential:
@@ -951,6 +973,23 @@ def _book_terminal_payment(row_name: str, sales_invoice: str, amount: float,
 def _invoice_card_usage(sales_invoice: str) -> str | None:
     from ffl_core.membership import saved_card_usage
     return saved_card_usage(sales_invoice)
+
+
+def _charge_amount(sales_invoice: str, outstanding_amount, amount) -> float:
+    """The amount a card charge on a counter invoice may take: blank = the whole balance, never
+    more than the outstanding balance (0.01 tolerance). One rule for the terminal and the
+    saved-card path (saved_cards.run_saved_card_charge)."""
+    outstanding = flt(outstanding_amount, 2)
+    if outstanding <= 0.01:
+        frappe.throw(_("{0} is already paid.").format(sales_invoice))
+    amt = flt(amount) if amount not in (None, "") else outstanding
+    if amt <= 0:
+        frappe.throw(_("Amount must be > 0 (got {0}).").format(amt))
+    if flt(amt, 2) > outstanding + 0.01:
+        frappe.throw(_("Payment {0} exceeds the outstanding balance {1}.").format(
+            frappe.format_value(amt, {"fieldtype": "Currency"}),
+            frappe.format_value(outstanding, {"fieldtype": "Currency"})))
+    return amt
 
 
 @frappe.whitelist(methods=["POST"])
@@ -1034,16 +1073,7 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
             return {"ok": True, "instruction_id": foreign[0].instruction_id,
                     "status": "IN_PROGRESS", "amount": flt(foreign[0].amount)}
 
-    outstanding = flt(si.outstanding_amount, 2)
-    if outstanding <= 0.01:
-        frappe.throw(_("{0} is already paid.").format(sales_invoice))
-    amt = flt(amount) if amount not in (None, "") else outstanding
-    if amt <= 0:
-        frappe.throw(_("Amount must be > 0 (got {0}).").format(amt))
-    if flt(amt, 2) > outstanding + 0.01:
-        frappe.throw(_("Payment {0} exceeds the outstanding balance {1}.").format(
-            frappe.format_value(amt, {"fieldtype": "Currency"}),
-            frappe.format_value(outstanding, {"fieldtype": "Currency"})))
+    amt = _charge_amount(sales_invoice, si.outstanding_amount, amount)
 
     # Same per-attempt numbering as the POS path — a counter order can take a
     # second card too (each attempt is one Card Terminal Payment row).
@@ -1732,8 +1762,16 @@ def _refund_across_rows(ret, original: str, orig_rows: list, cc_amt: float,
     refs: list[str] = []
     # THIS return's booked fact: accumulated per slice inside the
     # same durable write as the row ledger — feeds the orphan-refund gate.
+    # LOCKING read: a second request on this return that was blocked on the guard
+    # read wakes at the first request's slice commit (before its final reference
+    # stamp) — only a locking read sees that booked slice; a plain read keeps the
+    # pre-lock snapshot (0) and the second request would refund again.
     booked = flt(frappe.db.get_value("POS Invoice", ret.name,
-        "card_refunded_amount") or 0, 2)
+        "card_refunded_amount", for_update=True) or 0, 2)
+    if booked > 0:
+        frappe.throw(_("A card refund on return invoice {0} is already in progress or was "
+            "interrupted after {1} was refunded. Reload the return, and check the {2} back "
+            "office before doing anything else.").format(ret.name, booked, label))
 
     def _lock_and_throw(resp, message, arm=False):
         # A failed slice AFTER successful ones: the successes are already

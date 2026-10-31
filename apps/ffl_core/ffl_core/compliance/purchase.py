@@ -14,7 +14,7 @@ from frappe.utils import cint, flt
 
 from ffl_core.acquisition import TRADE_IN_SOURCE, is_trade_in_source, record_firearm_acquisition
 from ffl_core.compliance.pay_on_sale import booked_since
-from ffl_core.serials import receipt_serials, receipts_of
+from ffl_core.serials import receipt_serials, receipts_of, serials_for_line
 from ffl_core.setup.zero_cost import OTHER_REASON, ZERO_COST_REASONS
 from ffl_core.warehouses import is_custody_warehouse
 from ffl_core.firearm import (
@@ -169,7 +169,7 @@ def create_acquisitions_for_firearm_lines(doc, method: str | None = None) -> Non
 				"carries a cost of {3}. A gun is either free or priced, never both — "
 				"clear the free marking or remove the cost before submitting."
 			).format(doc.name, row.idx,
-				", ".join(_serials_for_line(row)) or row.item_code, flt(row.rate, 2)))
+				", ".join(serials_for_line(row)) or row.item_code, flt(row.rate, 2)))
 
 		# Mirror the receive cost onto Item.dealer_price — this site's Property
 		# Setter relabels dealer_price as "Cost" in the Item form's Pricing
@@ -188,7 +188,7 @@ def create_acquisitions_for_firearm_lines(doc, method: str | None = None) -> Non
 				update_modified=False,
 			)
 
-		serials = _serials_for_line(row)
+		serials = serials_for_line(row)
 		# Antique firearms (pre-1899 / GCA-exempt) get NO bound-book acquisition.
 		# Skipping FFL Acquisition creation also cuts the FastBound push at its
 		# only upstream source (the Acquisition's on_submit enqueues the push).
@@ -393,14 +393,11 @@ def _owner_stamps(doc, row, consignor: str | None = None) -> dict:
 	# a gun in at $0 with nobody recorded as owning it.
 	if is_consignment_acquisition_type(getattr(doc, "ffl_acquisition_type", "")):
 		from ffl_core.consignment import ensure_consignor_supplier
-		from ffl_core.setup.consignment import DEFAULT_COMMISSION_PCT
+		from ffl_core.setup.consignment import default_commission_pct
 		# Per-line commission entered on Receive Goods (Source=Consignment)
 		# wins; a blank/zero line falls back to the store-wide default.
 		row_pct = float(row.get("ffl_consignment_commission_pct") or 0)
-		pct = row_pct if row_pct > 0 else (
-			frappe.db.get_single_value("FFL Settings", "consignment_default_commission_pct")
-			or DEFAULT_COMMISSION_PCT
-		)
+		pct = row_pct if row_pct > 0 else default_commission_pct()
 		stamps["is_consignment"] = 1
 		stamps["consignment_commission_pct"] = float(pct)
 		cust = doc.get("ffl_seller_customer")
@@ -555,13 +552,6 @@ def cancel_acquisitions_for_firearm_lines(doc, method: str | None = None) -> Non
 				acquisition_name=row.name,
 				fastbound_id=row.fastbound_id,
 			)
-
-
-def _serials_for_line(row) -> list[str]:
-	"""Moved to ffl_core.serials.serials_for_line (now shared with the
-	dealer-transfer disposition hook); kept as an alias for old callers."""
-	from ffl_core.serials import serials_for_line
-	return serials_for_line(row)
 
 
 def validate_zero_cost_confirmation(doc, method=None):

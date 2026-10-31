@@ -52,7 +52,9 @@ frappe.query_reports["Firearms In Stock"] = {
 	onload(report) {
 		// Delegated once on the report wrapper: the datatable re-renders rows on
 		// every scroll/refresh, so per-row handlers would be lost (or stack up).
-		$(report.page.main).on("click", "a.ffl-correct-cost", function (e) {
+		// onload runs again each time this report is reopened on the shared
+		// query-report page, so unbind first or the cost dialog opens twice.
+		$(report.page.main).off("click.fflCost").on("click.fflCost", "a.ffl-correct-cost", function (e) {
 			e.preventDefault();
 			e.stopPropagation();
 			const g = window.gunstore;
@@ -144,18 +146,22 @@ frappe.query_reports["Firearms In Stock"] = {
 			});
 		});
 
-		frappe.realtime.on("fb_diff_scan_done", (data) => {
-			const list = (data || {}).divergent || [];
-			if (!list.length) {
-				frappe.msgprint({ title: __("FastBound Scan"), indicator: "green",
-					message: __("All in-stock firearms match FastBound.") });
-				return;
-			}
-			const rows = list.map((x) =>
-				`${frappe.utils.escape_html(x.serial)} <span class="text-muted">(${frappe.utils.escape_html((x.fields || []).join(", "))})</span>`).join("<br>");
-			frappe.msgprint({ title: __("FastBound Scan: {0} gun(s) differ", [list.length]),
-				indicator: "orange",
-				message: __("Open each gun's Serial No and use 'Sync with FastBound':") + `<br><br>${rows}` });
-		});
+		// Same reason: a stable handler reference so off() removes the previous one.
+		frappe.realtime.off("fb_diff_scan_done", fis_on_fb_diff_scan_done);
+		frappe.realtime.on("fb_diff_scan_done", fis_on_fb_diff_scan_done);
 	},
 };
+
+function fis_on_fb_diff_scan_done(data) {
+	const list = (data || {}).divergent || [];
+	if (!list.length) {
+		frappe.msgprint({ title: __("FastBound Scan"), indicator: "green",
+			message: __("All in-stock firearms match FastBound.") });
+		return;
+	}
+	const rows = list.map((x) =>
+		`${frappe.utils.escape_html(x.serial)} <span class="text-muted">(${frappe.utils.escape_html((x.fields || []).join(", "))})</span>`).join("<br>");
+	frappe.msgprint({ title: __("FastBound Scan: {0} gun(s) differ", [list.length]),
+		indicator: "orange",
+		message: __("Open each gun's Serial No and use 'Sync with FastBound':") + `<br><br>${rows}` });
+}

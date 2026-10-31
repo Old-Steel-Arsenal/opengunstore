@@ -226,6 +226,20 @@ class TestPayrocLedger(FrappeTestCase):
 		finally:
 			frappe.set_user("Administrator")
 
+	def test_sales_invoice_card_refund_counts_as_recorded(self):
+		# si_reversal records a counter SI refund on the Card Terminal Payment row;
+		# a voided row (no gateway REFUND) and another processor's row do not count.
+		si = "ACC-SINV-LEDGER-T-1"
+		for status, amount, refunded, processor in (("REFUNDED", 100, 100, "payroc"),
+				("CHARGED", 50, 20, ""), ("VOIDED", 30, 30, "payroc"),
+				("CHARGED", 40, 40, "other")):
+			doc = frappe.get_doc({"doctype": "Card Terminal Payment", "sales_invoice": si,
+				"amount": amount, "refunded_amount": refunded, "status": status,
+				"processor": processor})
+			doc.flags.ignore_links = True
+			doc.insert(ignore_permissions=True)
+		self.assertEqual(ledger._pos_refunded("Sales Invoice", si), 120.0)
+
 	def test_order_id_attempt_suffix_names_the_invoice(self):
 		with patch.object(ledger.frappe.db, "get_value",
 				side_effect=lambda dt, name, field: 1 if (dt, name) == ("POS Invoice",

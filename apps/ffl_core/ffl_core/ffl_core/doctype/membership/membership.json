@@ -1,7 +1,7 @@
 {
  "actions": [],
  "creation": "2026-10-27 12:00:00.000000",
- "modified": "2026-10-28 12:00:00.000000",
+ "modified": "2026-10-30 18:00:00.000000",
  "modified_by": "Administrator",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -23,16 +23,16 @@
   "section_renewal",
   "auto_renew",
   "saved_card",
-  "column_break_b",
   "grace_until",
+  "column_break_b",
   "last_charge_status",
   "last_charge_attempt",
   "renewal_reminder_for",
   "section_cancel",
   "cancel_at_period_end",
   "cancelled_on",
-  "cancelled_by",
   "column_break_c",
+  "cancelled_by",
   "cancel_reason",
   "section_invoices",
   "invoices"
@@ -74,7 +74,7 @@
    "read_only": 1,
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "description": "Pending until the first invoice is paid. Changes only from the customer's Memberships panel."
+   "description": "Changes only from the customer's Memberships panel."
   },
   {
    "fieldname": "column_break_a",
@@ -123,17 +123,17 @@
    "label": "Saved Card",
    "options": "Saved Card",
    "read_only": 1,
-   "description": "The card renewals are charged to (saved for recurring charges)."
-  },
-  {
-   "fieldname": "column_break_b",
-   "fieldtype": "Column Break"
+   "description": "Renewals are charged to this card."
   },
   {
    "fieldname": "grace_until",
    "fieldtype": "Date",
    "label": "Grace Until",
    "read_only": 1
+  },
+  {
+   "fieldname": "column_break_b",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "last_charge_status",
@@ -146,8 +146,7 @@
    "fieldtype": "Date",
    "label": "Last Renewal Attempt",
    "read_only": 1,
-   "no_copy": 1,
-   "description": "The day the renewal job last tried the card (it tries once a day)."
+   "no_copy": 1
   },
   {
    "fieldname": "renewal_reminder_for",
@@ -177,15 +176,15 @@
    "read_only": 1
   },
   {
+   "fieldname": "column_break_c",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "cancelled_by",
    "fieldtype": "Link",
    "label": "Cancelled By",
    "options": "User",
    "read_only": 1
-  },
-  {
-   "fieldname": "column_break_c",
-   "fieldtype": "Column Break"
   },
   {
    "fieldname": "cancel_reason",

@@ -22,7 +22,7 @@ Make a new accessory / ammo / parts Item from the Trade-in dialog, for something
 
 **Permissions:** roles.TRADE_IN_ROLES, like the trade-in itself: the counter takes in what the seller brings. Only a non-serialized, non-firearm stock Item can be made here; any other Item stays a stock job (receive_goods.create_item).
 
-<sub>`apps/ffl_core/ffl_core/api/trade_in.py:359`</sub>
+<sub>`apps/ffl_core/ffl_core/api/trade_in.py:357`</sub>
 
 ## `create_trade_in_intake`
 
@@ -60,7 +60,7 @@ with apply_credit a draft Material Receipt and a credit line of their own
 
 **Permissions:** roles.TRADE_IN_ROLES: the counter's sales role plus the stock roles; holding only the sales manager role is refused. Gated at entry, covering BOTH branches — the refresh branch (_refresh_pending_draft) rewrites A&D draft seller identity/cost and historically ran ungated (endpoint-gates hardening, 2026-08-07). A caller without a stock role files the gun under no Item (one is made for this gun) or an existing per-gun priced firearm Item (_check_counter_item); making or choosing any other Item stays a stock job. Everything behind the gate runs gate-free (firearm_intake.create_intake, receive_goods._create_receive), each of our writes with ignore_permissions; the ERPNext-internal checks against the session user (the gun's stock bundle) rest on the DocPerm setup/pos_compat.ROLE_GRANTS gives the counter.
 
-<sub>`apps/ffl_core/ffl_core/api/trade_in.py:114`</sub>
+<sub>`apps/ffl_core/ffl_core/api/trade_in.py:116`</sub>
 
 ## `seller_defaults`
 
@@ -83,4 +83,4 @@ saves retyping.
 
 **Returns:** {source_first_name, source_middle_name, source_last_name, source_suffix, source_address_line1, ...} or {} when unknown.
 
-<sub>`apps/ffl_core/ffl_core/api/trade_in.py:501`</sub>
+<sub>`apps/ffl_core/ffl_core/api/trade_in.py:511`</sub>

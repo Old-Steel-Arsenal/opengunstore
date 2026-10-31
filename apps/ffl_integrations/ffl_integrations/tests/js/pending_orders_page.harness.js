@@ -802,7 +802,9 @@ check('undoing a refund needs no confirmation', () => {
 });
 
 check('a per-gun GunBroker card shows no assignment controls (regression)', () => {
-	const { cards } = render({ gb: [gbRow] });
+	// Paid: an awaiting-payment GunBroker card has Dispose disabled for that reason.
+	const ready = Object.assign({}, gbRow, { stage: 'ready_ship', channel_stage: 'ready_to_dispose', paid: true });
+	const { cards } = render({ gb: [ready] });
 	assert(!/assign-unit|assign-scan|btn-assign/.test(cards[0]), 'assignment controls on a per-gun card');
 	assert(!/Assign a gun to every unit/.test(cards[0]), 'unit hint on a per-gun card');
 	assert(!/btn-dispose"\s+disabled/.test(cards[0]), 'Dispose disabled on a card with no units');

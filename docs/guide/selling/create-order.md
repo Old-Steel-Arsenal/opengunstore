@@ -426,6 +426,15 @@ worked out. It shows **(partial)** when a distributor could not estimate, and th
 distributor's line reads **freight unknown**. The freight the distributor invoices
 always replaces the estimate.
 
+Shipped to your store, RSR sells full cases at its case price. When RSR lists
+one, the cell for that line prices the full cases at it and a note in the cell
+reads, for example, **Ship to store: Case of 50 at $7.83 each — 20 more fill
+a case**. The Distributor Order line shows the same note under **Case Price**.
+Drop-ship lines pay the unit cost, and the cost RSR acknowledges replaces the
+estimate.
+
+A Lipsey's order to your store is not estimated and reads **freight unknown**. A Sports South order to your store is priced by its store shipping rule in [Sports South Settings](../settings/integrations.md#sports-south-settings), not the drop-ship rates.
+
 A Sports South order also shows **Signature**, **Adult signature** and **Insurance**
 checkboxes. They start from the delivery options in
 [Sports South Settings](../settings/integrations.md#sports-south-settings). Tick or untick one for this

@@ -16,14 +16,11 @@ frappe.ui.form.on('Purchase Receipt', {
 			});
 		}
 		if (!frm.fields_dict.ffl_source) return;  // custom field not installed
-		frappe.call({
+		ffl.loadSelectOptions({
 			method: 'ffl_core.api.receive_goods.get_receive_sources',
-			callback(r) {
-				const list = (r.message || []).slice();
-				const cur = frm.doc.ffl_source;
-				if (!list.length && !cur) return;
-				if (cur && !list.includes(cur)) list.unshift(cur);
-				frm.set_df_property('ffl_source', 'options', ['', ...list].join('\n'));
+			get: () => frm.doc.ffl_source,
+			set: (options) => {
+				frm.set_df_property('ffl_source', 'options', options);
 				frm.refresh_field('ffl_source');
 			},
 		});

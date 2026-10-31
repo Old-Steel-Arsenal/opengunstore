@@ -139,8 +139,7 @@
    "options": "POS Invoice",
    "label": "Invoice",
    "read_only": 1,
-   "depends_on": "eval:doc.entry_type=='Trade-in Payout'",
-   "description": "The ticket whose trade-ins exceeded the sale."
+   "depends_on": "eval:doc.entry_type=='Trade-in Payout'"
   },
   {
    "fieldname": "customer",
@@ -157,13 +156,13 @@
    "label": "Purchase Receipt",
    "read_only": 1,
    "depends_on": "eval:doc.entry_type=='Goods Payout'",
-   "description": "The Receive Goods purchase the private seller was paid for.",
    "search_index": 1
   },
   {
    "fieldname": "books_section",
    "fieldtype": "Section Break",
-   "label": "Books"
+   "label": "Books",
+   "collapsible": 1
   },
   {
    "fieldname": "debit_account",
@@ -222,7 +221,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-07 01:12:57.841162",
+ "modified": "2026-10-30 19:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Cash Drawer Entry",

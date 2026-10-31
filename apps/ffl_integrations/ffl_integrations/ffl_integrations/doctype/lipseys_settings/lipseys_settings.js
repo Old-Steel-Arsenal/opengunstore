@@ -10,16 +10,7 @@ frappe.ui.form.on('Lipseys Settings', {
 				freeze: true,
 				freeze_message: __("Contacting Lipsey's…"),
 				callback(resp) {
-					const checks = (resp.message || {}).checks || [];
-					const rows = checks.map((c) => {
-						const mark = c.ok === true ? '✅' : c.ok === false ? '❌' : '➖';
-						return `<tr><td>${mark}</td><td>${frappe.utils.escape_html(c.label)}</td>` +
-							`<td>${frappe.utils.escape_html(c.detail || '')}</td></tr>`;
-					}).join('');
-					frappe.msgprint({
-						title: __("Lipsey's connection"),
-						message: `<table class="table table-sm"><tbody>${rows}</tbody></table>`,
-					});
+					ffl.showConnectionChecks(__("Lipsey's"), (resp.message || {}).checks || []);
 				},
 			});
 		});

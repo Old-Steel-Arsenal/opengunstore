@@ -103,33 +103,22 @@ def _ensure_item(code: str, name: str, description: str) -> int:
 
 def _ensure_deposit_defaults() -> int:
 	"""Per company: income account = Customer Deposits, and the 0% template on the item itself.
-	Rows written directly, like setup/trade_in_credit (Item.save would fill one company's default
-	warehouse on every row and then refuse the others)."""
+	Rows written directly (setup/item_defaults), never through Item.save."""
 	from ffl_core.setup import customer_deposits
+	from ffl_core.setup.item_defaults import set_item_default_accounts
 	from ffl_core.setup.tax import _exempt_templates_by_company
 
 	if not frappe.db.exists("Item", DEPOSIT_ITEM):
 		return 0
-	changed = 0
-	rows = {r.company: r for r in frappe.get_all("Item Default",
-		filters={"parent": DEPOSIT_ITEM, "parenttype": "Item"}, fields=["name", "company", "income_account", "idx"])}
-	last = max((r.idx for r in rows.values()), default=0)
-	for company in frappe.get_all("Company", pluck="name"):
+
+	def accounts(company):
 		account = deposit_account(company)
 		if not account:
 			customer_deposits._ensure_account(company)
 			account = deposit_account(company)
-		row = rows.get(company)
-		if not account or (row and row.income_account == account):
-			continue
-		if row:
-			frappe.db.set_value("Item Default", row.name, "income_account", account, update_modified=False)
-		else:
-			last += 1
-			frappe.get_doc({"doctype": "Item Default", "name": frappe.generate_hash(length=10), "parent": DEPOSIT_ITEM,
-				"parenttype": "Item", "parentfield": "item_defaults", "idx": last, "company": company,
-				"income_account": account}).db_insert()
-		changed += 1
+		return account and {"income_account": account}
+
+	changed = set_item_default_accounts(DEPOSIT_ITEM, accounts)
 	have = set(frappe.get_all("Item Tax", filters={"parent": DEPOSIT_ITEM, "parenttype": "Item"},
 		pluck="item_tax_template"))
 	idx = len(have)

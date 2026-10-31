@@ -65,11 +65,7 @@ function promptImport(frm) {
 		fields: [
 			{
 				fieldtype: 'HTML',
-				options: `<p>This will pull <b>every Item</b> from your FastBound bound book and idempotently
-					mirror them into ERPNext as Item / FFL Acquisition / Stock Receipt.
-					Already-imported items (matched by FastBound id) are skipped.</p>
-					<p>This can take several minutes for large bound books. The importer commits
-					after every successful item, so a crash mid-run does not lose work.</p>`,
+				options: `<p>Pulls every item from your FastBound bound book into POS as Item / FFL Acquisition / Stock Receipt; items already imported are skipped, and a large book can take several minutes.</p>`,
 			},
 			{
 				label: __('Aggregate By'),
@@ -77,17 +73,13 @@ function promptImport(frm) {
 				fieldtype: 'Select',
 				options: 'auto\nmodel',
 				default: 'auto',
-				description: __('How to group FastBound items into ERPNext Items: '
-					+ '<b>auto</b> uses SKU → UPC → MPN → manufacturer+model fallback; '
-					+ '<b>model</b> ignores SKU/UPC/MPN and always aggregates by manufacturer+model+caliber. '
-					+ 'Pick <b>model</b> when distributor SKUs are noisy.'),
+				description: __('Auto groups by SKU, UPC or part number first; pick model when distributor SKUs are noisy.'),
 			},
 			{
 				label: __('Page Size'),
 				fieldname: 'page_size',
 				fieldtype: 'Int',
 				default: 100,
-				description: __('Items fetched per FastBound API page.'),
 			},
 			{
 				label: __('Dry Run'),
@@ -124,10 +116,20 @@ function runImport(frm, values) {
 }
 
 function showResultDialog(stats, dry) {
-	const summaryRows = [
+	// Rows mirror ImportStats.as_dict so they add up to Fetched. A dry run
+	// counts every in-stock gun under "skipped" (nothing is written).
+	const summaryRows = dry ? [
 		[__('Fetched'), stats.fetched],
-		[dry ? __('Would create') : __('Created'), dry ? stats.fetched - (stats.error_count || 0) : stats.created],
-		[__('Skipped (already imported)'), stats.skipped],
+		[__('Would import / resync'), stats.skipped],
+		[__('Sold / deleted in FastBound (not imported)'), stats.disposed_skipped || 0],
+		[__('Items it would group into'), stats.projected_items || 0],
+		[__('Errors'), stats.error_count || 0],
+	] : [
+		[__('Fetched'), stats.fetched],
+		[__('Created'), stats.created],
+		[__('Updated (resynced)'), stats.updated || 0],
+		[__('Skipped'), stats.skipped],
+		[__('Sold / deleted in FastBound (not imported)'), stats.disposed_skipped || 0],
 		[__('Errors'), stats.error_count || 0],
 	];
 	const summaryHtml = `<table class="table table-bordered" style="margin-top:12px">${

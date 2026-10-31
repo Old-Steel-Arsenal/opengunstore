@@ -3,70 +3,100 @@
  "autoname": "format:GWO-{YYYY}-{#####}",
  "naming_rule": "Expression",
  "creation": "2026-10-17 18:00:00.000000",
- "modified": "2026-10-17 18:00:00.000000",
+ "modified": "2026-10-30 19:00:00.000000",
  "modified_by": "Administrator",
  "description": "A customer's gun left for gunsmithing: intake, authorization, deposit, the work, and pick-up.",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
   "section_customer",
+  "scan_id",
   "customer",
-  "customer_name",
+  "cb_customer_1",
   "phone",
   "email",
-  "address",
-  "column_break_customer",
-  "status",
-  "company",
-  "received_by",
-  "received_on",
+  "section_address",
+  "address_line1",
+  "cb_address_1",
+  "city",
+  "cb_address_2",
+  "state",
+  "cb_address_3",
+  "zip",
+  "section_id",
+  "id_type",
+  "cb_id_1",
+  "id_number",
+  "cb_id_2",
+  "id_document",
   "section_firearm",
   "manufacturer",
-  "model",
   "caliber",
-  "serial_number",
+  "cb_firearm_1",
+  "model",
   "firearm_type",
-  "column_break_firearm",
-  "accessories",
-  "condition",
-  "firearm_notes",
-  "section_bound_book",
+  "cb_firearm_2",
+  "serial_number",
   "log_in_bound_book",
-  "id_type",
-  "id_number",
-  "column_break_bound_book",
-  "purchase_receipt",
-  "item_code",
-  "serial_no",
-  "disposition",
+  "section_firearm_notes",
+  "accessories",
+  "cb_notes_1",
+  "condition",
+  "cb_notes_2",
+  "firearm_notes",
   "section_estimate",
   "work_requested",
+  "cb_estimate_1",
   "estimated_cost",
-  "deposit_amount",
   "estimated_completion",
-  "column_break_estimate",
-  "intake_agreement",
-  "deposit_invoice",
-  "deposit_held",
+  "section_lines",
+  "lines",
+  "section_charges",
+  "scan_barcode",
+  "cb_charges_1",
+  "final_cost",
   "section_work",
   "gunsmith",
   "work_performed",
-  "lines",
-  "final_cost",
-  "column_break_work",
+  "section_progress",
   "completed_on",
-  "notified_via",
   "notified_on",
-  "notified_by",
-  "pickup_invoice",
   "picked_up_on",
-  "cancel_reason"
+  "cb_work_1",
+  "notified_via",
+  "notified_by",
+  "cancel_reason",
+  "section_records",
+  "received_on",
+  "received_by",
+  "company",
+  "status",
+  "customer_name",
+  "cb_records_1",
+  "deposit_amount",
+  "deposit_held",
+  "deposit_invoice",
+  "pickup_invoice",
+  "intake_agreement",
+  "cb_records_2",
+  "purchase_receipt",
+  "item_code",
+  "serial_no",
+  "disposition"
  ],
  "fields": [
   {
    "fieldname": "section_customer",
    "fieldtype": "Section Break",
    "label": "Customer"
+  },
+  {
+   "fieldname": "scan_id",
+   "fieldtype": "Data",
+   "label": "Scan ID",
+   "placeholder": "Scan the back of the licence",
+   "depends_on": "eval:!doc.purchase_receipt && !['Picked Up', 'Cancelled'].includes(doc.status)",
+   "no_copy": 1
   },
   {
    "fieldname": "customer",
@@ -77,12 +107,8 @@
    "in_standard_filter": 1
   },
   {
-   "fieldname": "customer_name",
-   "fieldtype": "Data",
-   "label": "Customer Name",
-   "fetch_from": "customer.customer_name",
-   "read_only": 1,
-   "in_list_view": 1
+   "fieldname": "cb_customer_1",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "phone",
@@ -97,45 +123,73 @@
    "options": "Email"
   },
   {
-   "fieldname": "address",
-   "fieldtype": "Small Text",
-   "label": "Address"
+   "fieldname": "section_address",
+   "fieldtype": "Section Break"
   },
   {
-   "fieldname": "column_break_customer",
+   "fieldname": "address_line1",
+   "fieldtype": "Data",
+   "label": "Street Address"
+  },
+  {
+   "fieldname": "cb_address_1",
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "status",
+   "fieldname": "city",
+   "fieldtype": "Data",
+   "label": "City"
+  },
+  {
+   "fieldname": "cb_address_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "state",
    "fieldtype": "Select",
-   "label": "Status",
-   "options": "Received\nIn Progress\nReady\nPicked Up\nCancelled",
-   "default": "Received",
-   "in_list_view": 1,
-   "in_standard_filter": 1,
-   "read_only": 1,
-   "no_copy": 1
+   "label": "State"
   },
   {
-   "fieldname": "company",
-   "fieldtype": "Link",
-   "label": "Company",
-   "options": "Company",
-   "reqd": 1
+   "fieldname": "cb_address_3",
+   "fieldtype": "Column Break"
   },
   {
-   "fieldname": "received_by",
-   "fieldtype": "Link",
-   "label": "Received By",
-   "options": "User",
-   "default": "__user"
+   "fieldname": "zip",
+   "fieldtype": "Data",
+   "label": "ZIP"
   },
   {
-   "fieldname": "received_on",
-   "fieldtype": "Date",
-   "label": "Date Received",
-   "default": "Today",
-   "reqd": 1
+   "fieldname": "section_id",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "id_type",
+   "fieldtype": "Select",
+   "label": "ID Type",
+   "options": "\nDriver License\nState ID\nPassport\nMilitary ID\nOther",
+   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt",
+   "depends_on": "eval:doc.log_in_bound_book || frappe.boot.ffl_store_customer_id_numbers"
+  },
+  {
+   "fieldname": "cb_id_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "id_number",
+   "fieldtype": "Data",
+   "label": "ID Number",
+   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt",
+   "depends_on": "eval:doc.log_in_bound_book || frappe.boot.ffl_store_customer_id_numbers"
+  },
+  {
+   "fieldname": "cb_id_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "id_document",
+   "fieldtype": "Attach",
+   "label": "ID Scan",
+   "depends_on": "eval:doc.log_in_bound_book || frappe.boot.ffl_store_customer_id_numbers"
   },
   {
    "fieldname": "section_firearm",
@@ -149,6 +203,15 @@
    "reqd": 1
   },
   {
+   "fieldname": "caliber",
+   "fieldtype": "Data",
+   "label": "Caliber / Gauge"
+  },
+  {
+   "fieldname": "cb_firearm_1",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "model",
    "fieldtype": "Data",
    "label": "Model",
@@ -156,9 +219,14 @@
    "in_list_view": 1
   },
   {
-   "fieldname": "caliber",
-   "fieldtype": "Data",
-   "label": "Caliber / Gauge"
+   "fieldname": "firearm_type",
+   "fieldtype": "Select",
+   "label": "Firearm Type",
+   "options": "\nPistol\nRevolver\nRifle\nShotgun\nReceiver\nOther Firearm\nSilencer\nShort Barreled Rifle\nShort Barreled Shotgun\nMachine Gun\nDestructive Device\nAny Other Weapon"
+  },
+  {
+   "fieldname": "cb_firearm_2",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "serial_number",
@@ -169,25 +237,34 @@
    "in_standard_filter": 1
   },
   {
-   "fieldname": "firearm_type",
-   "fieldtype": "Select",
-   "label": "Firearm Type",
-   "options": "\nPistol\nRevolver\nRifle\nShotgun\nReceiver\nOther Firearm\nSilencer\nShort Barreled Rifle\nShort Barreled Shotgun\nMachine Gun\nDestructive Device\nAny Other Weapon"
+   "fieldname": "log_in_bound_book",
+   "fieldtype": "Check",
+   "label": "Log in Bound Book",
+   "default": "0"
   },
   {
-   "fieldname": "column_break_firearm",
-   "fieldtype": "Column Break"
+   "fieldname": "section_firearm_notes",
+   "fieldtype": "Section Break"
   },
   {
    "fieldname": "accessories",
    "fieldtype": "Small Text",
-   "label": "Accessories",
-   "description": "Magazines, case, optic, sling — anything that came in with the gun."
+   "label": "Came In With",
+   "placeholder": "Magazines, case, optic, sling"
+  },
+  {
+   "fieldname": "cb_notes_1",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "condition",
    "fieldtype": "Small Text",
-   "label": "Condition"
+   "label": "Condition",
+   "placeholder": "Holster wear, light rust on the slide"
+  },
+  {
+   "fieldname": "cb_notes_2",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "firearm_notes",
@@ -195,35 +272,232 @@
    "label": "Notes"
   },
   {
-   "fieldname": "section_bound_book",
+   "fieldname": "section_estimate",
    "fieldtype": "Section Break",
-   "label": "Bound Book",
-   "collapsible": 0
+   "label": "Work"
   },
   {
-   "fieldname": "log_in_bound_book",
-   "fieldtype": "Check",
-   "label": "Log in Bound Book",
-   "default": "0",
-   "description": "Record the gun in the bound book: an acquisition from the customer now, a Gunsmithing disposition back to them at pick-up. The gun is held in customer custody at zero cost and is never for sale. A job can start unlogged and be logged later; a logged job stays logged."
+   "fieldname": "work_requested",
+   "fieldtype": "Small Text",
+   "label": "Work Requested",
+   "reqd": 1
   },
   {
-   "fieldname": "id_type",
-   "fieldtype": "Select",
-   "label": "Customer ID Type",
-   "options": "\nDriver License\nState ID\nPassport\nMilitary ID\nOther",
-   "depends_on": "eval:doc.log_in_bound_book",
-   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt"
+   "fieldname": "cb_estimate_1",
+   "fieldtype": "Column Break"
   },
   {
-   "fieldname": "id_number",
+   "fieldname": "estimated_cost",
+   "fieldtype": "Currency",
+   "label": "Estimate",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "estimated_completion",
+   "fieldtype": "Date",
+   "label": "Ready By"
+  },
+  {
+   "fieldname": "section_lines",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "lines",
+   "fieldtype": "Table",
+   "label": "Charges",
+   "options": "Gunsmith Work Order Line"
+  },
+  {
+   "fieldname": "section_charges",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "scan_barcode",
    "fieldtype": "Data",
-   "label": "Customer ID Number",
-   "depends_on": "eval:doc.log_in_bound_book",
-   "mandatory_depends_on": "eval:doc.log_in_bound_book && !doc.purchase_receipt"
+   "label": "Scan",
+   "options": "Barcode",
+   "placeholder": "Scan a part"
   },
   {
-   "fieldname": "column_break_bound_book",
+   "fieldname": "cb_charges_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "final_cost",
+   "fieldtype": "Currency",
+   "label": "Total Before Tax",
+   "options": "Company:company:default_currency",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "section_work",
+   "fieldtype": "Section Break",
+   "label": "Shop Use",
+   "depends_on": "eval:!doc.__islocal"
+  },
+  {
+   "fieldname": "gunsmith",
+   "fieldtype": "Link",
+   "label": "Gunsmith",
+   "options": "User"
+  },
+  {
+   "fieldname": "work_performed",
+   "fieldtype": "Text",
+   "label": "Work Performed"
+  },
+  {
+   "fieldname": "section_progress",
+   "fieldtype": "Section Break",
+   "label": "Progress",
+   "depends_on": "eval:!doc.__islocal"
+  },
+  {
+   "fieldname": "completed_on",
+   "fieldtype": "Date",
+   "label": "Date Completed",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "notified_on",
+   "fieldtype": "Datetime",
+   "label": "Date Notified",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "picked_up_on",
+   "fieldtype": "Datetime",
+   "label": "Date Picked Up",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "cb_work_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "notified_via",
+   "fieldtype": "Select",
+   "label": "Customer Notified By",
+   "options": "\nPhone\nEmail\nText",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "notified_by",
+   "fieldtype": "Link",
+   "label": "Notified By",
+   "options": "User",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "cancel_reason",
+   "fieldtype": "Small Text",
+   "label": "Cancel Reason",
+   "depends_on": "eval:doc.status=='Cancelled'",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "section_records",
+   "fieldtype": "Section Break",
+   "label": "Records",
+   "depends_on": "eval:!doc.__islocal",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "received_on",
+   "fieldtype": "Date",
+   "label": "Date Received",
+   "default": "Today",
+   "reqd": 1
+  },
+  {
+   "fieldname": "received_by",
+   "fieldtype": "Link",
+   "label": "Received By",
+   "options": "User",
+   "default": "__user"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Received\nIn Progress\nReady\nPicked Up\nCancelled",
+   "default": "Received",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "no_copy": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "customer_name",
+   "fieldtype": "Data",
+   "label": "Customer Name",
+   "fetch_from": "customer.customer_name",
+   "read_only": 1,
+   "in_list_view": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "cb_records_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "deposit_amount",
+   "fieldtype": "Currency",
+   "label": "Paid at Intake",
+   "options": "Company:company:default_currency",
+   "non_negative": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "deposit_held",
+   "fieldtype": "Currency",
+   "label": "Deposit Held",
+   "options": "Company:company:default_currency",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "deposit_invoice",
+   "fieldtype": "Link",
+   "label": "Deposit Invoice",
+   "options": "POS Invoice",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "pickup_invoice",
+   "fieldtype": "Link",
+   "label": "Pick-up Invoice",
+   "options": "POS Invoice",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "intake_agreement",
+   "fieldtype": "Link",
+   "label": "Intake Authorization",
+   "options": "Customer Agreement",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "cb_records_2",
    "fieldtype": "Column Break"
   },
   {
@@ -255,155 +529,6 @@
    "fieldtype": "Link",
    "label": "Disposition",
    "options": "FFL Disposition",
-   "read_only": 1,
-   "no_copy": 1
-  },
-  {
-   "fieldname": "section_estimate",
-   "fieldtype": "Section Break",
-   "label": "Estimate & Authorization"
-  },
-  {
-   "fieldname": "work_requested",
-   "fieldtype": "Small Text",
-   "label": "Work Requested",
-   "reqd": 1
-  },
-  {
-   "fieldname": "estimated_cost",
-   "fieldtype": "Currency",
-   "label": "Estimated Cost",
-   "options": "Company:company:default_currency"
-  },
-  {
-   "fieldname": "deposit_amount",
-   "fieldtype": "Currency",
-   "label": "Paid at Intake",
-   "options": "Company:company:default_currency",
-   "non_negative": 1,
-   "read_only": 1,
-   "description": "What the customer paid towards the job when the gun was left (the register's Pay now). Payments are held for the customer (Deposit Held) and come off the bill at pick-up."
-  },
-  {
-   "fieldname": "estimated_completion",
-   "fieldtype": "Date",
-   "label": "Estimated Completion"
-  },
-  {
-   "fieldname": "column_break_estimate",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "intake_agreement",
-   "fieldtype": "Link",
-   "label": "Intake Authorization",
-   "options": "Customer Agreement",
-   "read_only": 1,
-   "no_copy": 1
-  },
-  {
-   "fieldname": "deposit_invoice",
-   "fieldtype": "Link",
-   "label": "Deposit Invoice",
-   "options": "POS Invoice",
-   "read_only": 1,
-   "no_copy": 1
-  },
-  {
-   "fieldname": "deposit_held",
-   "fieldtype": "Currency",
-   "label": "Deposit Held",
-   "options": "Company:company:default_currency",
-   "description": "Deposit collected and not yet applied or refunded.",
-   "read_only": 1,
-   "no_copy": 1
-  },
-  {
-   "fieldname": "section_work",
-   "fieldtype": "Section Break",
-   "label": "Shop Use"
-  },
-  {
-   "fieldname": "gunsmith",
-   "fieldtype": "Link",
-   "label": "Gunsmith",
-   "options": "User"
-  },
-  {
-   "fieldname": "work_performed",
-   "fieldtype": "Text",
-   "label": "Work Performed"
-  },
-  {
-   "fieldname": "lines",
-   "fieldtype": "Table",
-   "label": "Charges",
-   "options": "Gunsmith Work Order Line",
-   "description": "Labor and parts for the final bill. Parts are ordinary items and are taxed as usual; labor uses the item set in FFL Settings › Gunsmithing."
-  },
-  {
-   "fieldname": "final_cost",
-   "fieldtype": "Currency",
-   "label": "Final Cost",
-   "options": "Company:company:default_currency",
-   "description": "Sum of the charges, before tax.",
-   "read_only": 1,
-   "no_copy": 1
-  },
-  {
-   "fieldname": "column_break_work",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "completed_on",
-   "fieldtype": "Date",
-   "label": "Date Completed",
-   "read_only": 1,
-   "no_copy": 1
-  },
-  {
-   "fieldname": "notified_via",
-   "fieldtype": "Select",
-   "label": "Customer Notified By",
-   "options": "\nPhone\nEmail\nText",
-   "read_only": 1,
-   "no_copy": 1
-  },
-  {
-   "fieldname": "notified_on",
-   "fieldtype": "Datetime",
-   "label": "Date Notified",
-   "read_only": 1,
-   "no_copy": 1
-  },
-  {
-   "fieldname": "notified_by",
-   "fieldtype": "Link",
-   "label": "Notified By",
-   "options": "User",
-   "read_only": 1,
-   "no_copy": 1
-  },
-  {
-   "fieldname": "pickup_invoice",
-   "fieldtype": "Link",
-   "label": "Pick-up Invoice",
-   "options": "POS Invoice",
-   "read_only": 1,
-   "no_copy": 1
-  },
-  {
-   "fieldname": "picked_up_on",
-   "fieldtype": "Datetime",
-   "label": "Date Picked Up",
-   "read_only": 1,
-   "no_copy": 1
-  },
-  {
-   "fieldname": "cancel_reason",
-   "fieldtype": "Small Text",
-   "label": "Cancel Reason",
-   "depends_on": "eval:doc.status=='Cancelled'",
    "read_only": 1,
    "no_copy": 1
   }

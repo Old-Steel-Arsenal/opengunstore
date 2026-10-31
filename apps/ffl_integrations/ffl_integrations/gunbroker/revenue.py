@@ -47,7 +47,15 @@ from frappe import _
 from frappe.utils import cint, flt, getdate, nowdate
 
 from ffl_core.api.manual_order import _ensure_ship_address
-from ffl_core.customer_profile import find_customer_by_email, find_customer_by_gb_id
+# The shipping hook's resolution, so the freight row and GunBroker's own charge
+# rows on one invoice cannot disagree. Module-level name kept: tests patch it.
+from ffl_core.compliance.shipping_charge import company_cost_center as _cost_center
+from ffl_core.customer_profile import (
+	find_customer_by_email,
+	find_customer_by_gb_id,
+	new_retail_customer,
+)
+from ffl_core.utils import default_company as _default_company
 from ffl_integrations.gunbroker import setup as gb_setup
 from ffl_integrations.notifications import notify_admins, safe_log_error
 
@@ -126,7 +134,9 @@ def create_sales_invoice_for_gb_order(order) -> dict:
 		).format(si.grand_total, order.order_total, f"{drift:.2f}"),
 			status="draft_total_mismatch")
 
-	_refuse_to_post_a_negative_liability(si, order)
+	# The last door, run explicitly before submit: the same check the hooked
+	# validate applies (si.gunbroker_order is always set on this path).
+	refuse_a_negative_liability_on_validate(si)
 	si.flags.ignore_permissions = True
 	si.submit()
 	_link_invoice(order, si)
@@ -201,26 +211,6 @@ def _refuse_to_duplicate_an_unlinked_amendment(order, existing) -> None:
 		"invoice for the same sale.\n\nSet GunBroker Order (and the two fee "
 		"fields) on {1}, then run this again."
 	).format(cancelled, amendment), title=_("Amendment Not Linked"))
-
-
-def _refuse_to_post_a_negative_liability(si, order) -> None:
-	"""The last door: nothing with a negative tax row may be submitted.
-
-	`unhandled_amounts` refuses these before the invoice is built, and that is
-	the path that matters — it produces a Draft somebody can see and an alert
-	somebody reads. This is here for a caller that reached submit without going
-	through it, and it throws rather than returning a reason because by this
-	point there is nowhere left to put one.
-	"""
-	for row in (si.get("taxes") or []):
-		if flt(row.get("tax_amount")) < 0:
-			frappe.throw(_(
-				"{0} carries a negative tax row ({1} {2}) and cannot be posted. "
-				"A marketplace liability is money we are holding for somebody "
-				"else; there is no such thing as a negative amount of it."
-			).format(order.name, row.get("account_head"),
-				flt(row.get("tax_amount"))),
-				title=_("Negative Marketplace Liability"))
 
 
 @frappe.whitelist()
@@ -610,36 +600,11 @@ def _tax_rows(order, company: str) -> list[dict]:
 	return rows
 
 
-def _cost_center(company: str) -> str | None:
-	"""The company's cost centre, or its first real one.
-
-	A charge row without one saves happily and then fails at submit with a
-	cryptic GL error — the same trap ffl_core's shipping hook documents, and the
-	same resolution, so the two rows on one invoice cannot disagree.
-	"""
-	return (frappe.db.get_value("Company", company, "cost_center")
-		or frappe.db.get_value(
-			"Cost Center", {"company": company, "is_group": 0, "disabled": 0},
-			"name", order_by="lft"))
-
-
 def _licensee_name(order) -> str:
 	if not order.atf_ffl_record:
 		return ""
 	return frappe.db.get_value("ATF FFL Record", order.atf_ffl_record,
 		"licensee_name") or ""
-
-
-def _default_company() -> str:
-	import erpnext
-
-	company = erpnext.get_default_company()
-	if company:
-		return company
-	names = frappe.get_all("Company", pluck="name", limit=1)
-	if not names:
-		frappe.throw(_("No Company exists — cannot book GunBroker revenue."))
-	return names[0]
 
 
 def _link_invoice(order, si) -> None:
@@ -670,8 +635,6 @@ def resolve_customer(order) -> str:
 	through an alias does not: the customer was merged from another record and
 	keeps the account id it has.
 	"""
-	from ffl_core.api.manual_order import _individual_group
-
 	user_id = (order.buyer_user_id or "").strip()
 	has_gb_id = bool(user_id) and frappe.db.has_column("Customer", "gb_user_id")
 	if has_gb_id:
@@ -693,19 +656,11 @@ def resolve_customer(order) -> str:
 					update_modified=False)
 			return match.name
 
-	doc = frappe.get_doc({
-		"doctype": "Customer",
-		"customer_name": (order.customer_name or "").strip()
+	doc = new_retail_customer(
+		(order.customer_name or "").strip()
 			or (order.buyer_username or "").strip() or email or user_id,
-		"customer_type": "Individual",
-		"is_ffl_dealer": 0,
-		"customer_group": _individual_group(),
-		"territory": frappe.db.get_single_value("Selling Settings", "territory")
-			or "All Territories",
-		"email_id": email or None,
-		"mobile_no": (order.customer_phone or "").strip() or None,
-		"is_tax_exempt": 0,
-	})
+		email=email,
+		phone=(order.customer_phone or "").strip())
 	if user_id and frappe.db.has_column("Customer", "gb_user_id"):
 		doc.gb_user_id = user_id
 	doc.flags.ignore_permissions = True
@@ -846,8 +801,8 @@ def _accrue_fees(order, si) -> None:
 def refuse_a_negative_liability_on_validate(doc, method=None) -> None:
 	"""Sales Invoice validate: no GunBroker invoice carries a negative liability.
 
-	The booking path has its own check immediately before `si.submit()`, and
-	that one is unreachable from the Desk. A Draft held for exactly this reason
+	The booking path also calls this immediately before `si.submit()`, but
+	that call is unreachable from the Desk. A Draft held for exactly this reason
 	— GunBroker's salesTaxTotal came in below its complianceFee — is handed to
 	an operator with the marketplace sales-tax row missing and the service-fee
 	row present, which looks like an ordinary no-tax sale with one odd line.

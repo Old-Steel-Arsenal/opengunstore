@@ -351,7 +351,8 @@ def sweep_candidates(limit: int = SWEEP_BATCH) -> list[dict]:
 		"""
 		SELECT name, item_code, gb_item_id, gb_push_pending, gb_push_attempted_at,
 		       gb_end_pending, gb_gone_strikes, gb_gone_first_at, gb_item_history,
-		       gb_price_dirty, gb_reserved, gb_order, gb_sold_unknown
+		       gb_price_dirty, gb_reserved, gb_order, gb_sold_unknown,
+		       gb_listing_type, gb_bid_locked
 		FROM `tabSerial No`
 		WHERE COALESCE(gb_item_id, '') != ''
 		   OR COALESCE(gb_push_pending, 0) = 1

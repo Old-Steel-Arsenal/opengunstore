@@ -11,16 +11,7 @@ frappe.ui.form.on('Data Service Settings', {
 				freeze: true,
 				freeze_message: __('Contacting the data service…'),
 				callback(resp) {
-					const checks = (resp.message || {}).checks || [];
-					const rows = checks.map((c) => {
-						const mark = c.ok === true ? '✅' : c.ok === false ? '❌' : '➖';
-						return `<tr><td>${mark}</td><td>${frappe.utils.escape_html(c.label)}</td>` +
-							`<td>${frappe.utils.escape_html(c.detail || '')}</td></tr>`;
-					}).join('');
-					frappe.msgprint({
-						title: __('Data service connection'),
-						message: `<table class="table table-sm"><tbody>${rows}</tbody></table>`,
-					});
+					ffl.showConnectionChecks(__('Data service'), (resp.message || {}).checks || []);
 					frm.reload_doc();
 				},
 			});

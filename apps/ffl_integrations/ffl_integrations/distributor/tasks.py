@@ -478,6 +478,10 @@ def place_order_job(do_name: str) -> None:
 	try:
 		result = provider.place_order(do_name)
 	except Exception as exc:  # noqa: BLE001 — record + alert, never crash the worker
+		# The provider works on its own copy and may have persisted fields mid-placement
+		# (Sports South commits web_ref right after AddHeader); saving this stale copy
+		# would wipe them — and an empty web_ref lets a retry place a second order.
+		do.reload()
 		_to_error(do, str(exc))
 		notify_admins(
 			f"{do.distributor} place-order failed: {do_name}", frappe.get_traceback(),

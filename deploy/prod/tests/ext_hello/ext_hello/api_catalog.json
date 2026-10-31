@@ -1,0 +1,4 @@
+[
+{"method":"ext_hello.api.greet.greet","module":"ext_hello.api.greet","summary":"Say hello to a customer.","description":"","args":[{"name":"customer","type":"string","required":true,"desc":"Customer name (the record id)."}],"returns":"dict: {\"message\": str}","http":["POST"],"guest":false,"auth":{"roles":["Sales User","Sales Manager","Stock Manager","System Manager"],"switch":true},"source":"ext_hello/api/greet.py:11"},
+{"method":"ext_hello.api.greet.ping","module":"ext_hello.api.greet","summary":"Prove the extension's Python is importable and switched on.","description":"","args":[],"returns":"str: \"pong\"","http":["GET"],"guest":false,"auth":{"roles":["Sales User","Sales Manager","Stock Manager","System Manager"],"switch":true},"source":"ext_hello/api/greet.py:26"}
+]

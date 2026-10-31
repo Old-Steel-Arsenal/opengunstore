@@ -98,9 +98,17 @@ class CrFieldsPresentTest(unittest.TestCase):
 				self.assertIn(name, self.order, f"{name} missing from field_order[]")
 
 	def test_verification_fields_follow_the_section(self):
+		# A Column Break inside the section is layout only; the nine fields still
+		# follow the section in order, before the next Section Break.
 		start = self.order.index("section_cr")
-		self.assertEqual(self.order[start + 1:start + 1 + len(CR_VERIFICATION_FIELDS)],
-			CR_VERIFICATION_FIELDS)
+		section = []
+		for name in self.order[start + 1:]:
+			fieldtype = self.by_name[name]["fieldtype"]
+			if fieldtype in ("Section Break", "Tab Break"):
+				break
+			if fieldtype != "Column Break":
+				section.append(name)
+		self.assertEqual(section, CR_VERIFICATION_FIELDS)
 
 	def test_expiry_is_a_real_date_not_free_text(self):
 		"""The expiry drives the expired-licence gate; a Data field would let

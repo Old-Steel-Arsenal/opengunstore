@@ -81,6 +81,13 @@ ffl_counter_order_replaced = [
 	"ffl_integrations.distributor.counter.carry_forward_replaced_orders",
 ]
 
+# A submitted counter order started holding a gun without a submit/cancel event
+# (ffl_core's Fulfill from local stock): end its GunBroker listing / recount the
+# model exactly as the invoice's on_submit would.
+ffl_counter_hold_changed = [
+	"ffl_integrations.gunbroker.doc_events.on_invoice_change",
+]
+
 # Membership renewals (ffl_core.membership): the core charges a member's saved card through these,
 # by name, so it never imports this app. Without them no card is chargeable and nothing is charged.
 ffl_membership_charge_saved_card = ["ffl_integrations.payments.saved_cards.run_saved_card_charge"]

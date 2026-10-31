@@ -63,4 +63,4 @@ external store:
 
 **Permissions:** Counter roles (manual path; the scheduler runs as Administrator).
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/tasks.py:1565`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/tasks.py:1567`</sub>

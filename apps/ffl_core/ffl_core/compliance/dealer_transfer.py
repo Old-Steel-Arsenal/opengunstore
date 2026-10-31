@@ -269,28 +269,58 @@ def _register_dispositions(doc, *, destination: str, disposition_type: str,
 		if not is_regulated_firearm_item(row.item_code):
 			continue
 		for serial in serials_for_line(row):
-			if frappe.db.exists("FFL Disposition", {
-				"serial": serial, link_field: doc.name, "docstatus": ("<", 2),
-			}):
-				continue  # idempotent — hook re-runs must not double-book
-			disp = frappe.get_doc({
-				"doctype": "FFL Disposition",
-				"disposition_date": now_datetime(),
-				"disposition_type": disposition_type,
-				"company": doc.company,
-				"customer": customer,
-				"destination_ffl": destination,
-				"item": row.item_code,
-				"serial": serial,
-				link_field: doc.name,
-				"sales_order": row.get("sales_order"),
-				"notes": _("Auto-booked from {0} {1}.").format(doc.doctype, doc.name),
-			})
-			disp.flags.ignore_permissions = True
-			disp.insert()
-			disp.submit()
-			created.append(disp.name)
+			name = book_disposition(
+				serial=serial, item=row.item_code, link_field=link_field,
+				link_name=doc.name, destination=destination,
+				disposition_type=disposition_type, company=doc.company,
+				customer=customer, sales_order=row.get("sales_order"),
+				notes=_("Auto-booked from {0} {1}.").format(doc.doctype, doc.name))
+			if name:
+				created.append(name)
 	return created
+
+
+def book_disposition(*, serial: str, item: str, link_field: str, link_name: str,
+		destination: str, disposition_type: str, company: str | None, notes: str,
+		customer: str | None = None, sales_order: str | None = None,
+		disposition_date=None) -> str | None:
+	"""Insert + submit one FFL Disposition for a serial shipped out on a sales
+	document (Delivery Note / Sales Invoice, Woo Online Order, GunBroker Order).
+	The one bound-book write shared by the counter, web and GunBroker paths.
+
+	Idempotent via the {serial, link_field: link_name, docstatus<2} guard so a
+	retried dispose or hook re-run never double-books: returns None when one
+	already exists, else the new disposition's name. Does NOT enqueue
+	FastBound — the disposition's own on_submit hook (ffl_integrations) does."""
+	if frappe.db.exists("FFL Disposition", {
+		"serial": serial, link_field: link_name, "docstatus": ("<", 2),
+	}):
+		return None
+	disp = frappe.get_doc({
+		"doctype": "FFL Disposition",
+		"disposition_date": disposition_date or now_datetime(),
+		"disposition_type": disposition_type,
+		"company": company,
+		"customer": customer,
+		"destination_ffl": destination,
+		"item": item,
+		"serial": serial,
+		link_field: link_name,
+		"sales_order": sales_order,
+		"notes": notes,
+	})
+	disp.flags.ignore_permissions = True
+	disp.insert()
+	disp.submit()
+	return disp.name
+
+
+def serial_company(serial: str) -> str | None:
+	"""The company that stocks a serial, via its warehouse — the FFL Disposition's
+	required `company` on the channel paths. (The stock-out Material Issue
+	derives the warehouse from the serial itself.)"""
+	warehouse = frappe.db.get_value("Serial No", serial, "warehouse")
+	return frappe.db.get_value("Warehouse", warehouse, "company") if warehouse else None
 
 
 def cancel_dealer_dispositions(doc, method: str | None = None) -> None:

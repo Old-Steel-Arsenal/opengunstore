@@ -58,13 +58,7 @@ _WAREHOUSE_FIELDS = {
 			"fieldtype": "Check",
 			"label": "Customer Custody Warehouse",
 			"insert_after": "company",
-			"description": (
-				"Holds customer property the store possesses but does not own — "
-				"transfer-in guns awaiting pickup, and later repair/layaway drop-offs. "
-				"Stock here is excluded from the website's sellable count, from the POS "
-				"sale pickers, and from every WooCommerce push. Never set this on a "
-				"warehouse that holds inventory the store owns."
-			),
+			"description": "Stock here is customer property: never sold or listed on the website.",
 			# System state: a hand-flipped flag either strands real inventory or
 			# re-exposes customer property to the storefront.
 			"read_only": 1,
@@ -80,13 +74,7 @@ _SERIAL_FIELDS = {
 			"fieldtype": "Check",
 			"label": "Customer Transfer Gun",
 			"insert_after": "warehouse",
-			"description": (
-				"This gun belongs to a CUSTOMER and is only passing through on an FFL "
-				"transfer — the store never bought it and will never sell it. Stamped at "
-				"receive from the Receive Goods 'FFL Transfer' checkbox. Excludes the gun "
-				"from every WooCommerce listing path and from the POS sale pickers, and "
-				"pins its cost at 0 in the sales report."
-			),
+			"description": "A customer's gun on an FFL transfer: never listed or sold, and costed at $0.",
 			# Read-only for the same reason consigned_out is: clearing it by hand
 			# is exactly how a customer's gun would reach the storefront.
 			"read_only": 1,
@@ -106,11 +94,7 @@ _PURCHASE_RECEIPT_FIELDS = {
 			# anchoring there would make ordering depend on whether the fixture sync
 			# or this ensure() ran first.
 			"insert_after": "supplier",
-			"description": (
-				"This receipt brings in a CUSTOMER's gun on an FFL transfer, not stock the "
-				"store bought. Locks the receive to the custody warehouse at zero cost. Set "
-				"by the Receive Goods 'FFL Transfer' checkbox."
-			),
+			"description": "Receives a customer's gun into custody at $0, not as store stock.",
 			"read_only": 1,
 			"no_copy": 1,
 			"print_hide": 1,

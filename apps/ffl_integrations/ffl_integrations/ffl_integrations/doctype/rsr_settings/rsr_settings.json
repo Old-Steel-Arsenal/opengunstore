@@ -88,8 +88,7 @@
    "fieldname": "section_catalog_feed",
    "fieldtype": "Section Break",
    "label": "Catalog feed (local catalog)",
-   "depends_on": "eval:doc.__onload && doc.__onload.catalog_local",
-   "description": "RSR's FTPS feed files, which this site downloads itself because Data Service Settings › Catalog source is Local."
+   "depends_on": "eval:doc.__onload && doc.__onload.catalog_local"
   },
   {
    "fieldname": "ftp_host",
@@ -235,7 +234,7 @@
    "fieldtype": "Currency",
    "label": "Alert when invoiced freight differs by more than",
    "default": "5",
-   "description": "The poll compares the freight the house invoiced with the figure booked at placement; a larger gap sends an alert."
+   "description": "Compared with the freight figure booked when the order was placed."
   }
  ],
  "links": [],

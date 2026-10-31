@@ -74,14 +74,14 @@
    "label": "Case Price",
    "read_only": 1,
    "in_list_view": 1,
-   "description": "Shipped to the store, full cases buy at the distributor's case price, and Unit Cost includes it. An estimate: the cost the distributor acknowledges replaces it."
+   "description": "On store orders, full cases buy at the distributor's case price, which Unit Cost already includes; it is an estimate until the distributor's acknowledged cost replaces it."
   },
   {
    "fieldname": "invoiced_unit_cost",
    "fieldtype": "Currency",
    "label": "Invoiced Unit Cost",
    "read_only": 1,
-   "description": "What the distributor's invoice actually charged per unit (poll write-back); the receive books this when present."
+   "description": "What the distributor's invoice charged per unit; receiving books this cost when present."
   },
   {
    "fieldname": "ship_method",
@@ -112,8 +112,7 @@
    "fieldtype": "Int",
    "label": "Received Qty",
    "default": "0",
-   "read_only": 1,
-   "description": "Cumulative booked; batch arrivals add only the increment."
+   "read_only": 1
   },
   {
    "fieldname": "substituted_qty",
@@ -121,7 +120,7 @@
    "label": "Substituted Qty",
    "default": "0",
    "read_only": 1,
-   "description": "Units the counter fulfilled from shelf stock (or re-sourced) instead of waiting; when they arrive they are plain restock, no order to hang on."
+   "description": "Units filled from shelf stock instead of waiting; when they arrive they are plain restock."
   },
   {
    "fieldname": "line_status",
@@ -135,8 +134,7 @@
    "fieldname": "fulfillment",
    "fieldtype": "Select",
    "label": "Fulfillment",
-   "options": "local\nto_store\nfds\ndirect",
-   "description": "Per-leg fulfillment (H1); Flow A restock = local."
+   "options": "local\nto_store\nfds\ndirect"
   },
   {
    "fieldname": "section_echoes",
@@ -159,8 +157,7 @@
    "fieldname": "serials",
    "fieldtype": "Small Text",
    "label": "Serials (CSV)",
-   "read_only": 1,
-   "description": "Serial numbers the distributor reported for this line; recorded here, stocked on receive."
+   "read_only": 1
   }
  ],
  "links": [],

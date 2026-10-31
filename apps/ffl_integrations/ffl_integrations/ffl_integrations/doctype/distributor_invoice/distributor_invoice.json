@@ -8,24 +8,27 @@
   "distributor",
   "invoice_number",
   "invoice_date",
-  "account",
   "column_break_1",
+  "account",
+  "po_number",
+  "order_ref",
+  "section_receiving",
   "distributor_order",
   "outside_pos",
   "destination",
   "destination_note",
+  "column_break_receiving",
   "received",
   "received_receipts",
-  "po_number",
-  "order_ref",
-  "section_amounts",
-  "total",
-  "freight",
-  "fees",
-  "column_break_2",
   "tracking_numbers",
   "section_lines",
-  "lines"
+  "lines",
+  "section_amounts",
+  "total",
+  "column_break_2",
+  "freight",
+  "column_break_amounts",
+  "fees"
  ],
  "fields": [
   {
@@ -54,31 +57,14 @@
    "read_only": 1
   },
   {
-   "fieldname": "account",
-   "fieldtype": "Data",
-   "label": "Account",
-   "read_only": 1
-  },
-  {
    "fieldname": "column_break_1",
    "fieldtype": "Column Break",
    "label": ""
   },
   {
-   "fieldname": "distributor_order",
-   "fieldtype": "Link",
-   "label": "Distributor Order",
-   "options": "Distributor Order",
-   "in_list_view": 1,
-   "in_standard_filter": 1,
-   "read_only": 1
-  },
-  {
-   "fieldname": "outside_pos",
-   "fieldtype": "Check",
-   "label": "Placed Outside POS",
-   "in_standard_filter": 1,
-   "description": "No Distributor Order in this POS matches this invoice: it was ordered on the distributor's website, by phone, or by another system.",
+   "fieldname": "account",
+   "fieldtype": "Data",
+   "label": "Account",
    "read_only": 1
   },
   {
@@ -94,33 +80,59 @@
    "read_only": 1
   },
   {
-   "fieldname": "section_amounts",
+   "fieldname": "section_receiving",
    "fieldtype": "Section Break",
-   "label": "Amounts"
+   "label": "Receiving"
   },
   {
-   "fieldname": "total",
-   "fieldtype": "Currency",
-   "label": "Invoice Total",
+   "fieldname": "distributor_order",
+   "fieldtype": "Link",
+   "label": "Distributor Order",
+   "options": "Distributor Order",
    "in_list_view": 1,
+   "in_standard_filter": 1,
    "read_only": 1
   },
   {
-   "fieldname": "freight",
-   "fieldtype": "Currency",
-   "label": "Freight",
+   "fieldname": "outside_pos",
+   "fieldtype": "Check",
+   "label": "Placed Outside POS",
+   "in_standard_filter": 1,
    "read_only": 1
   },
   {
-   "fieldname": "fees",
-   "fieldtype": "Currency",
-   "label": "Fees",
+   "fieldname": "destination",
+   "fieldtype": "Select",
+   "label": "Destination",
+   "options": "\nStore\nDrop-ship\nUnknown",
+   "default": "Unknown",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
    "read_only": 1
   },
   {
-   "fieldname": "column_break_2",
-   "fieldtype": "Column Break",
-   "label": ""
+   "fieldname": "destination_note",
+   "fieldtype": "Select",
+   "label": "Destination Note",
+   "options": "\nLookup failed\nNo answer on file",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_receiving",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "received",
+   "fieldtype": "Check",
+   "label": "Received",
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "received_receipts",
+   "fieldtype": "Small Text",
+   "label": "Purchase Receipts",
+   "read_only": 1
   },
   {
    "fieldname": "tracking_numbers",
@@ -141,43 +153,42 @@
    "read_only": 1
   },
   {
-   "fieldname": "destination",
-   "fieldtype": "Select",
-   "label": "Destination",
-   "options": "\nStore\nDrop-ship\nUnknown",
-   "default": "Unknown",
+   "fieldname": "section_amounts",
+   "fieldtype": "Section Break",
+   "label": "Amounts"
+  },
+  {
+   "fieldname": "total",
+   "fieldtype": "Currency",
+   "label": "Invoice Total",
    "in_list_view": 1,
-   "in_standard_filter": 1,
-   "read_only": 1,
-   "description": "Where the goods went: Store (shipped to the shop, receivable on Receive Goods), Drop-ship (shipped to the buyer), or Unknown (the distributor did not say)."
+   "read_only": 1
   },
   {
-   "fieldname": "received",
-   "fieldtype": "Check",
-   "label": "Received",
-   "in_standard_filter": 1,
-   "read_only": 1,
-   "description": "Every line of this invoice has been received into stock through Receive Goods (or the invoice predates that feature)."
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break",
+   "label": ""
   },
   {
-   "fieldname": "received_receipts",
-   "fieldtype": "Small Text",
-   "label": "Purchase Receipts",
-   "read_only": 1,
-   "description": "The Purchase Receipts that booked this invoice's goods, one per receive."
+   "fieldname": "freight",
+   "fieldtype": "Currency",
+   "label": "Freight",
+   "read_only": 1
   },
   {
-   "fieldname": "destination_note",
-   "fieldtype": "Select",
-   "label": "Destination Note",
-   "options": "\nLookup failed\nNo answer on file",
-   "read_only": 1,
-   "description": "Why the destination is Unknown: the house's lookup failed (asked again on the next sync) or it gave no usable answer (not asked again)."
+   "fieldname": "column_break_amounts",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "fees",
+   "fieldtype": "Currency",
+   "label": "Fees",
+   "read_only": 1
   }
  ],
  "in_create": 1,
  "links": [],
- "modified": "2026-09-30 14:00:00",
+ "modified": "2026-10-30 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "Distributor Invoice",

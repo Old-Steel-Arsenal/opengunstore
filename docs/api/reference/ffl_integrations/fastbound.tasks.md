@@ -26,4 +26,4 @@ after an operator edits a per-unit manufacturer / importer.
 
 **Raises:** FastBoundError: Genuine API failures.
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/tasks.py:658`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/tasks.py:657`</sub>

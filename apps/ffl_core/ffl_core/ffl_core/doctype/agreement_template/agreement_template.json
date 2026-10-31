@@ -5,13 +5,13 @@
  "engine": "InnoDB",
  "field_order": [
   "title",
+  "scope",
+  "valid_days",
+  "one_copy_per_gun",
   "active",
   "version",
   "column_break_settings",
-  "valid_days",
   "requirement",
-  "scope",
-  "one_copy_per_gun",
   "show_on_counter_panel",
   "minors_need_guardian",
   "section_body",
@@ -28,6 +28,31 @@
    "in_list_view": 1
   },
   {
+   "fieldname": "scope",
+   "fieldtype": "Select",
+   "label": "Signed",
+   "options": "Per customer\nEach firearm sold\nPer document",
+   "default": "Per customer",
+   "in_list_view": 1,
+   "description": "Per document agreements are signed from a record, such as a gunsmith work order, and never asked for at a sale."
+  },
+  {
+   "fieldname": "valid_days",
+   "fieldtype": "Int",
+   "label": "Valid For (Days)",
+   "default": "0",
+   "non_negative": 1,
+   "description": "0 = never expires.",
+   "depends_on": "eval:doc.scope=='Per customer'"
+  },
+  {
+   "fieldname": "one_copy_per_gun",
+   "fieldtype": "Check",
+   "label": "One copy per gun",
+   "default": "0",
+   "depends_on": "eval:doc.scope==\"Each firearm sold\""
+  },
+  {
    "fieldname": "active",
    "fieldtype": "Check",
    "label": "Active",
@@ -42,20 +67,11 @@
    "default": "1",
    "read_only": 1,
    "in_list_view": 1,
-   "description": "Goes up when the text changes after someone has signed it. Signed copies keep the text they signed; they are not asked to sign again."
+   "description": "Goes up when the text is edited after someone has signed it; signed copies keep the text they signed."
   },
   {
    "fieldname": "column_break_settings",
    "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "valid_days",
-   "fieldtype": "Int",
-   "label": "Valid For (Days)",
-   "default": "0",
-   "non_negative": 1,
-   "description": "0 = never expires. A range waiver is usually 365.",
-   "depends_on": "eval:doc.scope=='Per customer'"
   },
   {
    "fieldname": "requirement",
@@ -64,38 +80,19 @@
    "options": "Optional\nRequired by item\nRequired for every sale",
    "default": "Required by item",
    "in_list_view": 1,
-   "description": "Optional: only offered from the Agreements button. Required by item: a counter sale of an Item (or Item Group) that names this agreement waits for it. Required for every sale: every counter sale waits for it (not an FFL dealer's; a walk-in sale needs a named customer to sign)."
-  },
-  {
-   "fieldname": "scope",
-   "fieldtype": "Select",
-   "label": "Signed",
-   "options": "Per customer\nEach firearm sold\nPer document",
-   "default": "Per customer",
-   "in_list_view": 1,
-   "description": "Per customer: one signature covers every visit until it expires. Each firearm sold: a new signed copy for the guns sold, naming them (a no-return agreement); one copy covers every gun of a sale unless One copy per gun is ticked. Per document: a copy for one record, signed from that record (a gunsmith work order's intake authorization); never asked for at a sale."
-  },
-  {
-   "fieldname": "one_copy_per_gun",
-   "fieldtype": "Check",
-   "label": "One copy per gun",
-   "default": "0",
-   "depends_on": "eval:doc.scope==\"Each firearm sold\"",
-   "description": "Ticked: the customer signs a separate copy for each gun. Unticked: one copy, signed once, lists every gun of the sale."
+   "description": "Required by item applies to a counter sale of an Item or Item Group that names this agreement. Required for every sale blocks every counter sale until it is signed, so a walk-in sale needs a named customer."
   },
   {
    "fieldname": "show_on_counter_panel",
    "fieldtype": "Check",
    "label": "Show on Counter Panel",
-   "default": "0",
-   "description": "Show whether the customer has signed it when they are picked at the counter."
+   "default": "0"
   },
   {
    "fieldname": "minors_need_guardian",
    "fieldtype": "Check",
    "label": "Minors Need a Parent or Guardian",
-   "default": "0",
-   "description": "A participant under 18 cannot sign alone: a parent or guardian signs for them."
+   "default": "0"
   },
   {
    "fieldname": "section_body",
@@ -107,7 +104,7 @@
    "fieldtype": "Text Editor",
    "label": "Agreement Text",
    "reqd": 1,
-   "description": "Placeholders: {{ customer_name }}, {{ first_name }}, {{ date }}, {{ store_name }}, {{ store_address }}, {{ valid_days }}; for Each firearm sold also {{ item_name }}, {{ manufacturer }}, {{ model }}, {{ caliber }}, {{ serial_no }}, {{ price }} (one copy covers every gun of a sale: with several, each lists them all, and {{ firearms }} is a table of the guns); for a gunsmith work order (Per document) also {{ work_order }}, {{ manufacturer }}, {{ model }}, {{ caliber }}, {{ serial_no }}, {{ firearm_type }}, {{ accessories }}, {{ condition }}, {{ work_requested }}, {{ estimated_cost }}, {{ deposit }}, {{ estimated_completion }}."
+   "description": "Placeholders: {{ customer_name }}, {{ first_name }}, {{ date }}, {{ store_name }}, {{ store_address }}, {{ valid_days }}; for a firearm agreement also {{ item_name }}, {{ manufacturer }}, {{ model }}, {{ caliber }}, {{ serial_no }}, {{ price }}, or {{ firearms }} for a table of the guns."
   },
   {
    "fieldname": "description",
@@ -118,7 +115,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-28 14:00:00.000000",
+ "modified": "2026-10-30 19:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Agreement Template",

@@ -8,7 +8,7 @@ Source: `apps/ffl_integrations/ffl_integrations/payments/si_reversal.py` · 4 en
 
 `POST /api/method/ffl_integrations.payments.si_reversal.card_charges`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales Manager / System Manager
 
 The card charges on a Sales Invoice that a manager can void or refund, for the form.
 
@@ -18,13 +18,13 @@ The card charges on a Sales Invoice that a manager can void or refund, for the f
 
 **Returns:** {charges: [{name, amount, refunded_amount, left, status, unique_reference, card_summary, locked, lock, can_void}], membership, return_blocked}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:452`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:453`</sub>
 
 ## `refund_sales_invoice_charge`
 
 `POST /api/method/ffl_integrations.payments.si_reversal.refund_sales_invoice_charge`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales Manager / System Manager
 
 Refund part or all of a card charge on a counter Sales Invoice to the card it came from.
 
@@ -42,13 +42,13 @@ back on the invoice to be collected another way.
 
 **Returns:** {ok, amount, gateway_reference, entry_type, entry, credit_note, outstanding}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:331`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:332`</sub>
 
 ## `resolve_card_reversal`
 
 `POST /api/method/ffl_integrations.payments.si_reversal.resolve_card_reversal`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales Manager / System Manager
 
 Settle a void or refund the card processor never confirmed, after looking in its portal.
 
@@ -61,13 +61,13 @@ Settle a void or refund the card processor never confirmed, after looking in its
 
 **Returns:** {ok, booked, ...the booking when booked}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:409`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:410`</sub>
 
 ## `void_sales_invoice_charge`
 
 `POST /api/method/ffl_integrations.payments.si_reversal.void_sales_invoice_charge`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales Manager / System Manager
 
 Void a card charge on a counter Sales Invoice: the processor reverses the whole capture
 
@@ -84,4 +84,4 @@ are refunded instead (type Return).
 
 **Returns:** {ok, status, entry_type, entry, outstanding}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:297`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/si_reversal.py:298`</sub>

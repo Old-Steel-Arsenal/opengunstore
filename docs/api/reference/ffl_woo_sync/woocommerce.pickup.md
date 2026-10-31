@@ -31,4 +31,4 @@ customer possibly already holding the rifle.
 
 **Permissions:** Counter roles.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/pickup.py:354`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/pickup.py:358`</sub>

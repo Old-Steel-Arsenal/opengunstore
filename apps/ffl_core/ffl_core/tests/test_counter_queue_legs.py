@@ -90,7 +90,7 @@ class QueueLegsTest(MixedOrderFixtures):
 		out = self._mixed_counter()
 		si_name = out["sales_invoice"]
 		from ffl_integrations.distributor import api as dist_api
-		real_confirm = dist_api.confirm_order
+		real_confirm = dist_api._confirm_order
 		calls = []
 
 		def flaky_confirm(do_name):
@@ -99,7 +99,7 @@ class QueueLegsTest(MixedOrderFixtures):
 				raise RuntimeError("worker hiccup")
 			return real_confirm(do_name)
 
-		with mock.patch.object(dist_api, "confirm_order", side_effect=flaky_confirm):
+		with mock.patch.object(dist_api, "_confirm_order", side_effect=flaky_confirm):
 			result = manual_order.release_order_legs(si_name)
 		self.assertEqual(len(result["failed"]), 1)
 		self.assertEqual(result["released"], [])

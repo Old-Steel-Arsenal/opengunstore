@@ -439,3 +439,65 @@ class PartsItemGroups(FrappeTestCase):
 		# Handguards and stocks moved out of Accessory: the report's basis must not.
 		from ffl_core.ffl_core.report.inventory_receipts.inventory_receipts import _TOP_GROUP_CATEGORY
 		self.assertEqual(_TOP_GROUP_CATEGORY["Parts"], _TOP_GROUP_CATEGORY["Accessory"])
+
+
+class PromoteLipseys(FrappeTestCase):
+	"""Lipsey's runs the shared catalog promoter with its own firearm-type map and
+	caliber gate (firearms only)."""
+
+	CODES = ("PROMO-LIP-PISTOL", "PROMO-LIP-AMMO")
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		from ffl_core.setup import item_groups, test_bootstrap
+		test_bootstrap.run()
+		item_groups.ensure()
+
+	def setUp(self):
+		for code in self.CODES:
+			if frappe.db.exists("Item", code):
+				frappe.delete_doc("Item", code, ignore_permissions=True, force=True)
+		catalog_stub.install()
+		catalog_stub.seed_catalog([
+			{"sku": "PROMO-LIP-PISTOL", "upc": "", "department": "Semi-Auto Pistol",
+			 "ffl_required": 1, "product_class": "Handgun",
+			 "short_description": "Glock 19 Gen5 9mm 15rd", "cost": 450.0, "map": 549.0,
+			 "msrp": 649.0},
+			{"sku": "PROMO-LIP-AMMO", "upc": "", "department": "Accessory-Ammunition",
+			 "ffl_required": 0, "product_class": "Ammunition",
+			 "short_description": "Federal 9mm 115gr FMJ 50rd", "cost": 15.0, "map": 20.0},
+		], distributor="lipseys")
+
+	def tearDown(self):
+		catalog_stub.uninstall()
+
+	def test_pistol_is_a_serialized_pistol_at_map(self):
+		from ffl_integrations.lipseys.promote import promote_to_item
+		out = promote_to_item("PROMO-LIP-PISTOL", {"item_code": "PROMO-LIP-PISTOL"})
+		self.assertEqual(out["item_code"], "PROMO-LIP-PISTOL")
+		it = frappe.db.get_value("Item", "PROMO-LIP-PISTOL",
+			["is_firearm", "has_serial_no", "firearm_type", "standard_rate", "dealer_price",
+			 "serial_no_series"], as_dict=True)
+		self.assertTrue(it.is_firearm)
+		self.assertTrue(it.has_serial_no)
+		self.assertEqual(it.firearm_type, "Pistol")
+		self.assertEqual(float(it.standard_rate), 549.0)
+		self.assertEqual(float(it.dealer_price), 450.0)
+		self.assertEqual(it.serial_no_series, "PROMO-LIP-PISTOL-.####")
+
+	def test_ammo_keeps_a_blank_caliber_and_no_firearm_fields(self):
+		# Lipsey's reads a caliber from the description for firearms only.
+		from ffl_integrations.lipseys.promote import promote_to_item
+		promote_to_item("PROMO-LIP-AMMO", {"item_code": "PROMO-LIP-AMMO"})
+		it = frappe.db.get_value("Item", "PROMO-LIP-AMMO",
+			["is_firearm", "has_serial_no", "firearm_type", "caliber"], as_dict=True)
+		self.assertFalse(it.is_firearm)
+		self.assertFalse(it.has_serial_no)
+		self.assertFalse(it.firearm_type)
+		self.assertFalse(it.caliber)
+
+	def test_unknown_item_names_the_house(self):
+		from ffl_integrations.lipseys.promote import promote_to_item
+		with self.assertRaisesRegex(frappe.ValidationError, "Lipsey's item PROMO-LIP-NONE not found"):
+			promote_to_item("PROMO-LIP-NONE")

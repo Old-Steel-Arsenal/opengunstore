@@ -375,7 +375,7 @@ function sr_open_column_picker() {
 				fieldname: "note",
 				fieldtype: "HTML",
 				options: `<p class="text-muted small" style="margin-bottom:8px">${__(
-					"Hidden columns only affect this screen. The Product view's CSV export always includes the full tax-report columns, no matter what you hide here."
+					"Hidden columns only affect this screen; the Product view's CSV export always keeps the full tax-report columns."
 				)}</p>`,
 			},
 			{
@@ -625,7 +625,7 @@ function sr_open_flags_help() {
 				fieldtype: "HTML",
 				options: `
 					<p class="text-muted small" style="margin-bottom:8px">${__(
-						"Symbols used in the table below. Before you cite this report for filing, the summary's Cost / Data Flags card must read Clean (0)."
+						"Before you cite this report for filing, the summary's Cost / Data Flags card must read Clean (0)."
 					)}</p>
 					<table class="table table-sm">${body}</table>`,
 			},

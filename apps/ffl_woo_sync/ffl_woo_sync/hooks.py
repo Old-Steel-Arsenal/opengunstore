@@ -179,6 +179,15 @@ serial_channel_exit = [
     "ffl_woo_sync.woocommerce.channel.serial_channel_exit",
 ]
 
+# `serial_channel_return` is its undo: GunBroker let go of a gun it held (order
+# cancelled before invoicing, unit dropped or reassigned), so the page the exit
+# took down goes back up.
+#
+#     fn(serial_no: str, *, channel: str, reason: str) -> None
+serial_channel_return = [
+    "ffl_woo_sync.woocommerce.channel.serial_channel_return",
+]
+
 # `channel_committed_units` / `channel_commitments_changed` are ffl_core's two
 # hooks for the pool every sales channel shares (a uniform-price gun, or a box of
 # ammunition, sold on more than one channel before it ships). This app answers
@@ -224,6 +233,13 @@ dropship_items_changed = [
 #     fn(item_code: str) -> {"qty": int, "serials": list[str] | None}
 store_stock_for_item = [
     "ffl_woo_sync.woocommerce.mapping.store_stock_for_item",
+]
+
+# ffl_core fires this with the Sales Invoice when a submitted counter order starts
+# holding a gun without a submit/cancel event (Fulfill from local stock): the
+# same reconcile the invoice's on_submit runs.
+ffl_counter_hold_changed = [
+    "ffl_woo_sync.woocommerce.doc_events.on_invoice_change",
 ]
 
 # Document Events

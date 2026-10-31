@@ -21,7 +21,7 @@ image_gallery primary). Skips fields the user has already set non-empty.
 
 **Returns:** {updated, skipped, total}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/rsr/promote.py:525`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/rsr/promote.py:520`</sub>
 
 ## `lookup_for_item_form`
 
@@ -41,7 +41,7 @@ user can still tweak fields before save.
 
 **Returns:** {found: True, defaults: {item_code, item_name, ...}, rsr: {...}} on hit, or {found: False, scan: ...} on miss.
 
-<sub>`apps/ffl_integrations/ffl_integrations/rsr/promote.py:665`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/rsr/promote.py:660`</sub>
 
 ## `migrate_legacy_item_groups`
 
@@ -57,7 +57,7 @@ from the old group name. Idempotent — safe to re-run.
 
 **Returns:** {firearm_moved, ammo_moved, total}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/rsr/promote.py:465`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/rsr/promote.py:460`</sub>
 
 ## `promote_to_item`
 
@@ -69,8 +69,8 @@ Build + insert an Item from an RSR Catalog Item.
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
-| `payload` | — | yes | — | JSON string from JS, or dict from Python: { "rsr_stock_number": "GLK19GEN5", "item_code": "GLK19GEN5",     # optional — defaults to rsr.upc, else rsr_stock_number "item_name": "...",           # optional "item_group": "Barrels",      # optional override; default: the catalog master's category "has_serial_no": 1,           # optional override; default heuristic "standard_rate": 649.99,      # optional; defaults to MSRP } |
+| `payload` | — | yes | — | JSON string from JS, or dict from Python: { "rsr_stock_number": "GLK19GEN5", "item_code": "GLK19GEN5",     # optional — defaults to rsr.upc, else rsr_stock_number "item_name": "...",           # optional "item_group": "Barrels",      # optional override; default: the catalog master's category "has_serial_no": 1,           # optional override; default heuristic "standard_rate": 649.99,      # optional; defaults to MSRP "distributor": "Sports South", # optional; a non-RSR house promotes the # SKU through its own provider } |
 
 **Returns:** {item_code, item_name, item_group, has_serial_no, is_firearm, last_rate, stock_uom, found: True} — same shape as ffl_core.api.receive_goods.lookup_item / create_item.
 
-<sub>`apps/ffl_integrations/ffl_integrations/rsr/promote.py:270`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/rsr/promote.py:257`</sub>

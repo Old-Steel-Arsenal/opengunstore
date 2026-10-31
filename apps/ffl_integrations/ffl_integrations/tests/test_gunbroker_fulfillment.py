@@ -992,6 +992,13 @@ class TestTheCardShowsItemLevelUnits(_FulfillmentCase):
 		order.lines[0].qty = 3
 		return order
 
+	def test_the_ship_dialog_lists_the_quantity_it_will_ship(self):
+		"""The Ship dialog and the ShipStation parcel come off the same rows, so
+		an ammunition-only order no longer reads as "(none)"."""
+		items = fulfillment._ship_items(self._ammo_order())
+		self.assertEqual([(i["item_code"], i["qty"], i["serials"]) for i in items],
+			[(AMMO, 3, [])])
+
 	def test_an_open_order_lists_the_quantity_instead_of_a_serial(self):
 		row = self._row(self._ammo_order())
 		self.assertEqual(row["stock_units"], [{"item_code": AMMO, "qty": 3}])

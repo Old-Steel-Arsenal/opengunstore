@@ -26,6 +26,7 @@ OTHER_DIST = "CU-DC-OTHER"
 ACC_SKU, ACC_UPC = "CU-ACC-1", "860000777711"
 GUN_SKU, GUN_UPC = "CU-GUN-1", "860000777728"
 ORPHAN_SKU = "CU-ORPHAN-1"  # no UPC → item_code falls back to the stock number
+LEGACY_ITEM = "CU-LEGACY-1"  # named by an older stock number, carries ACC_UPC as a barcode
 
 
 def _plain_group() -> str:
@@ -51,7 +52,7 @@ def _remove_test_rows():
 	leaving CU-DC* behind made distributor.api's default-house resolution pick a
 	test row over the real one (2026-08-01, same run as the wiring incident).
 	Items go first — a stamped dropship_distributor link blocks the delete."""
-	for code in (ACC_UPC, ACC_SKU, GUN_UPC, GUN_SKU, ORPHAN_SKU):
+	for code in (ACC_UPC, ACC_SKU, GUN_UPC, GUN_SKU, ORPHAN_SKU, LEGACY_ITEM):
 		if frappe.db.exists("Item", code):
 			frappe.delete_doc("Item", code, ignore_permissions=True, force=True)
 	for dist in (DIST, OTHER_DIST):
@@ -71,7 +72,7 @@ class CounterEnsureItemTest(FrappeTestCase):
 		cls.addClassCleanup(_remove_test_rows)
 
 	def setUp(self):
-		for code in (ACC_UPC, ACC_SKU, GUN_UPC, GUN_SKU, ORPHAN_SKU):
+		for code in (ACC_UPC, ACC_SKU, GUN_UPC, GUN_SKU, ORPHAN_SKU, LEGACY_ITEM):
 			if frappe.db.exists("Item", code):
 				frappe.delete_doc("Item", code, ignore_permissions=True, force=True)
 		frappe.db.commit()
@@ -177,6 +178,25 @@ class CounterEnsureItemTest(FrappeTestCase):
 			"the other house's claim must survive")
 		self.assertFalse(frappe.db.exists("Item", ACC_SKU),
 			"no second Item promoted under the stock number")
+
+	def test_barcode_owner_claimed_by_another_distributor_is_not_rehomed(self):
+		"""No Item is named by the UPC, but an older one carries it as a barcode and
+		another house drop-ships it. The promoter resolves the row to that Item, so
+		the ownership check must too — its stamp must survive."""
+		frappe.get_doc({
+			"doctype": "Item", "item_code": LEGACY_ITEM, "item_name": "Legacy-named",
+			"item_group": _plain_group(), "stock_uom": "Nos", "is_stock_item": 1,
+			"barcodes": [{"barcode": ACC_UPC}],
+		}).insert(ignore_permissions=True)
+		frappe.db.set_value("Item", LEGACY_ITEM, "dropship_distributor", OTHER_DIST,
+			update_modified=False)
+		out = dist_api.ensure_dropship_item(ACC_SKU, DIST)
+		self.assertEqual(out["item_code"], LEGACY_ITEM)
+		self.assertEqual(out["claimed_by"], OTHER_DIST)
+		self.assertEqual(
+			frappe.db.get_value("Item", LEGACY_ITEM, "dropship_distributor"), OTHER_DIST,
+			"the other house's claim must survive")
+		self.assertFalse(frappe.db.exists("Item", ACC_UPC))
 
 	def test_unknown_sku_throws(self):
 		with self.assertRaises(frappe.ValidationError):

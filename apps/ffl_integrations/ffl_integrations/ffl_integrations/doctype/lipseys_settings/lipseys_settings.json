@@ -136,8 +136,7 @@
    "fieldname": "disable_email",
    "fieldtype": "Check",
    "label": "No confirmation email from Lipsey's",
-   "default": "0",
-   "description": "On: Lipsey's sends no order confirmation email for orders placed from here."
+   "default": "0"
   },
   {
    "fieldname": "column_order_options",
@@ -148,7 +147,7 @@
    "fieldtype": "Check",
    "label": "Accessory drop-ship orders ship overnight",
    "default": "0",
-   "description": "On: accessory drop-ship orders ask Lipsey's for overnight shipping, at overnight rates."
+   "description": "Charged at Lipsey's overnight rates."
   },
   {
    "fieldname": "tab_freight",

@@ -6,8 +6,15 @@ frappe.ui.form.on('Customer Agreement', {
 		const manager = ['Sales Manager', 'System Manager'].some((r) => frappe.user.has_role(r));
 		const d = frm.doc;
 		if (d.status === 'Pending') {
-			frm.add_custom_button(__('Send again'), () => ffl.agreements.request(d.customer, d.template,
-				{customer_name: d.customer_name, serial_no: d.serial_no, item_name: d.item_code, done: () => frm.reload_doc()}));
+			// Re-send this copy for what it covers: its guns (Each firearm sold) or its record (Per document).
+			const guns = (d.firearms || []).length
+				? d.firearms.map((f) => ({serial_no: f.serial_no, item_code: f.item_code, rate: f.price}))
+				: (d.serial_no ? [{serial_no: d.serial_no, item_code: d.item_code}] : undefined);
+			frm.add_custom_button(__('Send again'), () => ffl.agreements.request(d.customer, d.template, {
+				customer_name: d.customer_name, firearms: guns,
+				reference_doctype: d.reference_doctype, reference_name: d.reference_name,
+				done: () => frm.reload_doc(),
+			}));
 			if (manager) {
 				frm.add_custom_button(__('Record paper copy'), () => ffl.agreements.recordPaper(frm));
 			}

@@ -17,7 +17,7 @@ GunBroker Settings has four tabs: Connection, Listings, Accounting and Advanced.
 
 ## Listing one gun
 
-Open the Serial No and use the **GunBroker** button group. The buttons appear only on a per-serial firearm. A uniform-priced firearm cannot be listed here at all. Per-gun channel actions live on the Serial No form's toolbar, to the right of Sync with FastBound. The GunBroker group joins them once GunBroker is enabled.
+Open the Serial No and use the **GunBroker** button group. The buttons appear only on a per-serial firearm. A uniform-priced firearm cannot be listed here at all. A consigned gun lists like any other gun once its **Consignor** is set on the Serial No. The sale pays the consignor's share as a counter sale does. See [Selling guns on consignment](../inventory/consignment.md). Per-gun channel actions live on the Serial No form's toolbar, to the right of Sync with FastBound. The GunBroker group joins them once GunBroker is enabled.
 
 <figure markdown>
 ![The Serial No form](../screenshots/serial-no-form.webp){ .screenshot }
@@ -136,14 +136,15 @@ The buyer is matched to an existing customer by GunBroker account first, then by
 
 ### Working the order
 
-The order appears on the [Pending Order](../selling/pending-orders.md) page. The sequence is fixed, and each step has a reason.
+The order appears on the [Pending Order](../selling/pending-orders.md) page. The usual sequence is below, and each step has a reason.
 
 1. **Wait for payment.** The buyer sends a certified check or money order. No card gateway is connected, so card payment is refused.
 2. **Bank it and wait for the funds to clear.** Do not ship on receipt of a check. Forged certified checks are the common fraud against GunBroker sellers.
 3. **Press Mark Payment Received.** Fill in the payment method, the cheque or money order number, the amount banked, and the day it went into the bank. That deposit date is not the day it arrived in the post.
 4. **Wait for the receiving dealer's license.** The system verifies it through eZ Check. Dispose stays disabled while the license is expired or unverified, with the hint "Verify the FFL first."
-5. **Press Dispose on the day you pack the gun.** Dispose raises the invoice, posts to the general ledger, writes the bound book disposition and pushes to FastBound. All of that assumes the gun really left the building. When the order also carries ammunition or accessories, the dialog asks **Where did these come from?** with a location box for each line that sits in a store location. Leave a box blank if you are not sure. The line then goes on the [Not placed list](../inventory/storage-locations.md#the-not-placed-tab).
-6. **Ship.** Buying the label is the separate **Ship** step on the card. Tracking is carried back to GunBroker automatically from the label you bought.
+5. **Ship, before or after Dispose.** Once payment is marked received, the license is verified and every unit has a gun, **Ship** sends the order to ShipStation, where you buy the label. Tracking goes back to GunBroker only after Dispose. A Type 03 collector order must be disposed first: its license is checked in the Dispose dialog.
+6. **Press Dispose on the day you pack the gun.** Dispose raises the invoice, posts to the general ledger, writes the bound book disposition and pushes to FastBound. All of that assumes the gun really left the building. When the order also carries ammunition or accessories, the dialog asks **Where did these come from?** with a location box for each line that sits in a store location. Leave a box blank if you are not sure. The line then goes on the [Not placed list](../inventory/storage-locations.md#the-not-placed-tab).
+7. **If Dispose says the invoice did not post**, click **Create Invoice** on the card. **Ship** comes back once it posts. See [A GunBroker order is disposed but cannot ship](../reference/troubleshooting.md#a-gunbroker-order-is-disposed-but-cannot-ship).
 
 GunBroker's own payment flag is a click on their website. It is recorded, and it is not what opens Dispose. **Mark Payment Received** records what actually reached the bank, and that is the gate.
 
@@ -210,4 +211,5 @@ The daily audit sends one email per category. The last two rows below come from 
 | This gun is on GunBroker as an auction, so its price is set by the bidders | You pressed **Reprice on GunBroker** on an auction | End the auction and list it again to change the opening figure |
 | GunBroker cannot find this listing but shows the same SKU as sold | The gun may already have been bought | Check GunBroker. If it was not sold, use **Clear "Sold Unknown"** |
 | End it on GunBroker by hand | The end was sent and not confirmed, or the setting says manual | Open the item on GunBroker and use End Item Early. Until then it can be bought |
+| … came in on consignment but has no consignor recorded … | A consigned gun has no **Consignor** | Set the **Consignor** on the Serial No, then send again |
 | The GunBroker buttons are missing | The integration is switched off, or the record is the wrong kind | Guns list from the Serial No form, models from the Item form. Check [Integrations](../settings/integrations.md) |

@@ -31,11 +31,20 @@ from __future__ import annotations
 
 import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+from frappe.utils import flt
 
+from ffl_core.setup.customer_deposits import _liability_parent
 from ffl_core.utils import commit
 
 CONSIGNMENT_PAYABLE_TITLE = "Consignment Payable"
 DEFAULT_COMMISSION_PCT = 20.0
+
+
+def default_commission_pct() -> float:
+	"""The store-wide consignment commission %: FFL Settings' value, or
+	DEFAULT_COMMISSION_PCT when it is blank/zero. Intake stamping and the
+	Serial No form backfill both read it here so they never disagree."""
+	return flt(frappe.db.get_single_value("FFL Settings", "consignment_default_commission_pct")) or DEFAULT_COMMISSION_PCT
 
 _SERIAL_FIELDS = {
 	"Serial No": [
@@ -157,22 +166,7 @@ def _ensure_payable_account(company: str) -> str | None:
 	)
 	if existing:
 		return existing
-	parent = (
-		frappe.db.get_value(
-			"Account",
-			{
-				"company": company,
-				"root_type": "Liability",
-				"is_group": 1,
-				"account_name": "Current Liabilities",
-			},
-		)
-		or frappe.db.get_value(
-			"Account",
-			{"company": company, "root_type": "Liability", "is_group": 1},
-			order_by="lft",
-		)
-	)
+	parent = _liability_parent(company)
 	if not parent:
 		return None  # chartless company (mid-setup) — lazy retry later
 	return frappe.get_doc({

@@ -54,7 +54,7 @@ from frappe.utils import (add_days, add_months, add_to_date, cint, escape_html, 
 
 from ffl_core.price_approval import mark_system_priced
 from ffl_core.roles import COUNTER_ROLES, CUSTOMER_MANAGER_ROLES
-from ffl_core.utils import commit, single_flag
+from ffl_core.utils import commit, single_flag, single_raw
 
 DOCTYPE = "Membership"
 PLAN = "Membership Plan"
@@ -102,7 +102,7 @@ def plan_items() -> set[str]:
 def sync_plan_item(plan) -> None:
 	"""Point a plan's items at the membership accounts, deferred by day, and set their selling
 	price from the plan. Item rows are written directly (an Item.save fills one company's default
-	warehouse on every Item Default row and then refuses the others — setup/gunsmith)."""
+	warehouse on every Item Default row and then refuses the others — setup/item_defaults)."""
 	from ffl_core.setup import membership as setup
 
 	months = 12 if plan.billing_period == YEARLY else 1
@@ -119,23 +119,13 @@ def sync_plan_item(plan) -> None:
 
 
 def _item_defaults(item_code: str, setup) -> None:
-	rows = {r.company: r for r in frappe.get_all("Item Default", filters={"parent": item_code,
-		"parenttype": "Item"}, fields=["name", "company", "income_account", "deferred_revenue_account", "idx"])}
-	last = max((r.idx for r in rows.values()), default=0)
-	for company in frappe.get_all("Company", pluck="name"):
+	from ffl_core.setup.item_defaults import set_item_default_accounts
+
+	def accounts(company):
 		deferred, income = setup.accounts(company)
-		if not (deferred and income):
-			continue
-		row = rows.get(company)
-		if row:
-			if (row.income_account, row.deferred_revenue_account) != (income, deferred):
-				frappe.db.set_value("Item Default", row.name, {"income_account": income,
-					"deferred_revenue_account": deferred}, update_modified=False)
-			continue
-		last += 1
-		frappe.get_doc({"doctype": "Item Default", "name": frappe.generate_hash(length=10), "parent": item_code,
-			"parenttype": "Item", "parentfield": "item_defaults", "idx": last, "company": company,
-			"income_account": income, "deferred_revenue_account": deferred}).db_insert()
+		return deferred and income and {"income_account": income, "deferred_revenue_account": deferred}
+
+	set_item_default_accounts(item_code, accounts)
 
 
 def _item_price(item_code: str, rate) -> None:
@@ -844,9 +834,8 @@ def renewals_enabled() -> bool:
 
 
 def _reminder_days() -> int:
-	row = frappe.db.sql("select value from `tabSingles` where doctype = %s and field = 'yearly_reminder_days'",
-		(SETTINGS,))
-	return 7 if not row or row[0][0] in (None, "") else cint(row[0][0])
+	raw = single_raw(SETTINGS, "yearly_reminder_days")
+	return 7 if raw in (None, "") else cint(raw)
 
 
 def _hook(name: str):
@@ -1015,7 +1004,7 @@ def _attempt(doc, plan, today, *, manual: bool = False) -> str:
 		error = _("only part of the amount was approved")
 	if _charge_waiting(invoice):
 		doc.last_charge_status = _("The card charge for {0} was not confirmed by the gateway. It is not charged "
-			"again: look it up with Retry now (Membership Settings → Needs attention).").format(invoice)
+			"again: look it up with Look up card charge (Customers → Memberships → Needs attention).").format(invoice)
 		_save(doc)
 		return UNKNOWN
 	if not out and not waiting and _charge_rows(invoice) == before and _rollback_to("membership_renewal_charge"):
@@ -1146,7 +1135,7 @@ def invoice_renewal(membership: str) -> dict:
 	row = _open_renewal(doc, start)
 	if row and _charge_waiting(row.sales_invoice):
 		frappe.throw(_("A card charge on {0} is waiting for the gateway's answer. A manager looks it up first "
-			"(Retry now); taking another payment now could charge the customer twice.").format(row.sales_invoice),
+			"(Look up card charge); taking another payment now could charge the customer twice.").format(row.sales_invoice),
 			title=_("Charge not confirmed"))
 	if not row:
 		si = _make_invoice(doc, plan, start, end=end, posting=today, renewal=True)

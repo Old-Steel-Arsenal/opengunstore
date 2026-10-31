@@ -203,6 +203,19 @@ class TestShippedUndisposedAlert(FrappeTestCase):
 		log_error.assert_called_once()
 		self.assertIn("WOO-ORD-1", log_error.call_args[1]["message"])
 
+	def test_a_staff_caller_is_checked_against_the_counter_roles(self):
+		"""Only the Administrator path ever ran: `_ROLES` was never imported,
+		so the documented manual check raised NameError for counter staff."""
+		from ffl_core.api.manual_order import _ROLES
+		from ffl_woo_sync.woocommerce import tasks
+		frappe.set_user("Guest")
+		self.addCleanup(frappe.set_user, "Administrator")
+		with patch("frappe.only_for") as only_for, \
+			 patch("frappe.db.sql", return_value=[]):
+			out = tasks.alert_shipped_undisposed_orders()
+		only_for.assert_called_once_with(_ROLES)
+		self.assertEqual(out, {"checked": 0, "reported": 0})
+
 	def test_a_clean_queue_reports_nothing(self):
 		out, log_error, _, _, _, _ = self._run([])
 		self.assertEqual(out, {"checked": 0, "reported": 0})

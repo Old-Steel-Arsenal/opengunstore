@@ -15,7 +15,7 @@
  "fields": [
   {
    "columns": 2,
-   "description": "For firearms. Leave blank on item-level (ammunition / optics / parts) rows.",
+   "description": "Leave blank on ammunition, optics and parts rows.",
    "fieldname": "firearm_type",
    "fieldtype": "Select",
    "in_list_view": 1,
@@ -24,7 +24,7 @@
   },
   {
    "columns": 2,
-   "description": "For non-firearms (ammunition, optics, parts). Leave blank on firearm rows.",
+   "description": "Leave blank on firearm rows.",
    "fieldname": "item_group",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -34,7 +34,7 @@
   {
    "columns": 2,
    "default": "0",
-   "description": "Use this row only for guns old enough to qualify as Curios & Relics. It is checked ahead of the plain firearm-type row, so a C&R-eligible rifle can be listed under Curios & Relics rather than Other Rifles.",
+   "description": "Use this row only for C&R-eligible guns; it is checked before the plain firearm-type row.",
    "fieldname": "is_cr_eligible",
    "fieldtype": "Check",
    "in_list_view": 1,
@@ -43,7 +43,7 @@
   {
    "columns": 1,
    "default": "0",
-   "description": "Use this row only for antiques (Item.is_antique \u2014 pre-1899). An antique takes ONLY a row flagged here, never the plain or C&R row for its type, and a modern gun never takes this row. Point it at one of GunBroker's Antique categories.",
+   "description": "Use this row only for antiques (pre-1899), and point it at a GunBroker Antique category; an antique is listed only under a row flagged here, never the plain or C&R row.",
    "fieldname": "is_antique",
    "fieldtype": "Check",
    "in_list_view": 1,
@@ -51,7 +51,7 @@
   },
   {
    "columns": 2,
-   "description": "GunBroker's numeric category ID. It must be a leaf category (canContainItems=true) or the listing is rejected. Sandbox and production IDs have not been proven identical \u2014 verify each one against production before go-live.",
+   "description": "Must be a leaf category or the listing is rejected.",
    "fieldname": "category_id",
    "fieldtype": "Int",
    "in_list_view": 1,
@@ -60,7 +60,6 @@
   },
   {
    "columns": 2,
-   "description": "For humans reading this table. Not sent to GunBroker.",
    "fieldname": "category_name",
    "fieldtype": "Data",
    "in_list_view": 1,

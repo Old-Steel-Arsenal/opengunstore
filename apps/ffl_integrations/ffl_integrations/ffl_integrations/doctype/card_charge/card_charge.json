@@ -28,7 +28,7 @@
    "read_only": 1
   },
   {
-   "description": "A refunded card still reads Charged here. What went back to the card is recorded on the row separately.",
+   "description": "A refunded card still reads Charged; the amount returned is in Refunded Amount.",
    "fieldname": "status",
    "fieldtype": "Select",
    "in_list_view": 1,
@@ -37,7 +37,6 @@
    "read_only": 1
   },
   {
-   "description": "Card type + masked digits from the gateway, e.g. \"Visa Debit \u20225938\" \u2014 what the receipt prints.",
    "fieldname": "card_summary",
    "fieldtype": "Data",
    "in_list_view": 1,
@@ -56,7 +55,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Cumulative referenced-refund total already pushed back to this card (returns).",
    "fieldname": "refunded_amount",
    "fieldtype": "Currency",
    "label": "Refunded Amount",
@@ -69,7 +67,6 @@
    "read_only": 1
   },
   {
-   "description": "The card processor that took this charge (its registry code). Void, refund and poll go back to it.",
    "fieldname": "processor",
    "fieldtype": "Data",
    "label": "Processor",
@@ -89,21 +86,18 @@
   },
   {
    "default": "0",
-   "description": "The cashier asked to keep this card for later charges (card on file).",
    "fieldname": "save_card",
    "fieldtype": "Check",
    "label": "Save Card Requested",
    "read_only": 1
   },
   {
-   "description": "The merchant reference the card was saved under at the gateway.",
    "fieldname": "save_reference",
    "fieldtype": "Data",
    "label": "Saved Card Reference",
    "read_only": 1
   },
   {
-   "description": "The card this charge saved, or the saved card it charged.",
    "fieldname": "saved_card",
    "fieldtype": "Link",
    "label": "Saved Card",

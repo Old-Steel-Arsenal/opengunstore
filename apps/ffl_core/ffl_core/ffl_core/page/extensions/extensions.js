@@ -310,7 +310,7 @@ gunstore.ExtensionsPage = class ExtensionsPage {
 		if (!this.data.extensions.length) {
 			$list.html(`<div class="xt-empty">
 				<div class="xt-empty-t">${__('No extensions on this POS yet')}</div>
-				<div class="xt-empty-d">${__('Extensions add features to this POS for just this store. When your developer puts one on the server, press Refresh and it appears here.')}</div>
+				<div class="xt-empty-d">${__('When your developer puts one on the server, press Refresh and it appears here.')}</div>
 			</div>`);
 			return;
 		}
@@ -647,11 +647,11 @@ gunstore.ExtensionsPage = class ExtensionsPage {
 		const $u = this.$root.find('.xt-upload').empty();
 		$u.html(`
 			<div class="xt-up-intro">
-				<div class="xt-notice info"><span class="xt-ni">i</span><div>${__('Upload an extension your developer gave you as a .zip, or fetch it from a public Git repository. It is checked first; nothing is installed until you confirm.')}</div></div>
+				<div class="xt-notice info"><span class="xt-ni">i</span><div>${__('Upload the .zip your developer gave you or fetch it from a public Git repository; nothing is installed until you confirm.')}</div></div>
 				<label class="xt-drop" for="xt-file">
 					<input type="file" id="xt-file" accept=".zip,application/zip" hidden>
 					<span class="xt-drop-t">${__('Choose a .zip file')}</span>
-					<span class="xt-drop-d">${__('up to 50 MB · the file is kept on this server only until it is installed')}</span>
+					<span class="xt-drop-d">${__('up to 50 MB')}</span>
 				</label>
 				<form class="xt-git" novalidate>
 					<div class="xt-git-t">${__('Or fetch it from a public Git repository')}</div>
@@ -662,7 +662,7 @@ gunstore.ExtensionsPage = class ExtensionsPage {
 							<input type="text" id="xt-git-ref" class="form-control" placeholder="v1.2.0" autocomplete="off" spellcheck="false" maxlength="100"></div>
 						<button type="submit" class="btn btn-default btn-sm xt-btn xt-git-fetch">${__('Fetch')}</button>
 					</div>
-					<div class="xt-git-d">${__('https only, no password in the address. Prefer a release tag: a branch can change. For a private repository, download a .zip and upload it above.')}</div>
+					<div class="xt-git-d">${__('https only, no password in the address; prefer a release tag over a branch.')}</div>
 					<div class="xt-failed xt-git-err" role="alert" hidden></div>
 				</form>
 				<div class="xt-up-busy" hidden><div class="xt-bar"><i></i></div><span></span></div>
@@ -857,7 +857,7 @@ gunstore.ExtensionsPage = class ExtensionsPage {
 	// --- styles (Frappe tokens only; verified against v16 at runtime) ---------
 	static css() {
 		return `
-			.xt-wrap{max-width:1100px}
+			.xt-wrap{max-width:1100px;margin:0 auto;padding:0 16px 40px}
 			.xt-mono{font-family:var(--font-family-monospace);font-size:12px}
 			.xt-link{padding:0;border:0;background:none;color:var(--text-muted);text-decoration:underline;font-size:inherit;cursor:pointer}
 			.xt-link:focus-visible{outline:2px solid var(--blue-500);outline-offset:2px}

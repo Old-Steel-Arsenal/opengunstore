@@ -299,6 +299,35 @@ class TestEvictionAgainstTheDatabase(FrappeTestCase):
 		self.assertEqual(row.confirmed_serial, disputed)
 		self.assertEqual(evicted.stock_hold_serial, mine)
 
+	def test_the_picker_skips_a_gun_gunbroker_probably_sold(self):
+		"""`gb_sold_unknown` keeps a gun out of `uniform_free_serials`, the pool the
+		claim gate counts. The picker must apply the same key, or it hands a paid
+		web order the oldest gun — one GunBroker very probably already sold."""
+		if not frappe.db.has_column("Serial No", "gb_sold_unknown"):
+			self.skipTest("gb_sold_unknown is not migrated on this bench")
+		from ffl_woo_sync.woocommerce.webhook import _pick_oldest_unreserved_serial
+		# Its own Item: the other tests here leave free guns of ITEM behind.
+		item = f"QA-GBSOLD-{frappe.generate_hash(length=6)}"
+		doc = frappe.get_doc({
+			"doctype": "Item", "item_code": item, "item_name": item,
+			"item_group": frappe.db.get_value("Item Group", {"is_group": 0}, "name"),
+			"stock_uom": "Nos", "has_serial_no": 1, "is_stock_item": 1})
+		doc.flags.ignore_permissions = True
+		doc.insert()
+		serials = []
+		for suffix in ("0001", "0002"):              # 0001 is oldest → the trap
+			sn = frappe.get_doc({"doctype": "Serial No",
+				"serial_no": f"{item}-{suffix}", "item_code": item})
+			sn.flags.ignore_permissions = True
+			sn.insert()
+			frappe.db.set_value("Serial No", sn.name, "status", "Active",
+				update_modified=False)
+			serials.append(sn.name)
+		sold, free = serials
+		frappe.db.set_value("Serial No", sold, "gb_sold_unknown", 1,
+			update_modified=False)
+		self.assertEqual(_pick_oldest_unreserved_serial(item), free)
+
 	def test_a_two_order_swap_closes_one_for_one_with_no_spare_stock(self):
 		"""Two orders, two rifles, nothing else on the shelf — the prod shape.
 		Without offering our own placeholder as the replacement the evicted order

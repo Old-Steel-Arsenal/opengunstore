@@ -65,6 +65,10 @@ class MembershipRenewal(_CardOnFileBase):
 		# Each test on its own: the job walks every due membership on the site.
 		frappe.db.savepoint("renewal_test")
 		self.addCleanup(frappe.db.rollback, save_point="renewal_test")
+		# Park memberships already on the site (dev data, other suites) so the tallies count only
+		# this test's members; rolled back with the savepoint.
+		frappe.db.sql("update tabMembership set auto_renew=0, status=%s where status in %s",
+			(ms.SUSPENDED, (ms.ACTIVE, ms.PAST_DUE)))
 
 	# ---------------------------------------------------------------- helpers
 

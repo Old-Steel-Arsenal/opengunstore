@@ -33,6 +33,7 @@ from typing import Any
 import frappe
 from frappe.utils import flt
 
+from ffl_core.alerts import safe_log_error
 from ffl_core.compliance.ffl_number import FFL_NUMBER_RE, is_cr_license
 from ffl_core.firearm import is_antique_item, is_firearm_item, is_regulated_firearm_item
 from ffl_core.reservations import (
@@ -104,15 +105,8 @@ def woo_site(site: str):
 # Logging
 # ---------------------------------------------------------------------------
 
-def _log_error(*, title: str, message: str) -> None:
-	"""Webhook-safe error logging (mirrors fastbound webhook pattern)."""
-	try:
-		frappe.log_error(title=title, message=message)
-	except Exception:
-		try:
-			frappe.logger("woo.webhook", allow_site=True).error(f"{title}: {message[:1000]}")
-		except Exception:
-			pass
+# Webhook-safe error logging: never blocks the webhook ack.
+_log_error = safe_log_error
 
 
 # ---------------------------------------------------------------------------
@@ -547,6 +541,11 @@ def _pick_oldest_unreserved_serial(item_code: str,
 	held = counter_holds(item_code)
 	filters = {"item_code": item_code, "status": "Active", "woo_reserved": 0,
 		"is_transfer_gun": 0, "consigned_out": 0}
+	# `gb_sold_unknown`: GunBroker very probably sold it already. Fail closed, the
+	# same key `reservations.uniform_free_serials` (the pool the claim gate counts)
+	# applies. Column-guarded: the field belongs to ffl_integrations.
+	if frappe.db.has_column("Serial No", "gb_sold_unknown"):
+		filters["gb_sold_unknown"] = 0
 	# Every OTHER sales channel's reservations, added to the same exclusion set
 	# as the counter holds below. `woo_reserved: 0` stays an explicit filter — it
 	# is this app's own flag and belongs in SQL — while a second channel's flag
@@ -748,6 +747,7 @@ def _enqueue_serial_or_item_push(
 	three paths and only one of them is a release:
 
 	    :func:`_release_serial`        reserve RELEASED → relist=True
+	    (:func:`_handle_order_cancelled` releases inline, also relist=True)
 	    :func:`_handle_order_created`  reserve TAKEN    → default (no relist)
 	    :func:`_apply_dealer_serial`   reserve TAKEN    → default (no relist)
 
@@ -1137,6 +1137,27 @@ def _serial_unavailable_reason(serial_no: str, item_code: str) -> str:
 	return _serial_availability(serial_no, item_code)[0]
 
 
+def _not_ours_reason(serial_no: str, row: dict) -> str:
+	"""'' unless the (locked) Serial No row is a gun the store does not own or
+	does not have: a customer's transfer gun / custody-held firearm, or one
+	consigned out to a partner dealer. Shared by the create path and the
+	dealer-entered serial path so neither can pin such a gun to a web order."""
+	if row.get("is_transfer_gun") or (
+			row.get("warehouse") and row["warehouse"] in custody_warehouse_names()):
+		return (
+			f"Serial {serial_no!r} is a customer's firearm held for an FFL transfer "
+			"— it is not the store's to sell; staff must pick another"
+		)
+	# The flag alone, as _pick_oldest_unreserved_serial reads it: it is the
+	# first write ship_consignment_out makes.
+	if row.get("consigned_out"):
+		return (
+			f"Serial {serial_no!r} is consigned out to a partner dealer "
+			"— it is not on the store's shelf; staff must pick another"
+		)
+	return ""
+
+
 def _serial_availability(serial_no: str, item_code: str) -> tuple[str, str]:
 	"""``(reason, blocking_order)`` for ``serial_no`` against ``item_code``.
 
@@ -1162,7 +1183,7 @@ def _serial_availability(serial_no: str, item_code: str) -> tuple[str, str]:
 	locked = frappe.db.get_value(
 		"Serial No",
 		serial_no,
-		["item_code", "status", "warehouse", "is_transfer_gun",
+		["item_code", "status", "warehouse", "is_transfer_gun", "consigned_out",
 		 *channel_reserve_columns()],
 		as_dict=True,
 		for_update=True,
@@ -1171,13 +1192,9 @@ def _serial_availability(serial_no: str, item_code: str) -> tuple[str, str]:
 	# naming one is not a stock problem to reconcile — it is a gun that was never
 	# ours to list. Reported with its own reason so the staff-facing
 	# reservation_error says what actually happened.
-	if locked.get("is_transfer_gun") or (
-			locked.get("warehouse")
-			and locked["warehouse"] in custody_warehouse_names()):
-		return (
-			f"Serial {serial_no!r} is a customer's firearm held for an FFL transfer "
-			"— it is not the store's to sell; staff must pick another"
-		), ""
+	not_ours = _not_ours_reason(serial_no, locked)
+	if not_ours:
+		return not_ours, ""
 	# Diagnosis only on this path: the serial here came off the line's own SKU, so
 	# a cross-Item hit means the SKU→gun mapping is broken, not that staff picked
 	# from a sister pool. Nothing to auto-re-bucket — say precisely what is wrong.
@@ -1736,13 +1753,7 @@ def _handle_order_created(body: dict) -> None:
 	# ships from the distributor rather than from the shop.
 	_apply_ship_to(order, body)
 	order.ffl_license = ffl["license"]
-	order.ffl_business_name = ffl["business_name"]
-	order.ffl_phone = ffl["phone"]
-	order.ffl_premise_street = ffl["street"]
-	order.ffl_premise_city = ffl["city"]
-	order.ffl_premise_state = ffl["state"]
-	order.ffl_premise_zip = ffl["zip"]
-	order.ffl_expiration = ffl["expiration"]
+	_set_ffl_details(order, ffl)
 	order.ffl_raw = json.dumps(ffl["_raw"]) if ffl["_raw"] else ""
 	# Seed the authority signal at creation, so the first staff edit on Woo
 	# (rev 2+) is recognised as newer instead of tying with a default 0 and
@@ -1760,6 +1771,13 @@ def _handle_order_created(body: dict) -> None:
 				"Staff must fill FFL fields on the Woo Online Order manually."
 			),
 		)
+
+	# An order whose FIRST webhook arrives already completed (the original one was
+	# lost and staff re-fired it from WooCommerce, as order_audit tells them to)
+	# gets no later order.updated: clear it now, or an accessory-only order sits
+	# in the queue for ever with no revenue booked and its stock never issued.
+	# Inserted straight into Transferred, so validate stamps transferred_at.
+	auto_cleared = _auto_clear_non_firearm_if_completed(order)
 
 	order.flags.ignore_permissions = True
 	order.insert()
@@ -1795,6 +1813,9 @@ def _handle_order_created(body: dict) -> None:
 	# what they subtract from their own quantity.
 	_announce_commitments(_committed_items(order))
 
+	if auto_cleared:
+		_book_revenue_after_auto_clear(order)
+
 
 # ---------------------------------------------------------------------------
 # order.updated — apply the dealer-entered serial (WC Edit Order screen)
@@ -1819,11 +1840,18 @@ def _suggest_instock_serial(entered: str, item_code: str, order_name: str) -> st
 	def _digits(s: str) -> str:
 		return re.sub(r"[^0-9]", "", s or "")
 
-	rows = frappe.get_all(
-		"Serial No",
-		filters={"item_code": item_code, "status": "Active"},
-		fields=["name"],
-	)
+	# Never a customer's transfer gun or a gun out on consignment: the dealer
+	# path refuses those, so suggesting one only steers a typo onto a refusal.
+	custody_whs = custody_warehouse_names()
+	rows = [
+		r for r in frappe.get_all(
+			"Serial No",
+			filters={"item_code": item_code, "status": "Active",
+				"is_transfer_gun": 0, "consigned_out": 0},
+			fields=["name", "warehouse"],
+		)
+		if not (r.get("warehouse") and r["warehouse"] in custody_whs)
+	]
 	# A gun is suggestible when NO channel holds it, or the only hold is this
 	# order's own Woo one (its placeholder is a fine thing to suggest). The
 	# "release it there" half is unchanged; what is new is that a gun sold on
@@ -2030,9 +2058,20 @@ def _apply_dealer_serial(order_doc, serial_row, dealer_serial: str) -> bool:
 	# no longer optional. Held until the caller's transaction commits.
 	sn = frappe.db.get_value(
 		"Serial No", dealer_serial,
-		["item_code", "status", *channel_reserve_columns()], as_dict=True,
+		["item_code", "status", "warehouse", "is_transfer_gun", "consigned_out",
+		 *channel_reserve_columns()], as_dict=True,
 		for_update=True,
 	)
+	# A customer's transfer gun shares the SKU a web order names by design, and
+	# it is Active and never woo_reserved — nothing below would rule it out (nor
+	# a gun out on consignment). Refused before the sister-pool re-bucket too, so
+	# such a gun is never re-filed or reserved.
+	not_ours = _not_ours_reason(dealer_serial, sn) if sn else ""
+	if not_ours:
+		return _reject_serial_row(
+			order_doc, serial_row, not_ours,
+			title=f"Woo webhook: dealer serial {dealer_serial!r} is not the store's to sell",
+		)
 	# Answered once, off the locked row, and reused by all three "is someone else
 	# holding this gun?" tests below. `held` is None when nothing holds it.
 	held = channel_reservation(dealer_serial, row=sn) if sn else None
@@ -2242,13 +2281,7 @@ def _recapture_ffl_if_empty(order, body: dict) -> bool:
 	if _ffl_is_empty(ffl):
 		return False
 	order.ffl_license = ffl["license"]
-	order.ffl_business_name = ffl["business_name"]
-	order.ffl_phone = ffl["phone"]
-	order.ffl_premise_street = ffl["street"]
-	order.ffl_premise_city = ffl["city"]
-	order.ffl_premise_state = ffl["state"]
-	order.ffl_premise_zip = ffl["zip"]
-	order.ffl_expiration = ffl["expiration"]
+	_set_ffl_details(order, ffl)
 	if ffl["_raw"]:
 		order.ffl_raw = json.dumps(ffl["_raw"])
 	return True
@@ -2265,6 +2298,19 @@ _FFL_VALUE_FIELDS: tuple[str, ...] = (
 	"ffl_premise_city", "ffl_premise_state", "ffl_premise_zip", "ffl_expiration",
 	"ffl_raw",
 )
+
+
+def _set_ffl_details(order, ffl: dict) -> None:
+	"""Copy an ``_extract_ffl`` result onto the order's FFL columns. The license
+	and ``ffl_raw`` are left to the caller: the authoritative path writes a
+	validated license, and recapture keeps the stored raw when the new one is empty."""
+	order.ffl_business_name = ffl["business_name"]
+	order.ffl_phone = ffl["phone"]
+	order.ffl_premise_street = ffl["street"]
+	order.ffl_premise_city = ffl["city"]
+	order.ffl_premise_state = ffl["state"]
+	order.ffl_premise_zip = ffl["zip"]
+	order.ffl_expiration = ffl["expiration"]
 
 
 def _extract_ffl_signal(meta_data: list | None) -> dict:
@@ -2381,13 +2427,7 @@ def _apply_authoritative_ffl_change(order, body: dict) -> bool:
 			return False
 
 		order.ffl_license = new_license
-		order.ffl_business_name = ffl["business_name"]
-		order.ffl_phone = ffl["phone"]
-		order.ffl_premise_street = ffl["street"]
-		order.ffl_premise_city = ffl["city"]
-		order.ffl_premise_state = ffl["state"]
-		order.ffl_premise_zip = ffl["zip"]
-		order.ffl_expiration = ffl["expiration"]
+		_set_ffl_details(order, ffl)
 		order.ffl_raw = json.dumps(ffl["_raw"]) if ffl["_raw"] else ""
 
 		# The licence NUMBER is the single source of truth for C&R, not the Woo
@@ -2435,6 +2475,8 @@ def _auto_clear_non_firearm_if_completed(order_doc) -> bool:
 	cleared. Returns True when it changed order_status."""
 	if order_doc.order_status != "Pending Fulfillment":
 		return False
+	if (order_doc.woo_status or "").strip().lower() != "completed":
+		return False
 	# Antique units are the one kind of serial row that owes no bound-book exit: a
 	# pre-1899 receiver is not a GCA firearm, so there is no disposition to book and
 	# no FFL to ship to. Every other row — local, to_store, drop-ship — still has to
@@ -2469,8 +2511,6 @@ def _auto_clear_non_firearm_if_completed(order_doc) -> bool:
 		for sr in (order_doc.serials or [])
 	):
 		return False
-	if (order_doc.woo_status or "").strip().lower() != "completed":
-		return False
 	# #3 — a drop-ship order is "completed" on WooCommerce the moment the shopper
 	# pays; the goods are still at the distributor. Clearing it here would mark it
 	# Transferred and (since P4) book the revenue before anything shipped. Stand
@@ -2480,6 +2520,71 @@ def _auto_clear_non_firearm_if_completed(order_doc) -> bool:
 	if (order_doc.get("dropship_status") or "").strip() in _UNSETTLED_DROPSHIP_STATUSES:
 		return False
 	order_doc.order_status = "Transferred"
+	return True
+
+
+_PLACED_STATUSES: frozenset[str] = frozenset({
+	"pending", "processing", "on-hold", "completed",
+})
+
+
+def _reopen_if_revived(order, body: dict) -> bool:
+	"""Reopen an order a 'failed' / 'trash' status cancelled here once WooCommerce
+	moves it back to a placed status (the shopper retried payment on the same
+	order, or staff restored it from the trash).
+
+	_handle_order_cancelled released its guns and wrote Cancelled; nothing else
+	ever writes the status back, so the paid order never reached the queue and its
+	gun stayed for sale. Each local row gets its own gun back when that gun is
+	still free; a placeholder that is gone becomes a claim, a confirmed gun that
+	is gone is reported on the row. Distributor routing is NOT redone: the cancel
+	hook may already have withdrawn the distributor order, and placing one again
+	unattended could double-order — staff are told to check it.
+
+	Returns True when the order was reopened (the caller saves it)."""
+	if (order.order_status or "") != "Cancelled":
+		return False
+	if _order_status(body) not in _PLACED_STATUSES:
+		return False
+	if frappe.db.exists("Sales Invoice", {"woo_online_order": order.name, "docstatus": 1}):
+		return False
+
+	site = frappe.flags.get("woo_sync_site") or "retail"
+	local_rows = [sr for sr in (order.serials or [])
+		if (sr.get("fulfillment") or LANE_LOCAL) == LANE_LOCAL]
+	# Per-Item mutex first, always, before any Serial No lock (see
+	# _lock_item_reservations).
+	for item_code in sorted({(sr.get("item_code") or "").strip() for sr in local_rows} - {""}):
+		_lock_item_reservations(item_code)
+
+	order.order_status = "Pending Fulfillment"
+	for sr in local_rows:
+		item_code = (sr.get("item_code") or "").strip()
+		for field in ("confirmed_serial", "stock_hold_serial"):
+			serial = (sr.get(field) or "").strip()
+			if not serial:
+				continue
+			reason, _detail = _serial_availability(serial, item_code)
+			if not reason:
+				_reserve_serial(serial, order.name)
+				_enqueue_serial_or_item_push(serial, site=site)
+			elif field == "stock_hold_serial":
+				sr.stock_hold_serial = ""  # POS's own guess: the row becomes a claim
+			else:
+				sr.reservation_error = reason
+	for item_code in sorted(_claimed_items(order)):
+		_push_item_stock_everywhere(item_code)
+	_announce_commitments(_committed_items(order))
+
+	if (order.get("dropship_status") or "").strip():
+		_log_error(
+			title=f"Woo order {order.woo_order_id} revived after cancel: check distributor routing",
+			message=(
+				f"{order.name} was cancelled on a '{order.woo_status}' status and "
+				f"WooCommerce has moved it back to '{_order_status(body)}'. Its "
+				f"distributor order may have been withdrawn on cancel — re-check and "
+				f"re-route it by hand."),
+		)
 	return True
 
 
@@ -2506,9 +2611,12 @@ def _handle_order_updated(body: dict) -> None:
 
 	order = frappe.get_doc("Woo Online Order", order_name)
 
+	# Before the status mirror below: the revive message names the old status.
+	revived = _reopen_if_revived(order, body)
+
 	# Always mirror the live WC status + amounts onto the order (status changes,
 	# edits), regardless of fulfillment state — order-level and per-line.
-	changed = _sync_woo_status_and_pricing(order, body)
+	changed = _sync_woo_status_and_pricing(order, body) or revived
 	if _sync_line_amounts(order, body.get("line_items") or []):
 		changed = True
 
@@ -2717,12 +2825,7 @@ def _handle_order_cancelled(body: dict) -> None:
 		fields=["name", "item_code", pid_field],
 	)
 	for sn in reserved:
-		frappe.db.set_value(
-			"Serial No",
-			sn["name"],
-			{"woo_reserved": 0, "woo_order": ""},
-			update_modified=False,
-		)
+		_clear_reservation(sn["name"])
 
 	# Mark the order cancelled (db.set_value bypasses doc_events; the
 	# woo_sync_inbound flag is set at the request level for safety). Mirror the
@@ -2766,6 +2869,8 @@ def _handle_order_cancelled(body: dict) -> None:
 				enqueue_after_commit=True,
 				serial_no=sn["name"],
 				site=order_site,
+				# A release: the gun is for sale again, same as _release_serial.
+				relist=True,
 			)
 		else:
 			item_code = sn.get("item_code")

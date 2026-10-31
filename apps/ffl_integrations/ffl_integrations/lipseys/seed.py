@@ -8,28 +8,14 @@ from __future__ import annotations
 
 import frappe
 
+from ffl_integrations.distributor.policy import ensure_distributor_row
+
 DISTRIBUTOR_NAME = "Lipsey's"
 PROVIDER = "lipseys"
 
 
 def ensure_distributor() -> bool:
-	if frappe.db.exists("Distributor", DISTRIBUTOR_NAME) or frappe.db.exists(
-			"Distributor", {"provider": PROVIDER}):
-		return False
-	frappe.get_doc({
-		"doctype": "Distributor",
-		"code": DISTRIBUTOR_NAME,
-		"distributor_name": "Lipsey's, LLC",
-		"provider": PROVIDER,
-		"enabled": 0,
-		"stocking_enabled": 1,
-		"dropship_enabled": 1,
-		"poll_enabled": 1,
-		"priority": 3,
-		"safety_buffer": 3,
-		"display_cap": 5,
-	}).insert(ignore_permissions=True)
-	return True
+	return ensure_distributor_row(DISTRIBUTOR_NAME, "Lipsey's, LLC", PROVIDER, poll=1, priority=3)
 
 
 def run() -> dict:

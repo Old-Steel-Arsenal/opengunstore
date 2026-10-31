@@ -18,6 +18,7 @@ from ffl_core.accessory_groups import (
 	AMMO_RE_PISTOL as _AMMO_RE_PISTOL, AMMO_RE_RIFLE as _AMMO_RE_RIFLE,
 	AMMO_RE_RIMFIRE as _AMMO_RE_RIMFIRE, AMMO_RE_SHOTGUN as _AMMO_RE_SHOTGUN, ammo_group,
 )
+from ffl_core.firearm import ensure_brand as _ensure_brand, ensure_caliber as _ensure_caliber
 from ffl_core.roles import STOCK_ROLES
 from ffl_integrations.distributor.util import legal_firearm
 
@@ -183,20 +184,6 @@ def _extract_caliber(text: str | None) -> str | None:
 	return None
 
 
-def _ensure_caliber(name: str | None) -> str | None:
-	"""Find-or-create a Caliber row. Race-safe via ignore_if_duplicate (two
-	concurrent imports won't error on the same caliber name)."""
-	if not name:
-		return None
-	try:
-		frappe.get_doc({"doctype": "Caliber", "caliber_name": name}).insert(
-			ignore_permissions=True, ignore_if_duplicate=True,
-		)
-	except frappe.DuplicateEntryError:
-		pass  # extra safety; ignore_if_duplicate covers most cases
-	return name
-
-
 # Departments where caliber extraction should run. The shotgun regex contains
 # substrings like "410" / "12GA" / "SLUG" that bleed into rifle/pistol product
 # names if we run it indiscriminately. Restrict to non-firearm-accessory depts.
@@ -279,6 +266,8 @@ def promote_to_item(payload) -> dict:
 	          "item_group": "Barrels",      # optional override; default: the catalog master's category
 	          "has_serial_no": 1,           # optional override; default heuristic
 	          "standard_rate": 649.99,      # optional; defaults to MSRP
+	          "distributor": "Sports South", # optional; a non-RSR house promotes the
+	                                        # SKU through its own provider
 	        }
 
 	Returns:
@@ -290,6 +279,21 @@ def promote_to_item(payload) -> dict:
 
 	frappe.only_for(STOCK_ROLES)
 	require(CATALOG)
+	# A scan-first UPC lookup offers every house's row, tagged with its Distributor:
+	# a non-RSR SKU promotes through its own house, not the RSR catalog.
+	if isinstance(payload, str):
+		try:
+			payload = _json.loads(payload)
+		except _json.JSONDecodeError:
+			frappe.throw(_("Invalid payload (not JSON)"))
+	distributor = isinstance(payload, dict) and payload.get("distributor")
+	if distributor:
+		from ffl_integrations.distributor.api import get_provider
+
+		provider = get_provider(distributor)
+		if provider.code != "rsr":
+			opts = {k: v for k, v in payload.items() if k not in ("rsr_stock_number", "distributor")}
+			return provider.promote_to_item(payload.get("rsr_stock_number"), opts)
 	return _promote_to_item(payload)
 
 
@@ -404,15 +408,6 @@ def barcode_owner(upc) -> str | None:
 	upc = (upc or "").strip()
 	return frappe.db.get_value("Item Barcode",
 		{"barcode": upc, "parenttype": "Item"}, "parent") if upc else None
-
-
-def _ensure_brand(name: str) -> str | None:
-	if not name:
-		return None
-	if frappe.db.exists("Brand", name):
-		return name
-	frappe.get_doc({"doctype": "Brand", "brand": name}).insert(ignore_permissions=True)
-	return name
 
 
 def _ensure_barcode(item_code: str, barcode: str | None) -> None:
@@ -717,7 +712,8 @@ def lookup_for_item_form(scan: str) -> dict:
 		"catalog_category": filed.category,
 		"stock_uom": "Nos",
 		"is_stock_item": 1,
-		"has_serial_no": 1 if filed.is_firearm and dept not in _USED_DEPTS else 0,
+		# Every firearm is serial-tracked, used included — same rule as _promote_to_item.
+		"has_serial_no": 1 if filed.is_firearm else 0,
 		"standard_rate": float(rsr.get("map_price") or rsr.get("msrp") or 0) or None,
 		"description": rsr.get("long_description") or rsr.get("short_description") or None,
 		"brand": brand,

@@ -32,7 +32,7 @@ class TestNotifyAdmins(FrappeTestCase):
 	@patch("frappe.sendmail")
 	def test_no_recipients_no_send(self, mock_sendmail):
 		frappe.db.set_single_value("FFL Settings", "alert_recipients", "")
-		with patch("ffl_integrations.notifications._system_manager_emails", return_value=[]):
+		with patch("ffl_core.alerts.get_system_managers", return_value=[]):
 			queued = notify_admins("X", "Y", dedup_key="unit_key")
 		self.assertFalse(queued)
 		mock_sendmail.assert_not_called()

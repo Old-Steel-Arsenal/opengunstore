@@ -25,7 +25,7 @@
    "fieldtype": "Check",
    "default": "0",
    "label": "Enable Read-only MCP Server",
-   "description": "Lets signed-in users read POS data from an AI assistant (reports, stock, orders) with their own permissions. Nothing can be changed through it."
+   "description": "Lets signed-in users read POS data from an AI assistant with their own permissions; nothing can be changed through it."
   },
   {
    "fieldname": "cpa_url",

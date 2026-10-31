@@ -14,13 +14,13 @@ app: `ffl_core` · module: FFL Core · roles: Purchase User, Stock User, System 
 | `license_type` | Data | License Type |  |  |
 | `licensee_name` | Data | Licensee Name |  |  |
 | `licensee_dba` | Data | Doing Business As |  |  |
+| `phone` | Data | Phone |  |  |
+| `expiry_date` | Date | Expiry Date |  |  |
 | `street` | Data | Street |  |  |
 | `street2` | Data | Street Address 2 |  |  |
 | `city` | Data | City |  |  |
 | `state` | Data | State |  |  |
 | `zip` | Data | ZIP |  |  |
-| `phone` | Data | Phone |  |  |
-| `expiry_date` | Date | Expiry Date |  |  |
 | `loaded_from` | Data | Loaded From |  |  |
 | `loaded_at` | Datetime | Loaded At |  |  |
 | `live_verified_at` | Datetime | Live-Verified At |  |  |
@@ -34,12 +34,12 @@ The text of a waiver or agreement customers sign.
 | field | type | label | reqd | options |
 |---|---|---|---|---|
 | `title` | Data | Title | ✓ |  |
+| `scope` | Select | Signed |  | Per customer, Each firearm sold, Per document |
+| `valid_days` | Int | Valid For (Days) |  |  |
+| `one_copy_per_gun` | Check | One copy per gun |  |  |
 | `active` | Check | Active |  |  |
 | `version` | Int | Version |  |  |
-| `valid_days` | Int | Valid For (Days) |  |  |
 | `requirement` | Select | Required |  | Optional, Required by item, Required for every sale |
-| `scope` | Select | Signed |  | Per customer, Each firearm sold, Per document |
-| `one_copy_per_gun` | Check | One copy per gun |  |  |
 | `show_on_counter_panel` | Check | Show on Counter Panel |  |  |
 | `minors_need_guardian` | Check | Minors Need a Parent or Guardian |  |  |
 | `body` | Text Editor | Agreement Text | ✓ |  |
@@ -151,15 +151,15 @@ The catalog master's category tree, mirrored. Rename or move a category in the c
 | `node_name` | Data | Name |  |  |
 | `path` | Small Text | Path |  |  |
 | `parent_slug` | Link | Parent |  | Catalog Category |
-| `level` | Int | Level |  |  |
-| `position` | Int | Position |  |  |
 | `active` | Check | Active |  |  |
 | `menu` | Check | In store menu |  |  |
 | `store_hint` | Data | Store category slug (first link) |  |  |
-| `seq` | Int | Tree sequence |  |  |
 | `item_group` | Link | Item Group |  | Item Group |
 | `group_parent` | Data | Group aligned under |  |  |
 | `woo_term_retail` | Int | Retail store category id |  |  |
+| `level` | Int | Level |  |  |
+| `position` | Int | Position |  |  |
+| `seq` | Int | Tree sequence |  |  |
 
 ## Connector Audit Log
 
@@ -202,27 +202,24 @@ One customer's copy of an agreement: requested, signed (on a tablet, by a link o
 |---|---|---|---|---|
 | `customer` | Link | Customer | ✓ | Customer |
 | `customer_name` | Data | Customer Name |  |  |
-| `company` | Link | Company |  | Company |
+| `status` | Select | Status |  | Pending, Signed, Void, Expired |
+| `expires_on` | Date | Expires On |  |  |
 | `template` | Link | Agreement | ✓ | Agreement Template |
 | `template_version` | Int | Agreement Version |  |  |
 | `serial_no` | Link | Firearm (Serial No) |  | Serial No |
 | `item_code` | Link | Item |  | Item |
+| `company` | Link | Company |  | Company |
 | `firearms` | Table | Firearms |  | Customer Agreement Firearm |
-| `status` | Select | Status |  | Pending, Signed, Void, Expired |
-| `expires_on` | Date | Expires On |  |  |
 | `signed_on` | Datetime | Signed On |  |  |
 | `signed_via` | Select | Signed Via |  | , Tablet, Remote, Paper |
 | `signer_name` | Data | Signed By |  |  |
 | `signer_relationship` | Select | Signer Is |  | , Self, Parent, Guardian |
-| `participant_is_minor` | Check | Participant Under 18 |  |  |
-| `minor_determined_by` | Select | Age Taken From |  | , Date of Birth, Self-declared, Paper |
 | `signature` | Attach Image | Signature |  |  |
 | `signed_pdf` | Attach | Signed Copy (PDF) |  |  |
 | `paper_signed_on` | Date | Date on Paper |  |  |
 | `recorded_by` | Link | Paper Copy Recorded By |  | User |
-| `signer_ip` | Data | Signer IP |  |  |
-| `signer_user_agent` | Small Text | Signer Device |  |  |
-| `signing_terminal` | Link | Signing Terminal |  | Signing Terminal |
+| `participant_is_minor` | Check | Participant Under 18 |  |  |
+| `minor_determined_by` | Select | Age Taken From |  | , Date of Birth, Self-declared, Paper |
 | `requested_by` | Link | Requested By |  | User |
 | `delivery_channel` | Select | Sent As |  | , QR, Email, Terminal |
 | `token_expires` | Datetime | Link Expires |  |  |
@@ -230,6 +227,9 @@ One customer's copy of an agreement: requested, signed (on a tablet, by a link o
 | `void_reason` | Small Text | Void Reason |  |  |
 | `reference_doctype` | Link | Reference Type |  | DocType |
 | `reference_name` | Dynamic Link | Reference |  | reference_doctype |
+| `signing_terminal` | Link | Signing Terminal |  | Signing Terminal |
+| `signer_ip` | Data | Signer IP |  |  |
+| `signer_user_agent` | Small Text | Signer Device |  |  |
 | `body_snapshot` | Long Text | Text |  |  |
 
 ## Customer Agreement Firearm
@@ -285,9 +285,9 @@ app: `ffl_core` · module: FFL Core · submittable · roles: Sales Manager, Sale
 |---|---|---|---|---|
 | `acquisition_date` | Datetime | Acquisition Date | ✓ |  |
 | `source_type` | Select | Source Type | ✓ | Individual, FFL Dealer, Manufacturer, Importer, Estate, Pawn, Trade-in |
+| `company` | Link | Company | ✓ | Company |
 | `receive_source` | Select | Receive Source |  |  |
 | `transaction_type` | Select | Acquisition Type |  |  |
-| `company` | Link | Company | ✓ | Company |
 | `amended_from` | Link | Amended From |  | FFL Acquisition |
 | `source_name` | Data | Source Name | ✓ |  |
 | `source_first_name` | Data | Source First Name |  |  |
@@ -318,9 +318,9 @@ app: `ffl_core` · module: FFL Core · submittable · roles: Stock Manager, Stoc
 | `disposition_date` | Datetime | Disposition Date | ✓ |  |
 | `disposition_type` | Select | Disposition Type | ✓ | Retail Sale, FFL Transfer, Return, Scrap, Gunsmithing, Dealer Transfer, NFA |
 | `company` | Link | Company | ✓ | Company |
-| `amended_from` | Link | Amended From |  | FFL Disposition |
 | `customer` | Link | Customer |  | Customer |
 | `destination_ffl` | Link | Destination FFL |  | ATF FFL Record |
+| `amended_from` | Link | Amended From |  | FFL Disposition |
 | `destroyed_witness1` | Data | Witness 1 |  |  |
 | `destroyed_witness2` | Data | Witness 2 |  |  |
 | `item` | Link | Item | ✓ | Item |
@@ -346,17 +346,17 @@ app: `ffl_core` · module: FFL Core · single · roles: System Manager
 | `alert_recipients` | Small Text | Alert Recipients |  |  |
 | `receive_sources` | Small Text | Receive Sources |  |  |
 | `pending_order_age_alert_days` | Int | Pending Order overdue after (days) |  |  |
+| `counter_lock_minutes` | Int | Lock Idle Screen After (minutes) |  |  |
+| `require_price_approval` | Check | Require Manager Approval for Price Reductions |  |  |
 | `receipt_footer_note` | Small Text | Receipt Footer Note |  |  |
 | `shipping_price_includes_tax` | Check | Shipping Price Includes Sales Tax |  |  |
 | `peace_officer_exempt_tax_account` | Link | Peace-Officer Exempt Tax Account |  | Account |
-| `counter_lock_minutes` | Int | Lock Idle Screen After (minutes) |  |  |
-| `require_price_approval` | Check | Require Manager Approval for Price Reductions |  |  |
 | `gunsmith_labor_item` | Link | Gunsmith Labor Item |  | Item |
 | `gunsmith_agreement_template` | Link | Intake Authorization |  | Agreement Template |
 | `paper_4473_mode` | Check | Paper 4473 Mode |  |  |
+| `store_customer_id_numbers` | Check | Store Customer ID Numbers |  |  |
 | `transfer_fee_item` | Link | Transfer Fee Item |  | Item |
 | `transfer_fee_amount` | Currency | Default Transfer Fee |  |  |
-| `store_customer_id_numbers` | Check | Store Customer ID Numbers |  |  |
 | `enforce_sale_agreements` | Check | Require Agreements at Sale |  |  |
 | `used_item_agreement_template` | Link | Used Item Agreement |  | Agreement Template |
 | `live_check_provider` | Select | Provider |  | ATF Form Scraper, Data Service, Manual Only |
@@ -394,48 +394,54 @@ A customer's gun left for gunsmithing: intake, authorization, deposit, the work,
 
 | field | type | label | reqd | options |
 |---|---|---|---|---|
+| `scan_id` | Data | Scan ID |  |  |
 | `customer` | Link | Customer | ✓ | Customer |
-| `customer_name` | Data | Customer Name |  |  |
 | `phone` | Data | Phone |  | Phone |
 | `email` | Data | Email |  | Email |
-| `address` | Small Text | Address |  |  |
-| `status` | Select | Status |  | Received, In Progress, Ready, Picked Up, Cancelled |
-| `company` | Link | Company | ✓ | Company |
-| `received_by` | Link | Received By |  | User |
-| `received_on` | Date | Date Received | ✓ |  |
+| `address_line1` | Data | Street Address |  |  |
+| `city` | Data | City |  |  |
+| `state` | Select | State |  |  |
+| `zip` | Data | ZIP |  |  |
+| `id_type` | Select | ID Type |  | , Driver License, State ID, Passport, Military ID, Other |
+| `id_number` | Data | ID Number |  |  |
+| `id_document` | Attach | ID Scan |  |  |
 | `manufacturer` | Data | Manufacturer | ✓ |  |
-| `model` | Data | Model | ✓ |  |
 | `caliber` | Data | Caliber / Gauge |  |  |
-| `serial_number` | Data | Serial Number | ✓ |  |
+| `model` | Data | Model | ✓ |  |
 | `firearm_type` | Select | Firearm Type |  | , Pistol, Revolver, Rifle, Shotgun, Receiver, Other Firearm, Silencer, Short Barreled Rifle, Short Barreled Shotgun, Machine Gun, Destructive Device, Any Other Weapon |
-| `accessories` | Small Text | Accessories |  |  |
+| `serial_number` | Data | Serial Number | ✓ |  |
+| `log_in_bound_book` | Check | Log in Bound Book |  |  |
+| `accessories` | Small Text | Came In With |  |  |
 | `condition` | Small Text | Condition |  |  |
 | `firearm_notes` | Small Text | Notes |  |  |
-| `log_in_bound_book` | Check | Log in Bound Book |  |  |
-| `id_type` | Select | Customer ID Type |  | , Driver License, State ID, Passport, Military ID, Other |
-| `id_number` | Data | Customer ID Number |  |  |
+| `work_requested` | Small Text | Work Requested | ✓ |  |
+| `estimated_cost` | Currency | Estimate |  | Company:company:default_currency |
+| `estimated_completion` | Date | Ready By |  |  |
+| `lines` | Table | Charges |  | Gunsmith Work Order Line |
+| `scan_barcode` | Data | Scan |  | Barcode |
+| `final_cost` | Currency | Total Before Tax |  | Company:company:default_currency |
+| `gunsmith` | Link | Gunsmith |  | User |
+| `work_performed` | Text | Work Performed |  |  |
+| `completed_on` | Date | Date Completed |  |  |
+| `notified_on` | Datetime | Date Notified |  |  |
+| `picked_up_on` | Datetime | Date Picked Up |  |  |
+| `notified_via` | Select | Customer Notified By |  | , Phone, Email, Text |
+| `notified_by` | Link | Notified By |  | User |
+| `cancel_reason` | Small Text | Cancel Reason |  |  |
+| `received_on` | Date | Date Received | ✓ |  |
+| `received_by` | Link | Received By |  | User |
+| `company` | Link | Company | ✓ | Company |
+| `status` | Select | Status |  | Received, In Progress, Ready, Picked Up, Cancelled |
+| `customer_name` | Data | Customer Name |  |  |
+| `deposit_amount` | Currency | Paid at Intake |  | Company:company:default_currency |
+| `deposit_held` | Currency | Deposit Held |  | Company:company:default_currency |
+| `deposit_invoice` | Link | Deposit Invoice |  | POS Invoice |
+| `pickup_invoice` | Link | Pick-up Invoice |  | POS Invoice |
+| `intake_agreement` | Link | Intake Authorization |  | Customer Agreement |
 | `purchase_receipt` | Link | Custody Receipt |  | Purchase Receipt |
 | `item_code` | Link | Item |  | Item |
 | `serial_no` | Link | Serial No |  | Serial No |
 | `disposition` | Link | Disposition |  | FFL Disposition |
-| `work_requested` | Small Text | Work Requested | ✓ |  |
-| `estimated_cost` | Currency | Estimated Cost |  | Company:company:default_currency |
-| `deposit_amount` | Currency | Paid at Intake |  | Company:company:default_currency |
-| `estimated_completion` | Date | Estimated Completion |  |  |
-| `intake_agreement` | Link | Intake Authorization |  | Customer Agreement |
-| `deposit_invoice` | Link | Deposit Invoice |  | POS Invoice |
-| `deposit_held` | Currency | Deposit Held |  | Company:company:default_currency |
-| `gunsmith` | Link | Gunsmith |  | User |
-| `work_performed` | Text | Work Performed |  |  |
-| `lines` | Table | Charges |  | Gunsmith Work Order Line |
-| `final_cost` | Currency | Final Cost |  | Company:company:default_currency |
-| `completed_on` | Date | Date Completed |  |  |
-| `notified_via` | Select | Customer Notified By |  | , Phone, Email, Text |
-| `notified_on` | Datetime | Date Notified |  |  |
-| `notified_by` | Link | Notified By |  | User |
-| `pickup_invoice` | Link | Pick-up Invoice |  | POS Invoice |
-| `picked_up_on` | Datetime | Date Picked Up |  |  |
-| `cancel_reason` | Small Text | Cancel Reason |  |  |
 
 ## Gunsmith Work Order Line
 
@@ -460,12 +466,12 @@ One stocktake: staff scan what is on the shelf and the count is compared with wh
 | `company` | Link | Company | ✓ | Company |
 | `status` | Select | Status |  | Open, Finalized, Cancelled |
 | `include_custody` | Check | Include Customer-Custody Warehouses |  |  |
+| `notes` | Small Text | Notes |  |  |
 | `warehouses` | Table MultiSelect | Warehouses |  | Inventory Count Warehouse |
 | `item_groups` | Table MultiSelect | Item Groups |  | Inventory Count Item Group |
 | `stock_reconciliation` | Link | Stock Reconciliation |  | Stock Reconciliation |
 | `finalized_by` | Link | Finalized By |  | User |
 | `finalized_at` | Datetime | Finalized At |  |  |
-| `notes` | Small Text | Notes |  |  |
 | `serial_report` | Code | Firearm Difference Report |  | JSON |
 
 ## Inventory Count Entry
@@ -615,6 +621,10 @@ One row per extension app on this bench: what it is, whether it is installed on 
 | `installed_on_site` | Check | Installed on this site |  |  |
 | `compatible` | Check | Compatible with this core |  |  |
 | `incompatible_reason` | Small Text | Why not compatible |  |  |
+| `latest_version` | Data | Newer Version Offered |  |  |
+| `latest_requires_core` | Data | It Requires Core |  |  |
+| `latest_sha256` | Data | Its SHA-256 |  |  |
+| `latest_checked_at` | Datetime | Last Checked For Updates |  |  |
 | `publisher` | Data | Publisher |  |  |
 | `publisher_id` | Data | Publisher ID |  |  |
 | `license_required` | Check | Needs a licence (marketplace) |  |  |
@@ -631,10 +641,6 @@ One row per extension app on this bench: what it is, whether it is installed on 
 | `job_started_at` | Datetime | Job started at |  |  |
 | `job_message` | Small Text | Job message |  |  |
 | `last_synced` | Datetime | Last synced |  |  |
-| `latest_version` | Data | Newer Version Offered |  |  |
-| `latest_requires_core` | Data | It Requires Core |  |  |
-| `latest_sha256` | Data | Its SHA-256 |  |  |
-| `latest_checked_at` | Datetime | Last Checked For Updates |  |  |
 
 ## Signing Terminal
 
@@ -689,10 +695,10 @@ How many units of a non-serialized item sit in a location. One row per (location
 
 | field | type | label | reqd | options |
 |---|---|---|---|---|
-| `company` | Link | Company | ✓ | Company |
 | `location` | Link | Location | ✓ | Storage Location |
 | `item_code` | Link | Item | ✓ | Item |
 | `qty` | Float | Quantity |  |  |
+| `company` | Link | Company | ✓ | Company |
 
 ## Storage Move
 
@@ -702,14 +708,14 @@ The log of every location change: receive, move, sale, ship, return, count, adju
 
 | field | type | label | reqd | options |
 |---|---|---|---|---|
-| `kind` | Select | Kind | ✓ | serial, qty |
-| `reason` | Select | Reason | ✓ | receive, move, sale, ship, out, return, count, adjust, confirm |
-| `company` | Link | Company |  | Company |
 | `serial_no` | Data | Serial No |  |  |
 | `item_code` | Link | Item |  | Item |
 | `qty` | Float | Quantity |  |  |
+| `company` | Link | Company |  | Company |
 | `from_location` | Link | From |  | Storage Location |
 | `to_location` | Link | To |  | Storage Location |
+| `kind` | Select | Kind | ✓ | serial, qty |
+| `reason` | Select | Reason | ✓ | receive, move, sale, ship, out, return, count, adjust, confirm |
 | `voucher_type` | Data | Document Type |  |  |
 | `voucher_no` | Data | Document |  |  |
 | `voucher_detail` | Data | Document Row |  |  |
@@ -723,10 +729,10 @@ A named area of the store (a bank of numbered slots, a display case, a rack, a s
 
 | field | type | label | reqd | options |
 |---|---|---|---|---|
-| `company` | Link | Company | ✓ | Company |
 | `zone_name` | Data | Zone | ✓ |  |
 | `kind` | Select | Kind | ✓ | Slots, Open |
 | `slot_count` | Int | Positions |  |  |
+| `company` | Link | Company | ✓ | Company |
 | `slot_lines` | Int | Sides |  |  |
 | `numbering` | Select | Numbering |  | Odd / even, In order |
 | `sort_order` | Int | Sort Order |  |  |
@@ -769,9 +775,9 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sal
 | `sales_invoice` | Link | Sales Invoice | ✓ | Sales Invoice |
 | `amount` | Currency | Amount |  |  |
 | `status` | Select | Status |  | IN_PROGRESS, CHARGED, DECLINED, CANCELED, VOIDED, REFUNDED |
-| `unique_reference` | Data | Gateway Reference |  |  |
-| `approval_code` | Data | Approval Code |  |  |
 | `card_summary` | Data | Card |  |  |
+| `approval_code` | Data | Approval Code |  |  |
+| `unique_reference` | Data | Gateway Reference |  |  |
 | `payment_entry` | Link | Payment Entry |  | Payment Entry |
 | `refunded_amount` | Currency | Refunded |  |  |
 | `reversal_entry_type` | Link | Reversal Entry Type |  | DocType |
@@ -779,11 +785,11 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sal
 | `reversal_lock` | Small Text | Unconfirmed Void / Refund |  |  |
 | `processor` | Data | Processor |  |  |
 | `instruction_id` | Data | Instruction ID |  |  |
+| `response` | Code | Gateway Response |  |  |
 | `save_card` | Check | Save Card Requested |  |  |
 | `save_reference` | Data | Saved Card Reference |  |  |
 | `save_usage` | Data | Saved Card Usage |  |  |
 | `saved_card` | Link | Saved Card |  | Saved Card |
-| `response` | Code | Gateway Response |  |  |
 
 ## Data Service Settings
 
@@ -821,20 +827,20 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Purchase Manager, 
 | `stocking_enabled` | Check | Stocking |  |  |
 | `poll_enabled` | Check | Poll orders |  |  |
 | `priority` | Int | Priority |  |  |
+| `notes` | Small Text | Notes |  |  |
 | `override_dropship_defaults` | Check | Use its own markup and stock settings |  |  |
 | `default_markup_pct` | Percent | Default markup % |  |  |
 | `default_rounding` | Select | Rounding |  | .99, none, whole |
 | `markup_rules` | Table | Markup rules (retired) |  | Distributor Markup Rule |
+| `lead_days_min` | Int | Lead time (business days, from) |  |  |
 | `safety_buffer` | Int | Safety buffer |  |  |
 | `display_cap` | Int | Display cap |  |  |
-| `zero_stock_when_feed_stale` | Check | Zero stock when the feed is stale |  |  |
-| `lead_days_min` | Int | Lead time (business days, from) |  |  |
 | `lead_days_max` | Int | Lead time (business days, to) |  |  |
+| `zero_stock_when_feed_stale` | Check | Zero stock when the feed is stale |  |  |
 | `catalog_endpoint` | Data | Endpoint |  |  |
 | `catalog_client_id` | Data | Client ID |  |  |
 | `catalog_secret` | Password | Secret |  |  |
 | `last_poll_run_at` | Datetime | Last order poll |  |  |
-| `notes` | Small Text | Notes |  |  |
 
 ## Distributor Invoice
 
@@ -848,19 +854,19 @@ A distributor's invoice, pulled read-only from its API (every order on the accou
 | `invoice_number` | Data | Invoice Number | ✓ |  |
 | `invoice_date` | Date | Invoice Date |  |  |
 | `account` | Data | Account |  |  |
-| `distributor_order` | Link | Distributor Order |  | Distributor Order |
-| `outside_pos` | Check | Placed Outside POS |  |  |
 | `po_number` | Data | PO Number |  |  |
 | `order_ref` | Data | Distributor Order Number |  |  |
+| `distributor_order` | Link | Distributor Order |  | Distributor Order |
+| `outside_pos` | Check | Placed Outside POS |  |  |
+| `destination` | Select | Destination |  | , Store, Drop-ship, Unknown |
+| `destination_note` | Select | Destination Note |  | , Lookup failed, No answer on file |
+| `received` | Check | Received |  |  |
+| `received_receipts` | Small Text | Purchase Receipts |  |  |
+| `tracking_numbers` | Small Text | Tracking Numbers |  |  |
+| `lines` | Table | Lines |  | Distributor Invoice Line |
 | `total` | Currency | Invoice Total |  |  |
 | `freight` | Currency | Freight |  |  |
 | `fees` | Currency | Fees |  |  |
-| `tracking_numbers` | Small Text | Tracking Numbers |  |  |
-| `lines` | Table | Lines |  | Distributor Invoice Line |
-| `destination` | Select | Destination |  | , Store, Drop-ship, Unknown |
-| `received` | Check | Received |  |  |
-| `received_receipts` | Small Text | Purchase Receipts |  |  |
-| `destination_note` | Select | Destination Note |  | , Lookup failed, No answer on file |
 
 ## Distributor Invoice Line
 
@@ -907,15 +913,16 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Purchase Manager, 
 | `company` | Link | Company |  | Company |
 | `status` | Select | Status |  | Draft, Queued, Placed, Acknowledged, Hold, Partially Shipped, Complete, Cancelled, Error |
 | `web_ref` | Data | Distributor Order No. |  |  |
-| `fill_or_kill` | Check | Fill or Kill |  |  |
+| `hold_status` | Data | Hold Status |  |  |
+| `hold_reason` | Small Text | Hold / Cancel Reason |  |  |
+| `lines` | Table | Lines |  | Distributor Order Line |
 | `shipping_service` | Data | Shipping service code |  |  |
 | `shipping_service_label` | Data | Shipping service |  |  |
+| `fill_or_kill` | Check | Fill or Kill |  |  |
 | `delivery_options_set` | Check | Delivery options chosen at the counter |  |  |
 | `delivery_signature` | Check | Signature |  |  |
 | `delivery_adult_signature` | Check | Adult signature |  |  |
 | `delivery_insurance` | Check | Insurance |  |  |
-| `hold_status` | Data | Hold Status |  |  |
-| `hold_reason` | Small Text | Hold / Cancel Reason |  |  |
 | `source_doctype` | Link | Source DocType |  | DocType |
 | `source_name` | Dynamic Link | Source Name |  | source_doctype |
 | `consumer_name` | Data | Consumer / Store Name |  |  |
@@ -931,17 +938,16 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Purchase Manager, 
 | `transfer_ffl_premise_state` | Data | FFL Premise State |  |  |
 | `transfer_ffl_premise_zip` | Data | FFL Premise ZIP |  |  |
 | `transfer_ffl_record` | Link | Transfer FFL Record |  | ATF FFL Record |
-| `lines` | Table | Lines |  | Distributor Order Line |
 | `placed_at` | Datetime | Placed At |  |  |
 | `last_poll_at` | Datetime | Last Poll At |  |  |
 | `next_poll_at` | Datetime | Next Poll At |  |  |
+| `receive_status` | Select | Receive Status |  | Not Received, Partial, Received |
+| `woo_notified_status` | Data | Shop Notified Status |  |  |
 | `total_cost` | Currency | Total Cost |  |  |
 | `freight_cost` | Currency | Freight Cost |  |  |
 | `invoiced_freight` | Currency | Invoiced Freight |  |  |
-| `receive_status` | Select | Receive Status |  | Not Received, Partial, Received |
 | `error` | Small Text | Error |  |  |
 | `notes_posted` | Small Text | Tracking Notes Posted |  |  |
-| `woo_notified_status` | Data | Shop Notified Status |  |  |
 | `raw_request` | Code | Raw Request |  | JSON |
 | `raw_response` | Code | Raw Response |  | JSON |
 
@@ -1033,9 +1039,9 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sal
 |---|---|---|---|---|
 | `gb_order_id` | Data | GunBroker Order ID | ✓ |  |
 | `order_status` | Select | Status | ✓ | Pending Fulfillment, Transferred, Cancelled |
+| `order_date` | Datetime | Order Date |  |  |
 | `gb_status` | Int | GunBroker Status Code |  |  |
 | `gb_status_label` | Data | GunBroker Status |  |  |
-| `order_date` | Datetime | Order Date |  |  |
 | `gb_last_modified` | Datetime | GunBroker Last Modified |  |  |
 | `acknowledged_at` | Datetime | Acknowledged At |  |  |
 | `buyer_user_id` | Data | Buyer User ID |  |  |
@@ -1045,6 +1051,8 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sal
 | `customer_email` | Data | Bill To Email |  |  |
 | `customer_phone` | Data | Bill To Phone |  |  |
 | `tax_exempt` | Check | Tax Exempt |  |  |
+| `lines` | Table | Lines |  | GunBroker Order Line |
+| `serials` | Table | Serials |  | GunBroker Order Serial |
 | `ship_to_name` | Data | Name |  |  |
 | `ship_to_line1` | Data | Address 1 |  |  |
 | `ship_to_line2` | Data | Address 2 |  |  |
@@ -1111,8 +1119,6 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sal
 | `is_chargeback` | Check | Chargeback |  |  |
 | `chargeback_handled_at` | Datetime | Chargeback Handled At |  |  |
 | `refund_handled_at` | Datetime | Refund Handled At |  |  |
-| `lines` | Table | Lines |  | GunBroker Order Line |
-| `serials` | Table | Serials |  | GunBroker Order Serial |
 | `sync_error` | Small Text | Last Sync Error |  |  |
 | `sync_fail_count` | Int | Consecutive Sync Failures |  |  |
 | `raw_payload` | Long Text | Raw GunBroker Payload |  |  |
@@ -1251,16 +1257,16 @@ app: `ffl_integrations` · module: FFL Integrations · single · roles: System M
 | `enabled` | Check | Enable Payroc Terminal Integration |  |  |
 | `require_card_reference` | Check | Require Card Reference (manual terminal) |  |  |
 | `api_key` | Password | Merchant API Key |  |  |
+| `default_currency` | Link | Default Currency |  | Currency |
 | `default_terminal` | Data | Gateway Terminal Number |  |  |
 | `device_serial_number` | Data | Device Serial Number |  |  |
 | `saved_card_terminal` | Data | Saved-Card Terminal Number |  |  |
-| `default_currency` | Link | Default Currency |  | Currency |
-| `integration_id` | Data | X-Integration-ID (ISV only) |  |  |
 | `sandbox_mode` | Check | Sandbox Mode |  |  |
-| `base_url_override` | Data | Base URL Override |  |  |
-| `request_timeout_seconds` | Int | Request Timeout (seconds) |  |  |
 | `last_token_refreshed_at` | Datetime | Last Token Refreshed At |  |  |
 | `last_charge_at` | Datetime | Last Charge At |  |  |
+| `integration_id` | Data | X-Integration-ID (ISV only) |  |  |
+| `base_url_override` | Data | Base URL Override |  |  |
+| `request_timeout_seconds` | Int | Request Timeout (seconds) |  |  |
 
 ## RSR Catalog Item
 
@@ -1271,10 +1277,10 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Purchase User, Sto
 | `rsr_stock_number` | Data | RSR Stock # | ✓ |  |
 | `upc` | Data | UPC |  |  |
 | `mfg_number` | Data | Mfg Part # |  |  |
+| `department_number` | Data | Department # |  |  |
 | `manufacturer` | Data | Manufacturer |  |  |
 | `model` | Data | Model |  |  |
 | `caliber` | Data | Caliber |  |  |
-| `department_number` | Data | Department # |  |  |
 | `short_description` | Data | Short Description |  |  |
 | `long_description` | Small Text | Long Description |  |  |
 | `msrp` | Currency | MSRP |  |  |
@@ -1378,13 +1384,13 @@ app: `ffl_integrations` · module: FFL Integrations · single · roles: System M
 | field | type | label | reqd | options |
 |---|---|---|---|---|
 | `enabled` | Check | Enabled |  |  |
-| `sandbox_mode` | Check | Sandbox Mode |  |  |
 | `api_key` | Password | API Key |  |  |
-| `base_url_override` | Data | Base URL Override |  |  |
-| `request_timeout_seconds` | Int | Request Timeout (s) |  |  |
+| `sandbox_mode` | Check | Sandbox Mode |  |  |
 | `store_id` | Data | Store ID |  |  |
 | `ship_from_warehouse_id` | Data | Ship-From Warehouse ID |  |  |
 | `default_parcel_weight_oz` | Float | Default Parcel Weight (oz) |  |  |
+| `base_url_override` | Data | Base URL Override |  |  |
+| `request_timeout_seconds` | Int | Request Timeout (s) |  |  |
 
 ## Sports South Settings
 
@@ -1449,22 +1455,29 @@ app: `ffl_woo_sync` · module: FFL Woo Sync · roles: System Manager
 | `woo_order_id` | Data | Woo Order ID | ✓ |  |
 | `order_status` | Select | Fulfillment Status | ✓ | Pending Fulfillment, Transferred, Cancelled |
 | `woo_status` | Data | WooCommerce Status |  |  |
-| `transferred_at` | Datetime | Transferred At |  |  |
 | `site` | Select | Site |  | retail |
 | `dropship_status` | Select | Drop-ship Status |  | , Pending Route, Ordered, Complete, Error |
+| `transferred_at` | Datetime | Transferred At |  |  |
 | `customer_name` | Data | Customer Name |  |  |
-| `customer_email` | Data | Email |  | Email |
 | `customer_phone` | Data | Phone |  |  |
+| `customer_email` | Data | Email |  | Email |
+| `lines` | Table | Lines |  | Woo Online Order Line |
+| `serials` | Table | Firearm Serials |  | Woo Online Order Serial |
+| `currency` | Data | Currency |  |  |
+| `order_total` | Currency | Order Total |  | currency |
+| `total_tax` | Currency | Total Tax |  | currency |
+| `shipping_total` | Currency | Shipping Total |  | currency |
+| `discount_total` | Currency | Discount Total |  | currency |
 | `ffl_license` | Data | FFL License Number |  |  |
 | `is_cr_transfer` | Check | C&R (03) Transfer |  |  |
 | `woo_ffl_rev` | Int | Woo FFL Revision |  |  |
 | `ffl_business_name` | Data | FFL Business Name |  |  |
 | `ffl_phone` | Data | FFL Phone |  |  |
+| `ffl_expiration` | Data | FFL Expiration |  |  |
 | `ffl_premise_street` | Data | Street |  |  |
 | `ffl_premise_city` | Data | City |  |  |
 | `ffl_premise_state` | Data | State |  |  |
 | `ffl_premise_zip` | Data | ZIP |  |  |
-| `ffl_expiration` | Data | FFL Expiration |  |  |
 | `atf_ffl_record` | Link | ATF FFL Record |  | ATF FFL Record |
 | `ffl_raw` | Long Text | FFL Raw Meta (fallback) |  |  |
 | `cr_contact_name` | Data | Collector Name (as printed on license) |  |  |
@@ -1482,13 +1495,6 @@ app: `ffl_woo_sync` · module: FFL Woo Sync · roles: System Manager
 | `ship_to_city` | Data | City |  |  |
 | `ship_to_state` | Data | State |  |  |
 | `ship_to_zip` | Data | ZIP |  |  |
-| `currency` | Data | Currency |  |  |
-| `order_total` | Currency | Order Total |  | currency |
-| `total_tax` | Currency | Total Tax |  | currency |
-| `shipping_total` | Currency | Shipping Total |  | currency |
-| `discount_total` | Currency | Discount Total |  | currency |
-| `lines` | Table | Lines |  | Woo Online Order Line |
-| `serials` | Table | Firearm Serials |  | Woo Online Order Serial |
 | `refunds` | Table | Refunds |  | Woo Online Order Refund |
 
 ## Woo Online Order Line
@@ -1552,8 +1558,8 @@ app: `ffl_woo_sync` · module: FFL Woo Sync · single · roles: System Manager
 | `outbound_webhook_secret` | Password | Outbound status webhook secret |  |  |
 | `auto_sync_enabled` | Check | Enable sync |  |  |
 | `reconcile_frequency` | Select | Reconcile frequency |  | Every 2 Hours, Daily, Weekly, Disabled |
-| `follow_category_tree` | Check | Follow the catalog category tree |  |  |
 | `request_timeout_seconds` | Int | Request Timeout (s) |  |  |
+| `follow_category_tree` | Check | Follow the catalog category tree |  |  |
 | `last_push_at` | Datetime | Last push |  |  |
 | `last_push_count` | Int | Items pushed |  |  |
 | `last_reconcile_at` | Datetime | Last reconcile |  |  |

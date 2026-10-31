@@ -6,30 +6,28 @@
  "field_order": [
   "customer",
   "customer_name",
-  "company",
+  "status",
+  "expires_on",
   "column_break_main",
   "template",
   "template_version",
   "serial_no",
   "item_code",
+  "company",
+  "section_firearms",
   "firearms",
-  "status",
-  "expires_on",
   "section_signed",
   "signed_on",
   "signed_via",
   "signer_name",
   "signer_relationship",
-  "participant_is_minor",
-  "minor_determined_by",
   "column_break_signed",
   "signature",
   "signed_pdf",
   "paper_signed_on",
   "recorded_by",
-  "signer_ip",
-  "signer_user_agent",
-  "signing_terminal",
+  "participant_is_minor",
+  "minor_determined_by",
   "section_request",
   "requested_by",
   "delivery_channel",
@@ -39,6 +37,9 @@
   "column_break_request",
   "reference_doctype",
   "reference_name",
+  "signing_terminal",
+  "signer_ip",
+  "signer_user_agent",
   "section_body",
   "body_snapshot"
  ],
@@ -62,11 +63,21 @@
    "read_only": 1
   },
   {
-   "fieldname": "company",
-   "fieldtype": "Link",
-   "label": "Company",
-   "options": "Company",
-   "read_only": 1
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Pending\nSigned\nVoid\nExpired",
+   "default": "Pending",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "expires_on",
+   "fieldtype": "Date",
+   "label": "Expires On",
+   "read_only": 1,
+   "in_list_view": 1
   },
   {
    "fieldname": "column_break_main",
@@ -94,8 +105,7 @@
    "options": "Serial No",
    "label": "Firearm (Serial No)",
    "read_only": 1,
-   "search_index": 1,
-   "description": "For an agreement signed for each firearm sold: the first gun it names (all of them are under Firearms)."
+   "search_index": 1
   },
   {
    "fieldname": "item_code",
@@ -106,30 +116,23 @@
    "depends_on": "eval:doc.serial_no"
   },
   {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_firearms",
+   "fieldtype": "Section Break"
+  },
+  {
    "fieldname": "firearms",
    "fieldtype": "Table",
    "options": "Customer Agreement Firearm",
    "label": "Firearms",
    "read_only": 1,
-   "depends_on": "eval:doc.serial_no",
-   "description": "For an agreement signed for each firearm sold: every gun this one signature covers."
-  },
-  {
-   "fieldname": "status",
-   "fieldtype": "Select",
-   "label": "Status",
-   "options": "Pending\nSigned\nVoid\nExpired",
-   "default": "Pending",
-   "read_only": 1,
-   "in_list_view": 1,
-   "in_standard_filter": 1
-  },
-  {
-   "fieldname": "expires_on",
-   "fieldtype": "Date",
-   "label": "Expires On",
-   "read_only": 1,
-   "in_list_view": 1
+   "depends_on": "eval:doc.serial_no"
   },
   {
    "fieldname": "section_signed",
@@ -161,20 +164,6 @@
    "label": "Signer Is",
    "options": "\nSelf\nParent\nGuardian",
    "read_only": 1
-  },
-  {
-   "fieldname": "participant_is_minor",
-   "fieldtype": "Check",
-   "label": "Participant Under 18",
-   "read_only": 1
-  },
-  {
-   "fieldname": "minor_determined_by",
-   "fieldtype": "Select",
-   "label": "Age Taken From",
-   "options": "\nDate of Birth\nSelf-declared\nPaper",
-   "read_only": 1,
-   "depends_on": "eval:doc.participant_is_minor"
   },
   {
    "fieldname": "column_break_signed",
@@ -210,23 +199,18 @@
    "depends_on": "eval:doc.signed_via=='Paper'"
   },
   {
-   "fieldname": "signer_ip",
-   "fieldtype": "Data",
-   "label": "Signer IP",
+   "fieldname": "participant_is_minor",
+   "fieldtype": "Check",
+   "label": "Participant Under 18",
    "read_only": 1
   },
   {
-   "fieldname": "signer_user_agent",
-   "fieldtype": "Small Text",
-   "label": "Signer Device",
-   "read_only": 1
-  },
-  {
-   "fieldname": "signing_terminal",
-   "fieldtype": "Link",
-   "options": "Signing Terminal",
-   "label": "Signing Terminal",
-   "read_only": 1
+   "fieldname": "minor_determined_by",
+   "fieldtype": "Select",
+   "label": "Age Taken From",
+   "options": "\nDate of Birth\nSelf-declared\nPaper",
+   "read_only": 1,
+   "depends_on": "eval:doc.participant_is_minor"
   },
   {
    "fieldname": "section_request",
@@ -246,8 +230,7 @@
    "fieldtype": "Select",
    "label": "Sent As",
    "options": "\nQR\nEmail\nTerminal",
-   "read_only": 1,
-   "description": "How the signing link last went out: QR = shown at the counter, Email = sent to the customer, Terminal = sent to a paired store tablet."
+   "read_only": 1
   },
   {
    "fieldname": "token_expires",
@@ -289,8 +272,26 @@
    "fieldtype": "Dynamic Link",
    "label": "Reference",
    "options": "reference_doctype",
-   "read_only": 1,
-   "description": "For an agreement signed for each firearm sold: the sale it was used for."
+   "read_only": 1
+  },
+  {
+   "fieldname": "signing_terminal",
+   "fieldtype": "Link",
+   "options": "Signing Terminal",
+   "label": "Signing Terminal",
+   "read_only": 1
+  },
+  {
+   "fieldname": "signer_ip",
+   "fieldtype": "Data",
+   "label": "Signer IP",
+   "read_only": 1
+  },
+  {
+   "fieldname": "signer_user_agent",
+   "fieldtype": "Small Text",
+   "label": "Signer Device",
+   "read_only": 1
   },
   {
    "fieldname": "section_body",
@@ -308,7 +309,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-28 12:00:00.000000",
+ "modified": "2026-10-30 19:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Customer Agreement",

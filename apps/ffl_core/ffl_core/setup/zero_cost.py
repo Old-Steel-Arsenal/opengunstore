@@ -50,11 +50,7 @@ OTHER_REASON = "Other"
 
 _REASON_OPTIONS = "\n".join(("",) + ZERO_COST_REASONS)
 
-_DESC = (
-    "Ticked only when the acquisition cost really was $0 (a gift, a promo, a warranty "
-    "replacement). It is NOT for a cost nobody looked up — a purchase with an unknown "
-    "cost is refused at receive instead. A stock-cost audit skips guns marked here."
-)
+_DESC = "The cost really was $0, so stock-cost audits skip it."
 _NOTE_DESC = (
     "Required when the reason is \"Other\": what actually happened. Without it "
     "\"Other\" tells a later audit no more than an empty cost did."

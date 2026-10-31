@@ -226,6 +226,8 @@ class PendingDispositionsApp {
 			<div class="ffl-pending ffl-pending-orders">
 				<style>
 					.ffl-pending { max-width: 960px; margin: 0 auto; padding: 8px 0 60px; }
+					.ffl-dispose-cr .form-section + .form-section { border-top: 0; padding-top: 0; padding-bottom: 0; }
+					.ffl-dispose-cr .form-section + .form-section .section-body { padding-top: 0; margin-top: 0; }
 					.ffl-pending .card {
 						background: var(--card-bg); border: 1px solid var(--border-color);
 						border-radius: 8px; padding: 16px 18px; margin-bottom: 12px;
@@ -292,6 +294,14 @@ class PendingDispositionsApp {
 					.ffl-agreement-warning { background: var(--bg-red); color: var(--red-700); border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; font-weight: 500; }
 					.ffl-dispose-summary { line-height: 1.7; }
 					.ffl-dispose-summary ul { margin: 4px 0 0; padding-left: 20px; }
+					/* Phone: side gutter, and the action column drops under the order. */
+					@media (max-width: 767px) {
+						.ffl-pending { padding-inline: 15px; }
+						.ffl-pending .card { grid-template-columns: minmax(0, 1fr); }
+						.ffl-pending-orders .actions { width: auto; min-width: 0; }
+						/* Stacked C&R columns keep Frappe's gutters: City/State/ZIP would sit indented. */
+						.ffl-dispose-cr .form-column { padding-inline: 0; }
+					}
 				</style>
 				<div class="pd-toolbar">
 					<div class="pd-chips">
@@ -338,9 +348,9 @@ class PendingDispositionsApp {
 	}
 
 	// Re-read one counter order's agreements and redraw just its card.
-	_refreshAgreements(row) {
+	_refreshAgreements(row, callOpts = {}) {
 		return frappe.call({ method: 'ffl_core.api.manual_order.order_agreements',
-			args: { sales_invoice: row.sales_invoice } }).then((r) => {
+			args: { sales_invoice: row.sales_invoice }, ...callOpts }).then((r) => {
 			const m = r.message || {};
 			row.agreements = m.rows || [];
 			row.agreements_missing = row.agreements.filter((a) => !a.signed);
@@ -413,14 +423,14 @@ class PendingDispositionsApp {
 		frappe.call({
 			method: 'ffl_core.customer_flags.banned_order_rows',
 			args: { woo_orders: pick('woo_online_order'), gb_orders: pick('gunbroker_order'),
-				customers: rows.filter((r) => !r.source || r.source === 'counter').map((r) => r.customer).filter(Boolean) },
+				customers: rows.filter((r) => (KIND[r.source] || 'counter') === 'counter').map((r) => r.customer).filter(Boolean) },
 		}).then((r) => {
 			const hit = r.message || {};
 			const woo = new Set(hit.woo || []), gb = new Set(hit.gb || []), cust = new Set(hit.customers || []);
 			let any = false;
 			rows.forEach((row) => {
 				row.banned_customer = woo.has(row.woo_online_order) || gb.has(row.gunbroker_order)
-					|| ((!row.source || row.source === 'counter') && cust.has(row.customer));
+					|| ((KIND[row.source] || 'counter') === 'counter' && cust.has(row.customer));
 				any = any || row.banned_customer;
 			});
 			if (any && this.rows === rows) this._render(rows);
@@ -529,7 +539,10 @@ class PendingDispositionsApp {
 			const pickupBlock = isPickup && !pickupInvoice ? (row.pickup_block || '') : '';
 			// A model-level unit with no gun yet: Dispose would ship one short.
 			const openUnits = can.assignSerial ? pdOpenUnits(row.assign_units) : 0;
-			const disposeDisabled = row.ffl_expired || blockShipUnpaid || awaiting || openUnits > 0;
+			// GunBroker: nothing disposes before Mark Payment Received (the server's
+			// _require_ready_to_dispose refuses it, same stage as shipDisabled below).
+			const disposeDisabled = row.ffl_expired || blockShipUnpaid || awaiting || openUnits > 0
+				|| (isGb && row.channel_stage === 'awaiting_payment');
 			// A pickup with a gun on it is NOT "hand it over and Mark Picked Up":
 			// the server refuses Mark Picked Up for exactly those rows, and the
 			// gun leaves on its 4473 ticket. Its hint is the server's pickup_block
@@ -550,7 +563,8 @@ class PendingDispositionsApp {
 				: (openUnits ? __('Assign a gun to every unit first.')
 				: (serialErrors.length ? __('Serial rejected — correct it on the WooCommerce order.')
 					: (awaiting ? __('Awaiting serial from WooCommerce.')
-						: (blockShipUnpaid ? __('Record payment before shipping.')
+						: (blockShipUnpaid ? (noAddress ? __('Record payment before it is picked up.')
+							: __('Record payment before shipping.'))
 							: (noAddressHint ? __('Counter pickup — hand it over and Mark Picked Up.')
 								: (awaitingGoods ? __('Waiting for ship-to-store goods to arrive.') : '')))))));
 			// A direct row never disposes — there is no FFL transfer to book;
@@ -1037,13 +1051,12 @@ class PendingDispositionsApp {
 	// The server's pre-ship payment rule (manual_order.ship_payment_block) as the
 	// page sees it: a counter individual's order ships once it is paid. Both ship
 	// actions ask it — push_shipment and mark_shipped_manually are both refused by
-	// that rule, so neither surface may offer a live button without it.
+	// that rule, so neither surface may offer a live button without it. The rule
+	// does not exempt a counter pickup: Mark Picked Up clears through the same
+	// gate, so an unpaid individual pickup is paid before it is handed over.
 	_blockShipUnpaid(row) {
 		const kind = KIND[row.source] || 'counter';
-		// A counter pickup need not be paid to be handed over;
-		// the rule is about SHIPPING an individual's order.
-		const ships = !!row.has_ship_address || !!row.destination_ffl;
-		return kind === 'counter' && ships && !row.is_business && !row.paid;
+		return kind === 'counter' && !row.is_business && !row.paid;
 	}
 
 	// THE Mark Shipped gate, shared by the card's button and the Ship
@@ -1218,22 +1231,17 @@ class PendingDispositionsApp {
 				// below, reference = the gateway's). The shared helper reports
 				// declines / cancels itself; the queue reloads either way. Already
 				// charged on the Virtual Terminal → typed record below, never the A80.
-				const cardMop = (frappe.boot && frappe.boot.card_mop) || 'Credit Card';
+				const cardMop = window.ffl.switches.cardMop();
 				const card = frappe.boot && frappe.boot.ffl_card_processor;
 				if (v.mode === cardMop && Number(card && card.enabled)
-						&& !v.charged_outside && window.ffl && window.ffl.terminalCharge) {
+						&& !v.charged_outside && window.ffl && window.ffl.chargeSalesInvoice) {
 					const saveCard = saveOffer && v.save_card ? 1 : 0;
 					d.hide();
 					if (saveCard && !(await cof.ensureSigned(row.customer, saveOffer, row.customer_name))) {
 						d.show();   // not signed: back to the dialog
 						return;
 					}
-					const res = await window.ffl.terminalCharge({
-						amount: flt(v.amount),
-						start: { method: 'ffl_integrations.payments.api.charge_sales_invoice', args: { sales_invoice: row.sales_invoice, amount: v.amount, ...(saveCard ? { save_card: 1 } : {}) } },
-						poll: { method: 'ffl_integrations.payments.api.poll_sales_invoice_charge', args: { sales_invoice: row.sales_invoice } },
-						cancel: { method: 'ffl_integrations.payments.api.cancel_sales_invoice_charge', args: { sales_invoice: row.sales_invoice } },
-					});
+					const res = await window.ffl.chargeSalesInvoice(row.sales_invoice, flt(v.amount), { saveCard });
 					if (res && res.skip) {
 						frappe.msgprint({ title: __('Terminal not configured'), indicator: 'orange',
 							message: __('The {0} device is not set up on this store. Take the card on the Virtual Terminal or your standalone terminal first, then tick "Already charged on Virtual Terminal" and enter its approval code.', [(card && card.label) || __('card processor')]) });
@@ -1320,15 +1328,8 @@ class PendingDispositionsApp {
 		// Unsigned agreements: read them again (the customer may have just signed),
 		// so the dialog asks about exactly what is still missing.
 		if (kind === 'counter' && (row.agreements_missing || []).length) {
-			frappe.call({ method: 'ffl_core.api.manual_order.order_agreements', args: { sales_invoice: row.sales_invoice },
-				freeze: true, freeze_message: __('Checking the order…') }).then((r) => {
-				const m = r.message || {};
-				row.agreements = m.rows || [];
-				row.agreements_missing = row.agreements.filter((a) => !a.signed);
-				row.agreement_email = m.email || '';
-				this._redrawCard(row);
-				this._confirmDispose(row);
-			});
+			this._refreshAgreements(row, { freeze: true, freeze_message: __('Checking the order…') })
+				.then(() => this._confirmDispose(row));
 			return;
 		}
 		const method = PD_STOCK_LINES_METHOD[kind];
@@ -1383,7 +1384,6 @@ class PendingDispositionsApp {
 					${row.ships_direct === true
 						? __('This takes the goods out of stock and raises the invoice. No bound-book entry, and nothing goes to FastBound.')
 						: __('This books the bound-book transfer, removes the gun from stock, and pushes to FastBound.')}
-					${isCounter || isGb ? ' ' + __('Buying the shipping label is the separate Ship step.') : ''}
 				</div>
 			</div>`;
 		// A Type 03 (Curio & Relic) collector has no dealer at the far end and no
@@ -1410,7 +1410,7 @@ class PendingDispositionsApp {
 				...(locFields.length ? [{
 					fieldtype: 'HTML', fieldname: 'stg_head',
 					options: `<div style="font-weight:600;margin:6px 0 2px">${__('Where did these come from?')}</div>
-						<div class="text-muted" style="font-size:12px">${__('Pick the location each was taken from. Leave blank if you are not sure — it goes on the Not placed list.')}</div>`,
+						<div class="text-muted" style="font-size:12px">${__('Leave blank if you are not sure; it goes on the Not placed list.')}</div>`,
 				}] : []),
 				...locFields.map((f) => ({ fieldtype: 'Select', fieldname: f.fieldname, label: f.label,
 					options: f.options, default: f.default })),
@@ -1475,6 +1475,8 @@ class PendingDispositionsApp {
 		// Red, but still .btn-primary: the checkbox handlers look the button up by
 		// that class on every change (see the front-end invariant test).
 		if (unsigned.length) d.$wrapper.addClass('ffl-dispose-unsigned');
+		// The C&R rows are split into short sections; drop the rules between them.
+		if (isCr) d.$wrapper.addClass('ffl-dispose-cr');
 	}
 
 	// ---- C&R (Type 03) verification block -------------------------------------
@@ -1494,30 +1496,39 @@ class PendingDispositionsApp {
 				fieldtype: 'HTML', fieldname: 'cr_header',
 				options: `<hr><div style="font-weight:600;margin-bottom:4px">${__('C&R (Type 03) verification')}</div>
 					<div class="text-muted" style="font-size:12px;margin-bottom:8px">
-						${__('FastBound needs these exactly as printed on the collector\'s license.')}<br>
-						${__('The parcel ships to this address — it must be the licensed premises.')}
+						${__('Enter these exactly as on the license; the parcel ships to this address, the licensed premises.')}
 					</div>`,
 			},
+			// Short fields in pairs (license | expiry, address lines, city | state | ZIP);
+			// the closing Section Break keeps the confirm checkbox below at full width.
+			{ fieldtype: 'Section Break' },
 			f({ fieldtype: 'Data', fieldname: 'cr_license_number', reqd: 1,
 				label: __('C&R license number'), default: p.license_number || '',
 				description: __('Fourth group must be 03 — e.g. 1-23-456-03-7C-89012') }),
+			{ fieldtype: 'Column Break' },
 			// Deliberately not pre-filled from a previous order: a licence that
 			// was valid then may have lapsed since, so it is read fresh every time.
 			f({ fieldtype: 'Date', fieldname: 'cr_license_expiry', reqd: 1,
 				label: __('License expiration date'), default: p.license_expiry || '' }),
+			{ fieldtype: 'Section Break' },
 			f({ fieldtype: 'Data', fieldname: 'cr_contact_name', reqd: 1,
 				label: __("Collector's full name"), default: p.contact_name || '' }),
+			{ fieldtype: 'Section Break' },
 			f({ fieldtype: 'Data', fieldname: 'cr_premise_street', reqd: 1,
 				label: __('Address 1'), default: p.premise_street || '' }),
+			{ fieldtype: 'Column Break' },
 			f({ fieldtype: 'Data', fieldname: 'cr_premise_street2',
 				label: __('Address 2'), default: p.premise_street2 || '' }),
+			{ fieldtype: 'Section Break' },
 			f({ fieldtype: 'Data', fieldname: 'cr_premise_city', reqd: 1,
 				label: __('City'), default: p.premise_city || '' }),
 			{ fieldtype: 'Column Break' },
 			f({ fieldtype: 'Data', fieldname: 'cr_premise_state', reqd: 1,
 				label: __('State'), default: p.premise_state || '' }),
+			{ fieldtype: 'Column Break' },
 			f({ fieldtype: 'Data', fieldname: 'cr_premise_zip', reqd: 1,
 				label: __('ZIP'), default: p.premise_zip || '' }),
+			{ fieldtype: 'Section Break' },
 		];
 	}
 
@@ -1641,7 +1652,7 @@ class PendingDispositionsApp {
 				<div><b>${__('Recipient')}:</b> ${esc(row.customer_name || row.customer)}</div>
 				${coLine}
 				<div class="text-muted" style="font-size:12px">
-					${!p.line1 && row.destination_ffl ? __('Address is read from the licence when this is pushed.') + '<br>' : ''}${esc(p.line1 || '')}${p.line2 ? ', ' + esc(p.line2) : ''}<br>
+					${!p.line1 && row.destination_ffl ? __('Address comes from the FFL licence.') + '<br>' : ''}${esc(p.line1 || '')}${p.line2 ? ', ' + esc(p.line2) : ''}<br>
 					${esc(cityLine)}${p.phone ? ' · ' + esc(p.phone) : ''}${fflLine}
 				</div>
 				<div style="margin-top:8px"><b>${__('Items')}:</b><ul>${items}</ul></div>
@@ -1753,7 +1764,7 @@ class PendingDispositionsApp {
 				+ '.includes(doc.refund_mode)';
 			fields.push({
 				fieldtype: 'Data', fieldname: 'refund_reference', label: __('Refund Reference'),
-				description: __('Zelle / ACH: the confirmation number. Check/Money Order: the number of the check you wrote. Credit Card: the terminal approval code.'),
+				description: __('The confirmation, check or approval number for the refund method.'),
 				depends_on: needsRef, mandatory_depends_on: needsRef,
 			});
 		}

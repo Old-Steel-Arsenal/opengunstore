@@ -47,7 +47,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt, now_datetime, time_diff_in_seconds
 
-from ffl_core.firearm import item_current_price
+from ffl_core.firearm import _is_firearm_row, item_current_price
 from ffl_core.reservations import committed_units, uniform_sellable_units
 from ffl_core.utils import commit
 from ffl_integrations.gunbroker import listings, mapping
@@ -60,7 +60,6 @@ from ffl_integrations.notifications import safe_log_error
 from ffl_integrations.gunbroker.listings import (
 	ALREADY_LISTED,
 	BAD_LISTING_TERMS,
-	BANNED_TITLE,
 	CATEGORY_AMBIGUOUS,
 	DELISTED,
 	DROPSHIP_PRICED,
@@ -173,10 +172,13 @@ def _company() -> str:
 def is_model(row: dict) -> bool:
 	"""True for a uniform-price firearm — the one gun that lists by model.
 
-	Read off the same two columns ``orders.is_model_unit_line`` reads, so the
-	listing side and the order side cannot disagree about which Items are models.
+	The same rule as ``ffl_core.reservations.is_uniform_firearm_item`` (which
+	``orders.is_model_unit_line`` calls), over an already-fetched row: the
+	firearm test is ``ffl_core.firearm._is_firearm_row`` (flag or firearm
+	group), so the listing side and the order side cannot disagree about which
+	Items are models.
 	"""
-	return bool(cint((row or {}).get("is_firearm")) and cint((row or {}).get("uniform_sell_price")))
+	return bool(row) and _is_firearm_row(row) and bool(cint(row.get("uniform_sell_price")))
 
 
 def listing_quantity(item_code: str, row: dict | None = None) -> int:
@@ -302,6 +304,11 @@ def check_item_push_guards(item_code: str, *, relist: bool = False,
 			"Group in GunBroker Settings, or set a GunBroker Category ID on the "
 			"Item itself."
 		).format(item_code))
+
+	blocked = listings._title_guard(ctx["item"].get("item_name") or item_code, settings,
+		_("Rename the Item and try again."))
+	if blocked:
+		return blocked
 
 	if not mapping.item_candidate_image_paths(item_code, settings=settings, context=ctx):
 		return skip(NO_IMAGES, _(
@@ -442,13 +449,10 @@ def check_model_push_guards(item_code: str, *, relist: bool = False, settings=No
 			"Category ID on the Item, so it is not filed in the wrong category."
 		).format(item_code))
 
-	title, _warnings = mapping.gb_title(item.get("item_name") or item_code)
-	phrase = mapping.banned_title_phrase(title, settings.get("title_banned_phrases"))
-	if phrase:
-		return skip(BANNED_TITLE, _(
-			"The title contains {0!r}, which GunBroker rejects under its listing "
-			"policies. Rename the Item and try again."
-		).format(phrase))
+	blocked = listings._title_guard(item.get("item_name") or item_code, settings,
+		_("Rename the Item and try again."))
+	if blocked:
+		return blocked
 
 	if not mapping.item_candidate_image_paths(item_code, settings=settings, context=ctx):
 		return skip(NO_IMAGES, _(

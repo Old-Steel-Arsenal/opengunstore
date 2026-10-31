@@ -983,6 +983,33 @@ class TestPickersAndCustody(FrappeTestCase):
 		self.assertIsNone(row)
 		self.assertTrue(reason)
 
+	# -- Create Order submit gate --------------------------------
+
+	def _line(self, serial: str) -> list[dict]:
+		return [{"item_code": self.ITEM, "qty": 1, "rate": 500, "serials": [serial]}]
+
+	def test_create_order_submit_refuses_a_custody_gun(self):
+		"""The serial dropdown and an API/MCP caller reach create_order without a
+		scan, so the submit path (_validate_items) must run the same rulebook."""
+		from ffl_core.api.manual_order import _validate_items
+		with self.assertRaises(frappe.ValidationError):
+			_validate_items(self._line("TCU-PICK-CUSTODY"))
+
+	def test_create_order_submit_refuses_a_consigned_out_gun(self):
+		from ffl_core.api.manual_order import _validate_items
+		frappe.db.set_value("Serial No", "TCU-PICK-OWNED", "consigned_out", 1,
+							update_modified=False)
+		self.addCleanup(frappe.db.set_value, "Serial No", "TCU-PICK-OWNED",
+						"consigned_out", 0, update_modified=False)
+		with self.assertRaises(frappe.ValidationError):
+			_validate_items(self._line("TCU-PICK-OWNED"))
+
+	def test_create_order_submit_accepts_the_stores_own_gun(self):
+		from ffl_core.api.manual_order import _validate_items
+		rows, _seen, _reg = _validate_items(self._line("TCU-PICK-OWNED"))
+		self.assertEqual(rows[0]["serials"], ["TCU-PICK-OWNED"])
+		self.assertEqual(rows[0]["warehouse"], self.warehouse)
+
 
 # ===========================================================================
 # The sales report classifies transfers by the flag, not by inference

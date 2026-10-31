@@ -116,6 +116,31 @@ class FBAdoptAcquired(FrappeTestCase):
 		self.assertEqual(result["acquisitionId"], "acq-xyz")
 		self.assertEqual(result["items"], [{"fbItemId": "it-865829", "serial": "865829"}])
 
+	def test_record_acquisition_push_stamps_acquisition_and_serials(self):
+		"""The one write-back both push paths (async task + Receive Goods sync push)
+		share: fastbound_id/synced_at/cleared error on the acquisition, and the FB
+		item id on each returned Serial No that exists — unknown serials and items
+		without an fbItemId are skipped, never invented."""
+		from ffl_integrations.fastbound.tasks import _record_acquisition_push
+		serial = "REC-PUSH-1"
+		a = self._ffl_dealer_acquisition(serial)
+		if not frappe.db.exists("Serial No", serial):
+			frappe.get_doc({"doctype": "Serial No", "serial_no": serial,
+				"item_code": "ADOPT-ITEM"}).insert(ignore_permissions=True)
+		frappe.db.set_value("FFL Acquisition", a, "fastbound_sync_error", "old error")
+		_record_acquisition_push(a, {"acquisitionId": "acq-rec-1", "items": [
+			{"serial": serial, "fbItemId": "it-rec-1"},
+			{"serial": "REC-PUSH-NOT-A-SERIAL", "fbItemId": "it-ghost"},
+			{"serial": serial, "fbItemId": None},
+		]})
+		row = frappe.db.get_value("FFL Acquisition", a,
+			["fastbound_id", "fastbound_synced_at", "fastbound_sync_error"], as_dict=True)
+		self.assertEqual(row.fastbound_id, "acq-rec-1")
+		self.assertTrue(row.fastbound_synced_at)
+		self.assertFalse(row.fastbound_sync_error)
+		self.assertEqual(frappe.db.get_value("Serial No", serial, "fastbound_item_id"), "it-rec-1")
+		self.assertFalse(frappe.db.exists("Serial No", "REC-PUSH-NOT-A-SERIAL"))
+
 	def test_adopt_raises_when_no_item_found(self):
 		"""'Already acquired' but no item resolves — fail loudly (don't silently
 		mark synced with nothing behind it)."""

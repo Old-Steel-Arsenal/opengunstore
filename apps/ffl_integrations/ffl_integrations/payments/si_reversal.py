@@ -235,12 +235,13 @@ def _credit_note(si, amount: float, reason: str):
 				tax.tax_amount = flt(flt(tax.tax_amount) * ratio, 2)
 		cn.discount_amount = cn.additional_discount_percentage = 0
 		cn.calculate_taxes_and_totals()
-		# Cent rounding per line: put the residual on the largest line (net of its tax share).
+		# Cent rounding per line: put the residual on the largest line (net of its tax share);
+		# its qty is -1, so raising the rate lowers grand_total.
 		gap = flt(-amount - flt(cn.grand_total), 2)
 		if abs(gap) >= 0.01 and cn.items:
 			big = max(cn.items, key=lambda i: flt(i.rate))
 			gross = flt(cn.grand_total) / flt(cn.net_total) if flt(cn.net_total) else 1
-			big.rate = flt(flt(big.rate) + gap / gross, 2)
+			big.rate = flt(flt(big.rate) - gap / gross, 2)   # qty is -1
 			cn.calculate_taxes_and_totals()
 	mark_system_priced(cn)
 	cn.flags.ignore_permissions = True
@@ -366,7 +367,7 @@ def refund_sales_invoice_charge(terminal_payment: str, amount, refund_type: str,
 			frappe.throw(_("{0} cannot be refunded as a return from here because {1}. Use Cancel Order or a sales "
 				"return for it.").format(si.name, why))
 		if any(not i.service_stop_date for i in _deferred(si)):
-			frappe.throw(_("{0} is a membership invoice: end the membership first (Cancel → end now), then "
+			frappe.throw(_("{0} is a membership invoice: end the membership first (Cancel → End it today), then "
 				"refund.").format(si.name))
 		cn_amt = _credit_note_total(si, amt, reason)
 		# Never refund a different amount than the credit note takes back.

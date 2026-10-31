@@ -1,4 +1,4 @@
-# Field notes: FFL Settings, Item and Serial No
+# Field notes
 
 The forms carry one-sentence descriptions. The longer reasoning that used to live in each field's description is kept here, verbatim, grouped by form.
 
@@ -426,3 +426,241 @@ Never read by the scheduler.
 
 ### Catalog service (Endpoint / Client ID / Secret)
 Per-house override of the site-wide Catalog API service on FFL Settings (docs/catalog-api). Reads scoped to this house (rows, offers, changes, health, restrictions, scoped search) go to this service; unscoped search and `/item/{upc}` always use the site-wide one. All three or none.
+
+## Other forms
+
+### Agreement Template
+
+**Agreement Text.** Placeholders for a gunsmith work order (Per document): {{ work_order }}, {{ manufacturer }}, {{ model }}, {{ caliber }}, {{ serial_no }}, {{ firearm_type }}, {{ accessories }}, {{ condition }}, {{ work_requested }}, {{ estimated_cost }}, {{ deposit }}, {{ estimated_completion }}, besides the general ones. For Each firearm sold, one copy covers every gun of a sale: with several guns, each gun placeholder lists them all.
+
+**Required.** Optional: only offered from the Agreements button. Required for every sale: every counter sale waits for it (not an FFL dealer's; a walk-in sale needs a named customer to sign).
+
+**Signed.** Per customer: one signature covers every visit until it expires. Each firearm sold: a new signed copy for the guns sold, naming them (a no-return agreement); one copy covers every gun of a sale unless One copy per gun is ticked, in which case the customer signs a separate copy for each gun. Per document: a copy for one record, signed from that record (a gunsmith work order's intake authorization).
+
+### Company
+
+**Company Logo.** ### Company Logo (Company)
+
+Printed at the top of every customer receipt. Attach it public: a private file (/private/files/...) needs a login the PDF renderer does not have, so the receipt prints a broken image instead of a logo.
+
+### Create Order Draft
+
+**Payload (JSON).** Serials in a Create Order draft are not reserved; they are re-validated when the draft is resumed.
+
+### Customer
+
+**Licensee Name.** ### Licensee Name and Licensee Address (Customer)
+
+Both come from ATF eZ Check: the name on the license and the licensed premises address.
+
+### Data Service Settings
+
+**Could not link.** Categories the last run could not link (a duplicate, a conflict, a missing parent). Nothing is guessed: fix them in the catalog workbench (a store category slug on the node) or on the store.
+
+**Product changes baselined.** Set by the mirror's first run: the product-change follower takes only changes made after it. Items already on file move through the resync (dry run first).
+
+**Category mirror.** The catalog master's category tree is the one source of category names, parents and order: this store's Item Groups and its website categories follow it. Report only: every tick lists what the mirror would link, create, rename or move, and changes nothing. Apply: it does it, and follows the master's product categories. Off: nothing runs.
+
+### Distributor
+
+**Markup rules (retired).** Moved to the drop-ship extension's Pricing Settings (one table for every distributor, this house's rules scoped to it). Kept only as the pre-move record; nothing reads it. A rule's price is base × (1 + pct) + flat, and its department pattern is a department number or prefix.
+
+### Distributor Invoice
+
+**Destination Note.** Why the destination is Unknown: the house's lookup failed (asked again on the next sync) or it gave no usable answer (not asked again).
+
+### Distributor Order
+
+**Fill or Kill.** Sent to the distributor as FillOrKill=Y. Counter orders go out ticked (the buyer is waiting); web and stocking orders clear.
+
+**Freight Cost.** Freight Cost is the distributor's shipping charge from the place-order response, and the Purchase Invoice freight line (Freight and Forwarding Charges) is booked from it. Invoiced Freight is what the distributor actually invoiced (poll write-back), compared with that placement-time figure.
+
+### FFL Acquisition
+
+**Acquisition Type.** Acquisition Type choices are synced from FastBound; refresh them with 'Sync Acquire Types' in FastBound Settings.
+
+**Transfer For (Customer).** Transfer For (Customer) drives the Pending Transfer Pickups report.
+
+### FFL Disposition
+
+**GunBroker Order.** Linked to the order and never to the Sales Invoice: cancelling an invoice must not cascade into the A&D record.
+
+**Manual Override (4473 bypass).** Manual Override: a manager force-completed the sale because FastBound was unavailable or diverged (the 4473 was completed in FastBound but did not sync back). Requires Sales Manager or System Manager and a reason.
+
+**Stock Entry.** ### Stock Entry (FFL Disposition)
+
+The Material Issue that takes this firearm out of ERPNext inventory. Created automatically on submit for dispositions other than Retail Sale.
+
+### FFL Settings
+
+**Gunsmith Labor Item.** The service item a work order's labor is billed on (default GUNSMITHING). In some states repair labor is taxable, in others separately stated labor is not; ask your accountant.
+
+**Provider.** Data Service uses the connection on Data Service Settings.
+
+**Peace-Officer Exempt Tax Account.** The account is the one for the 11% firearm and ammunition excise tax. The counter then offers a Peace-Officer Exemption that takes this tax off and keeps sales tax.
+
+**Require Manager Approval for Price Reductions.** A price lowered at the counter means a line below its list price, or a line or invoice discount. A manager signed in approves their own. Discounts the system gives (pricing rules, sale prices) never ask.
+
+**Shipping Price Includes Sales Tax.** Only affects new orders; an existing order keeps the way it was created. With this on, the receipt says "sales tax included".
+
+### GunBroker Category Map
+
+**GunBroker Category ID.** A leaf category has canContainItems=true. Sandbox and production IDs have not been proven identical, so verify each one against production before go-live.
+
+**Antique.** An antique takes only a row flagged here, never the plain or C&R row for its type, and a modern gun never takes this row (Item.is_antique).
+
+### GunBroker Order
+
+**Refund Handled At.** Book the refund with Receive + Pay entries, Remarks "GunBroker Order #<number>", and tick Custom Remarks first.
+
+### GunBroker Order Line
+
+**Final Value Fee.** This line's own final value fee, tiered on its own price and rounded on its own. Summing per-line fees is what GunBroker bills; running one order total through the tiers under-charges every multi-gun order.
+
+### Item
+
+**Description.** ### Description (Item)
+
+Auto-filled from the RSR catalog on import (long_description); editable here.
+
+### Membership Plan
+
+**Billed Item.** The billed item is the service item on the invoice: non-stock, one per plan. Saving the plan turns on deferred revenue for it and points it at the Deferred Membership Revenue and Membership Revenue accounts.
+
+**Price per Period.** Membership Plan price is saved as the billed item's selling price.
+
+**Registration Item.** The registration fee is charged over the same service dates as the first period.
+
+### POS Invoice
+
+**Card Charged Amount.** ### Card Charged Amount (POS Invoice)
+
+Amount actually captured by the gateway. Held orders (charged before the 4473 cleared) re-verify the card tender against it at submit.
+
+**Card Instruction ID.** ### Card Instruction ID (POS Invoice)
+
+Set when the card processor's device payment instruction is created. It lets a timed-out or cancelled charge be reconciled.
+
+**Manual Card Settlement (manager override).** ### Manual Card Settlement (POS Invoice)
+
+Checking this bypasses the captured-versus-tender submit guard, which is why the manager override needs a reason.
+
+**Portal Refund Reference (out-of-band).** ### Portal Refund Reference (POS Invoice)
+
+Set by a manager via Confirm Portal Refund: this return's card money was sent back in the card processor's portal while the integration was switched off. Who, why and when are on the timeline. Deliberately its own field, never the tender row's reference_no: that field is force-collected by the standalone-terminal rule, so reusing it would make the refund guard clear itself.
+
+**Card Status.** ### Card Status (POS Invoice)
+
+Explicit card-charge state label, the single source for the UI and the guards. The reference and amount fields stay the money facts.
+
+**Payment Taken On Draft.** ### Payment Taken On Draft (POS Invoice)
+
+Set from the server clock when Take Payment saves this order as a Draft: a part payment, or the tender taken before the 4473 clears. The cash drawer counts the cash rows of a draft only once this is set.
+
+**Peace-Officer Excise Exemption.** ### Peace-Officer Excise Exemption (POS Invoice, Sales Order, Sales Invoice)
+
+The excise tax that comes off is posted to FFL Settings > Peace-Officer Exempt Tax Account. The sale needs the buyer and their CDTFA-230-FET certificate.
+
+**Payment Held for 4473.** ### Payment Held for 4473 (POS Invoice)
+
+Set when the tender was taken in full and the order parked as a Draft pending the 4473 and NICS (the charge-before-4473 flow). Drives the payment-screen button: Take Payment versus Paid - waiting for 4473. Cleared when a manager voids a card charge.
+
+**4473 Status.** ### 4473 Status (POS Invoice)
+
+Flips to Pending when the FastBound 4473 button starts the disposition, then to Completed when FastBound's form4473.completed webhook arrives.
+
+**FFL Transfer (4473).** ### FFL Transfer (4473) (POS Invoice)
+
+Drives receipt wording and reporting. Never read by the webhook or the disposition.
+
+**NICS Status.** ### NICS Status (POS Invoice)
+
+Flips to Proceed when FastBound's disposition.committed webhook arrives. FastBound only commits when NICS passes.
+
+### Payroc Settings
+
+**Merchant API Key.** Sent RAW in the 'Authorization: Basic <key>' header to GET /merchant/api/v1/account/authenticate to mint a JWT. Stored encrypted.
+
+**Enable Payroc Terminal Integration.** Uncheck to run WITHOUT the integrated Payroc terminal. Cards are then swiped on a standalone terminal and POS records the Credit Card tender as plain money: no gateway call, no charge/void/refund, Complete Order finishes in one click. Everything else (tax, GL, bound book) is unchanged. Re-checking it requires the Merchant API Key, which is what arms the terminal flow again.
+
+**Require Card Reference (manual terminal).** ON by default. Ask for the approval code specifically, not the batch number (one batch covers many sales, and it does not exist until the batch is closed) and not the card's last 4 (not unique). Stored on the payment line's standard Transaction Number field, exactly like Zelle. Unchecking it means a card swipe leaves nothing in this system that can be matched against the terminal's batch report. Takes effect on the next POS page load, so reload any till that is already open.
+
+**Sandbox Mode.** When checked, calls hit https://testpayments.worldnettps.com/merchant (Payroc sandbox). Production is https://payments.worldnettps.com/merchant.
+
+**Saved-Card Terminal Number.** Cards are always saved and removed on the Gateway Terminal Number.
+
+### Purchase Receipt
+
+**Transfer For (Customer).** ### Transfer For (Customer) (Purchase Receipt)
+
+Carried onto each firearm's FFL Acquisition and drives the Pending Transfer Pickups report.
+
+### Sales Invoice
+
+**GunBroker Ship-To State.** Texas marketplace sales go in Item 1 (Total Texas Sales) and come OUT of Item 2 (Taxable Sales) on the return, so the worksheet needs the destination on the invoice itself.
+
+**GunBroker Order.** Every channel-mirrored rule keys off this: no interstate tax, no exemption engine, no freight tax row, no POS receipt email, no counter Edit/Cancel, and out of the counter's Pending Order queue. The invoice is accounting only (update_stock=0); the bound-book exit was booked before it existed and hangs off the GunBroker Order.
+
+**Woo Online Order.** The Pending Order queue and the interstate-tax engine key off this. The invoice is accounting only (update_stock=0); fulfillment lives on the Woo Online Order.
+
+### Sales Order
+
+**Destination FFL.** ### Destination FFL (Sales Order, Sales Invoice)
+
+Set automatically for FFL (business) buyers.
+
+### Sales Order Item
+
+**Taken From Location.** ### Taken From Location (Sales Order Item, Sales Invoice Item, POS Invoice Item, Delivery Note Item)
+
+Where in the store a non-serialized line was taken from. That quantity leaves the location when the stock leaves.
+
+### Serial No
+
+**FastBound Item Id.** ### FastBound Item Id (Serial No)
+
+The FastBound item id for this serial, stamped one-to-one when the FFL Acquisition is pushed to FastBound.
+
+**Previous GunBroker Item IDs.** Item numbers this gun has listed under before, oldest first, most recent 20 kept. The trail for tracing a sale back through a relist.
+
+### Storage Floor Plan
+
+**Layout.** Floor plan layout format: {"shapes": [...]}. Each shape is a zone, wall, door, area or label, placed by its centre (x, y), size (w, h) in feet and rotation r in degrees; rows are the lines of slots across a Slots zone's short side. Plans are drawn on the Storage Locations page, never edited by hand.
+
+### Storage Zone
+
+**Kind.** Create one Open zone per rack, case or safe.
+
+**Numbering.** One side, or three and more sides, always count in order.
+
+**Sides.** A plan shape's own Lines of slots wins over this.
+
+### Woo Online Order
+
+**Collector Name (as printed on license).** Becomes the FastBound contact's licenseName.
+
+**Verified By.** Who compared these details against the licence, and when. A dispose RETRY that submits identical values keeps the original verifier and time (the retry changed no fact, so it must not rewrite history), while CHANGED values re-stamp to whoever entered them. The A&D trail must answer "who vouches for the data stored now", not "who touched this order first": do not simplify this to an unconditional overwrite or an unconditional keep.
+
+**Fulfillment Status.** Internal POS fulfillment lifecycle that drives the Pending Order queue, Dispose eligibility and serial write-back. Hidden from the form (managed automatically); the visible status is WooCommerce Status.
+
+**Refunds.** Deduped by refund id. The web Sales Invoice is booked (or amended) to order_total minus the sum of these, as a discount and never a phantom -1 firearm line.
+
+**Woo FFL Revision.** Monotonic revision of the FFL selection on WooCommerce. A webhook may only overwrite the FFL fields when it carries a HIGHER revision than the one stored here. That is what makes a staff edit on Woo authoritative while leaving ordinary order.updated traffic (status, refunds, serial backfill) unable to touch the FFL.
+
+### Woo Online Order Line
+
+**Serial No.** Deprecated and vestigial. Firearm serials live in the serials (Woo Online Order Serial) child table, one row per gun. Kept as a column for non-destructive migration; no longer read or written by the firearm flow. Hidden from the form.
+
+### Woo Online Order Refund
+
+**Breakdown.** Fetched: tax/shipping come from WooCommerce's refund breakdown. Pending: not read yet, so the whole refund books as a goods discount until the reconcile job reads it. Not in Woo: WooCommerce did not list this refund. Rejected: its breakdown did not add up. Both book as a goods discount, were alerted, and are not read again. Blank: recorded before breakdowns were read; never read.
+
+**Woo Refund ID.** The WooCommerce refund id is the idempotency key: a re-delivered webhook carrying the same id must never book the refund twice.
+
+### Woo Online Order Serial
+
+**Confirmed Serial.** Loose coupling: Data, not Link, so orders survive serial renames.
+
+### WooCommerce Settings
+
+**Outbound status webhook secret.** Signs the drop-ship status events the POS posts to /wp-json/ffl-core/v1/dropship-status.

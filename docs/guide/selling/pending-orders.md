@@ -121,10 +121,12 @@ Counter orders with distributor legs get a second strip of pills:
 ### Agreements
 
 A counter order whose gun needs a signed agreement shows an **Agreements** strip:
-each agreement (one per gun for an agreement signed for each firearm) reads
-**signed**, **sent, link open until** a date and time, **link expired**, or **not
-signed**. **Resend link** emails a new link to the order's email (you can change
-the address in the dialog); the old link stops working. The strip updates by
+each agreement (with the gun's serial after it, for an agreement signed for each firearm) reads
+**signed**, **sent, link open until** a date and time, **link expired**, **signature
+expired**, or **not signed**. **Resend link** emails a new link to the order's email (you can change
+the address in the dialog); the old link stops working. One link covers every
+gun on the order that is still unsigned, unless the agreement has **One copy per
+gun** ticked. The strip updates by
 itself when the customer signs.
 
 Dispose on such an order opens with a red warning: the customer has not signed,
@@ -214,8 +216,9 @@ Pushes the order to ShipStation so staff pick the carrier and buy the label
 there. It does not dispose anything and does not touch the bound book.
 
 Offered on counter and GunBroker rows while the ShipStation integration is on and
-the order has not been pushed. On a GunBroker row it appears only after Dispose,
-because the invoice ShipStation ships against is created by the dispose step.
+the order has not been pushed. On a GunBroker row it is greyed out until
+**Mark Payment Received** and works before or after Dispose (a Type 03 order is
+disposed first). See [GunBroker](../channels/gunbroker.md#working-the-order).
 Never offered on a web order: the store's own ShipStation plugin on WooCommerce
 buys that label.
 

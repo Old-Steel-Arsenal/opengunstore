@@ -17,10 +17,10 @@
 	const esc = (s) => frappe.utils.escape_html(s == null ? '' : String(s));
 	const date = (d) => (d ? frappe.datetime.str_to_user(d) : '');
 	const STATUS_COLOR = { Pending: 'orange', Active: 'green', 'Past Due': 'orange', Suspended: 'red', Cancelled: 'gray', Expired: 'gray' };
-	const cardMop = () => (frappe.boot && frappe.boot.card_mop) || 'Credit Card';
+	const cardMop = () => window.ffl.switches.cardMop();
 	const terminalLive = () => {
 		const card = frappe.boot && frappe.boot.ffl_card_processor;
-		return !!(Number(card && card.enabled) && window.ffl && window.ffl.terminalCharge);
+		return !!(Number(card && card.enabled) && window.ffl && window.ffl.chargeSalesInvoice);
 	};
 	const call = (method, args) => frappe.call({ method: M + method, args, freeze: true }).then((r) => r && r.message);
 
@@ -175,7 +175,7 @@
 					// Card on the live terminal: the server books the Payment Entry on approval. Anything
 					// else (cash, Zelle, a card already taken elsewhere) is the counter's Record Payment.
 					if (v.mode === cardMop() && terminalLive() && !v.charged_outside) {
-						await window.ffl.terminalCharge(terminalSpec(si, owed, 0));
+						await window.ffl.chargeSalesInvoice(si, owed);
 					} else {
 						await frappe.call({ method: 'ffl_core.api.manual_order.record_payment', freeze: true,
 							args: { sales_invoice: si, mode_of_payment: v.mode, amount: owed, transaction_number: v.transaction_number || '' } });
@@ -186,15 +186,6 @@
 		});
 		if (tr && tr.wire) tr.wire(d);
 		d.show();
-	}
-
-	function terminalSpec(si, amount, saveCard) {
-		return {
-			amount,
-			start: { method: 'ffl_integrations.payments.api.charge_sales_invoice', args: { sales_invoice: si, amount, ...(saveCard ? { save_card: 1 } : {}) } },
-			poll: { method: 'ffl_integrations.payments.api.poll_sales_invoice_charge', args: { sales_invoice: si } },
-			cancel: { method: 'ffl_integrations.payments.api.cancel_sales_invoice_charge', args: { sales_invoice: si } },
-		};
 	}
 
 	async function chargeAndSave(ctx, m, si, owed) {
@@ -212,7 +203,7 @@
 			return;
 		}
 		if (!(await cof.ensureSigned(ctx.customer, offer, ctx.customer_name))) return ctx.refresh();
-		await window.ffl.terminalCharge(terminalSpec(si, owed, 1));
+		await window.ffl.chargeSalesInvoice(si, owed, { saveCard: 1 });
 		ctx.refresh();
 	}
 
@@ -238,7 +229,7 @@
 			fields: [
 				{ fieldtype: 'Small Text', fieldname: 'reason', label: __('Reason'), reqd: 1 },
 				{ fieldtype: 'Check', fieldname: 'end_now', label: __('End it today'),
-					description: __('Off: it runs to {0} and is not renewed. On: it ends today. Either way any refund is a credit note made by hand.', [date(m.current_period_end)]) },
+					description: __('Off: it runs to {0} and is not renewed. On: it ends today. To give money back, use Card refund on the invoice.', [date(m.current_period_end)]) },
 			],
 			primary_action_label: __('Cancel membership'),
 			primary_action: async (v) => {

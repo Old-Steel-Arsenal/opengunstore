@@ -1,8 +1,23 @@
 """Shared helpers for ffl_core API endpoints."""
 from __future__ import annotations
 
+import json
+
 import frappe
 from frappe import _
+
+
+def coerce_payload(payload) -> dict:
+	"""A whitelisted endpoint's payload: a dict, or the JSON string the browser
+	sends. Throws on anything that is not a JSON object."""
+	if isinstance(payload, str):
+		try:
+			payload = json.loads(payload)
+		except json.JSONDecodeError:
+			frappe.throw(_("Invalid payload (not JSON)"))
+	if not isinstance(payload, dict):
+		frappe.throw(_("Invalid payload"))
+	return payload
 
 
 def default_warehouse(*, throw_if_missing: bool = False) -> str | None:

@@ -24,7 +24,7 @@ status "Failed" rather than raising.
 
 **Returns:** {ok, status, licensee_name, expiry_date}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/atf/ez_check_api.py:14`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/atf/ez_check_api.py:47`</sub>
 
 ## `verify_own_ffl`
 
@@ -40,7 +40,7 @@ back as status "Failed" with the reason rather than a traceback.
 
 **Returns:** {ok, status, licensee_name, expiry_date, error}. ``ok`` is true only for status "Verified".
 
-<sub>`apps/ffl_integrations/ffl_integrations/atf/ez_check_api.py:108`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/atf/ez_check_api.py:85`</sub>
 
 ## `verify_supplier_ffl`
 
@@ -60,4 +60,4 @@ ez_check_status/licensee/expiry; a provider outage stamps status
 
 **Returns:** {ok, status, licensee_name, expiry_date}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/atf/ez_check_api.py:62`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/atf/ez_check_api.py:67`</sub>

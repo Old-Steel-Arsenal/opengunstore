@@ -48,9 +48,9 @@
   "pay_certified_check",
   "pay_usps_money_order",
   "pay_money_order",
+  "column_payment",
   "pay_personal_check",
   "pay_cod",
-  "column_payment",
   "card_checkout_enabled",
   "pay_visa_mastercard",
   "pay_amex",
@@ -70,6 +70,7 @@
   "card_clearing_account",
   "column_accounting",
   "ffl_doc_fee",
+  "section_fee_tiers",
   "fee_tiers",
   "tab_advanced",
   "section_sync",
@@ -114,7 +115,7 @@
   },
   {
    "default": "1",
-   "description": "On: the GunBroker sandbox. Off: the live marketplace.",
+   "description": "On is the GunBroker sandbox; off is the live marketplace.",
    "fieldname": "sandbox_mode",
    "fieldtype": "Check",
    "label": "Sandbox mode"
@@ -136,7 +137,7 @@
    "mandatory_depends_on": "eval:doc.enabled"
   },
   {
-   "description": "GunBroker requires the User-Agent seller segment to match the name the DevKey was registered under. Required for the live marketplace; the sandbox does not check it.",
+   "description": "Must match the name the DevKey was registered under; required for the live marketplace.",
    "fieldname": "seller_name",
    "fieldtype": "Data",
    "label": "Seller name (as registered for the DevKey)",
@@ -171,7 +172,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "The poll reads changes from shortly before this instant.",
    "fieldname": "last_orders_synced_at",
    "fieldtype": "Datetime",
    "label": "Orders synced up to (UTC)",
@@ -220,7 +220,7 @@
   },
   {
    "default": "4 Relist Fixed Price",
-   "description": "Relist Fixed Price: runs until sold, under a new item number each cycle.",
+   "description": "Relist Fixed Price keeps the listing running until it sells.",
    "fieldname": "auto_relist",
    "fieldtype": "Select",
    "label": "Auto-relist (fixed price)",
@@ -275,7 +275,7 @@
   },
   {
    "default": "Fixed Price",
-   "description": "Preselected in the Send dialog; the person listing can pick either.",
+   "description": "Preselected in the Send dialog.",
    "fieldname": "default_listing_type",
    "fieldtype": "Select",
    "label": "Listing type offered",
@@ -294,7 +294,7 @@
   },
   {
    "default": "2 Relist Until Sold",
-   "description": "Relist Until Sold: an unsold auction runs again under a new item number.",
+   "description": "Relist Until Sold runs an unsold auction again.",
    "fieldname": "auction_auto_relist",
    "fieldtype": "Select",
    "label": "Auto-relist (auction)",
@@ -314,7 +314,7 @@
   },
   {
    "default": "45.00",
-   "description": "Used when a listing has no shipping cost of its own. 0 refuses the listing.",
+   "description": "Used when a listing has no shipping cost of its own; 0 refuses the listing.",
    "fieldname": "long_gun_ship_cost",
    "fieldtype": "Currency",
    "label": "Long gun rate (default)"
@@ -359,6 +359,10 @@
    "label": "Money order"
   },
   {
+   "fieldname": "column_payment",
+   "fieldtype": "Column Break"
+  },
+  {
    "default": "0",
    "description": "Off by default: it can bounce after the gun has shipped.",
    "fieldname": "pay_personal_check",
@@ -370,10 +374,6 @@
    "fieldname": "pay_cod",
    "fieldtype": "Check",
    "label": "COD"
-  },
-  {
-   "fieldname": "column_payment",
-   "fieldtype": "Column Break"
   },
   {
    "default": "0",
@@ -409,7 +409,7 @@
    "label": "Categories"
   },
   {
-   "description": "GunBroker category by firearm type, item group, or antique. An Item's own Category ID overrides.",
+   "description": "An Item's own GunBroker Category ID overrides this map.",
    "fieldname": "category_map",
    "fieldtype": "Table",
    "label": "Category map",
@@ -423,13 +423,13 @@
   },
   {
    "default": "do not buy",
-   "description": "One per line. A title containing any of them is refused.",
+   "description": "One per line; a title containing one is refused.",
    "fieldname": "title_banned_phrases",
    "fieldtype": "Small Text",
    "label": "Blocked title phrases"
   },
   {
-   "description": "Appended to every listing. Links and images must be https.",
+   "description": "Appended to every listing; links and images must be https.",
    "fieldname": "description_footer",
    "fieldtype": "Text Editor",
    "label": "Description footer"
@@ -438,7 +438,7 @@
    "fieldname": "section_watermark",
    "fieldtype": "Section Break",
    "label": "Photo watermark",
-   "description": "Drawn on every photo sent to GunBroker (a half-transparent panel in the lower right). The photos in POS and on the web store are not changed. Leave both empty for none."
+   "description": "Drawn on photos sent to GunBroker only; leave both empty for none."
   },
   {
    "fieldname": "watermark_image",
@@ -491,7 +491,11 @@
    "label": "FFL doc fee (per item)"
   },
   {
-   "description": "Applied per item. Upper bound 0 = no limit and must be the last row.",
+   "fieldname": "section_fee_tiers",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "Applied to each item's price, not the order total.",
    "fieldname": "fee_tiers",
    "fieldtype": "Table",
    "label": "Final value fee tiers",
@@ -509,7 +513,6 @@
   },
   {
    "default": "1",
-   "description": "Order polling and listing sweeps run on schedule.",
    "fieldname": "auto_sync_enabled",
    "fieldtype": "Check",
    "label": "Scheduled sync"
@@ -532,14 +535,14 @@
   },
   {
    "default": "Delete Endpoint",
-   "description": "Delete Endpoint: ended through the API. Manual Only: staff end them on GunBroker.",
+   "description": "Delete Endpoint ends listings through the API; Manual Only leaves it to staff on GunBroker.",
    "fieldname": "end_strategy",
    "fieldtype": "Select",
    "label": "End listings via",
    "options": "Delete Endpoint\nManual Only"
   },
   {
-   "description": "One-time back-fill from this store-time instant. Cleared after use.",
+   "description": "One-time back-fill from this time; cleared after use.",
    "fieldname": "orders_since_override",
    "fieldtype": "Datetime",
    "label": "Re-read orders since"
@@ -573,7 +576,7 @@
    "label": "API page size"
   },
   {
-   "description": "Testing only. Overrides Sandbox mode.",
+   "description": "Testing only; overrides Sandbox mode.",
    "fieldname": "base_url_override",
    "fieldtype": "Data",
    "label": "Base URL override"
@@ -584,13 +587,13 @@
    "label": "Webhooks"
   },
   {
-   "description": "The user name GunBroker sends with every webhook.",
+   "description": "Must match the user name set at gunbroker.com/account/webhooks.",
    "fieldname": "webhook_username",
    "fieldtype": "Data",
    "label": "Webhook user name"
   },
   {
-   "description": "At least 12 characters. Enter the same one at gunbroker.com/account/webhooks.",
+   "description": "At least 12 characters; enter the same one at gunbroker.com/account/webhooks.",
    "fieldname": "webhook_password",
    "fieldtype": "Password",
    "label": "Webhook password"
@@ -617,7 +620,6 @@
    "read_only": 1
   },
   {
-   "description": "Written by the webhook receiver so a running order sync knows to go round again.",
    "fieldname": "order_sync_nudge",
    "fieldtype": "Data",
    "hidden": 1,
@@ -628,7 +630,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-12 10:00:00",
+ "modified": "2026-10-30 12:30:00",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "GunBroker Settings",

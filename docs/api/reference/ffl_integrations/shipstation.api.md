@@ -40,4 +40,4 @@ The Settings form's Test Connection button.
 
 **Permissions:** System Manager (fires live outbound calls and returns the account's warehouse list).
 
-<sub>`apps/ffl_integrations/ffl_integrations/shipstation/api.py:409`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/shipstation/api.py:429`</sub>

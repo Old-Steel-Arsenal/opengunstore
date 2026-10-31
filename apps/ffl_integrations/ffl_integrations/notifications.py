@@ -11,45 +11,12 @@ from __future__ import annotations
 
 import frappe
 
+# One recipients rule and one never-raising logger for all three apps; re-exported
+# here because other modules import them from this module and tests patch these names.
+from ffl_core.alerts import alert_recipients as _recipients
+from ffl_core.alerts import safe_log_error
+
 _THROTTLE_PREFIX = "ffl_alert_sent:"
-
-
-def _system_manager_emails() -> list[str]:
-	names = frappe.get_all(
-		"Has Role",
-		filters={"role": "System Manager", "parenttype": "User"},
-		pluck="parent",
-	)
-	if not names:
-		return []
-	return [
-		e for e in frappe.get_all(
-			"User",
-			filters={"name": ("in", names), "enabled": 1, "user_type": "System User"},
-			pluck="email",
-		) if e
-	]
-
-
-def _recipients() -> list[str]:
-	raw = (frappe.db.get_single_value("FFL Settings", "alert_recipients") or "")
-	emails = [e.strip() for e in raw.replace("\n", ",").split(",") if e.strip()]
-	return emails or _system_manager_emails()
-
-
-def safe_log_error(title: str, message: str) -> None:
-	"""frappe.log_error can itself raise when frappe.flags.currently_saving is
-	uninitialised (worker/scheduler contexts), so fall back to the file logger and
-	never raise — notify_admins is contracted not to crash its caller."""
-	try:
-		frappe.log_error(message, title)
-	except Exception:
-		try:
-			frappe.logger("ffl_integrations.notifications", allow_site=True).error(
-				f"{title}: {message[:1000]}")
-		except Exception:
-			pass
-
 
 # Back-compat alias: this helper predates its promotion to a shared utility and
 # is imported under the old name by tests.

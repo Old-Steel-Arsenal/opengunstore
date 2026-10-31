@@ -4,7 +4,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const {
-	cdrwMoney, cdrwEsc, cdrwTime, cdrwDifferenceText, cdrwNeedsReason, cdrwTotals, cdrwCheckAmount,
+	cdrwMoney, cdrwEsc, cdrwTime, cdrwDifferenceText, cdrwNeedsReason, cdrwCheckAmount,
 	cdrwCheckExpense, cdrwRows, cdrwVoucherUrl, cdrwPreviewHtml, cdrwLogRows, cdrwLogCsv,
 } = require('../../ffl_core/page/cash_drawer/cash_drawer.js');
 
@@ -36,16 +36,6 @@ test('a reason is needed from the second count on, at the limit and beyond', () 
 	assert.strictEqual(cdrwNeedsReason(-19.99, 20, false), false);
 	assert.strictEqual(cdrwNeedsReason(0, 20, false), false);
 	assert.strictEqual(cdrwNeedsReason(-880, 20, true), false); // the first count sets the books
-});
-
-test('cash in and out ignore the count difference lines', () => {
-	const lines = [
-		{ kind: 'sale_pos', amount: 100 }, { kind: 'payment_in', amount: 250.5 },
-		{ kind: 'deposit', amount: -100 }, { kind: 'expense', amount: -43.3 },
-		{ kind: 'variance', amount: -8.91 }, { kind: 'cutoff', amount: -880 }, { kind: 'cutoff_trueup', amount: -300 },
-	];
-	assert.deepStrictEqual(cdrwTotals(lines), { cashIn: 350.5, cashOut: 143.3 });
-	assert.deepStrictEqual(cdrwTotals(undefined), { cashIn: 0, cashOut: 0 });
 });
 
 test('the forms say what is missing before they ask the server', () => {

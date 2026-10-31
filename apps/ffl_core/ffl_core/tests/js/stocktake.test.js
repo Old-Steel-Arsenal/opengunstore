@@ -4,7 +4,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const {
-	stkcKey, stkcMergeSerials, stkcMergeItems, stkcMissingItemKeys, stkcFilterSerials,
+	stkcKey, stkcMergeSerials, stkcMergeItems, stkcFilterSerials,
 	stkcFilterItems, stkcTouched, stkcMissingRows, stkcBlockedRows, stkcItemStatus, stkcTotals, stkcPatchCounted, stkcDefaultTicked,
 	stkcSelectedRows, stkcNeverScanned,
 } = require('../../ffl_core/page/stocktake/stocktake.js');
@@ -62,12 +62,6 @@ test('counted quantities land on the right item and warehouse; the rest read zer
 	assert.deepStrictEqual(rows.map((r) => r.counted), [0, 4, 0]);
 	assert.strictEqual(rows[1].last_entry, 'e5');
 	assert.strictEqual(rows[0].last_entry, null);
-});
-
-test('a counted row the list does not know about is reported so the page can reload', () => {
-	const counted = [{ item_code: 'NEW', warehouse: 'Shelf', counted: 1 }, { item_code: 'OPT', warehouse: 'Shelf', counted: 2 }];
-	assert.deepStrictEqual(stkcMissingItemKeys(ITEMS, counted), [stkcKey('NEW', 'Shelf')]);
-	assert.deepStrictEqual(stkcMissingItemKeys(ITEMS, []), []);
 });
 
 test('the item filters: warehouse, uncounted only, text', () => {

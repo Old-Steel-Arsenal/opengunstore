@@ -40,14 +40,14 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Dealer-confirmed serial that ships. Blank until entered in WooCommerce. Loose coupling — Data, not Link, so orders survive serial renames.",
+   "description": "The serial that ships; blank until entered in WooCommerce.",
    "fieldname": "confirmed_serial",
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Confirmed Serial"
   },
   {
-   "description": "Placeholder Serial No reserved only to hold WooCommerce stock while the confirmed serial is awaited. Released on confirm/cancel.",
+   "description": "A placeholder serial that holds web stock until the confirmed serial arrives.",
    "fieldname": "stock_hold_serial",
    "fieldtype": "Data",
    "label": "Stock Hold Serial",
@@ -61,7 +61,7 @@
   },
   {
    "default": "local",
-   "description": "Which lane fills this unit. Only local/to_store are disposed locally (H1); an fds serial is a record of RSR's shipment.",
+   "description": "Only local and to_store units are disposed here; an fds serial just records the distributor's shipment.",
    "fieldname": "fulfillment",
    "fieldtype": "Select",
    "label": "Fulfillment",

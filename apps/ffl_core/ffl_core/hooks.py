@@ -167,6 +167,8 @@ extend_bootinfo = [
 	"ffl_core.compliance.le_excise_exempt.extend_bootinfo",
 	# Whether this user's screens ask a manager before saving a lowered price (price_approval.py).
 	"ffl_core.price_approval.extend_bootinfo",
+	# The US state codes for the address forms' State dropdowns (interstate_tax.US_STATES).
+	"ffl_core.compliance.interstate_tax.extend_bootinfo",
 ]
 
 
@@ -209,7 +211,7 @@ app_include_js = [
 	# Switch staff from the sidebar's bottom-left corner, and the idle lock screen.
 	_hashed("js/staff_switch.js"),
 	# A lowered price asks a manager (PIN + reason) before the save: POS, the three forms, Create
-	# Order (price_approval.py). Needs staff_switch.js above (authMode / serverMessage).
+	# Order (price_approval.py). Needs staff_switch.js above (authMode / serverMessage / post).
 	_hashed("js/price_approval.js"),
 ]
 
@@ -715,8 +717,9 @@ doc_events = {
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
 doctype_js = {
-    "Supplier": "public/js/supplier_form.js",
-    "Customer": "public/js/customer_form.js",
+    # ffl_dealer_atf_form.js: the FFL dealer helpers both forms share; it goes first.
+    "Supplier": ["public/js/ffl_dealer_atf_form.js", "public/js/supplier_form.js"],
+    "Customer": ["public/js/ffl_dealer_atf_form.js", "public/js/customer_form.js"],
     "Item": "public/js/item_form.js",
     "Serial No": "public/js/serial_no.js",
     "Purchase Receipt": "public/js/purchase_receipt.js",

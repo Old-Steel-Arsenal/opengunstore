@@ -90,3 +90,12 @@ def pending_queue_exclusions(doctype: str = "Sales Invoice") -> dict:
 		for field in CHANNEL_INVOICE_FIELDS + extension_exclusion_fields()
 		if frappe.db.has_column(doctype, field)
 	}
+
+
+def pending_si_base_filter() -> dict:
+	"""Submitted, non-consolidated, non-return Sales Invoices whose fulfilment
+	lives on the invoice: the shared base filter of the Pending Order queue
+	(manual_order.list_pending_dispositions) and the counter-hold registry
+	(reservations.counter_holds)."""
+	return {"docstatus": 1, "is_consolidated": 0, "is_return": 0,
+		**pending_queue_exclusions()}

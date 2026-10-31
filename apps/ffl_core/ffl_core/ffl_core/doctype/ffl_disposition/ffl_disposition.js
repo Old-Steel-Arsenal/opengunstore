@@ -134,7 +134,7 @@ frappe.ui.form.on('FFL Disposition', {
 		// CLEAR a stale serial bound to the previous Item before refilling —
 		// auto-pick is guarded by `!frm.doc.serial`, so a leftover serial
 		// would silently persist (and the FastBound push would dispose the
-		// wrong firearm). Server-side _fill_serial_from_item won't catch it
+		// wrong firearm). Server-side only_active_serial fill won't catch it
 		// either (it short-circuits on truthy serial).
 		const ctrl = frm.fields_dict.serial;
 		if (!ctrl) return;
@@ -183,7 +183,7 @@ function _openAtfLookupDialog(frm) {
 				fieldname: 'ffl_number',
 				label: __('FFL Number'),
 				reqd: 1,
-				description: __('Format: 1-99-999-99-9X-99999. Hyphens optional. Hits ATF EZ Check live; the record is cached locally so picking it next time goes through the dropdown.'),
+				description: __('Format: 1-99-999-99-9X-99999; hyphens are optional.'),
 			},
 		],
 		primary_action_label: __('Lookup & Use'),

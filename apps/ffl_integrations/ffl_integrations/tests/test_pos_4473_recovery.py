@@ -760,6 +760,25 @@ class Pos4473Recovery(FrappeTestCase):
 			self._cleanup(inv, ser)
 			self._drop_bundles(bundles)
 
+	def test_submit_gate_demands_coverage_for_a_BUNDLE_line(self):
+		"""The submit gate shares the recovery read (regulated_firearm_serials), so
+		a bundle-only firearm line is not gun-less to it either: with no Retail
+		Sale disposition on the invoice, _require_disposition_coverage blocks and
+		names the bundle's serial."""
+		from ffl_core.compliance.firearm import _require_disposition_coverage
+		ser = "RCV-BUNDLE-GATE"
+		_ensure_serial(ser, self.company)
+		inv, bundles = self._draft_invoice_with_bundles(ser)
+		try:
+			doc = frappe.get_doc("POS Invoice", inv)
+			self.assertFalse(doc.items[0].serial_no, "fixture is not in bundle shape")
+			with self.assertRaises(frappe.ValidationError) as ctx:
+				_require_disposition_coverage(doc)
+			self.assertIn(ser, str(ctx.exception))
+		finally:
+			self._cleanup(inv, ser)
+			self._drop_bundles(bundles)
+
 	def test_abandon_clears_the_bound_book_for_a_BUNDLE_line_order(self):
 		"""The whole point of B1, end to end: the same clear-up on the storage
 		model a real v16 register produces."""

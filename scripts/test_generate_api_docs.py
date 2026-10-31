@@ -140,6 +140,28 @@ class DeriveCase(unittest.TestCase):
             )}, "ffl_core.api.m", "ep")
         self.assertEqual(auth, {"roles": ["System Manager"]})
 
+    def test_gate_helper_called_on_an_imported_module(self):
+        # si_reversal's `api._check_refund_perm()`: the helper lives in another module of our apps.
+        files = {
+            "ffl_integrations/payments/api.py": (
+                "import frappe\n"
+                "def _check_manager(message):\n"
+                "\troles = set(frappe.get_roles())\n"
+                "\tif not (roles & {\"Sales Manager\", \"System Manager\"}):\n\t\tfrappe.throw(message)\n"
+                "def _check_refund_perm():\n\t_check_manager(\"no\")\n"
+                "def refund():\n\tpass\n"
+            ),
+            "ffl_integrations/payments/si_reversal.py": (
+                "import frappe\n"
+                "from ffl_integrations.payments import api\n"
+                "def ep():\n\tapi._check_refund_perm()\n"
+                "def business():\n\tapi.refund()\n"
+            )}
+        auth = self.derive(files, "ffl_integrations.payments.si_reversal", "ep")
+        self.assertEqual(auth, {"roles": ["Sales Manager", "System Manager"]})
+        # a business call on the same module is not a gate
+        self.assertIsNone(self.derive(files, "ffl_integrations.payments.si_reversal", "business"))
+
     def test_helper_returning_set_intersection(self):
         auth = self.derive({
             "ffl_core/api/m.py": (
@@ -189,7 +211,8 @@ class DeriveCase(unittest.TestCase):
                 "def ep(serial):\n"
                 "\tfrappe.has_permission(\"Serial No\", \"write\", doc=serial, throw=True)\n"
             )}, "ffl_core.api.m", "ep")
-        self.assertEqual(auth, {"perm": "write permission on Serial No"})
+        self.assertEqual(auth, {"perm": "write permission on Serial No",
+            "perm_doctype": "Serial No", "perm_ptype": "write"})
 
     def test_late_gate_flagged(self):
         auth = self.derive({
@@ -269,7 +292,8 @@ class DeriveCase(unittest.TestCase):
                 "\tif not frappe.has_permission(\"Consignment Out\", ptype=\"write\"):\n"
                 "\t\tfrappe.throw(\"no\")\n"
             )}, "ffl_core.api.m", "ep")
-        self.assertEqual(auth, {"perm": "write permission on Consignment Out"})
+        self.assertEqual(auth, {"perm": "write permission on Consignment Out",
+            "perm_doctype": "Consignment Out", "perm_ptype": "write"})
 
     def test_bare_has_permission_without_throw_is_not_a_gate(self):
         auth = self.derive({
@@ -335,7 +359,9 @@ class ChecksCase(unittest.TestCase):
         contradiction = self.GOOD.replace("\treturn x\n", "\tfrappe.only_for(ROLES)\n\treturn x\n").replace(
             "\t    the value.\n", "\t    the value.\n\n\tPermissions:\n\t    Sales Manager only.\n").replace(
             "import frappe\n", "import frappe\nfrom ffl_core.roles import ROLES\n")
-        for name, source, status in (("conformant", self.GOOD, 0), ("undocumented", undocumented, 1), ("contradiction", contradiction, 1)):
+        # The action catalog is the one core output --check itself gates: it ships in the image, out of docs/api.
+        for name, source, status in (("conformant", self.GOOD, 0), ("undocumented", undocumented, 1),
+                ("contradiction", contradiction, 1), ("stale catalog", self.GOOD, 1)):
             with tempfile.TemporaryDirectory() as tmpdir:
                 tmp = make_repo(Path(tmpdir), {"ffl_core/api/m.py": source,
                     "ffl_core/roles.py": "ROLES = (\"Sales Manager\", \"System Manager\")\n"})
@@ -343,6 +369,8 @@ class ChecksCase(unittest.TestCase):
                 (tmp / "docs" / "api" / "openapi.json").write_text("{}\n")      # stale on purpose
                 saved = g.REPO, g.OUT
                 g.REPO, g.OUT = tmp, tmp / "docs" / "api"
+                for path, text in g.render_catalogs(g.collect_endpoints(g.AuthResolver())).items():
+                    path.write_text("[]\n" if name == "stale catalog" else text, encoding="utf-8")
                 stdout, stderr = io.StringIO(), io.StringIO()
                 try:
                     with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
@@ -350,7 +378,7 @@ class ChecksCase(unittest.TestCase):
                 finally:
                     g.REPO, g.OUT = saved
             self.assertEqual((got, "checks OK" in stdout.getvalue(), "STALE" in stderr.getvalue(), "DRIFT" in stderr.getvalue()),
-                (status, status == 0, False, False), (name, stderr.getvalue()))
+                (status, status == 0, name == "stale catalog", False), (name, stderr.getvalue()))
             if name == "contradiction":                  # its own heading, not "undocumented endpoints"
                 self.assertIn("CONFORMANCE FAIL — Permissions prose contradicts the derived gate:", stderr.getvalue())
                 self.assertNotIn("undocumented endpoints", stderr.getvalue())
@@ -471,7 +499,8 @@ class ExtensionCase(unittest.TestCase):
             "\tif not frappe.has_permission(\"Customer\", ptype=\"write\"):\n"
             "\t\tfrappe.throw(\"no\", frappe.PermissionError)\n"
             "\trequire_enabled(APP)\n")
-        self.assertEqual(ep["auth"], {"perm": "write permission on Customer", "switch": True})
+        self.assertEqual(ep["auth"], {"perm": "write permission on Customer", "switch": True,
+            "perm_doctype": "Customer", "perm_ptype": "write"})
         self.assertEqual(g.auth_display(ep), "Requires write permission on Customer (Frappe DocType "
             "permission check) — and only while the extension is switched on.")
 
@@ -488,7 +517,8 @@ class ExtensionCase(unittest.TestCase):
 
     def test_a_soft_permission_filter_says_the_switch_too(self):
         ep = self.gated("\trequire_enabled(APP)\n\tif not frappe.has_permission(\"Customer\"):\n\t\treturn {}\n")
-        self.assertEqual(ep["auth"], {"switch": True, "perm": "read permission on Customer", "soft": True})
+        self.assertEqual(ep["auth"], {"switch": True, "perm": "read permission on Customer", "soft": True,
+            "perm_doctype": "Customer", "perm_ptype": "read"})
         self.assertIn("instead of an error — and only while the extension is switched on.", g.auth_display(ep))
 
     def test_a_gate_helper_merges_its_switch_and_roles_the_same_way(self):
@@ -536,6 +566,33 @@ class ExtensionCase(unittest.TestCase):
             "from ffl_core.extensions import require_enabled\n", "def require_enabled(app, roles=None):\n\tpass\n")})
         (ep,) = self.endpoints()
         self.assertIsNone(ep["auth"])
+
+    def test_the_action_catalog_row_and_its_place(self):
+        (ep,) = self.endpoints()
+        catalogs = g.render_catalogs([ep])
+        path = self.root.resolve() / "acme_hello" / "api_catalog.json"
+        self.assertEqual(list(catalogs), [path])
+        (row,) = json.loads(catalogs[path])
+        self.assertEqual(row, {
+            "method": "acme_hello.api.greet.greet", "module": "acme_hello.api.greet",
+            "summary": "Say hello.", "description": "",
+            "args": [{"name": "customer", "type": "string", "required": True, "desc": "Customer name."}],
+            "returns": "dict: {\"message\": str}", "http": ["POST"], "guest": False,
+            "auth": {"roles": ["Sales User", "System Manager"], "switch": True},
+            "source": "acme_hello/api/greet.py:6"})
+        self.assertEqual(g.first_sentence("One thing. Then  another.", 200), "One thing.")
+        self.assertEqual(len(g.first_sentence("x" * 300, 200)), 200)
+
+    def test_a_stale_action_catalog_is_stale_for_an_extension(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(g.main(["--app", str(self.root)]), 0)
+        catalog = self.root / "acme_hello" / "api_catalog.json"
+        self.assertTrue(catalog.is_file())
+        self.assertEqual(self.check()[0], 0)
+        catalog.write_text("[]\n")
+        status, _, stderr = self.check()
+        self.assertEqual(status, 3)
+        self.assertIn("acme_hello/api_catalog.json — out of date", stderr)
 
     def test_render_is_the_core_format_for_one_app(self):
         endpoints = self.endpoints()

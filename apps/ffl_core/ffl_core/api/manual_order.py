@@ -52,15 +52,17 @@ from ffl_core.reservations import (
 	channel_claim_block_reason,
 	channel_presale_probe,
 	channel_hold_reason,
-	channel_reservation,
-	channel_reserve_columns,
 	counter_holds,
+	serial_shelf_state,
+	shelf_state_columns,
 	si_firearm_serial_state,
 	si_pending_firearm_serials,
 )
 from ffl_core.setup.payments import CHECK_MONEY_ORDER, ZELLE
 
 from ffl_core import agreements, price_approval, storage
+# _coerce_payload kept under this name: price_approval imports it from here.
+from ffl_core.api._helpers import coerce_payload as _coerce_payload
 from ffl_core.roles import COUNTER_ROLES
 from ffl_core.compliance.shipping_charge import shipping_tax_inclusive_setting
 from ffl_core.utils import set_missing_values_keeping_taxes
@@ -884,20 +886,8 @@ def digest_lines(rows: list, limit_days: int) -> list[str]:
 _DIGEST_CACHE_PREFIX = "ffl_core:pending_digest:"
 
 
-def _digest_recipients() -> list[str]:
-	"""FFL Settings → Alert Recipients, else every System Manager with an email.
-	Local to ffl_core on purpose: a POS-only site installs ffl_core alone."""
-	raw = frappe.db.get_single_value("FFL Settings", "alert_recipients") or ""
-	emails = [e.strip() for e in raw.replace("\n", ",").split(",") if e.strip()]
-	if emails:
-		return emails
-	names = frappe.get_all("Has Role", filters={"role": "System Manager", "parenttype": "User"},
-		pluck="parent")
-	if not names:
-		return []
-	return [u.email for u in frappe.get_all("User",
-		filters={"name": ("in", names), "enabled": 1, "user_type": "System User"},
-		fields=["email"]) if u.email]
+# Module-level name kept: tests patch it.
+from ffl_core.alerts import alert_recipients as _digest_recipients  # noqa: E402
 
 
 @frappe.whitelist()
@@ -985,16 +975,10 @@ def list_pending_dispositions() -> list[dict]:
 	# settlement invoices (an outbound consignment's, say) are the same shape
 	# of thing and declare their Link field through
 	# gunshop_pending_queue_exclusion_fields (channel_invoice).
-	base = {"docstatus": 1, "is_consolidated": 0, "is_return": 0,
-		"woo_online_order": ("is", "not set")}
-	# …and every other sales channel that mirrors its sales into an invoice —
-	# GunBroker today. Its dispositions link the GunBroker Order, not the
-	# invoice, so si_firearm_serial_state can never see its guns as disposed and
-	# every shipped GunBroker gun would sit in this queue permanently. Guarded on
-	# the column existing, because a filter naming a column a site has not
-	# migrated yet raises rather than degrades. (The woo entry above is repeated
-	# by this call where present, which is the same value — a no-op.)
-	base.update(channel_invoice.pending_queue_exclusions())
+	# GunBroker's dispositions link the GunBroker Order, not the invoice, so
+	# without the exclusion every shipped GunBroker gun would sit here for ever.
+	# Shared with reservations.counter_holds — see channel_invoice.
+	base = channel_invoice.pending_si_base_filter()
 	fields = ["name", "customer", "customer_name", "ffl_destination_ffl",
 		"ffl_buyer_type", "posting_date", "creation", "grand_total",
 		"outstanding_amount", "shipstation_status", "shipstation_order_id",
@@ -1068,12 +1052,17 @@ def list_pending_dispositions() -> list[dict]:
 			filters={"source_doctype": "Sales Invoice", "source_name": inv.name},
 			fields=["name", "distributor", "status", "order_type", "receive_status", "web_ref"])
 		# A ship-to-store leg is not done when the distributor ships it — only when
-		# it has been received here (and its gun held for this order); until then
-		# the order must stay on the queue even if the DO itself reads Complete.
-		open_legs = [d for d in dropship_legs
-			if d.status not in ("Complete", "Cancelled")
-			or (d.status == "Complete" and d.order_type == "Procure To Store"
-				and d.receive_status != "Received")]
+		# it no longer owes this order goods: every unit received here or covered
+		# from shelf stock (Fulfill from stock / Re-source raise substituted_qty, and
+		# that parcel then books as plain restock, never against the DO).
+		# Read once: the owing set, the substitutable rows and awaiting_goods all
+		# derive from the same ship-to-store lines.
+		to_store = _to_store_line_rows(inv.name) if any(
+			d.order_type == "Procure To Store" for d in dropship_legs) else {}
+		owing = set(_unreceived_to_store_orders(inv.name, to_store))
+		open_legs = [d for d in dropship_legs if d.status != "Cancelled" and (
+			d.name in owing if d.order_type == "Procure To Store"
+			else d.status != "Complete")]
 		awaiting_arrival = [row for row in si.items if is_awaiting_procurement_row(si, row)]
 		# An antique's stock never auto-issues (no disposition, no DN) — it
 		# still holds the row until the Mark step, where the operator gets
@@ -1161,7 +1150,8 @@ def list_pending_dispositions() -> list[dict]:
 				"awaiting_arrival": len(awaiting_arrival),
 				# Any unreceived ship-to-store order — guns or accessories. The Ship
 				# button reads this (push_shipment refuses the same way).
-				"awaiting_goods": bool(ship_arrival_block(si)),
+				# Same answer as ship_arrival_block(si), from the lines read above.
+				"awaiting_goods": bool(owing),
 				"distributor_orders": dropship_legs,
 				# A Draft leg the counter may place now: paid, or a ship-to-store
 				# leg (goods come to us — placeable on a deposit; see
@@ -1176,7 +1166,7 @@ def list_pending_dispositions() -> list[dict]:
 					and d.order_type != "Procure To Store" for d in dropship_legs),
 				# Ship-to-store lines not arrived yet that the shelf could serve
 				# instead (Fulfill from stock); the parcel then lands as restock.
-				"substitutable": substitutable_rows(si),
+				"substitutable": substitutable_rows(si, to_store),
 				# Legs a person must act on: killed / short-shipped / held too long.
 				"trouble": trouble_legs(dropship_legs),
 			},
@@ -1403,6 +1393,45 @@ def _reject_pan_reference(reference: str) -> None:
 			"confirmation code — never the card number."))
 
 
+def _validated_refund(refund_mode, refund_reference) -> tuple[str, str]:
+	"""The refund tender gate shared by cancel_order and update_order: a valid
+	mode, a reference for the bank tenders, a terminal approval code for a card
+	refund when one is required, and never a card number. Returns the stripped
+	(refund_mode, refund_reference)."""
+	refund_mode = (str(refund_mode or "")).strip()
+	if refund_mode not in _MODES_OF_PAYMENT:
+		frappe.throw(_("Pick a valid refund method."))
+	refund_reference = (str(refund_reference or "")).strip()
+	if refund_mode in _REFERENCED_BANK_MODES and not refund_reference:
+		frappe.throw(_("Enter the {0} for the refund.").format(
+			_reference_name(refund_mode)))
+	# Cards refunded on the standalone terminal need their approval code
+	# here too. THIS is the path the store actually refunds through — it
+	# has never raised a POS return document — so a control that lived only
+	# on returns was a control over nothing.
+	if not refund_reference and _card_reference_required_for(refund_mode):
+		frappe.throw(_(
+			"Enter the approval code from the terminal for the {0} refund. The "
+			"card is refunded on a standalone terminal, so this is the only "
+			"record that the money actually went back."
+		).format(refund_mode))
+	_reject_pan_reference(refund_reference)
+	return refund_mode, refund_reference
+
+
+def _cancel_submitted_sales_orders(sales_orders) -> list[str]:
+	"""Cancel each still-submitted linked Sales Order; return the names actually
+	cancelled (one already cancelled or in draft is skipped)."""
+	cancelled = []
+	for so_name in sales_orders:
+		if frappe.db.get_value("Sales Order", so_name, "docstatus") == 1:
+			so = frappe.get_doc("Sales Order", so_name)
+			so.flags.ignore_permissions = True
+			so.cancel()
+			cancelled.append(so_name)
+	return cancelled
+
+
 @frappe.whitelist()
 def record_payment(sales_invoice: str, mode_of_payment: str, amount=None,
 		transaction_number=None, received_on=None) -> dict:
@@ -1530,7 +1559,7 @@ def release_order_legs(sales_invoice: str) -> dict:
 		savepoint = f"release_leg_{idx}"
 		frappe.db.savepoint(savepoint)
 		try:
-			dist_api.confirm_order(do_name)
+			dist_api._confirm_order(do_name)
 			released.append(do_name)
 		except Exception as exc:  # noqa: BLE001 — isolate each leg; a failed leg stays in Draft
 			frappe.db.rollback(save_point=savepoint)
@@ -2141,6 +2170,19 @@ def _fire_counter_order_replaced(old_invoice: str, new_invoice: str) -> None:
 		frappe.get_attr(fn)(old_invoice, new_invoice)
 
 
+def _fire_counter_hold_changed(sales_invoice: str) -> None:
+	"""Fire ``ffl_counter_hold_changed`` with the reloaded invoice — a submitted
+	counter order started holding a gun without a submit/cancel event (Fulfill
+	from local stock), so each channel reconciles it as its own on_submit would.
+	Empty hook list (no channel app) → no-op."""
+	fns = frappe.get_hooks("ffl_counter_hold_changed")
+	if not fns:
+		return
+	doc = frappe.get_doc("Sales Invoice", sales_invoice)
+	for fn in fns:
+		frappe.get_attr(fn)(doc)
+
+
 def _arrived_to_store_serials(si) -> dict:
 	"""``{house: {item_code: [serial, ...]}}`` — the guns a ship-to-store order has
 	already received and hung on this invoice (assign_procured_serials). The edit
@@ -2257,7 +2299,9 @@ def resource_line(sales_invoice: str, row_name: str, distributor: str) -> dict:
 			row_name, sales_invoice))
 	if distributor == target["distributor"]:
 		frappe.throw(_("{0} is the house this line is already ordered from.").format(distributor))
-	qty = int(row.qty)
+	# Only what the old house still owes: units it already delivered (a short
+	# ship) are on the shelf for this order and must not be bought again.
+	qty = min(int(row.qty), int(target["owed"]))
 	new_name = order_line_to_store(row.item_code, distributor, qty, target["is_firearm"])
 	if not new_name:
 		frappe.throw(_("{0} could not plan an order for {1}.").format(distributor, row.item_code))
@@ -2300,20 +2344,23 @@ def _to_store_line_rows(sales_invoice: str) -> dict:
 	return out
 
 
-def _unreceived_to_store_orders(sales_invoice: str) -> list[str]:
+def _unreceived_to_store_orders(sales_invoice: str, line_rows: dict | None = None) -> list[str]:
 	"""Live ship-to-store Distributor Orders of this counter order that still owe
 	it goods: a line with units neither received nor covered from shelf stock
-	(``substituted_qty``). Empty on a site without the distributor app."""
-	names = {l.do_name for rows in _to_store_line_rows(sales_invoice).values()
-		for l in rows if l.owed > 0}
+	(``substituted_qty``). Empty on a site without the distributor app.
+	``line_rows`` is a :func:`_to_store_line_rows` result already read for it."""
+	if line_rows is None:
+		line_rows = _to_store_line_rows(sales_invoice)
+	names = {l.do_name for rows in line_rows.values() for l in rows if l.owed > 0}
 	return sorted(names)
 
 
-def substitutable_rows(si) -> list[dict]:
+def substitutable_rows(si, line_rows: dict | None = None) -> list[dict]:
 	"""The order's ship-to-store lines that have not arrived and could be served
-	from the shelf instead — what the queue's Fulfill from stock button offers."""
+	from the shelf instead — what the queue's Fulfill from stock button offers.
+	``line_rows`` is a :func:`_to_store_line_rows` result already read for it."""
 	rows = []
-	by_key = _to_store_line_rows(si.name)
+	by_key = _to_store_line_rows(si.name) if line_rows is None else line_rows
 	for row in si.items:
 		house = (row.ffl_to_store_distributor or "").strip()
 		if not house or (row.serial_no or "").strip() or int(row.delivered_by_supplier or 0):
@@ -2323,7 +2370,8 @@ def substitutable_rows(si) -> list[dict]:
 			continue
 		rows.append({"row_name": row.name, "item_code": row.item_code, "item_name": row.item_name,
 			"qty": int(row.qty), "is_firearm": is_firearm_item(row.item_code),
-			"distributor": house, "do_name": lines[0].do_name, "do_line": lines[0].name})
+			"distributor": house, "do_name": lines[0].do_name, "do_line": lines[0].name,
+			"owed": int(lines[0].owed)})
 	return rows
 
 
@@ -2414,6 +2462,11 @@ def fulfill_from_stock(sales_invoice: str, row_name: str, serial_no: str | None 
 		frappe.db.set_value("Sales Invoice Item", row.name, {
 			"serial_no": serial_no, "use_serial_batch_fields": 1, "warehouse": warehouse,
 			"ffl_to_store_distributor": ""}, update_modified=False)
+		# The raw write fires no doc event, and the invoice submitted long ago, so
+		# the channels never hear that this shelf gun is now promised. Tell them
+		# the way a submit would — the channel apps register their own
+		# on_invoice_change; none installed → no-op.
+		_fire_counter_hold_changed(sales_invoice)
 	else:
 		serial_no = ""
 		on_hand = float((_get_item_stock([row.item_code]) or {}).get(row.item_code) or 0)
@@ -2798,20 +2851,6 @@ def _receive_payment_entries(si_name: str) -> list[frappe._dict]:
 	return pes
 
 
-def _inline_tender(si) -> frappe._dict | None:
-	"""The is_pos inline tender of a full-payment counter invoice (mode +
-	Zelle reference + amount) — None for on-account invoices."""
-	if not si.get("is_pos"):
-		return None
-	rows = [p for p in (si.get("payments") or []) if flt(p.amount) > 0]
-	if not rows:
-		return None
-	return frappe._dict(
-		mode_of_payment=rows[0].mode_of_payment,
-		reference_no=(rows[0].reference_no or "").strip(),
-		amount=sum(flt(p.amount) for p in rows))
-
-
 def _inline_tender_gl(si) -> list[frappe._dict]:
 	"""What an is_pos invoice posted to its tender accounts (payment rows +
 	change account), net per account — exactly what its cancel will reverse.
@@ -3011,24 +3050,7 @@ def cancel_order(sales_invoice: str, reason: str, refund_mode: str | None = None
 	# Snapshots BEFORE cancel mutates them.
 	paid_total = flt(si.grand_total) - flt(si.outstanding_amount)
 	if paid_total > _PAID_TOLERANCE:
-		refund_mode = (str(refund_mode or "")).strip()
-		if refund_mode not in _MODES_OF_PAYMENT:
-			frappe.throw(_("Pick a valid refund method."))
-		refund_reference = (str(refund_reference or "")).strip()
-		if refund_mode in _REFERENCED_BANK_MODES and not refund_reference:
-			frappe.throw(_("Enter the {0} for the refund.").format(
-				_reference_name(refund_mode)))
-		# Cards refunded on the standalone terminal need their approval code
-		# here too. THIS is the path the store actually refunds through — it
-		# has never raised a POS return document — so a control that lived only
-		# on returns was a control over nothing.
-		if not refund_reference and _card_reference_required_for(refund_mode):
-			frappe.throw(_(
-				"Enter the approval code from the terminal for the {0} refund. The "
-				"card is refunded on a standalone terminal, so this is the only "
-				"record that the money actually went back."
-			).format(refund_mode))
-		_reject_pan_reference(refund_reference)
+		refund_mode, refund_reference = _validated_refund(refund_mode, refund_reference)
 	# The is_pos inline tender (payment rows + change) is reversed by
 	# si.cancel() itself, account by account. Snapshot exactly what the
 	# invoice posted to those accounts so it can be restored after the cancel;
@@ -3089,13 +3111,7 @@ def cancel_order(sales_invoice: str, reason: str, refund_mode: str | None = None
 	# Collect only the ones actually cancelled here (a linked SO may already be
 	# cancelled/draft and get skipped) — the report below must reflect that,
 	# not the pre-collected `sales_orders` snapshot.
-	cancelled_sos = []
-	for so_name in sales_orders:
-		if frappe.db.get_value("Sales Order", so_name, "docstatus") == 1:
-			so = frappe.get_doc("Sales Order", so_name)
-			so.flags.ignore_permissions = True
-			so.cancel()
-			cancelled_sos.append(so_name)
+	cancelled_sos = _cancel_submitted_sales_orders(sales_orders)
 
 	# 3) Refund what was actually paid. First restore the inline tender the
 	# cancel reversed, in the accounts it was posted to (money in → Receive
@@ -3192,34 +3208,17 @@ def update_order(sales_invoice: str, payload, refund_mode: str | None = None,
 
 	paid_total = flt(si.grand_total) - flt(si.outstanding_amount)
 	pes = _receive_payment_entries(si.name)
-	inline = _inline_tender(si)
+	# What the is_pos tender NET posted per account (change included) — the
+	# cancel below reverses exactly this, so it is what gets re-booked. The gross
+	# payment rows would carry the change handed back as a phantom advance.
+	inline_gl = _inline_tender_gl(si)
 	new_customer = (str(payload.get("customer") or "")).strip()
 	customer_changed = bool(new_customer) and new_customer != si.customer
 	old_contact_email = (str(si.contact_email or "")).strip()
 
-	def _valid_refund_fields():
-		nonlocal refund_mode, refund_reference
-		refund_mode = (str(refund_mode or "")).strip()
-		if refund_mode not in _MODES_OF_PAYMENT:
-			frappe.throw(_("Pick a valid refund method."))
-		refund_reference = (str(refund_reference or "")).strip()
-		if refund_mode in _REFERENCED_BANK_MODES and not refund_reference:
-			frappe.throw(_("Enter the {0} for the refund.").format(
-				_reference_name(refund_mode)))
-		# Cards refunded on the standalone terminal need their approval code
-		# here too. THIS is the path the store actually refunds through — it
-		# has never raised a POS return document — so a control that lived only
-		# on returns was a control over nothing.
-		if not refund_reference and _card_reference_required_for(refund_mode):
-			frappe.throw(_(
-				"Enter the approval code from the terminal for the {0} refund. The "
-				"card is refunded on a standalone terminal, so this is the only "
-				"record that the money actually went back."
-			).format(refund_mode))
-		_reject_pan_reference(refund_reference)
-
 	if customer_changed and paid_total > _PAID_TOLERANCE:
-		_valid_refund_fields()  # fail BEFORE any mutation
+		# fail BEFORE any mutation
+		refund_mode, refund_reference = _validated_refund(refund_mode, refund_reference)
 	# Goods already in hand ride the edit (_carry_arrived_goods); read once here.
 	arrived = _arrived_to_store_serials(si)
 	draft_ticket = open_pickup_drafts_for_invoices([si.name]).get(si.name)
@@ -3259,13 +3258,7 @@ def update_order(sales_invoice: str, payload, refund_mode: str | None = None,
 		frappe.throw(_(
 			"{0} was disposed while this edit was in progress — reload and "
 			"try again.").format(si.name))
-	cancelled_sos = []
-	for so_name in sales_orders:
-		if frappe.db.get_value("Sales Order", so_name, "docstatus") == 1:
-			so = frappe.get_doc("Sales Order", so_name)
-			so.flags.ignore_permissions = True
-			so.cancel()
-			cancelled_sos.append(so_name)
+	cancelled_sos = _cancel_submitted_sales_orders(sales_orders)
 
 	# 2) Rebuild through create_order — its own validation (serials, FFL,
 	# POS profile, taxes) IS the edit's validation; a throw rolls back 1).
@@ -3320,22 +3313,34 @@ def update_order(sales_invoice: str, payload, refund_mode: str | None = None,
 	carried, refund_entry, refunded = 0.0, None, 0.0
 	if paid_total > _PAID_TOLERANCE:
 		if customer_changed:
-			if inline:
-				_rebook_inline_tender(inline, si, against_si=None)
+			# Same restore cancel_order does before its full refund.
+			for g in inline_gl:
+				if g.net > _PAID_TOLERANCE:
+					_rebook_inline_tender(g, si, account=g.account)
+				elif g.net < -_PAID_TOLERANCE:
+					_refund_payment_entry(si, -g.net, g.mode_of_payment, None,
+						_("change given at the counter"), account=g.account)
 			refund_entry = _refund_payment_entry(
 				si, paid_total, refund_mode, refund_reference,
 				_("order edited — buyer changed to {0}").format(new_customer))
 			refunded = paid_total
 		else:
 			carried += _allocate_advances(new_si, pes)
-			if inline:
-				new_si.reload()
-				alloc_cap = flt(new_si.outstanding_amount)
-				_rebook_inline_tender(inline, si, against_si=new_si)
-				carried += min(flt(inline.amount), alloc_cap)
+			for g in inline_gl:
+				if g.net > _PAID_TOLERANCE:
+					new_si.reload()
+					alloc_cap = flt(new_si.outstanding_amount)
+					_rebook_inline_tender(g, si, against_si=new_si, account=g.account)
+					carried += min(flt(g.net), alloc_cap)
+				elif g.net < -_PAID_TOLERANCE:
+					# Change paid out of an account no tender row used: put it
+					# back out of that account, as cancel_order does.
+					_refund_payment_entry(si, -g.net, g.mode_of_payment, None,
+						_("change given at the counter"), account=g.account)
 			over = flt(paid_total) - flt(carried)
 			if over > 0.01:
-				_valid_refund_fields()
+				refund_mode, refund_reference = _validated_refund(
+					refund_mode, refund_reference)
 				new_si.reload()
 				refund_entry = _refund_payment_entry(
 					new_si, over, refund_mode, refund_reference,
@@ -3423,10 +3428,16 @@ def _presale_warning(serial_no: str) -> str | None:
 
 
 def _serial_status(term, ctx: dict | None = None,
-		ignore_invoice: str | None = None) -> tuple[dict | None, str | None]:
+		ignore_invoice: str | None = None, *,
+		probe: bool = True) -> tuple[dict | None, str | None]:
 	"""(line data, None) when the serial is sellable, (None, reason) when not —
-	the single rulebook behind the throwing find_serial_for_order (scan-to-add)
-	and the non-throwing bulk check_serials_available (draft resume).
+	the single rulebook behind the throwing find_serial_for_order (scan-to-add),
+	the non-throwing bulk check_serials_available (draft resume) and the
+	create_order / update_order submit gate (_validate_serial).
+
+	probe: run the live, advisory channel pre-sale probe. The submit gate passes
+	False — the cashier was already told at scan time, and a submit must not
+	wait on a marketplace round trip per gun.
 
 	ignore_invoice: the Edit flow re-validates an order's OWN serial lines, so a
 	serial held only by the invoice being edited must not read as unavailable —
@@ -3438,11 +3449,10 @@ def _serial_status(term, ctx: dict | None = None,
 	# Normalised up front so the custody lookup below and the per-item lookups
 	# further down share ONE cache across a bulk check.
 	ctx = ctx if ctx is not None else {}
+	# shelf_state_columns: the same row reservations.serial_shelf_state judges,
+	# so the optional consigned_out / gb_sold_unknown flags come along.
 	sn = frappe.db.get_value(
-		"Serial No", term,
-		["name", "item_code", "status", "warehouse", "is_transfer_gun",
-		 *channel_reserve_columns()],
-		as_dict=True)
+		"Serial No", term, ["name", *shelf_state_columns()], as_dict=True)
 	if not sn:
 		return None, _(
 			"No serial {0} is on file — check the number, or intake the gun "
@@ -3453,39 +3463,49 @@ def _serial_status(term, ctx: dict | None = None,
 			"Serial {0} belongs to {1}, which is not a firearm — add it as a "
 			"regular item."
 		).format(sn.name, sn.item_code)
-	if sn.status != "Active" or not sn.warehouse:
+	# The shared sellability rulebook (reservations.serial_shelf_state), judged
+	# off the row already in hand. holds={} on purpose: the counter-hold rule
+	# stays below, because it must exempt the edited invoice's own hold
+	# (ignore_invoice) and run after the claim block.
+	state = serial_shelf_state(sn.name, row=sn, holds={})
+	reason = state["reason"]
+	if reason in ("not_active", "no_warehouse"):
 		return None, _("Serial {0} is not in stock (status {1}).").format(
 			sn.name, sn.status or "—")
 	# A customer's transfer gun is Active, in a warehouse and never woo_reserved,
-	# so every check above passes it — and unlike a consigned-out gun (which is
-	# physically at a dealer and cannot be scanned), it is sitting in the store's
-	# own safe alongside sellable guns. Scanning the wrong one is an ordinary
-	# mistake with an extraordinary result: the customer's property disposed to a
-	# third party, on a 4473 made out for someone else's gun.
+	# and it is sitting in the store's own safe alongside sellable guns. Scanning
+	# the wrong one is an ordinary mistake with an extraordinary result: the
+	# customer's property disposed to a third party, on a 4473 made out for
+	# someone else's gun.
 	#
 	# Both keys, because this is a SALE gate and the row is already in hand — the
-	# same density firearm._pos_picker_excluded_serials rule 4 uses. That
-	# docstring names this function its sibling and asks that they be kept
+	# same density firearm._pos_picker_excluded_serials rule 4 uses. The shared
+	# rulebook checks only the flag; the custody-warehouse half is added here.
+	# That docstring names this function its sibling and asks that they be kept
 	# aligned; this is that alignment.
-	if sn.is_transfer_gun or (sn.warehouse and sn.warehouse in _custody_warehouses(ctx)):
+	if reason == "custody" or sn.warehouse in _custody_warehouses(ctx):
 		return None, _(
 			"Serial {0} is a customer's firearm held for an FFL transfer — it is not "
 			"the store's to sell. To hand it back to its owner, use the POS customer "
 			"transfer flow instead."
 		).format(sn.name)
-	# Every sales channel, not just Woo. Before GunBroker this line read
-	# `sn.woo_reserved` and there was only one channel to miss; a second one
-	# tested by hand here is a gun the counter can sell out from under a
-	# marketplace buyer, and a GunBroker sale cannot be unwound by the seller.
-	# The row is passed in so the answer comes off the SELECT already made.
-	held = channel_reservation(sn.name, row=sn)
-	if held:
-		return None, channel_hold_reason(sn.name, held)
+	# A consigned-out gun is already disposed to a dealer; a GunBroker "sold
+	# unknown" gun very probably has a buyer there — both fail closed.
+	if reason == "consigned_out":
+		return None, _("Serial {0} is out on consignment — it is not in the store's "
+			"stock to sell.").format(sn.name)
+	if reason == "sold_unknown":
+		return None, _("Serial {0} may have sold on GunBroker — confirm on GunBroker "
+			"and clear Sold Unknown before selling it.").format(sn.name)
+	# Every sales channel, not just Woo: a gun the counter sells out from under a
+	# marketplace buyer cannot be unwound on GunBroker.
+	if reason == "channel_reserved":
+		return None, channel_hold_reason(sn.name, state["detail"])
 	# Advisory, live, and deliberately AFTER the local flags: a channel may have
 	# a buyer we have not polled in yet. Never blocks — the hard refusal is each
 	# channel's own `before_submit` hook — but the cashier gets told now rather
 	# than at submit time. Costs nothing when no channel app is installed.
-	presale = _presale_warning(sn.name)
+	presale = _presale_warning(sn.name) if probe else None
 	if presale:
 		frappe.msgprint(presale, indicator="orange", alert=True)
 	# Unit-level, because an unassigned claim (a web or GunBroker sale not yet
@@ -3930,23 +3950,13 @@ def rename_customer(customer: str, new_name: str) -> dict:
 # ------------------------------------------------------------------ internals
 
 
-def _coerce_payload(payload) -> dict:
-	if isinstance(payload, str):
-		try:
-			payload = _json.loads(payload)
-		except _json.JSONDecodeError:
-			frappe.throw(_("Invalid payload (not JSON)"))
-	if not isinstance(payload, dict):
-		frappe.throw(_("Invalid payload"))
-	return payload
-
-
 def _validate_items(items: list) -> tuple[list[dict], set[str], bool]:
 	"""Normalise + validate order lines. Firearms are one-per-row with exactly
 	one in-stock serial, each serial used only once across the order. Returns
 	(rows, serials_seen, has_regulated_firearm)."""
 	rows: list[dict] = []
 	serials_seen: set[str] = set()
+	serial_ctx: dict = {}  # shared per-item cache for _serial_status
 	has_regulated = False
 	for line in items:
 		item_code = (str(line.get("item_code") or "")).strip()
@@ -4033,7 +4043,7 @@ def _validate_items(items: list) -> tuple[list[dict], set[str], bool]:
 					"Firearm '{0}' must be one unit per line with exactly one serial."
 				).format(item_code))
 			serial = picked[0]
-			serial_wh = _validate_serial(serial, item_code, serials_seen)
+			serial_wh = _validate_serial(serial, item_code, serials_seen, serial_ctx)
 			serials_seen.add(serial)
 			rows.append({"item_code": item_code, "qty": 1, "rate": rate,
 				"serials": [serial], "warehouse": serial_wh})
@@ -4227,6 +4237,19 @@ def _storage_state(value) -> str:
 	return normalize_us_state(value) or value
 
 
+def _line_destination_state(row: dict, destination_ffl: str | None,
+		ship_to: dict | None, cache: dict) -> str | None:
+	"""The state a shipped line lands in: a FIREARM goes to the destination FFL's
+	premise state (looked up once per `cache`), anything else to the ship-to
+	state."""
+	if is_firearm_item(row["item_code"]):
+		if "ffl" not in cache:
+			prem = ffl_premise(destination_ffl) if destination_ffl else None
+			cache["ffl"] = prem.state if prem else None
+		return cache["ffl"]
+	return (ship_to or {}).get("state")
+
+
 def _validate_dropship_restrictions(rows: list, ship_to: dict | None,
 		destination_ffl: str | None) -> None:
 	"""Block a drop-ship line whose destination state is restricted for that SKU.
@@ -4239,21 +4262,14 @@ def _validate_dropship_restrictions(rows: list, ship_to: dict | None,
 	A ship-to-store line is re-shipped from the shop to the same destinations
 	(re-shipping follows the Item.restricted_states rule), so it is checked the same way;
 	a blank ship-to on it means a counter pickup, which ships nowhere."""
-	_UNSET = object()
-	ffl_state = _UNSET
+	cache: dict = {}
 	for r in rows:
 		if r.get("source") not in _ORDERED_SOURCES:
 			continue
 		restricted = r.get("restricted_states") or ""
 		if not restricted:
 			continue
-		if is_firearm_item(r["item_code"]):
-			if ffl_state is _UNSET:
-				prem = ffl_premise(destination_ffl) if destination_ffl else None
-				ffl_state = prem.state if prem else None
-			state = ffl_state
-		else:
-			state = (ship_to or {}).get("state")
+		state = _line_destination_state(r, destination_ffl, ship_to, cache)
 		if _state_restricted(restricted, state):
 			frappe.throw(_(
 				"{0} can't be shipped to {1} (state restriction) — remove it or "
@@ -4318,19 +4334,12 @@ def _assert_single_destination_state(rows: list, payload: dict,
 	ships to a buyer address in another must tax exactly one leg wrong. Same-state
 	legs are always equivalent — and a buyer's FFL is usually in their own state — so
 	this only forces a split when it genuinely must."""
-	_UNSET = object()
-	ffl_state = _UNSET
+	cache: dict = {}
 	states = set()
 	for r in rows:
 		if r.get("source") != "dropship":
 			continue
-		if is_firearm_item(r["item_code"]):
-			if ffl_state is _UNSET:
-				prem = ffl_premise(destination_ffl) if destination_ffl else None
-				ffl_state = prem.state if prem else None
-			raw = ffl_state
-		else:
-			raw = (payload.get("ship_to") or {}).get("state")
+		raw = _line_destination_state(r, destination_ffl, payload.get("ship_to"), cache)
 		# Same normaliser as the restriction check, so "Texas" and "TX" are one state
 		# here too — and an unrecognised value still participates (exact compare)
 		# rather than being dropped, which would hide a genuine cross-state split.
@@ -4504,21 +4513,26 @@ def _fire_counter_distributor_hook(sales_invoice_name: str, context: dict) -> No
 		frappe.get_attr(fn)(sales_invoice_name, context)
 
 
-def _validate_serial(serial: str, item_code: str, serials_seen: set[str]) -> str:
-	"""Validate the serial is in stock for item_code; return its warehouse so the
-	order ships each firearm from where it actually is (not the POS default)."""
+def _validate_serial(serial: str, item_code: str, serials_seen: set[str],
+		ctx: dict | None = None) -> str:
+	"""Validate the serial is sellable for item_code; return its warehouse so the
+	order ships each firearm from where it actually is (not the POS default).
+
+	The sellable verdict is _serial_status — the same rulebook scan-to-add uses —
+	because the serial dropdown and an API/MCP caller reach here without a scan.
+	update_order needs no own-hold exemption: it cancels the old invoice first."""
 	if serial in serials_seen:
 		frappe.throw(_("Serial {0} was selected on more than one line.").format(serial))
 	sn = frappe.db.get_value(
-		"Serial No", serial, ["item_code", "status", "warehouse"], as_dict=True)
+		"Serial No", serial, ["item_code", "warehouse"], as_dict=True)
 	if not sn:
 		frappe.throw(_("Serial {0} does not exist.").format(serial))
 	if sn.item_code != item_code:
 		frappe.throw(_("Serial {0} belongs to {1}, not {2}.").format(
 			serial, sn.item_code, item_code))
-	if sn.status != "Active" or not sn.warehouse:
-		frappe.throw(_("Serial {0} is not in stock (status {1}).").format(
-			serial, sn.status or "—"))
+	_data, reason = _serial_status(serial, ctx, probe=False)
+	if reason:
+		frappe.throw(reason)
 	return sn.warehouse
 
 

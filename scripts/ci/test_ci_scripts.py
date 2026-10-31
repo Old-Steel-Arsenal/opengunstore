@@ -139,7 +139,7 @@ class FrappeRefsAreOneSource(unittest.TestCase):
 			open(os.path.join(root, "deploy/prod/frappe-refs.env"))
 			if line.strip() and not line.startswith("#"))
 		dockerfile = open(os.path.join(root, "deploy/prod/Dockerfile")).read()
-		for key in ("FRAPPE_REF", "ERPNEXT_REF"):
+		for key in ("FRAPPE_REF", "ERPNEXT_REF", "HRMS_REF"):
 			self.assertIn(f"ARG {key}={pinned[key]}\n", dockerfile, key)
 
 

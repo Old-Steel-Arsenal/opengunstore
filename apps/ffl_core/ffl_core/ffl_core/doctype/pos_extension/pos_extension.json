@@ -14,6 +14,12 @@
   "installed_on_site",
   "compatible",
   "incompatible_reason",
+  "section_update",
+  "latest_version",
+  "latest_requires_core",
+  "column_break_update",
+  "latest_sha256",
+  "latest_checked_at",
   "section_publisher",
   "publisher",
   "publisher_id",
@@ -32,14 +38,9 @@
   "section_job",
   "job_state",
   "job_started_at",
+  "column_break_job",
   "job_message",
-  "last_synced",
-  "section_update",
-  "latest_version",
-  "latest_requires_core",
-  "column_break_update",
-  "latest_sha256",
-  "latest_checked_at"
+  "last_synced"
  ],
  "fields": [
   {
@@ -71,7 +72,7 @@
    "label": "Enabled",
    "default": "1",
    "in_list_view": 1,
-   "description": "Off = hooks do nothing, endpoints refuse, POS actions hidden. Data is kept."
+   "description": "Off stops the extension and hides its POS actions; its data is kept."
   },
   {
    "fieldname": "column_break_state",
@@ -95,6 +96,39 @@
    "label": "Why not compatible",
    "read_only": 1,
    "depends_on": "eval:!doc.compatible"
+  },
+  {
+   "fieldname": "section_update",
+   "fieldtype": "Section Break",
+   "label": "Update"
+  },
+  {
+   "fieldname": "latest_version",
+   "fieldtype": "Data",
+   "label": "Newer Version Offered",
+   "read_only": 1
+  },
+  {
+   "fieldname": "latest_requires_core",
+   "fieldtype": "Data",
+   "label": "It Requires Core",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_update",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "latest_sha256",
+   "fieldtype": "Data",
+   "label": "Its SHA-256",
+   "read_only": 1
+  },
+  {
+   "fieldname": "latest_checked_at",
+   "fieldtype": "Datetime",
+   "label": "Last Checked For Updates",
+   "read_only": 1
   },
   {
    "fieldname": "section_publisher",
@@ -127,8 +161,7 @@
    "fieldname": "source",
    "fieldtype": "Data",
    "label": "Source",
-   "read_only": 1,
-   "description": "From sites/extensions.json: upload, git, marketplace; baked = shipped in the image."
+   "read_only": 1
   },
   {
    "fieldname": "installed_at",
@@ -145,7 +178,8 @@
   {
    "fieldname": "section_manifest",
    "fieldtype": "Section Break",
-   "label": "Manifest"
+   "label": "Manifest",
+   "collapsible": 1
   },
   {
    "fieldname": "description",
@@ -189,7 +223,8 @@
   {
    "fieldname": "section_job",
    "fieldtype": "Section Break",
-   "label": "Background job"
+   "label": "Background job",
+   "collapsible": 1
   },
   {
    "fieldname": "job_state",
@@ -206,6 +241,10 @@
    "read_only": 1
   },
   {
+   "fieldname": "column_break_job",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "job_message",
    "fieldtype": "Small Text",
    "label": "Job message",
@@ -216,45 +255,11 @@
    "fieldtype": "Datetime",
    "label": "Last synced",
    "read_only": 1
-  },
-  {
-   "fieldname": "section_update",
-   "fieldtype": "Section Break",
-   "label": "Update"
-  },
-  {
-   "fieldname": "latest_version",
-   "fieldtype": "Data",
-   "label": "Newer Version Offered",
-   "read_only": 1,
-   "description": "What the store's update service offers, when newer than the installed version (extensions/updates.py)."
-  },
-  {
-   "fieldname": "latest_requires_core",
-   "fieldtype": "Data",
-   "label": "It Requires Core",
-   "read_only": 1
-  },
-  {
-   "fieldname": "column_break_update",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "latest_sha256",
-   "fieldtype": "Data",
-   "label": "Its SHA-256",
-   "read_only": 1
-  },
-  {
-   "fieldname": "latest_checked_at",
-   "fieldtype": "Datetime",
-   "label": "Last Checked For Updates",
-   "read_only": 1
   }
  ],
  "in_create": 1,
  "links": [],
- "modified": "2026-09-23 18:00:00.000000",
+ "modified": "2026-10-30 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "POS Extension",

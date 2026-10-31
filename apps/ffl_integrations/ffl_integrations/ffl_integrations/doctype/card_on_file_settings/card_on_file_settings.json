@@ -11,13 +11,13 @@
  "fields": [
   {
    "default": "0",
-   "description": "Offer \"Save this card\" when a customer pays on the card terminal. Needs a processor that can keep cards and the authorization below.",
+   "description": "Needs a processor that can keep cards and the authorization below.",
    "fieldname": "card_on_file_enabled",
    "fieldtype": "Check",
    "label": "Offer to Save Cards"
   },
   {
-   "description": "The agreement the customer signs on the signing tablet before a card is saved (a Per customer template).",
+   "description": "The agreement the customer signs before a card is saved; must be a Per customer template.",
    "fieldname": "card_on_file_template",
    "fieldtype": "Link",
    "label": "Card-on-File Authorization",

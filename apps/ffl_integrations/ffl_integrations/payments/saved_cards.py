@@ -37,7 +37,7 @@ import re
 
 import frappe
 from frappe import _
-from frappe.utils import add_to_date, cint, escape_html, flt, get_datetime, now_datetime
+from frappe.utils import add_to_date, cint, escape_html, get_datetime, now_datetime
 from frappe.utils.password import get_decrypted_password
 
 from ffl_core.roles import CUSTOMER_MANAGER_ROLES
@@ -372,16 +372,7 @@ def run_saved_card_charge(sales_invoice: str, saved_card: str, amount=None,
 				"first.").format(sales_invoice))
 		return _resolve_waiting(api, row)
 
-	outstanding = flt(si.outstanding_amount, 2)
-	if outstanding <= 0.01:
-		frappe.throw(_("{0} is already paid.").format(sales_invoice))
-	amt = flt(amount) if amount not in (None, "") else outstanding
-	if amt <= 0:
-		frappe.throw(_("Amount must be > 0 (got {0}).").format(amt))
-	if flt(amt, 2) > outstanding + 0.01:
-		frappe.throw(_("Payment {0} exceeds the outstanding balance {1}.").format(
-			frappe.format_value(amt, {"fieldtype": "Currency"}),
-			frappe.format_value(outstanding, {"fieldtype": "Currency"})))
+	amt = api._charge_amount(sales_invoice, si.outstanding_amount, amount)
 
 	p.prepare()   # a configuration error surfaces before a record exists
 	attempt = len(rows) + 1

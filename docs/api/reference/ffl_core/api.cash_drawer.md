@@ -21,7 +21,7 @@ original's mark), so clearing it on the amendment really clears it.
 
 **Returns:** {purchase_receipt, cleared, receipts}; receipts are the ones the mark was taken off.
 
-<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:351`</sub>
+<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:358`</sub>
 
 ## `close_day`
 
@@ -45,7 +45,7 @@ the bank), since that money was never in the drawer.
 
 **Returns:** {close, expected, counted, variance, first_count, days_covered, covers_from, variance_je, cutoff_je, trueup_je, pos_closing_entries, pos_errors}.
 
-<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:154`</sub>
+<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:165`</sub>
 
 ## `get_log`
 
@@ -67,7 +67,7 @@ first count, plus register sales not posted yet. The balance starts from the boo
 
 **Returns:** {company, from_date, to_date, opening, closing, cash_in, cash_out, lines: [{posting_date, when, kind, label, detail, by, voucher_type, voucher_no, amount, balance}]}.
 
-<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:230`</sub>
+<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:241`</sub>
 
 ## `get_today`
 
@@ -84,9 +84,9 @@ today's seller payments by bank, and the choices for the forms. Read only: it ne
 |---|---|---|---|---|
 | `company` | string \| null | no | `None` | Company to show; defaults to the user's company. |
 
-**Returns:** {company, is_manager, expected, gl_balance, pending, history, opening, last_close, closed_today, can_undo_close, first_count, open_shifts, bank_account, threshold, expense_cap, expense_accounts, lines: [{kind, label, direction, voucher_type, voucher_no, amount, when, detail, entry, can_undo, can_fix, acquisition, purchase_receipt}], older_lines, older_net, other, bank_payouts: [{entry, acquisition, purchase_receipt, serial, amount, method, detail, can_fix}], unpaid_goods_receipts: [{purchase_receipt, customer, amount, method, posting_date, can_fix}] (Receive Goods purchases from private sellers received since cash tracking started with no seller payment standing: never paid, or undone; method is the last one recorded, if any), payout_methods}.
+**Returns:** {company, is_manager, expected, gl_balance, pending, history, opening, last_close, closed_today, can_undo_close, first_count, open_shifts, bank_account, threshold, expense_cap, expense_accounts, cash_in, cash_out (the lines' cash in and out, both positive; count differences and the first count are neither), lines: [{kind, label, direction, voucher_type, voucher_no, amount, when, detail, entry, can_undo, can_fix, acquisition, purchase_receipt}], older_lines, older_net, other, bank_payouts: [{entry, acquisition, purchase_receipt, serial, amount, method, detail, can_fix}], unpaid_goods_receipts: [{purchase_receipt, customer, amount, method, posting_date, can_fix}] (Receive Goods purchases from private sellers received since cash tracking started with no seller payment standing: never paid, or undone; method is the last one recorded, if any), payout_methods}.
 
-<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:36`</sub>
+<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:38`</sub>
 
 ## `mark_paid_outside`
 
@@ -108,7 +108,7 @@ recorded for it until the mark is cleared. Refused for a receipt paid in the sys
 
 **Returns:** {purchase_receipt, note, by, on}.
 
-<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:332`</sub>
+<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:339`</sub>
 
 ## `preview_close`
 
@@ -125,7 +125,7 @@ What closing the day with this count would do, without recording anything.
 
 **Returns:** {expected, counted, variance, threshold, first_count, needs_reason}; variance is counted minus expected (negative = short).
 
-<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:138`</sub>
+<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:149`</sub>
 
 ## `record_deposit`
 
@@ -143,7 +143,7 @@ Record cash taken to the bank: Dr Operating Bank / Cr Cash.
 
 **Returns:** {entry, journal_entry, amount, company}.
 
-<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:178`</sub>
+<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:189`</sub>
 
 ## `record_expense`
 
@@ -165,7 +165,7 @@ Needs a memo (a receipt photo is optional), stays under the cash-expense limit a
 
 **Returns:** {entry, journal_entry, amount, company}.
 
-<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:194`</sub>
+<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:205`</sub>
 
 ## `record_from_bank`
 
@@ -183,7 +183,7 @@ Record cash taken out of the bank and put in the drawer: Dr Cash / Cr Operating 
 
 **Returns:** {entry, journal_entry, amount, company}.
 
-<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:214`</sub>
+<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:225`</sub>
 
 ## `record_goods_payout`
 
@@ -210,7 +210,7 @@ as it was.
 
 **Returns:** {entry, journal_entry, amount, company, excluded}: the payment booked.
 
-<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:368`</sub>
+<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:375`</sub>
 
 ## `record_payout`
 
@@ -232,7 +232,7 @@ with the gun's receipt (record_goods_payout). Changing a recorded payment is for
 
 **Returns:** {entry, journal_entry, amount, company}.
 
-<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:313`</sub>
+<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:320`</sub>
 
 ## `undo_close`
 
@@ -250,7 +250,7 @@ The day reads as not counted again; the POS shifts it closed stay closed.
 
 **Returns:** {close, status}.
 
-<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:297`</sub>
+<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:304`</sub>
 
 ## `undo_entry`
 
@@ -271,4 +271,4 @@ Refused once a count was taken after the entry.
 
 **Returns:** {entry, status}.
 
-<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:275`</sub>
+<sub>`apps/ffl_core/ffl_core/api/cash_drawer.py:282`</sub>

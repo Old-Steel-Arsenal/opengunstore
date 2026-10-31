@@ -55,7 +55,7 @@ class _BookedCase(ModelUnitCase):
 		self._start(patch.object(fulfillment, "notify_admins"))
 		self._start(patch.object(revenue, "notify_admins"))
 		self._start(patch.object(fulfillment, "notify_channel_commitments_changed"))
-		self._start(patch.object(fulfillment, "safe_commit"))
+		self._start(patch("ffl_core.compliance.cr_transfer.commit"))
 
 	# -------------------------------------------------------------- helpers
 
@@ -175,7 +175,7 @@ class TwoUnitsAtFourNinetyNine(_BookedCase):
 		dispositions issue C and B, and the Sales Report prices the line at the
 		serials' purchase rates, 230 + 260."""
 		from ffl_core.ffl_core.report.sales_report.sales_report import (
-			_fetch_serial_costs,
+			_fetch_serial_facts,
 			_line_cost,
 		)
 
@@ -199,7 +199,7 @@ class TwoUnitsAtFourNinetyNine(_BookedCase):
 		si = self.invoice(self.order)
 		line = {"item_code": MODEL, "qty": 2, "serial_no": si.items[0].serial_no}
 		cost, _missing = _line_cost(line, {MODEL: {"is_firearm": 1}},
-			_fetch_serial_costs({si.name: [line]}))
+			_fetch_serial_facts({si.name: [line]})[0])
 		self.assertEqual(flt(cost), 490.0)
 
 	def test_a6_a_promotion_price_is_the_rate_and_the_fee_follows_it(self):

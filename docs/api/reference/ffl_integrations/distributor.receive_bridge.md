@@ -24,7 +24,7 @@ but does NOT submit anything.
 
 **Permissions:** Receive roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:471`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:470`</sub>
 
 ## `list_incoming`
 
@@ -48,7 +48,7 @@ Restock also lists the outside-POS store invoices (a parcel ordered off-system:
 
 **Permissions:** Receive roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:400`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:399`</sub>
 
 ## `match_incoming`
 
@@ -74,7 +74,7 @@ claims a parcel.
 
 **Permissions:** Receive roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:356`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:355`</sub>
 
 ## `receive_from_do`
 
@@ -100,7 +100,7 @@ DO→acquisition link.
 
 **Permissions:** Receive roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:494`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:493`</sub>
 
 ## `receive_invoice_lines`
 
@@ -132,7 +132,7 @@ looks like the parcel of an open POS order.
 
 **Permissions:** Receive roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:939`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:938`</sub>
 
 ## `receive_lines`
 
@@ -161,7 +161,7 @@ the page. Over-receiving a line (more than ``outstanding_qty``) is refused.
 
 **Permissions:** Receive roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:576`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:575`</sub>
 
 ## `stage_invoice`
 
@@ -184,4 +184,4 @@ firearm — the serials the distributor sent that are not in the books yet.
 
 **Permissions:** Receive roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:871`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/receive_bridge.py:870`</sub>

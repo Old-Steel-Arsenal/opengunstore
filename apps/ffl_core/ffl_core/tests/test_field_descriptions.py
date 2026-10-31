@@ -67,6 +67,15 @@ _CLEANED = (
 	("ffl_integrations", "POS Invoice", "card_charges"),
 )
 
+# Read-only fields the system fills in, whose label says it all: the 2026-10-30
+# layout pass left them with no help text on purpose. Blank is allowed for these
+# only; if help text comes back it is held to the same bar as the rest.
+_LABEL_ONLY = {
+	("POS Invoice", "card_refunded_amount"),
+	("POS Invoice", "card_attempt"),
+	("POS Invoice", "custom_nics_cleared_notified"),
+}
+
 
 class CleanedFieldDescriptions(FrappeTestCase):
 	"""The same bar as the consignment fields, applied to the money-fact and
@@ -91,6 +100,8 @@ class CleanedFieldDescriptions(FrappeTestCase):
 		for app, doctype, fieldname in _CLEANED:
 			description = (_fixture_rows(app)[(doctype, fieldname)]
 				.get("description") or "").strip()
+			if not description and (doctype, fieldname) in _LABEL_ONLY:
+				continue
 			self.assertGreater(
 				len(description.split()), 6,
 				f"{doctype}.{fieldname} was emptied rather than rewritten")

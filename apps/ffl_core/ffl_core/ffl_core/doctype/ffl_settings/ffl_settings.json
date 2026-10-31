@@ -12,11 +12,15 @@
   "column_store",
   "receive_sources",
   "pending_order_age_alert_days",
-  "receipt_footer_note",
-  "shipping_price_includes_tax",
-  "peace_officer_exempt_tax_account",
+  "section_counter",
   "counter_lock_minutes",
   "require_price_approval",
+  "column_counter",
+  "receipt_footer_note",
+  "section_sales_tax",
+  "shipping_price_includes_tax",
+  "column_sales_tax",
+  "peace_officer_exempt_tax_account",
   "section_gunsmithing",
   "gunsmith_labor_item",
   "column_break_gunsmithing",
@@ -24,14 +28,15 @@
   "tab_compliance",
   "section_compliance_mode",
   "paper_4473_mode",
+  "column_compliance_mode",
+  "store_customer_id_numbers",
   "section_transfer",
   "transfer_fee_item",
   "column_transfer",
   "transfer_fee_amount",
-  "section_customer_records",
-  "store_customer_id_numbers",
   "section_sale_agreements",
   "enforce_sale_agreements",
+  "column_sale_agreements",
   "used_item_agreement_template",
   "tab_verification",
   "section_live_check",
@@ -55,13 +60,13 @@
    "fieldname": "own_ffl_license",
    "fieldtype": "Data",
    "label": "Our FFL Licence Number",
-   "description": "This store's FFL. A web order naming it as the receiving FFL is treated as in-store pickup."
+   "description": "A web order naming this FFL as the receiving FFL is treated as in-store pickup."
   },
   {
    "fieldname": "alert_recipients",
    "fieldtype": "Small Text",
    "label": "Alert Recipients",
-   "description": "Emails (comma or newline separated) that receive operational alerts. Empty = all System Managers."
+   "description": "Comma or newline separated; empty sends to all System Managers."
   },
   {
    "fieldname": "column_store",
@@ -72,34 +77,19 @@
    "fieldtype": "Small Text",
    "label": "Receive Sources",
    "default": "RSR\nDistributor\nIndividual (trade-in)\nManufacturer\nConsignment\nOther",
-   "description": "One per line; fills the Source dropdown on Receive Goods, FFL Acquisition and Purchase Receipt."
+   "description": "One per line."
   },
   {
    "fieldname": "pending_order_age_alert_days",
    "fieldtype": "Int",
    "label": "Pending Order overdue after (days)",
    "default": "7",
-   "description": "A queue row older than this is marked overdue on Pending Order and listed in the managers' daily digest."
+   "description": "Pending Orders waiting longer than this are marked overdue and listed in the managers' daily digest."
   },
   {
-   "fieldname": "receipt_footer_note",
-   "fieldtype": "Small Text",
-   "label": "Receipt Footer Note",
-   "description": "Plain text printed under every receipt, one line per line. Empty prints nothing."
-  },
-  {
-   "fieldname": "shipping_price_includes_tax",
-   "fieldtype": "Check",
-   "label": "Shipping Price Includes Sales Tax",
-   "default": "1",
-   "description": "On: when an order is taxed, the shipping you enter is what the customer pays, with the sales tax already inside it, and the receipt says \"sales tax included\". Off: sales tax is added on top of the shipping. Only affects new orders; an existing order keeps the way it was created."
-  },
-  {
-   "fieldname": "peace_officer_exempt_tax_account",
-   "fieldtype": "Link",
-   "options": "Account",
-   "label": "Peace-Officer Exempt Tax Account",
-   "description": "California stores only. The excise tax account (the 11% firearm and ammunition excise tax) a sale to a peace officer or law enforcement agency is exempt from. The counter then offers a Peace-Officer Exemption that takes this tax off and keeps sales tax."
+   "fieldname": "section_counter",
+   "fieldtype": "Section Break",
+   "label": "Counter"
   },
   {
    "fieldname": "counter_lock_minutes",
@@ -107,14 +97,47 @@
    "label": "Lock Idle Screen After (minutes)",
    "default": "5",
    "non_negative": 1,
-   "description": "After this long with no touch or key, a counter screen locks and shows the staff list: the same person unlocks with their password, or another signs in. 0 = never."
+   "description": "A counter screen locks after this many idle minutes; 0 = never."
   },
   {
    "default": "1",
-   "description": "A price lowered at the counter (a line below its list price, a line or invoice discount) saves only once a Sales Manager or System Manager approves it with their counter PIN and a reason. A manager signed in approves their own. Discounts the system gives (pricing rules, sale prices) never ask.",
+   "description": "A price lowered at the counter needs a Sales Manager or System Manager to approve it with their PIN and a reason.",
    "fieldname": "require_price_approval",
    "fieldtype": "Check",
    "label": "Require Manager Approval for Price Reductions"
+  },
+  {
+   "fieldname": "column_counter",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "receipt_footer_note",
+   "fieldtype": "Small Text",
+   "label": "Receipt Footer Note",
+   "description": "Plain text printed under every receipt, one line per line."
+  },
+  {
+   "fieldname": "section_sales_tax",
+   "fieldtype": "Section Break",
+   "label": "Sales Tax"
+  },
+  {
+   "fieldname": "shipping_price_includes_tax",
+   "fieldtype": "Check",
+   "label": "Shipping Price Includes Sales Tax",
+   "default": "1",
+   "description": "On: the shipping you enter is what the customer pays, sales tax included; off: sales tax is added on top. Existing orders keep the way they were created."
+  },
+  {
+   "fieldname": "column_sales_tax",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "peace_officer_exempt_tax_account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "label": "Peace-Officer Exempt Tax Account",
+   "description": "California stores only: the excise tax account that a sale to a peace officer or law enforcement agency is exempt from. The counter then offers a Peace-Officer Exemption that removes this tax and keeps sales tax."
   },
   {
    "fieldname": "section_gunsmithing",
@@ -126,7 +149,7 @@
    "fieldtype": "Link",
    "label": "Gunsmith Labor Item",
    "options": "Item",
-   "description": "The service item a work order's labor is billed on (default GUNSMITHING). Its own Item Tax Template decides whether labor is taxed — in some states repair labor is taxable, in others separately stated labor is not; ask your accountant."
+   "description": "Whether labor is taxed follows this item's own Item Tax Template."
   },
   {
    "fieldname": "column_break_gunsmithing",
@@ -137,7 +160,7 @@
    "fieldtype": "Link",
    "label": "Intake Authorization",
    "options": "Agreement Template",
-   "description": "The Per document agreement the customer signs for a work order (default Gunsmithing Authorization)."
+   "description": "Must be a Per document agreement."
   },
   {
    "fieldname": "tab_compliance",
@@ -147,7 +170,7 @@
   {
    "fieldname": "section_compliance_mode",
    "fieldtype": "Section Break",
-   "label": "4473"
+   "label": "4473 and Customer IDs"
   },
   {
    "default": "0",
@@ -155,6 +178,17 @@
    "fieldtype": "Check",
    "label": "Paper 4473 Mode",
    "description": "4473 and NICS are handled on paper outside this system; the counter records a Paper 4473 instead of calling FastBound."
+  },
+  {
+   "fieldname": "column_compliance_mode",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "store_customer_id_numbers",
+   "fieldtype": "Check",
+   "label": "Store Customer ID Numbers",
+   "description": "Turning this off erases every stored ID number and date of birth."
   },
   {
    "fieldname": "section_transfer",
@@ -165,8 +199,7 @@
    "fieldname": "transfer_fee_item",
    "fieldtype": "Link",
    "options": "Item",
-   "label": "Transfer Fee Item",
-   "description": "Service item charged for a customer transfer-in 4473."
+   "label": "Transfer Fee Item"
   },
   {
    "fieldname": "column_transfer",
@@ -177,19 +210,7 @@
    "fieldtype": "Currency",
    "label": "Default Transfer Fee",
    "default": "25",
-   "description": "Default per-firearm fee added to a Transfer ticket; editable per sale."
-  },
-  {
-   "fieldname": "section_customer_records",
-   "fieldtype": "Section Break",
-   "label": "Customer Records"
-  },
-  {
-   "default": "0",
-   "fieldname": "store_customer_id_numbers",
-   "fieldtype": "Check",
-   "label": "Store Customer ID Numbers",
-   "description": "Keep ID numbers and dates of birth on customer records; turning this off erases the stored numbers and dates of birth, while attached ID copies, change history and deleted records are kept."
+   "description": "Charged per firearm on a transfer ticket."
   },
   {
    "fieldname": "section_sale_agreements",
@@ -201,14 +222,18 @@
    "fieldname": "enforce_sale_agreements",
    "fieldtype": "Check",
    "label": "Require Agreements at Sale",
-   "description": "A counter sale cannot be submitted until the customer has signed the agreements its items need; off, agreements are only offered and never block a sale."
+   "description": "A counter sale cannot be submitted until the customer has signed the agreements its items need."
+  },
+  {
+   "fieldname": "column_sale_agreements",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "used_item_agreement_template",
    "fieldtype": "Link",
    "label": "Used Item Agreement",
    "options": "Agreement Template",
-   "description": "Every Item marked Used needs this agreement signed before a counter sale is submitted, unless the Item or its Item Group names its own. Leave empty to turn this off.",
+   "description": "Every Used item needs this signed before a counter sale, unless the Item or its Item Group names its own.",
    "depends_on": "enforce_sale_agreements"
   },
   {
@@ -227,14 +252,14 @@
    "label": "Provider",
    "options": "ATF Form Scraper\nData Service\nManual Only",
    "default": "ATF Form Scraper",
-   "description": "Where live FFL verification is looked up. Data Service uses the connection on Data Service Settings; Manual Only disables it."
+   "description": "Manual Only turns live FFL lookup off."
   },
   {
    "fieldname": "live_check_rate_limit_per_hour",
    "fieldtype": "Int",
    "label": "Rate Limit (req/hr)",
    "default": "30",
-   "description": "Maximum ATF Form Scraper requests per hour."
+   "description": "Only used by the ATF Form Scraper provider."
   },
   {
    "fieldname": "column_live",
@@ -249,7 +274,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-28 12:00:00.000000",
+ "modified": "2026-10-30 19:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "FFL Settings",

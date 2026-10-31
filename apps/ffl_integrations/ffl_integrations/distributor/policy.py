@@ -144,6 +144,31 @@ def ensure_seed_policies() -> dict:
 	return {"created": created, "skipped": skipped}
 
 
+def ensure_distributor_row(code: str, legal_name: str, provider: str, *,
+		poll: int = 0, priority: int = 0) -> bool:
+	"""Create-once seed of a house's Distributor row, DISABLED until the operator
+	enables it in the hub. Skipped when a row with that name OR that provider
+	already exists, so operator edits (or a renamed row) are never overwritten."""
+	import frappe
+	if frappe.db.exists("Distributor", code) or frappe.db.exists(
+			"Distributor", {"provider": provider}):
+		return False
+	frappe.get_doc({
+		"doctype": "Distributor",
+		"code": code,
+		"distributor_name": legal_name,
+		"provider": provider,
+		"enabled": 0,
+		"stocking_enabled": 1,
+		"dropship_enabled": 1,
+		"poll_enabled": poll,
+		"priority": priority,
+		"safety_buffer": 3,
+		"display_cap": 5,
+	}).insert(ignore_permissions=True)
+	return True
+
+
 def ensure_scoped_policies(distributor: str, entries: list, *, note: str = "") -> dict:
 	"""Idempotent seed of distributor-scoped rows: ``entries`` =
 	``[(brand, policy, reason), ...]``. Brand-tolerant like the global seed;

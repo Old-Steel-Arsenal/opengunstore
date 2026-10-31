@@ -1329,6 +1329,38 @@
  },
  {
   "default_value": null,
+  "doc_type": "Serial No",
+  "docstatus": 0,
+  "doctype": "Property Setter",
+  "doctype_or_field": "DocField",
+  "field_name": "warranty_amc_details",
+  "is_system_generated": 0,
+  "modified": "2026-10-30 12:00:00",
+  "module": "FFL Core",
+  "name": "Serial No-warranty_amc_details-collapsible",
+  "property": "collapsible",
+  "property_type": "Check",
+  "row_name": null,
+  "value": "1"
+ },
+ {
+  "default_value": null,
+  "doc_type": "Item",
+  "docstatus": 0,
+  "doctype": "Property Setter",
+  "doctype_or_field": "DocField",
+  "field_name": "column_break_ixrh",
+  "is_system_generated": 0,
+  "modified": "2026-10-30 12:00:00",
+  "module": "FFL Core",
+  "name": "Item-column_break_ixrh-hidden",
+  "property": "hidden",
+  "property_type": "Check",
+  "row_name": null,
+  "value": "1"
+ },
+ {
+  "default_value": null,
   "doc_type": "Item",
   "docstatus": 0,
   "doctype": "Property Setter",
@@ -1341,7 +1373,7 @@
   "property": "description",
   "property_type": "Text",
   "row_name": null,
-  "value": "Long-form product copy. Auto-filled from RSR on import (long_description); editable here. Synced to WooCommerce as product description."
+  "value": "Goes to the website as the product description."
  },
  {
   "default_value": null,
@@ -1565,6 +1597,6 @@
   "property": "description",
   "property_type": "Text",
   "row_name": null,
-  "value": "Printed at the top of every customer receipt. Attach it PUBLIC: a private file (/private/files/...) needs a login the PDF renderer does not have, so the receipt prints a broken image instead of a logo."
+  "value": "Printed on every receipt; attach it as a public file, or the receipt shows a broken image."
  }
 ]

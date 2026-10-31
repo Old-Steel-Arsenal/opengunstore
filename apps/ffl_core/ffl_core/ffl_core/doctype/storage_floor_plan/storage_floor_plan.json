@@ -6,7 +6,7 @@
  "engine": "InnoDB",
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-03 15:00:00.000000",
+ "modified": "2026-10-30 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "owner": "Administrator",
@@ -90,14 +90,15 @@
   },
   {
    "fieldname": "section_break_layout",
-   "fieldtype": "Section Break"
+   "fieldtype": "Section Break",
+   "label": "Layout Data",
+   "collapsible": 1
   },
   {
    "fieldname": "layout",
    "fieldtype": "JSON",
    "label": "Layout",
-   "read_only": 1,
-   "description": "{\"shapes\": [...]}: each shape is a zone, wall, door, area or label, by its centre (x, y), size (w, h) in feet and rotation r in degrees; rows = lines of slots across a Slots zone's short side."
+   "read_only": 1
   }
  ]
 }

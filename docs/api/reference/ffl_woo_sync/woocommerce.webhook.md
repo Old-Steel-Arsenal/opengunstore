@@ -16,4 +16,4 @@ Single WooCommerce webhook entry point (guest, HMAC-verified).
 
 **Returns:** 200 with a minimal JSON body ({ok, topic/handled/error}) on success. 400 when ``?site=`` names a store this POS does not run (only the retail store is connected) and 401 when HMAC verification fails — the two cases that mean "stop delivering here", which is what a 4xx gets WooCommerce to do; the order is not read or processed for either. Every other outcome logs (where there is anything worth logging) and returns 200, so WooCommerce does not retry or auto-disable the webhook over something the caller cannot fix.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/webhook.py:2833`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/webhook.py:2938`</sub>

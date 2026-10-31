@@ -29,7 +29,7 @@ structural fix is listed in `corrected`; a gun that can't be safely auto-moved
 
 **Returns:** Import stats dict (created/synced/corrected/regroup_needed counts; plus `projected` on a dry run).
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/importer.py:91`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/importer.py:93`</sub>
 
 ## `reassign_serial_to_item`
 
@@ -60,4 +60,4 @@ pick (`ffl_woo_sync.woocommerce.tasks.rebucket_and_apply_serial_task`).
 
 **Returns:** {ok, serial, from, to, fastbound_item_id}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/importer.py:328`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/importer.py:330`</sub>

@@ -39,8 +39,12 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt, get_datetime, getdate, nowdate
 
-from ffl_core.customer_profile import WEB_STORE_CUSTOMER, find_customer_by_email
-from ffl_core.utils import guest_job_elevated
+from ffl_core.customer_profile import (
+	WEB_STORE_CUSTOMER,
+	find_customer_by_email,
+	new_retail_customer,
+)
+from ffl_core.utils import default_company as _default_company, guest_job_elevated
 
 WEB_CUSTOMER = WEB_STORE_CUSTOMER   # one name, shared with the merge refusal
 WOO_MODE_OF_PAYMENT = "WooCommerce"
@@ -51,18 +55,6 @@ _TOTAL_TOLERANCE = 0.02
 
 
 # ------------------------------------------------------------- ensure helpers
-
-
-def _default_company() -> str:
-	import erpnext
-
-	company = erpnext.get_default_company()
-	if company:
-		return company
-	names = frappe.get_all("Company", pluck="name", limit=1)
-	if not names:
-		frappe.throw(_("No Company exists — cannot book web revenue."))
-	return names[0]
 
 
 def _ensure_web_customer() -> str:
@@ -120,19 +112,10 @@ def _resolve_web_customer(order) -> str:
 	# dealer (mirrors the GunBroker guard): treat an alias hit on a dealer as no match.
 	if existing and not (existing.get("via_alias") and existing.get("is_ffl_dealer")):
 		return existing.name
-	from ffl_core.api.manual_order import _individual_group
-	doc = frappe.get_doc({
-		"doctype": "Customer",
-		"customer_name": (getattr(order, "customer_name", None) or "").strip() or email,
-		"customer_type": "Individual",
-		"is_ffl_dealer": 0,
-		"customer_group": _individual_group(),
-		"territory": frappe.db.get_single_value("Selling Settings", "territory")
-			or "All Territories",
-		"email_id": email,
-		"mobile_no": (getattr(order, "customer_phone", None) or "").strip() or None,
-		"is_tax_exempt": 0,
-	})
+	doc = new_retail_customer(
+		(getattr(order, "customer_name", None) or "").strip() or email,
+		email=email,
+		phone=(getattr(order, "customer_phone", None) or "").strip())
 	doc.flags.ignore_permissions = True
 	doc.insert()
 	return doc.name
@@ -187,8 +170,12 @@ def _sales_tax_account(company: str) -> str:
 	from ffl_core.compliance.interstate_tax import _default_template
 
 	template = _default_template(company)
+	# idx order, not the default `creation` (child rows tie on their parent's):
+	# a CA store's template carries the CFET excise row second.
 	account = template and frappe.db.get_value(
-		"Sales Taxes and Charges", {"parent": template}, "account_head")
+		"Sales Taxes and Charges",
+		{"parent": template, "parenttype": "Sales Taxes and Charges Template"},
+		"account_head", order_by="idx asc")
 	if not account:
 		frappe.throw(_(
 			"No default Sales Taxes and Charges Template with a tax account is "
@@ -447,6 +434,16 @@ def create_sales_invoice_for_web_order(order) -> dict:
 			si.flags.ignore_permissions = True
 			si.save()
 	else:
+		# A firearm in-store pickup is booked on its submitted POS Invoice; the
+		# Sales Invoice only appears when that ticket consolidates (async, and it
+		# can stay stuck — the */15 sweep alerts on that). Building one here
+		# would book the sale twice once the merge lands.
+		ticket = frappe.db.get_value(
+			"POS Invoice",
+			{"woo_online_order": order.name, "docstatus": 1, "is_return": 0},
+			"name")
+		if ticket:
+			return {"sales_invoice": None, "status": "counter_sale", "pos_invoice": ticket}
 		si = _build_invoice(order, company)
 
 	# Mirror against the NET Woo owes us (gross order_total minus any recorded

@@ -67,7 +67,9 @@ FIELDS = [
 	{"fieldname": "status_reason", "fieldtype": "Small Text", "label": "Status Reason",
 		"depends_on": _NOT_ACTIVE, "mandatory_depends_on": _BANNED,
 		"insert_after": "customer_status"},
-	{"fieldname": "column_customer_status", "fieldtype": "Column Break",
+	# Its two fields show only for Banned; hiding the column with them lets Customer Status
+	# take the section's width instead of sitting next to an empty column.
+	{"fieldname": "column_customer_status", "fieldtype": "Column Break", "depends_on": _BANNED,
 		"insert_after": "status_reason"},
 	{"fieldname": "ban_override_until", "fieldtype": "Datetime", "label": "Ban Override Until",
 		"read_only": 1, "no_copy": 1, "depends_on": _BANNED,

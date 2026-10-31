@@ -18,6 +18,7 @@ front of you wants.
 | Charge a transfer fee and nothing else | [Customer transfers](transfers.md) |
 | Add a customer, scan their ID, or look one up | [Customers](customers.md) |
 | Merge two records of the same customer | [Customers](customers.md#merging-two-records-of-the-same-person) |
+| Sell a membership, or follow up a failed renewal | [Memberships](memberships.md) |
 | Order a gun the store does not stock | [Build and ship an order](create-order.md#pickup-in-store) |
 | Order something for a customer, with a deposit now and the balance at pickup | [Build and ship an order](create-order.md#5-payment) |
 | Sell to an out-of-state buyer without sales tax | [Build and ship an order](create-order.md#sales-tax-follows-the-ship-to) |
@@ -29,6 +30,8 @@ front of you wants.
 | Record a card already run on the Virtual Terminal | [Taking payment](payments.md#card-payments-on-a-counter-order) |
 | See a card payment's terminal record | [Taking payment](payments.md#card-payments-on-a-counter-order) |
 | Void a card charge or refund one | [Taking payment](payments.md) |
+| Give card money back from a counter order's invoice | [Taking payment](payments.md#card-refund-on-a-counter-order) |
+| Keep a customer's card on file and charge it later | [Taking payment](payments.md#saving-a-card-to-charge-later) |
 | Count the drawer and close the day | [The cash drawer](cash-drawer.md#close-the-day) |
 | Take cash to the bank, or bring change back | [The cash drawer](cash-drawer.md) |
 | Pay a small expense out of the till | [The cash drawer](cash-drawer.md#cash-expense) |

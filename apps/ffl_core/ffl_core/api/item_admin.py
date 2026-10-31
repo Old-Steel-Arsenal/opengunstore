@@ -29,6 +29,7 @@ from typing import Any
 
 import frappe
 from frappe import _
+from frappe.utils import flt, now_datetime
 
 from ffl_core.roles import STOCK_ROLES
 from ffl_core.api._helpers import default_warehouse as _default_warehouse
@@ -84,6 +85,33 @@ def _normalize_codes(item_codes) -> list[str]:
 	frappe.throw(_("item_codes must be a list or comma-separated string"))
 
 
+def _stock_target(item_code: str, warehouse: str | None,
+		serial_msg: str) -> tuple[str, str]:
+	"""The gate add_stock and set_stock share: a non-serialized stock Item and a
+	warehouse (the configured default when blank) with a company. Returns
+	(warehouse, company); `serial_msg` ({0} = item_code) names the right path
+	for a serial-tracked Item."""
+	item = frappe.db.get_value(
+		"Item", item_code, ["has_serial_no", "is_stock_item"], as_dict=True)
+	if not item:
+		frappe.throw(_("Item '{0}' not found.").format(item_code))
+	if not item.is_stock_item:
+		frappe.throw(_("Item '{0}' is not a stock item.").format(item_code))
+	if item.has_serial_no:
+		frappe.throw(serial_msg.format(item_code))
+
+	warehouse = (warehouse or "").strip() or _default_warehouse()
+	if not warehouse:
+		frappe.throw(_("No warehouse configured."))
+	# Stock Entry's company must match the warehouse's company. Derive from
+	# the warehouse rather than the user-default to avoid mismatches when
+	# a non-default warehouse is passed explicitly.
+	company = frappe.db.get_value("Warehouse", warehouse, "company")
+	if not company:
+		frappe.throw(_("Warehouse '{0}' has no company.").format(warehouse))
+	return warehouse, company
+
+
 @frappe.whitelist()
 def add_stock(item_code: str, qty, warehouse: str | None = None,
 		rate=None, remarks: str | None = None) -> dict:
@@ -111,7 +139,7 @@ def add_stock(item_code: str, qty, warehouse: str | None = None,
 	Permissions:
 	    Stock Manager / System Manager.
 	"""
-	frappe.only_for(("Stock Manager", "System Manager"))
+	frappe.only_for(STOCK_ROLES)
 	item_code = (item_code or "").strip()
 	if not item_code:
 		frappe.throw(_("item_code is required."))
@@ -123,32 +151,10 @@ def add_stock(item_code: str, qty, warehouse: str | None = None,
 	if qty_f <= 0:
 		frappe.throw(_("Qty must be greater than zero."))
 
-	item = frappe.db.get_value(
-		"Item", item_code,
-		["has_serial_no", "is_stock_item", "stock_uom", "item_name"],
-		as_dict=True,
-	)
-	if not item:
-		frappe.throw(_("Item '{0}' not found.").format(item_code))
-	if not item.is_stock_item:
-		frappe.throw(_("Item '{0}' is not a stock item.").format(item_code))
-	if item.has_serial_no:
-		frappe.throw(_(
-			"Item '{0}' requires serial numbers per unit. Use the Receive Goods "
-			"page so each unit gets a Serial No record and the FFL Acquisition "
-			"is created."
-		).format(item_code))
-
-	warehouse = (warehouse or "").strip() or _default_warehouse()
-	if not warehouse:
-		frappe.throw(_("No warehouse configured."))
-
-	# Stock Entry's company must match the warehouse's company. Derive from
-	# the warehouse rather than the user-default to avoid mismatches when
-	# a non-default warehouse is passed explicitly.
-	company = frappe.db.get_value("Warehouse", warehouse, "company")
-	if not company:
-		frappe.throw(_("Warehouse '{0}' has no company.").format(warehouse))
+	warehouse, company = _stock_target(item_code, warehouse, _(
+		"Item '{0}' requires serial numbers per unit. Use the Receive Goods "
+		"page so each unit gets a Serial No record and the FFL Acquisition "
+		"is created."))
 
 	rate_f = None
 	if rate not in (None, "", 0):
@@ -194,25 +200,32 @@ def set_stock(item_code: str, new_qty, warehouse: str | None = None,
 	Receipt is faster (see add_stock); set_stock is the right primitive
 	when the user already knows the absolute target.
 
+	The quantity entered is what is on the shelf now. A register sale not yet
+	closed has left the shelf but is still in the Bin (ERPNext posts it at the
+	register close), so the reconciliation sets the Bin to the entered quantity
+	plus those units; once the close posts them the Bin reads the entered figure.
+
 	Args:
 	    item_code: Non-serialized stock Item to adjust.
-	    new_qty: Absolute on-hand target, >= 0.
+	    new_qty: Units physically on the shelf now, >= 0.
 	    warehouse: Optional target; defaults to the configured warehouse.
 	    reason: Optional audit note (stored as a Comment on the Stock
 	        Reconciliation).
 
 	Returns:
-	    {ok, name (Stock Reconciliation #), prev_qty, new_qty, delta,
-	    warehouse}.
+	    {ok, name (Stock Reconciliation #), prev_qty, new_qty (as entered),
+	    open_register_qty (units on register sales not closed yet), delta
+	    (what the reconciliation changed the Bin by), warehouse}.
 
 	Raises:
 	    ValidationError: Serial-tracked item, invalid qty, missing
-	        warehouse, or no qty change.
+	        warehouse, no qty change, or a count below the units on an
+	        open register return.
 
 	Permissions:
 	    Stock Manager / System Manager.
 	"""
-	frappe.only_for(("Stock Manager", "System Manager"))
+	frappe.only_for(STOCK_ROLES)
 	item_code = (item_code or "").strip()
 	if not item_code:
 		frappe.throw(_("item_code is required."))
@@ -223,43 +236,41 @@ def set_stock(item_code: str, new_qty, warehouse: str | None = None,
 	if new_qty_f < 0:
 		frappe.throw(_("Quantity cannot be negative."))
 
-	item = frappe.db.get_value(
-		"Item", item_code,
-		["has_serial_no", "is_stock_item", "stock_uom", "valuation_rate"],
-		as_dict=True,
-	)
-	if not item:
-		frappe.throw(_("Item '{0}' not found.").format(item_code))
-	if not item.is_stock_item:
-		frappe.throw(_("Item '{0}' is not a stock item.").format(item_code))
-	if item.has_serial_no:
-		frappe.throw(_(
-			"Item '{0}' is serial-tracked. Each unit is its own Serial No "
-			"record — adjusting bulk qty here would orphan serial entries. "
-			"Use Receive Goods to add or Stock Entry to remove specific units."
-		).format(item_code))
+	warehouse, company = _stock_target(item_code, warehouse, _(
+		"Item '{0}' is serial-tracked. Each unit is its own Serial No "
+		"record — adjusting bulk qty here would orphan serial entries. "
+		"Use Receive Goods to add or Stock Entry to remove specific units."))
 
-	warehouse = (warehouse or "").strip() or _default_warehouse()
-	if not warehouse:
-		frappe.throw(_("No warehouse configured."))
-	company = frappe.db.get_value("Warehouse", warehouse, "company")
-	if not company:
-		frappe.throw(_("Warehouse '{0}' has no company.").format(warehouse))
+	# A register sale stays in the Bin until the register closes (a return's
+	# negative qty: out of it), so the Bin must hold the shelf count plus those units.
+	from ffl_core.api.inventory_count import _open_register_sales, _row_rate
+	open_rows = _open_register_sales(
+		{(item_code, warehouse)}, now_datetime()).get((item_code, warehouse), [])
+	open_qty = flt(sum(s["qty"] for s in open_rows), 6)
+	target = flt(new_qty_f + open_qty, 6)
+	if target < 0:
+		# An open return's units are on the shelf but not yet in the Bin; a count
+		# below them cannot be squared with the close that will post them.
+		returned = flt(-sum(s["qty"] for s in open_rows if s["qty"] < 0), 6)
+		frappe.throw(_("An open register return of {0} unit(s) of {1} is not closed yet. "
+			"Include the returned units in the count, or close the register first.")
+			.format(returned, item_code))
 
 	# Read current qty so we can short-circuit no-ops
 	prev_qty = float(frappe.db.get_value(
 		"Bin", {"item_code": item_code, "warehouse": warehouse}, "actual_qty"
 	) or 0)
-	if abs(prev_qty - new_qty_f) < 1e-9:
+	if abs(prev_qty - target) < 1e-9:
 		frappe.throw(_("Stock is already {0} at {1}; nothing to adjust.")
-			.format(prev_qty, warehouse))
+			.format(new_qty_f, warehouse))
 
-	# Stock Reconciliation requires a valuation rate. Use the item's
-	# stored rate, fall back to last_purchase_rate, then 0 (zero is
-	# acceptable for write-offs / found inventory at no recorded cost).
-	rate = item.valuation_rate or 0
-	if not rate:
-		rate = float(frappe.db.get_value("Item", item_code, "last_purchase_rate") or 0)
+	# An explicit rate on a reconciliation row revalues everything already in
+	# the bin, so keep the bin's own rate when it holds stock (the item's cost
+	# otherwise). 0 = no cost on file: fine for a write-off, not for new units.
+	rate = _row_rate(item_code, warehouse, prev_qty)
+	if target > prev_qty and not rate:
+		frappe.throw(_("No cost on file for {0}: set its valuation rate, or use + Add Stock "
+			"with a rate.").format(item_code))
 
 	sr = frappe.get_doc({
 		"doctype": "Stock Reconciliation",
@@ -268,8 +279,9 @@ def set_stock(item_code: str, new_qty, warehouse: str | None = None,
 		"items": [{
 			"item_code": item_code,
 			"warehouse": warehouse,
-			"qty": new_qty_f,
+			"qty": target,
 			"valuation_rate": rate,
+			"allow_zero_valuation_rate": 0 if rate else 1,
 		}],
 	})
 	sr.flags.ignore_permissions = True
@@ -292,7 +304,8 @@ def set_stock(item_code: str, new_qty, warehouse: str | None = None,
 		"name": sr.name,
 		"prev_qty": prev_qty,
 		"new_qty": new_qty_f,
-		"delta": new_qty_f - prev_qty,
+		"open_register_qty": open_qty,
+		"delta": target - prev_qty,
 		"warehouse": warehouse,
 	}
 

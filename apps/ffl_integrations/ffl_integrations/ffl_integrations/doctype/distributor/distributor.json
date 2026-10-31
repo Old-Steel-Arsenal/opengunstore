@@ -18,6 +18,8 @@
   "stocking_enabled",
   "poll_enabled",
   "priority",
+  "section_notes",
+  "notes",
   "tab_pricing",
   "section_pricing",
   "override_dropship_defaults",
@@ -28,12 +30,12 @@
   "markup_rules",
   "tab_stock",
   "section_stock",
+  "lead_days_min",
   "safety_buffer",
   "display_cap",
   "column_stock",
-  "zero_stock_when_feed_stale",
-  "lead_days_min",
   "lead_days_max",
+  "zero_stock_when_feed_stale",
   "tab_catalog",
   "section_catalog",
   "catalog_endpoint",
@@ -42,9 +44,7 @@
   "catalog_secret",
   "tab_status",
   "section_status",
-  "last_poll_run_at",
-  "section_notes",
-  "notes"
+  "last_poll_run_at"
  ],
  "fields": [
   {
@@ -63,8 +63,7 @@
    "label": "Code",
    "reqd": 1,
    "unique": 1,
-   "in_list_view": 1,
-   "description": "Short unique code; it is the record name (the house's short name)."
+   "in_list_view": 1
   },
   {
    "fieldname": "distributor_name",
@@ -78,7 +77,7 @@
    "label": "Provider",
    "reqd": 1,
    "in_list_view": 1,
-   "description": "Registered provider code (rsr, ss)."
+   "description": "Registered provider code: rsr, ss or lipseys."
   },
   {
    "fieldname": "supplier",
@@ -129,6 +128,16 @@
    "description": "Lower first: planner column order and the default house; reorder in the Distributors hub."
   },
   {
+   "fieldname": "section_notes",
+   "fieldtype": "Section Break",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  },
+  {
    "fieldname": "tab_pricing",
    "fieldtype": "Tab Break",
    "label": "Pricing"
@@ -143,7 +152,7 @@
    "fieldtype": "Check",
    "label": "Use its own markup and stock settings",
    "default": "0",
-   "description": "Off: this distributor uses the defaults on the drop-ship extension's Pricing Settings (markup, rounding, safety buffer, display cap, zero when stale). On: it uses the values on its Pricing and Stock publishing tabs."
+   "description": "Off uses the defaults on the drop-ship Pricing Settings; on uses the values on this distributor's Pricing and Stock publishing tabs."
   },
   {
    "fieldname": "default_markup_pct",
@@ -162,7 +171,7 @@
    "label": "Rounding",
    "options": ".99\nnone\nwhole",
    "default": "none",
-   "description": "Applied to the default-markup price; a matched rule uses its own.",
+   "description": "Applies to the default-markup price only.",
    "depends_on": "eval:doc.override_dropship_defaults"
   },
   {
@@ -177,8 +186,7 @@
    "options": "Distributor Markup Rule",
    "label": "Markup rules (retired)",
    "read_only": 1,
-   "hidden": 1,
-   "description": "Moved to the drop-ship extension's Pricing Settings (one table for every distributor, this house's rules scoped to it). Kept only as the pre-move record; nothing reads it."
+   "hidden": 1
   },
   {
    "fieldname": "tab_stock",
@@ -189,6 +197,12 @@
    "fieldname": "section_stock",
    "fieldtype": "Section Break",
    "label": "Published quantity"
+  },
+  {
+   "fieldname": "lead_days_min",
+   "fieldtype": "Int",
+   "label": "Lead time (business days, from)",
+   "description": "Published to the shop as the product's lead time; leave both blank to publish none."
   },
   {
    "fieldname": "safety_buffer",
@@ -211,24 +225,18 @@
    "fieldtype": "Column Break"
   },
   {
+   "fieldname": "lead_days_max",
+   "fieldtype": "Int",
+   "label": "Lead time (business days, to)",
+   "description": "Must not be below the 'from' value."
+  },
+  {
    "fieldname": "zero_stock_when_feed_stale",
    "fieldtype": "Check",
    "label": "Zero stock when the feed is stale",
    "default": "1",
    "description": "Publish 0 for this house's items while its quantity feed is older than the watchdog threshold.",
    "depends_on": "eval:doc.override_dropship_defaults"
-  },
-  {
-   "fieldname": "lead_days_min",
-   "fieldtype": "Int",
-   "label": "Lead time (business days, from)",
-   "description": "Shortest usual delivery for this house's drop-ships. Published to the shop as the product's lead time; leave both blank to publish none."
-  },
-  {
-   "fieldname": "lead_days_max",
-   "fieldtype": "Int",
-   "label": "Lead time (business days, to)",
-   "description": "Longest usual delivery. Must not be below the 'from' value."
   },
   {
    "fieldname": "tab_catalog",
@@ -244,7 +252,7 @@
    "fieldname": "catalog_endpoint",
    "fieldtype": "Data",
    "label": "Endpoint",
-   "description": "Blank: the site-wide service on Data Service Settings. Set to read this house from its own Catalog API service (docs/catalog-api)."
+   "description": "Leave blank to use the site-wide service on Data Service Settings."
   },
   {
    "fieldname": "column_catalog",
@@ -275,20 +283,10 @@
    "fieldtype": "Datetime",
    "label": "Last order poll",
    "read_only": 1
-  },
-  {
-   "fieldname": "section_notes",
-   "fieldtype": "Section Break",
-   "label": "Notes"
-  },
-  {
-   "fieldname": "notes",
-   "fieldtype": "Small Text",
-   "label": "Notes"
   }
  ],
  "links": [],
- "modified": "2026-10-09 22:00:00",
+ "modified": "2026-10-30 12:30:00",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "Distributor",

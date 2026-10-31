@@ -38,6 +38,7 @@
   "other_insurance",
   "section_price",
   "price_drift_alert_pct",
+  "column_price",
   "hold_escalate_days",
   "section_store",
   "store_ship_name",
@@ -102,14 +103,13 @@
    "fieldtype": "Check",
    "label": "Sandbox mode",
    "default": "0",
-   "description": "On: orders are sent with Source 99994 (Sports South's test environment)."
+   "description": "On: orders go to Sports South's test environment."
   },
   {
    "fieldname": "customer_number",
    "fieldtype": "Data",
    "label": "Account number",
-   "mandatory_depends_on": "eval:doc.ordering_enabled",
-   "description": "Your Sports South account number (also the API user name and Source)."
+   "mandatory_depends_on": "eval:doc.ordering_enabled"
   },
   {
    "fieldname": "column_connection",
@@ -171,8 +171,7 @@
    "fieldname": "order_email_cc",
    "fieldtype": "Data",
    "label": "CC on FFL emails",
-   "options": "Email",
-   "description": "Optional: the shop mailbox that keeps a copy."
+   "options": "Email"
   },
   {
    "fieldname": "sales_message",
@@ -278,6 +277,10 @@
    "label": "Alert when the filled price exceeds the quote by",
    "default": "2",
    "description": "Sports South charges its current price, not the price on the order; an alert is sent when the difference is above this."
+  },
+  {
+   "fieldname": "column_price",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "hold_escalate_days",
@@ -423,8 +426,7 @@
   {
    "fieldname": "section_store_freight",
    "fieldtype": "Section Break",
-   "label": "Shipped to the store",
-   "description": "Sports South's open-account / ACH shipping rules for orders to the shop."
+   "label": "Shipped to the store"
   },
   {
    "fieldname": "store_free_handgun_qty",
@@ -459,7 +461,7 @@
    "fieldtype": "Currency",
    "label": "Alert when invoiced freight differs by more than",
    "default": "5",
-   "description": "The poll compares the freight the house invoiced with the figure booked at placement; a larger gap sends an alert."
+   "description": "Compared with the freight figure booked when the order was placed."
   },
   {
    "fieldname": "tab_status",
@@ -501,7 +503,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-09-08 12:00:00",
+ "modified": "2026-10-30 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "Sports South Settings",
