@@ -109,9 +109,22 @@ def batch(keys, *, in_houses=None) -> dict:
 def legal_of(keys) -> dict:
 	"""``{key: legal or None}`` — only the catalog master's legal answer for each
 	product (``util.prefetch_legal``): the law for a row, not a product read for
-	sourcing or pricing. Same endpoint as ``batch``; unknown keys are absent.
-	``in_houses=[]``: no Distributor read, no offers tagged — only ``legal`` is kept."""
-	return {k: p["legal"] for k, p in batch(keys, in_houses=[]).items()}
+	sourcing or pricing. Same endpoint as ``batch`` but its own read, so an
+	extension can forbid ``batch`` on a path and still ask the law; unknown keys are absent."""
+	keys = list(dict.fromkeys(k for k in keys or [] if k))
+	backend = remote_catalog._backend()
+	out: dict = {}
+	for start in range(0, len(keys), BATCH_MAX):
+		chunk = keys[start:start + BATCH_MAX]
+		data = (backend.products_batch(chunk) if backend is not None
+			else client.post(f"{PATH}/batch", {"keys": chunk}))
+		by_key = {p["key"]: p for p in data.get("products") or []}
+		renamed = data.get("keys") or {}
+		for key in chunk:
+			hit = by_key.get(renamed.get(key, key))
+			if hit is not None:
+				out[key] = hit.get("legal")
+	return out
 
 
 def product(key, *, in_houses=None):
