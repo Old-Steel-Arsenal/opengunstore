@@ -307,9 +307,10 @@ class TradeInCreditFlow(FrappeTestCase):
 		warehouse, a booked stay closed (``disposed``) by a submitted disposition, and the stamps that stay left."""
 		from frappe.utils import add_to_date, now_datetime
 		from ffl_core.acquisition import record_firearm_acquisition
-		from ffl_core.firearm import used_firearm_item_doc
+		from ffl_core.firearm import ensure_brand, used_firearm_item_doc
 
 		item, serial = f"TIC-SOLD-{suffix}", f"TIC-{suffix}"
+		ensure_brand("Glock")
 		frappe.get_doc(used_firearm_item_doc(item_code=item, item_name=item, description=item,
 			manufacturer="Glock", model_name="19", firearm_type="Pistol")).insert(ignore_permissions=True)
 		frappe.get_doc({"doctype": "Serial No", "serial_no": serial, "item_code": item}).insert(ignore_permissions=True)
