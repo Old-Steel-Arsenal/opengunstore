@@ -1,4 +1,4 @@
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 
 # Where a Website User goes when the page they belong on is switched off. A
 # Website route, deliberately: see get_website_user_home_page below for why
