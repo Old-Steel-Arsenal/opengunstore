@@ -98,6 +98,19 @@ class Modes(_Base):
 		frappe.db.set_value("Customer", self.cust.name, "is_ffl_dealer", 1)
 		self.gate(self.sale((_item().name, None)))
 
+	def test_by_item_leaves_an_ffl_dealer_alone_used_guns_too(self):
+		prev = frappe.db.get_single_value("FFL Settings", "used_item_agreement_template")
+		self.addCleanup(frappe.db.set_single_value, "FFL Settings", "used_item_agreement_template", prev)
+		frappe.db.set_single_value("FFL Settings", "used_item_agreement_template", self.tpl.name)
+		named, used = _item(ffl_required_agreement=self.tpl.name), _item(is_used=1)
+		with self.assertRaises(agreements.AgreementRequired):
+			self.gate(self.sale((used.name, None)))
+		frappe.db.set_value("Customer", self.cust.name, "is_ffl_dealer", 1)
+		self.gate(self.sale((named.name, None), (used.name, None)))
+		row = [r for r in agreements.agreements_for_sale(self.cust.name, [{"item_code": used.name}])["rows"]
+			if r["template"] == self.tpl.name]
+		self.assertEqual([r["required"] for r in row], [False])
+
 	def test_the_panel_says_how_each_agreement_is_required(self):
 		tpl = _template(requirement="Optional", show_on_counter_panel=1)
 		row = [r for r in agreements.counter_panel_rows(self.cust.name) if r["template"] == tpl.name]
