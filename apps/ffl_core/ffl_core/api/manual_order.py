@@ -2653,7 +2653,7 @@ def get_order_for_edit(sales_invoice: str) -> dict:
 	Returns:
 	    {payload: <create_order-shaped dict>, edit_ctx: {sales_invoice,
 	    customer, customer_name, contact_email, grand_total, paid_total,
-	    last_payment_mode, shipping_tax_inclusive}}. A payload item whose goods are already on order
+	    last_payment_mode, carry_block, shipping_tax_inclusive}}. A payload item whose goods are already on order
 	    carries ``ordered_do`` (that order's name): the page locks the row, and
 	    update_order enforces the lock against the orders themselves.
 
@@ -2749,6 +2749,7 @@ def get_order_for_edit(sales_invoice: str) -> dict:
 		# dealer Customer from this via create_party_from_atf on hydration.
 		payload["biz_ffl"] = si.ffl_destination_ffl
 
+	paid_total = flt(si.grand_total) - flt(si.outstanding_amount)
 	return {
 		"payload": payload,
 		"edit_ctx": {
@@ -2758,8 +2759,11 @@ def get_order_for_edit(sales_invoice: str) -> dict:
 			# So the page can drop a stale carried email on a buyer change.
 			"contact_email": si.contact_email or "",
 			"grand_total": flt(si.grand_total),
-			"paid_total": flt(si.grand_total) - flt(si.outstanding_amount),
+			"paid_total": paid_total,
 			"last_payment_mode": _last_payment_mode(si.name),
+			# Why a buyer change could not carry the payment over (None = it can).
+			"carry_block": _carry_block(si, _receive_payment_entries(si.name),
+				_inline_tender_gl(si), paid_total) if paid_total > _PAID_TOLERANCE else None,
 			# The preview must price the edit the way update_order will rebuild it.
 			"shipping_tax_inclusive": cint(si.get("ffl_shipping_tax_inclusive")),
 		},
@@ -2788,13 +2792,15 @@ def _linked_sales_orders(si) -> list[str]:
 
 
 def _refund_payment_entry(si, amount: float, mode_of_payment: str,
-		transaction_number: str | None, reason: str, account: str | None = None) -> str:
+		transaction_number: str | None, reason: str, account: str | None = None,
+		posting_date=None) -> str:
 	"""Book the refund for a cancelled order: a submitted Pay-type Payment
 	Entry to the customer for what they actually paid. The original Receive
 	PE(s) stay submitted — the money really arrived — so Receive + Pay net
 	the customer's balance to zero. Reuses _mode_of_payment_account so this
 	and _book_payment_entry can never drift on account resolution; `account`
-	overrides it only to restore a posted row's own account."""
+	overrides it only to restore a posted row's own account; `posting_date` only
+	dates a restored row on the day it was posted."""
 	account = account or _mode_of_payment_account(mode_of_payment, si.company)
 	if not account:
 		frappe.throw(_(
@@ -2805,7 +2811,7 @@ def _refund_payment_entry(si, amount: float, mode_of_payment: str,
 		"doctype": "Payment Entry",
 		"payment_type": "Pay",
 		"company": si.company,
-		"posting_date": nowdate(),
+		"posting_date": posting_date or nowdate(),
 		"mode_of_payment": mode_of_payment,
 		"party_type": "Customer",
 		"party": si.customer,
@@ -2816,7 +2822,7 @@ def _refund_payment_entry(si, amount: float, mode_of_payment: str,
 		"source_exchange_rate": 1,
 		"target_exchange_rate": 1,
 		"reference_no": (transaction_number or si.name),
-		"reference_date": nowdate(),
+		"reference_date": posting_date or nowdate(),
 		"custom_remarks": 1,
 		"remarks": _("Refund for cancelled {0}. Reason: {1}").format(si.name, reason),
 	})
@@ -2930,14 +2936,17 @@ def _allocate_advances(new_si, sources) -> float:
 	return allocated
 
 
-def _rebook_inline_tender(inline, old_si, against_si=None, account=None) -> str:
+def _rebook_inline_tender(inline, old_si, against_si=None, account=None,
+		posting_date=None, remark=None) -> str:
 	"""The old invoice's cancel reversed its inline POS tender in GL, but the
 	cash never left the drawer — re-book the FULL original amount as a Receive
-	Payment Entry. Against the rebuilt invoice when the buyer is unchanged
-	(allocation caps at outstanding; any remainder rides as an advance), or as
-	a pure advance on the ORIGINAL customer when the buyer changed (the
-	full-amount refund then nets it — skipping this re-book would push the
-	cash GL below what is physically in the drawer)."""
+	Payment Entry. Against the rebuilt invoice when the buyer is unchanged or the
+	payment carries to the new buyer (allocation caps at outstanding; any
+	remainder rides as an advance), or as a pure advance on the ORIGINAL customer
+	when the buyer changed and is refunded (the full-amount refund then nets it —
+	skipping this re-book would push the cash GL below what is physically in the
+	drawer). A carry dates it on the sale's own day and says who paid
+	(`posting_date`, `remark`)."""
 	mode = inline.mode_of_payment
 	company = (against_si or old_si).company
 	# `account`: the tender row's own posted account — the cancel reversed THAT
@@ -2966,13 +2975,107 @@ def _rebook_inline_tender(inline, old_si, against_si=None, account=None) -> str:
 		})
 	pe.mode_of_payment = mode
 	pe.reference_no = inline.reference_no or old_si.name
-	pe.reference_date = nowdate()
+	pe.posting_date = pe.reference_date = posting_date or nowdate()
+	if remark:
+		pe.custom_remarks, pe.remarks = 1, remark
 	pe.set_amounts()
 	pe.flags.ignore_permissions = True
 	pe.insert()
 	pe.submit()
 	pe.add_comment("Comment", _(
 		"Re-booked inline tender of edited {0}.").format(old_si.name))
+	return pe.name
+
+
+def _carry_block(si, pes, inline_gl, paid_total) -> str | None:
+	"""Why the paid money cannot carry to a new buyer, or None. A carry moves
+	each receipt to the new buyer on its ORIGINAL day, all or nothing, so
+	anything that pins a receipt where it is refuses it — read before any change.
+	The bookkeeper moves such a payment by hand."""
+	if cint(frappe.db.get_single_value("Accounts Settings", "enable_immutable_ledger")):
+		# A cancel would post its reversal today while the amendment keeps the
+		# receipt's own day: the tender account doubled on one day, short on the other.
+		return _("the immutable ledger is on")
+	if abs(sum(flt(p.allocated) for p in pes) + sum(g.net for g in inline_gl)
+			- flt(paid_total)) > 0.01:
+		return _("part of it was settled by a journal entry or credit note")
+	names = [p.name for p in pes]
+	rows = frappe.get_all("Payment Entry", filters={"name": ("in", names or [""])},
+		fields=["name", "posting_date", "paid_amount", "clearance_date"])
+	alloc = {p.name: flt(p.allocated) for p in pes}
+	if any(abs(flt(r.paid_amount) - alloc[r.name]) > 0.01 for r in rows) or any(
+			(ref.reference_doctype, ref.reference_name) != ("Sales Invoice", si.name)
+			for ref in frappe.get_all("Payment Entry Reference",
+				filters={"parent": ("in", names or [""])},
+				fields=["reference_doctype", "reference_name"])):
+		return _("a payment also covers something other than this order")
+	if frappe.db.exists("Payment Entry Deduction", {"parent": ("in", names or [""])}):
+		return _("a payment carries a deduction or write-off")
+	if any(r.clearance_date for r in rows) or frappe.db.exists("Bank Transaction Payments",
+			{"payment_document": "Payment Entry", "payment_entry": ("in", names or [""]),
+				"docstatus": ("<", 2)}):
+		return _("a payment is already matched to the bank")
+	if names and frappe.db.exists("DocType", "Card Terminal Payment") and any(
+			c.status != "CHARGED" or flt(c.refunded_amount) > _PAID_TOLERANCE or c.reversal_lock
+			for c in frappe.get_all("Card Terminal Payment", filters={"payment_entry": ("in", names)},
+				fields=["status", "refunded_amount", "reversal_lock"])):
+		return _("its card charge was already voided or refunded")
+	frozen = frappe.db.get_value("Company", si.company, "accounts_frozen_till_date")
+	closed = frappe.db.get_value("Period Closing Voucher",
+		{"docstatus": 1, "company": si.company}, [{"MAX": "period_end_date"}])
+	for day in [r.posting_date for r in rows] + ([si.posting_date] if inline_gl else []):
+		# Unconditional — no frozen-entries role or exempted role gets around it here.
+		if (frozen and getdate(day) <= getdate(frozen)) or (closed and getdate(day) <= getdate(closed)) \
+				or frappe.db.sql("""select 1 from `tabAccounting Period` ap join `tabClosed Document` cd
+					on cd.parent = ap.name where ap.company = %s and ap.disabled = 0 and cd.closed = 1
+					and cd.document_type = 'Payment Entry' and %s between ap.start_date and ap.end_date
+					limit 1""", (si.company, day)):
+			return _("it was taken on {0}, in a closed period").format(day)
+	return None
+
+
+def _carry_remark(old_si, new_si, mode: str, reference: str, day, inline: bool = False) -> str:
+	"""Who really paid — after a carry the party only says who owes."""
+	how = _("{0} on {1}").format(" ".join(filter(None, [mode, reference])), day)
+	if inline:
+		how = _("{0} (inline counter tender of {1})").format(how, old_si.name)
+	return _("Paid by {0} ({1}) via {2}; carried to {3} ({4}) for {5} when {6} was "
+		"edited (buyer changed) on {7} by {8}.").format(
+		old_si.customer_name, old_si.customer, how, new_si.customer_name,
+		new_si.customer, new_si.name, old_si.name, nowdate(), frappe.session.user)
+
+
+def _carry_receipt(name: str, old_si, new_si, take: float) -> str:
+	"""Move one receipt to the new buyer: cancel the Receive PE and amend it — same
+	day, amount, tender, account and reference; only the party moves, applied
+	`take` to the rebuilt invoice (the rest rides as the new buyer's advance). The
+	card charge row follows its receipt."""
+	old = frappe.get_doc("Payment Entry", name)
+	old.flags.ignore_permissions = True
+	old.cancel()
+	pe = frappe.copy_doc(old)
+	pe.docstatus = 0
+	pe.amended_from = old.name
+	pe.party = new_si.customer
+	pe.set("references", [])
+	if take > _PAID_TOLERANCE:
+		pe.append("references", {"reference_doctype": "Sales Invoice",
+			"reference_name": new_si.name, "allocated_amount": take})
+	pe.custom_remarks = 1
+	pe.remarks = _carry_remark(old_si, new_si, old.mode_of_payment, old.reference_no,
+		old.posting_date) + " " + _("Amends {0}, originally applied to {1}.").format(
+		old.name, old_si.name)
+	pe.flags.ignore_permissions = True
+	pe.insert()
+	pe.submit()
+	if frappe.db.exists("DocType", "Card Terminal Payment"):
+		for card in frappe.get_all("Card Terminal Payment", filters={"payment_entry": old.name},
+				pluck="name"):
+			frappe.db.set_value("Card Terminal Payment", card, {"payment_entry": pe.name,
+				"sales_invoice": new_si.name}, update_modified=False)
+			frappe.get_doc("Card Terminal Payment", card).add_comment("Comment", _(
+				"Moved from {0} to {1} with its payment {2} (was {3}): buyer changed.").format(
+				old_si.name, new_si.name, pe.name, old.name))
 	return pe.name
 
 
@@ -3163,7 +3266,7 @@ def cancel_order(sales_invoice: str, reason: str, refund_mode: str | None = None
 
 @frappe.whitelist()
 def update_order(sales_invoice: str, payload, refund_mode: str | None = None,
-		refund_reference: str | None = None) -> dict:
+		refund_reference: str | None = None, carry_payment=0) -> dict:
 	"""Edit a pending counter order — the Pending Order page's Edit action.
 	Cancels the submitted invoice (+ its Sales Orders) and rebuilds it through
 	create_order with the edited payload, in ONE transaction: editing is gated
@@ -3175,8 +3278,13 @@ def update_order(sales_invoice: str, payload, refund_mode: str | None = None,
 	Money follows the order (_allocate_advances / _rebook_inline_tender);
 	overpay refunds the difference (refund_mode required, Zelle also needs
 	refund_reference — same rules as cancel_order). A changed buyer refunds
-	the FULL paid amount to the ORIGINAL customer; the new invoice starts
-	unpaid.
+	the FULL paid amount to the ORIGINAL customer and the new invoice starts
+	unpaid — unless carry_payment: then each receipt moves to the new buyer on
+	its own day (the Receive PE is cancelled and amended, the card charge row
+	follows it; inline counter tender re-books dated the sale) and settles the
+	rebuilt invoice; any excess refunds the way it was paid. A carry is all or
+	nothing and refused before any change when a receipt cannot move
+	(_carry_block).
 
 	Goods a house is already sending follow the order too: those lines must come
 	back unchanged (same house, lane and quantity — the price may change) and
@@ -3191,6 +3299,9 @@ def update_order(sales_invoice: str, payload, refund_mode: str | None = None,
 	    refund_mode: Refund payment mode when the edit produces an overpay.
 	    refund_reference: Processor reference (required for Zelle, ACH and
 	        Check/Money Order refunds).
+	    carry_payment: 1 when the buyer changed and what was paid should settle
+	        the rebuilt order under the new buyer instead of being refunded to
+	        the old one. Ignored when the buyer is unchanged.
 
 	Returns:
 	    {ok, sales_invoice: <new SI>, replaced: <old SI>,
@@ -3215,9 +3326,16 @@ def update_order(sales_invoice: str, payload, refund_mode: str | None = None,
 	new_customer = (str(payload.get("customer") or "")).strip()
 	customer_changed = bool(new_customer) and new_customer != si.customer
 	old_contact_email = (str(si.contact_email or "")).strip()
+	carry = customer_changed and paid_total > _PAID_TOLERANCE and bool(cint(carry_payment))
 
-	if customer_changed and paid_total > _PAID_TOLERANCE:
-		# fail BEFORE any mutation
+	# fail BEFORE any mutation
+	if carry:
+		block = _carry_block(si, pes, inline_gl, paid_total)
+		if block:
+			frappe.throw(_(
+				"The payment on {0} cannot move to the new buyer: {1}. Leave the order "
+				"as it is and ask the bookkeeper to move the payment.").format(si.name, block))
+	elif customer_changed and paid_total > _PAID_TOLERANCE:
 		refund_mode, refund_reference = _validated_refund(refund_mode, refund_reference)
 	# Goods already in hand ride the edit (_carry_arrived_goods); read once here.
 	arrived = _arrived_to_store_serials(si)
@@ -3312,7 +3430,7 @@ def update_order(sales_invoice: str, payload, refund_mode: str | None = None,
 	# 4) Money follows the order.
 	carried, refund_entry, refunded = 0.0, None, 0.0
 	if paid_total > _PAID_TOLERANCE:
-		if customer_changed:
+		if customer_changed and not carry:
 			# Same restore cancel_order does before its full refund.
 			for g in inline_gl:
 				if g.net > _PAID_TOLERANCE:
@@ -3325,26 +3443,61 @@ def update_order(sales_invoice: str, payload, refund_mode: str | None = None,
 				_("order edited — buyer changed to {0}").format(new_customer))
 			refunded = paid_total
 		else:
-			carried += _allocate_advances(new_si, pes)
+			moved = []
+			if carry:
+				# Oldest first up to the new total; the rest rides as the new
+				# buyer's advance for the excess refund below.
+				remaining = flt(new_si.grand_total)
+				for src in pes:
+					take = max(0.0, min(flt(src.allocated), remaining))
+					moved.append(_carry_receipt(src.name, si, new_si, take))
+					carried += take
+					remaining -= take
+			else:
+				carried += _allocate_advances(new_si, pes)
+			# A carry re-books on the sale's own day, booked to the new buyer.
+			carry_kw = {"posting_date": si.posting_date} if carry else {}
 			for g in inline_gl:
 				if g.net > _PAID_TOLERANCE:
 					new_si.reload()
 					alloc_cap = flt(new_si.outstanding_amount)
-					_rebook_inline_tender(g, si, against_si=new_si, account=g.account)
+					if carry:
+						carry_kw["remark"] = _carry_remark(si, new_si, g.mode_of_payment,
+							g.reference_no, si.posting_date, inline=True)
+					moved.append(_rebook_inline_tender(g, si, against_si=new_si,
+						account=g.account, **carry_kw))
 					carried += min(flt(g.net), alloc_cap)
 				elif g.net < -_PAID_TOLERANCE:
 					# Change paid out of an account no tender row used: put it
 					# back out of that account, as cancel_order does.
-					_refund_payment_entry(si, -g.net, g.mode_of_payment, None,
-						_("change given at the counter"), account=g.account)
+					_refund_payment_entry(new_si if carry else si, -g.net, g.mode_of_payment,
+						None, _("change given at the counter"), account=g.account,
+						posting_date=carry_kw.get("posting_date"))
 			over = flt(paid_total) - flt(carried)
+			reason = _("order edited — total decreased")
+			if carry:
+				si.add_comment("Comment", _("Payment {0} carried to {1} on {2} (buyer changed).").format(
+					", ".join(moved), new_si.customer, new_si.name))
+				new_si.add_comment("Comment", _("Paid by {0} on {1}, carried here: {2}.").format(
+					si.customer, si.name, ", ".join(moved)))
 			if over > 0.01:
 				refund_mode, refund_reference = _validated_refund(
 					refund_mode, refund_reference)
+				if carry:
+					# Never pay a third party's money back to someone else or another way.
+					paid_by = {p.mode_of_payment for p in pes} | {
+						g.mode_of_payment for g in inline_gl if g.net > _PAID_TOLERANCE}
+					if refund_mode not in paid_by:
+						frappe.throw(_(
+							"Refund the {0} overpayment to {1} the way it was paid ({2}).").format(
+							frappe.format_value(over, {"fieldtype": "Currency"}),
+							si.customer_name, ", ".join(sorted(paid_by))))
+					reason = _("overpayment on {0} refunded to original payer {1} ({2}) via "
+						"{3} {4}; received on {5}").format(new_si.name, si.customer_name,
+						si.customer, refund_mode, refund_reference or "", ", ".join(moved))
 				new_si.reload()
 				refund_entry = _refund_payment_entry(
-					new_si, over, refund_mode, refund_reference,
-					_("order edited — total decreased"))
+					new_si, over, refund_mode, refund_reference, reason)
 				refunded = over
 
 	si.add_comment("Comment", _(
