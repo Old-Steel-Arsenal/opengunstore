@@ -453,6 +453,16 @@ class MasterLegal(_TreeCase):
 		self.assertFalse(it.is_firearm)
 		self.assertFalse(it.has_serial_no)
 
+	def test_the_legal_read_is_not_a_product_read(self):
+		# Extensions forbid catalog.batch on their pricing paths; the law must still answer.
+		from ffl_integrations.distributor import remote_catalog
+		from ffl_integrations.distributor.util import legal_firearm
+
+		remote_catalog._memo().clear()
+		with mock.patch("ffl_integrations.distributor.catalog.batch",
+				side_effect=AssertionError("product read")):
+			self.assertFalse(legal_firearm(self._row("ss", "M3B-OLIGHT"), "ss"))  # master, not the SS flag
+
 	def test_service_down_falls_back_to_the_house_flag(self):
 		from ffl_integrations.distributor import remote_catalog
 		from ffl_integrations.distributor.util import legal_firearm
