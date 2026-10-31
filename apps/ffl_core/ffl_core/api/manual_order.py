@@ -3002,23 +3002,28 @@ def _carry_block(si, pes, inline_gl, paid_total) -> str | None:
 	names = [p.name for p in pes]
 	rows = frappe.get_all("Payment Entry", filters={"name": ("in", names or [""])},
 		fields=["name", "posting_date", "paid_amount", "clearance_date"])
-	alloc = {p.name: flt(p.allocated) for p in pes}
-	if any(abs(flt(r.paid_amount) - alloc[r.name]) > 0.01 for r in rows) or any(
-			(ref.reference_doctype, ref.reference_name) != ("Sales Invoice", si.name)
+	if any((ref.reference_doctype, ref.reference_name) != ("Sales Invoice", si.name)
 			for ref in frappe.get_all("Payment Entry Reference",
 				filters={"parent": ("in", names or [""])},
 				fields=["reference_doctype", "reference_name"])):
 		return _("a payment also covers something other than this order")
+	alloc = {p.name: flt(p.allocated) for p in pes}
+	if any(abs(flt(r.paid_amount) - alloc[r.name]) > 0.01 for r in rows):
+		# Typically an earlier edit lowered the total and refunded the difference:
+		# the receipt keeps that part unapplied, netted by a separate refund.
+		return _("part of a payment is not applied to this order (an earlier refund left it unapplied)")
 	if frappe.db.exists("Payment Entry Deduction", {"parent": ("in", names or [""])}):
 		return _("a payment carries a deduction or write-off")
 	if any(r.clearance_date for r in rows) or frappe.db.exists("Bank Transaction Payments",
 			{"payment_document": "Payment Entry", "payment_entry": ("in", names or [""]),
 				"docstatus": ("<", 2)}):
 		return _("a payment is already matched to the bank")
-	if names and frappe.db.exists("DocType", "Card Terminal Payment") and any(
-			c.status != "CHARGED" or flt(c.refunded_amount) > _PAID_TOLERANCE or c.reversal_lock
-			for c in frappe.get_all("Card Terminal Payment", filters={"payment_entry": ("in", names)},
-				fields=["status", "refunded_amount", "reversal_lock"])):
+	cards = frappe.get_all("Card Terminal Payment", filters={"payment_entry": ("in", names)},
+		fields=["status", "refunded_amount", "reversal_lock"]) \
+		if names and frappe.db.exists("DocType", "Card Terminal Payment") else []
+	if any(c.reversal_lock for c in cards):
+		return _("its card charge is locked until a manager checks the processor's portal")
+	if any(c.status != "CHARGED" or flt(c.refunded_amount) > _PAID_TOLERANCE for c in cards):
 		return _("its card charge was already voided or refunded")
 	frozen = frappe.db.get_value("Company", si.company, "accounts_frozen_till_date")
 	closed = frappe.db.get_value("Period Closing Voucher",
@@ -3057,6 +3062,9 @@ def _carry_receipt(name: str, old_si, new_si, take: float) -> str:
 	pe.docstatus = 0
 	pe.amended_from = old.name
 	pe.party = new_si.customer
+	# Not no_copy: left alone they keep the old buyer's Contact (and its email) on
+	# the new buyer's receipt; validate then fills the new buyer's default.
+	pe.contact_person = pe.contact_email = pe.party_bank_account = None
 	pe.set("references", [])
 	if take > _PAID_TOLERANCE:
 		pe.append("references", {"reference_doctype": "Sales Invoice",

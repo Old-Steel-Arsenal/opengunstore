@@ -694,6 +694,14 @@ class TestEditCarryPayment(EditOrderFixtures):
 		si, pe = self._paid_order("PE")
 		original = frappe.db.get_value("Payment Entry", pe,
 			["posting_date", "paid_to", "mode_of_payment"], as_dict=True)
+		# The payer's own Contact on the receipt must not ride over to the new buyer.
+		payer_email = f"eo-payer-{frappe.generate_hash(length=6)}@example.com"
+		payer = frappe.get_doc({"doctype": "Contact", "first_name": "EO Payer",
+			"email_ids": [{"email_id": payer_email, "is_primary": 1}],
+			"links": [{"link_doctype": "Customer", "link_name": si.customer}]}).insert(
+			ignore_permissions=True)
+		frappe.db.set_value("Payment Entry", pe, {"contact_person": payer.name,
+			"contact_email": payer_email}, update_modified=False)
 		new_customer = self._new_buyer("EO Carry New")
 		out = self._swap(si, new_customer)
 
@@ -710,6 +718,8 @@ class TestEditCarryPayment(EditOrderFixtures):
 		self.assertAlmostEqual(amended.paid_amount, 300, places=2)
 		self.assertEqual([(r.reference_name, flt(r.allocated_amount)) for r in amended.references],
 			[(out["sales_invoice"], 300.0)])
+		self.assertNotEqual(amended.contact_person, payer.name)
+		self.assertNotEqual(amended.contact_email, payer_email)
 		# Who really paid stays on the receipt.
 		self.assertIn(si.customer, amended.remarks)
 		self.assertIn(pe, amended.remarks)
@@ -761,6 +771,40 @@ class TestEditCarryPayment(EditOrderFixtures):
 		with self.assertRaises(frappe.ValidationError):
 			self._swap(si, self._new_buyer("EO Carry Bank New"))
 		self.assertEqual(frappe.db.get_value("Sales Invoice", si.name, "docstatus"), 1)
+
+	def test_carry_is_refused_in_a_frozen_or_closed_period(self):
+		si, pe = self._paid_order("CLOSED")
+		today = frappe.utils.nowdate()
+		block = lambda: manual_order.get_order_for_edit(si.name)["edit_ctx"]["carry_block"]  # noqa: E731
+		self.assertIsNone(block())
+		frappe.db.savepoint("carry_closed_period")
+		try:
+			frappe.db.set_value("Company", self.company, "accounts_frozen_till_date", today)
+			self.assertIn("closed period", block())
+			frappe.db.set_value("Company", self.company, "accounts_frozen_till_date", None)
+			self.assertIsNone(block())
+			# An Accounting Period that closes Payment Entry over the receipt's day.
+			frappe.get_doc({"doctype": "Accounting Period", "company": self.company,
+				"period_name": f"EO Carry {frappe.generate_hash(length=6)}",
+				"start_date": today, "end_date": today, "closed_documents": [
+					{"document_type": "Payment Entry", "closed": 1}]}).insert(ignore_permissions=True)
+			self.assertIn("closed period", block())
+			with self.assertRaises(frappe.ValidationError):
+				self._swap(si, self._new_buyer("EO Carry Closed New"))
+			self.assertEqual(frappe.db.get_value("Payment Entry", pe, "docstatus"), 1)
+		finally:
+			frappe.db.rollback(save_point="carry_closed_period")
+
+	def test_carry_after_an_earlier_overpay_refund_says_why(self):
+		si, _pe = self._paid_order("REMAIN", amount=None)  # pays in full
+		payload = manual_order.get_order_for_edit(si.name)["payload"]
+		payload["items"][0]["rate"] = flt(payload["items"][0]["rate"]) / 2
+		out = manual_order.update_order(si.name, payload, refund_mode="Cash")
+		self.assertTrue(out["refund_entry"])
+		# The receipt now holds an unapplied part netted by that refund: no carry,
+		# and the reason names it.
+		self.assertIn("earlier refund",
+			manual_order.get_order_for_edit(out["sales_invoice"])["edit_ctx"]["carry_block"])
 
 	def test_carry_overpay_refunds_the_original_payer_the_way_it_was_paid(self):
 		si, _pe = self._paid_order("OVER", amount=None)  # pays in full

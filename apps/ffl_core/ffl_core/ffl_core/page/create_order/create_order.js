@@ -2472,8 +2472,9 @@ class CreateOrderApp {
 		this.$body.find('#seg-dispose').closest('.section').hide();
 		this.$body.find('#btn-save-draft, #btn-drafts').hide();
 		const paidLine = ctx.paid_total > 0
-			? __('Paid so far: {0} ({1}) — carries to the edited order on save.',
-				[format_currency(ctx.paid_total), esc(ctx.last_payment_mode || __('recorded payments'))])
+			? __('Paid so far: {0} ({1})', [format_currency(ctx.paid_total), esc(ctx.last_payment_mode || __('recorded payments'))])
+				// A changed buyer's choice decides that instead (_syncEditDelta).
+				+ `<span id="edit-paid-carries"> — ${__('carries to the edited order on save.')}</span>`
 			: __('Nothing paid yet.');
 		this.$body.find('#edit-banner').after(`
 			<div id="edit-money" class="section">
@@ -2569,6 +2570,7 @@ class CreateOrderApp {
 		}
 		$d.html(html);
 		this.$body.find('#edit-paid-choice').toggle(choosing);
+		this.$body.find('#edit-paid-carries').toggle(!choosing);
 		this.$body.find('#edit-refund-controls').toggle(refund > 0.01);
 		this._refundRefCtl?.$wrapper.toggle(
 			refund > 0.01 && this._refundNeedsReference());
