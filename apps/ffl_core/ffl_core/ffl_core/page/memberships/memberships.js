@@ -240,7 +240,7 @@ class MembershipsPage {
 				{ fieldtype: 'Int', fieldname: 'grace_days', label: __('Grace days'), depends_on: 'grace_enabled', default: editing ? plan.grace_days : 7 },
 				{ fieldtype: 'Link', fieldname: 'terms_template', label: __('Membership terms'), options: 'Agreement Template',
 					default: editing ? plan.terms_template : '', get_query: () => ({ filters: { scope: 'Per document', active: 1 } }),
-					description: __('Optional. Signed on the tablet for each new membership.') },
+					description: __('Signed on the tablet for each new membership.') },
 				{ fieldtype: 'Small Text', fieldname: 'description', label: __('Description'), default: editing ? plan.description : '' },
 				{ fieldtype: 'HTML', fieldname: 'tax_note', options: `<p class="text-muted small">${mshpEsc(__('Tax-exempt plan? Set an exempt tax template on the plan\'s item after saving.'))}</p>` },
 			],

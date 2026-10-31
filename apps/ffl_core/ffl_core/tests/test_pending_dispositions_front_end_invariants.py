@@ -445,3 +445,32 @@ class QueueSections(FrappeTestCase):
 		self.assertIn("overdue", card)
 		self.assertIn("this._markPrimary($card, row)", card)
 		self.assertIn("row.channel_stage === 'awaiting_payment'", card)
+
+
+class PendingCardServerGates(FrappeTestCase):
+	"""Card buttons follow the server's own refusals, so staff never get a live
+	button that only earns an error, and the Banned badge reaches counter rows."""
+
+	def test_banned_check_reads_counter_rows_through_the_kind_table(self):
+		"""Counter rows carry source 'sales_invoice'; a literal 'counter' test
+		never matched one, so no counter order ever showed the Banned badge."""
+		body = code_only(block(_pending_js(), "\t_markBanned(rows) {", "\t"))
+		self.assertNotIn("=== 'counter')", body.replace("(KIND[r.source] || 'counter') === 'counter'", "")
+			.replace("(KIND[row.source] || 'counter') === 'counter'", ""))
+		self.assertIn("(KIND[r.source] || 'counter') === 'counter'", body)
+		self.assertIn("(KIND[row.source] || 'counter') === 'counter'", body)
+
+	def test_gunbroker_dispose_waits_for_payment(self):
+		"""dispose_gb_order refuses an order with no payment recorded."""
+		card = code_only(block(_pending_js(), "\t_renderCard(row, $list) {", "\t"))
+		self.assertRegex(card,
+			r"disposeDisabled\s*=[^;]*\(isGb && row\.channel_stage === 'awaiting_payment'\)")
+
+	def test_the_payment_rule_does_not_exempt_a_pickup(self):
+		"""ship_payment_block refuses every unpaid individual, pickup or not, and
+		Mark Picked Up clears through it — so the page's copy must not exempt a
+		row without a ship address."""
+		rule = code_only(block(_pending_js(), "\t_blockShipUnpaid(row) {", "\t"))
+		self.assertIn("return kind === 'counter' && !row.is_business && !row.paid;", rule)
+		self.assertNotIn("has_ship_address", rule)
+		self.assertNotIn("destination_ffl", rule)

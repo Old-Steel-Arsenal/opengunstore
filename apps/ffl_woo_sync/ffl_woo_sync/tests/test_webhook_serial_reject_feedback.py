@@ -99,6 +99,20 @@ class TestSuggestInstockSerial(FrappeTestCase):
 				_suggest_instock_serial("U283116", "P228-A", "WOO-ORD-00001"),
 				"B283116")
 
+	def test_a_customer_or_consigned_out_gun_is_never_suggested(self):
+		"""The dealer path refuses those guns, so a hint pointing at one steers a
+		typo onto a customer's transfer gun or a gun at a partner FFL."""
+		from ffl_woo_sync.woocommerce.webhook import _suggest_instock_serial
+		double = get_all_double([
+			frappe._dict(name="B283116", warehouse="Customer Custody - FT")])
+		with patch("frappe.get_all", side_effect=double) as ga, \
+			 patch("ffl_woo_sync.woocommerce.webhook.custody_warehouse_names",
+				 return_value={"Customer Custody - FT"}):
+			self.assertIsNone(_suggest_instock_serial("U283116", "P228-A", "WOO-ORD-00001"))
+		filters = ga.call_args_list[0].kwargs["filters"]
+		self.assertEqual(filters["is_transfer_gun"], 0)
+		self.assertEqual(filters["consigned_out"], 0)
+
 	def test_entered_serial_without_digits_never_digit_matches(self):
 		"""No digits in the entered serial → digit tier must not match everything."""
 		from ffl_woo_sync.woocommerce.webhook import _suggest_instock_serial
@@ -160,6 +174,50 @@ class TestApplyDealerSerialRejectFeedback(FrappeTestCase):
 		self.assertTrue(second)
 		self.assertEqual(mock_note.call_count, 2)
 		self.assertIn("U999999", row.reservation_error)
+
+	def _not_ours(self, **flags):
+		from ffl_woo_sync.woocommerce.webhook import _apply_dealer_serial
+		row = _srow(item_code="P228-A")
+		locked = {"item_code": "P228-A", "status": "Active", "woo_reserved": 0,
+			"woo_order": "", "warehouse": "Stores - FT", "is_transfer_gun": 0,
+			"consigned_out": 0, **flags}
+		with patch("frappe.db.get_value", return_value=locked), \
+			 patch("ffl_woo_sync.woocommerce.webhook.custody_warehouse_names",
+				 return_value={"Customer Custody - FT"}), \
+			 patch("ffl_woo_sync.woocommerce.webhook._reserve_serial") as reserve, \
+			 patch("ffl_woo_sync.woocommerce.webhook._enqueue_serial_or_item_push"), \
+			 patch("ffl_woo_sync.woocommerce.webhook._queue_wc_order_note"), \
+			 patch("ffl_woo_sync.woocommerce.webhook._log_error"):
+			changed = _apply_dealer_serial(_order(), row, "B275219")
+		return changed, row, reserve
+
+	def test_a_customers_transfer_gun_is_never_pinned(self):
+		"""Transfer guns share the web listing's Item and are Active and never
+		woo_reserved: before this, staff typing one pinned it to the web order
+		and dispose shipped the customer's gun to the buyer."""
+		changed, row, reserve = self._not_ours(is_transfer_gun=1)
+		self.assertTrue(changed)
+		self.assertIn("transfer", row.reservation_error)
+		self.assertFalse(row.confirmed_serial)
+		reserve.assert_not_called()
+
+	def test_a_gun_in_the_custody_warehouse_is_never_pinned(self):
+		changed, row, reserve = self._not_ours(warehouse="Customer Custody - FT")
+		self.assertTrue(changed)
+		self.assertIn("transfer", row.reservation_error)
+		reserve.assert_not_called()
+
+	def test_a_consigned_out_gun_is_never_pinned(self):
+		changed, row, reserve = self._not_ours(consigned_out=1)
+		self.assertTrue(changed)
+		self.assertIn("consigned out", row.reservation_error)
+		reserve.assert_not_called()
+
+	def test_an_ordinary_shelf_gun_is_still_pinned(self):
+		changed, row, reserve = self._not_ours()
+		self.assertTrue(changed)
+		self.assertEqual(row.confirmed_serial, "B275219")
+		reserve.assert_called_once()
 
 	def test_reserved_by_other_order_rejection_idempotent_and_noted(self):
 		from ffl_woo_sync.woocommerce.webhook import _apply_dealer_serial

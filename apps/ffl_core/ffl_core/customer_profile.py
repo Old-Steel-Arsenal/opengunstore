@@ -209,6 +209,26 @@ def has_family_members(customer: str) -> bool:
 	return bool(frappe.db.exists("Customer", {"primary_customer": customer}))
 
 
+def new_retail_customer(customer_name: str, *, email: str | None = None,
+		phone: str | None = None):
+	"""An UNSAVED Customer for a new retail buyer from a sales channel (web,
+	GunBroker): Individual, not a dealer, not tax-exempt, in the individual
+	group. The caller sets any channel field, then inserts."""
+	from ffl_core.api.manual_order import _individual_group
+	return frappe.get_doc({
+		"doctype": "Customer",
+		"customer_name": customer_name,
+		"customer_type": "Individual",
+		"is_ffl_dealer": 0,
+		"customer_group": _individual_group(),
+		"territory": frappe.db.get_single_value("Selling Settings", "territory")
+			or "All Territories",
+		"email_id": email or None,
+		"mobile_no": phone or None,
+		"is_tax_exempt": 0,
+	})
+
+
 def find_customer_by_email(email: str | None) -> dict | None:
 	"""The customer an order's email belongs to, or None.
 
@@ -364,13 +384,16 @@ def merge_customer(source: str, target: str) -> dict:
 	aliases = _carry_aliases(src, tgt)
 	tgt.flags.ignore_permissions = True
 	tgt.flags.writing_aliases = True   # lets validate_customer accept the new alias rows
+	from frappe.model.rename_doc import rename_doc, update_attachments
+	# The copied ID rows point at files still attached to the source; rename_doc moves
+	# them only after this save, whose ID-attachment check accepts the target's own files only.
+	update_attachments("Customer", source, target)
 	tgt.save()
 
 	# Model-level rename for ignore_permissions (same reason as
 	# manual_order.rename_customer: Sales Manager has no Customer write).
 	# rebuild_search off: a merge renames nothing that is still indexed — the
 	# source's global-search row goes with delete_doc.
-	from frappe.model.rename_doc import rename_doc
 	rename_doc("Customer", source, target, merge=True, ignore_permissions=True,
 		show_alert=False, rebuild_search=False)
 	# ERPNext's Customer.after_rename sets customer_name to the docname when

@@ -38,7 +38,7 @@ from __future__ import annotations
 import frappe
 from frappe import _
 
-from ffl_core.firearm import is_antique_item, issue_serial
+from ffl_core.firearm import is_antique_item, issue_antique_serial
 from ffl_core.utils import guest_job_elevated
 
 
@@ -67,22 +67,21 @@ def _issue_antique_units(order) -> list[tuple[str, str]]:
 			# nothing to invent: leave it for a human. The order stays visible via
 			# the awaiting-serial path rather than being silently retired.
 			continue
-		sn = frappe.db.get_value(
-			"Serial No", serial, ["item_code", "warehouse", "status"], as_dict=True)
-		if not sn:
-			continue
-		if sn.status != "Active" or not sn.warehouse:
-			# Already out of stock — a retry, or staff issued it by hand. Still hand
-			# it to the listing step: the page may not have been retired yet.
-			issued.append((sn.item_code, serial))
-			continue
-		issue_serial(
-			sn.item_code, serial, sn.warehouse,
+		# The canonical antique exit: it re-checks the SERIAL's own Item and throws
+		# on a regulated gun (that one owes an FFL Disposition), and returns None
+		# for a gun already out of stock — a retry, or staff issued it by hand.
+		issue_antique_serial(
+			serial,
 			remarks=(
 				f"Antique unit sold on web order {order.name} "
 				f"(Woo #{order.woo_order_id}). GCA-exempt: no FFL Disposition exists, "
 				"so stock is issued here instead of by disposition_stock."),
 		)
+		sn = frappe.db.get_value("Serial No", serial, ["item_code"], as_dict=True)
+		if not sn:
+			continue
+		# Issued now or already out: either way hand it to the listing step, whose
+		# page may not have been retired yet.
 		issued.append((sn.item_code, serial))
 	return issued
 

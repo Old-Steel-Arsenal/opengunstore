@@ -24,7 +24,6 @@ cost center, etc.) defaults from the Frappe / company config.
 """
 from __future__ import annotations
 
-import json as _json
 from typing import Any
 
 import frappe
@@ -32,7 +31,8 @@ from frappe import _
 from frappe.utils import cint, flt, now_datetime
 
 from ffl_core import cash_drawer, storage
-from ffl_core.roles import COUNTER_ROLES
+from ffl_core.api._helpers import coerce_payload
+from ffl_core.roles import COUNTER_ROLES, STOCK_ROLES
 from ffl_core.firearm import (
 	_is_firearm_row,
 	assert_antique_flag_allowed,
@@ -209,7 +209,7 @@ def create_receive(payload, before_push=None) -> dict:
 	Permissions:
 	    Stock Manager / System Manager.
 	"""
-	frappe.only_for(("Stock Manager", "System Manager"))
+	frappe.only_for(STOCK_ROLES)
 	return _create_receive(payload, before_push)
 
 
@@ -217,7 +217,7 @@ def _create_receive(payload, before_push=None) -> dict:
 	"""Gate-free body of create_receive, for the one internal caller that has its own gate: the POS Trade-in's
 	pay-now buy (api/trade_in._buy_now, a counter job). The receipt, its payout and the bound-book push all run
 	with ignore_permissions; nothing below reads the caller's role."""
-	payload = _payload_dict(payload)
+	payload = coerce_payload(payload)
 
 	# Acquisition source: "FFL Dealer" (purchase from a licensed dealer — FFL
 	# supplier required) or "Individual" (bought from a private party — capture
@@ -753,8 +753,8 @@ def seller_payment_preview(payload) -> dict:
 	    (a dealer, Consignment, Gunsmithing or transfer receipt, or nothing
 	    costs anything); methods are the ways a seller can be paid.
 	"""
-	frappe.only_for(("Stock Manager", "System Manager"))
-	payload = _payload_dict(payload)
+	frappe.only_for(STOCK_ROLES)
+	payload = coerce_payload(payload)
 	decision = cash_drawer.seller_payment_at_receipt({
 		"ffl_acquisition_source": (payload.get("acquisition_source") or "").strip() or "FFL Dealer",
 		"ffl_acquisition_type": (payload.get("acquisition_type") or "").strip(),
@@ -762,18 +762,6 @@ def seller_payment_preview(payload) -> dict:
 		"is_ffl_transfer": 1 if payload.get("is_ffl_transfer") else 0,
 	}, [(i.get("qty"), i.get("rate")) for i in payload.get("items") or []])
 	return {"pays": decision.pays, "amount": decision.amount, "methods": list(cash_drawer.PAYOUT_METHODS)}
-
-
-def _payload_dict(payload) -> dict:
-	"""A Receive Goods payload: a dict, or the JSON string the browser sends."""
-	if isinstance(payload, str):
-		try:
-			payload = _json.loads(payload)
-		except _json.JSONDecodeError:
-			frappe.throw(_("Invalid payload (not JSON)"))
-	if not isinstance(payload, dict):
-		frappe.throw(_("Invalid payload"))
-	return payload
 
 
 def _seller_address(payload: dict) -> str:
@@ -924,8 +912,8 @@ def create_item(payload) -> dict:
 	Permissions:
 	    Stock Manager / System Manager.
 	"""
-	frappe.only_for(("Stock Manager", "System Manager"))
-	payload = _payload_dict(payload)
+	frappe.only_for(STOCK_ROLES)
+	payload = coerce_payload(payload)
 
 	item_code = (payload.get("item_code") or "").strip()
 	if not item_code:

@@ -24,4 +24,4 @@ regulated serials sit on which order.
 
 **Permissions:** Canonical shipping roles. A caller WITHOUT the role gets an empty {} back silently — no error is raised — so an empty result from THIS function is not proof of "no holds". Anything enforcing a rule must call :func:`counter_holds` instead; see its docstring for what went wrong when that distinction did not exist.
 
-<sub>`apps/ffl_core/ffl_core/reservations.py:200`</sub>
+<sub>`apps/ffl_core/ffl_core/reservations.py:197`</sub>

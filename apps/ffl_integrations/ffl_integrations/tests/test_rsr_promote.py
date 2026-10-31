@@ -319,6 +319,45 @@ class RSRPromote(FrappeTestCase):
 		r = lookup_for_item_form("DOES-NOT-EXIST-IN-CATALOG")
 		self.assertFalse(r["found"])
 
+	def test_lookup_for_item_form_used_firearm_prefills_serial_tracked(self):
+		"""The Item-form prefill follows promote's rule: EVERY firearm is
+		serial-tracked, used departments (02/03) included."""
+		r = lookup_for_item_form(self.stock_used)
+		self.assertTrue(r["found"])
+		self.assertEqual(r["defaults"]["has_serial_no"], 1)
+
+	def test_seed_distributor_row_skips_when_provider_row_exists_under_another_name(self):
+		"""The shared Distributor seed (RSR / SS / Lipsey's) is create-once by name
+		OR provider: a house row the operator re-created under another code must not
+		get a second disabled twin on the next migrate."""
+		from ffl_integrations.distributor.policy import ensure_distributor_row
+
+		# setUp commits, so these rows would outlive the class rollback: sweep them
+		# before (a crashed earlier run) and after.
+		def sweep():
+			for code in ("SEED-TEST-RENAMED", "SEED-TEST", "SEED-TEST-2"):
+				if frappe.db.exists("Distributor", code):
+					frappe.delete_doc("Distributor", code, ignore_permissions=True, force=True)
+			frappe.db.commit()
+		sweep()
+		self.addCleanup(sweep)
+		provider = "seed-test-house"
+		frappe.get_doc({"doctype": "Distributor", "code": "SEED-TEST-RENAMED",
+			"distributor_name": "Seed Test House", "provider": provider, "enabled": 0,
+			"stocking_enabled": 1, "dropship_enabled": 1, "poll_enabled": 0,
+			"safety_buffer": 3, "display_cap": 5}).insert(ignore_permissions=True)
+		self.assertFalse(ensure_distributor_row("SEED-TEST", "Seed Test, Inc.", provider))
+		self.assertFalse(frappe.db.exists("Distributor", "SEED-TEST"))
+
+		self.assertTrue(ensure_distributor_row("SEED-TEST-2", "Seed Test 2, Inc.",
+			"seed-test-house-2", poll=1, priority=7))
+		row = frappe.db.get_value("Distributor", "SEED-TEST-2",
+			["enabled", "poll_enabled", "priority", "safety_buffer", "display_cap"], as_dict=True)
+		self.assertEqual((row.enabled, row.poll_enabled, row.priority, row.safety_buffer,
+			row.display_cap), (0, 1, 7, 3, 5))
+		self.assertFalse(ensure_distributor_row("SEED-TEST-2", "Seed Test 2, Inc.",
+			"seed-test-house-2"))
+
 	def test_promote_handgun_lands_in_pistol_group_not_legacy(self):
 		"""RSR dept 01 (Handguns) → Item.item_group must be the "Pistol" leaf
 		(Handgun split into Pistol/Revolver, 2026-07-21), not legacy "New Firearm"."""

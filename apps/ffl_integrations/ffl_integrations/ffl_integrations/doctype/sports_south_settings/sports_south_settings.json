@@ -102,14 +102,13 @@
    "fieldtype": "Check",
    "label": "Sandbox mode",
    "default": "0",
-   "description": "On: orders are sent with Source 99994 (Sports South's test environment)."
+   "description": "On: orders go to Sports South's test environment."
   },
   {
    "fieldname": "customer_number",
    "fieldtype": "Data",
    "label": "Account number",
-   "mandatory_depends_on": "eval:doc.ordering_enabled",
-   "description": "Your Sports South account number (also the API user name and Source)."
+   "mandatory_depends_on": "eval:doc.ordering_enabled"
   },
   {
    "fieldname": "column_connection",
@@ -171,8 +170,7 @@
    "fieldname": "order_email_cc",
    "fieldtype": "Data",
    "label": "CC on FFL emails",
-   "options": "Email",
-   "description": "Optional: the shop mailbox that keeps a copy."
+   "options": "Email"
   },
   {
    "fieldname": "sales_message",
@@ -423,8 +421,7 @@
   {
    "fieldname": "section_store_freight",
    "fieldtype": "Section Break",
-   "label": "Shipped to the store",
-   "description": "Sports South's open-account / ACH shipping rules for orders to the shop."
+   "label": "Shipped to the store"
   },
   {
    "fieldname": "store_free_handgun_qty",
@@ -459,7 +456,7 @@
    "fieldtype": "Currency",
    "label": "Alert when invoiced freight differs by more than",
    "default": "5",
-   "description": "The poll compares the freight the house invoiced with the figure booked at placement; a larger gap sends an alert."
+   "description": "Compared with the freight figure booked when the order was placed."
   },
   {
    "fieldname": "tab_status",

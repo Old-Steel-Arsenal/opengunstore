@@ -14,6 +14,7 @@ from ffl_core.firearm import (
 	is_regulated_firearm_item,
 )
 from ffl_core.compliance.mode import paper_4473_mode
+from ffl_core.serials import serials_for_line
 from ffl_core.utils import split_serials
 
 # 4473 form must be completed before firearm leaves the store.
@@ -348,6 +349,29 @@ def _covered_serials(link: dict, serials) -> set[str]:
 	))
 
 
+def regulated_firearm_serials(rows) -> list[str]:
+	"""Every regulated-firearm serial on these invoice lines — one entry per gun,
+	order kept. The one "which guns does this sale need a 4473 for" read shared by
+	the submit gate, the web-pickup gate, the webhook's early mismatch alarm and
+	the 4473 recovery actions, so they can't drift.
+
+	Reads both line storages: newline-joined ``serial_no`` (qty>1, split by the
+	canonical ``split_serials``) and, when that is blank, the v16 Serial and Batch
+	Bundle via ``serials_for_line`` — a bundle-only line must not look gun-less.
+	getattr, not row.get, so plain-object rows read too. Antiques are GCA-exempt
+	and never need a 4473."""
+	out: list[str] = []
+	for row in rows or []:
+		if not is_regulated_firearm_item(row.item_code):
+			continue
+		serial_no = getattr(row, "serial_no", None)
+		if serial_no:
+			out.extend(split_serials(serial_no))
+		elif getattr(row, "serial_and_batch_bundle", None):
+			out.extend(serials_for_line(row))
+	return list(dict.fromkeys(out))
+
+
 def covered_serials_for_invoice(invoice_name: str, serials) -> set[str]:
 	"""Coverage proved against a POS Invoice — the counter path."""
 	return _covered_serials({"linked_pos_invoice": invoice_name}, serials)
@@ -387,10 +411,7 @@ def _web_retail_4473_covers(doc) -> bool:
 	order = (getattr(doc, "woo_online_order", None) or "").strip()
 	if not order:
 		return False
-	needed = set()
-	for row in (getattr(doc, "items", None) or []):
-		if is_regulated_firearm_item(row.item_code):
-			needed.update(split_serials(getattr(row, "serial_no", None)))
+	needed = set(regulated_firearm_serials(getattr(doc, "items", None)))
 	if not needed:
 		return False
 	return not (needed - covered_serials_for_web_order(order, needed))
@@ -403,13 +424,9 @@ def _require_disposition_coverage(doc) -> None:
 	Closes the bypass where a second firearm is added — or a row's serial is
 	changed — after the document-level 4473 status already flipped to Completed.
 	"""
-	rows = [r for r in (getattr(doc, "items", None) or []) if is_regulated_firearm_item(r.item_code)]
-	needed = set()
-	for row in rows:
-		# A qty>1 line carries its serials newline-joined — split so each gun is
-		# checked for its OWN disposition, never the raw "J4940\n7805C" string
-		#.
-		needed.update(split_serials(getattr(row, "serial_no", None)))
+	# A qty>1 line carries its serials newline-joined — split so each gun is
+	# checked for its OWN disposition, never the raw "J4940\n7805C" string.
+	needed = set(regulated_firearm_serials(getattr(doc, "items", None)))
 	if not needed:
 		return
 

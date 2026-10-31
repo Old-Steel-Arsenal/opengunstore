@@ -195,8 +195,7 @@ def _stock() -> dict:
 # ------------------------------------------------------------------ cash drawer
 
 def _drawer() -> dict:
-	"""What the Cash Drawer page shows, trimmed to what the block draws. The page totals the lines
-	(sovDrawerTotals, the Cash Drawer page's cdrwTotals rule).
+	"""What the Cash Drawer page shows, trimmed to what the block draws, with get_today's cash in / out.
 
 	# lazy: not cached -- money a cashier just moved should show on the next refresh -- so every open
 	# Overview runs get_today once a minute. Upgrade path = cache it per company for a few seconds,
@@ -208,7 +207,8 @@ def _drawer() -> dict:
 	return {
 		"opening": flt(d.get("opening"), 2),
 		"expected": flt(d.get("expected"), 2),
-		"lines": [{"kind": l["kind"], "amount": l["amount"]} for l in d.get("lines") or []],
+		"cash_in": d["cash_in"],
+		"cash_out": d["cash_out"],
 		"open_shifts": d.get("open_shifts") or 0,
 		"counted": bool(d.get("closed_today")),
 	}
@@ -446,7 +446,7 @@ def get_overview(with_records=1, fresh_ad=0) -> dict:
 	    first, today last; transactions and ticket_net leave returns out), report}, open_4473: {rows: [{invoice, customer_name, guns: [{serial, item_name}],
 	    nics_status, form_4473_status, started}], records, can_open}, pickups: {total, rows:
 	    [{customer, item_name, serial, source_name, days_in_store}]}, stock: {total, consignment,
-	    transfers}, drawer: {opening, expected, lines: [{kind, amount}], open_shifts, counted},
+	    transfers}, drawer: {opening, expected, cash_in, cash_out, open_shifts, counted},
 	    ad: {off} or {off, acquired, disposed, retrying, needs_person, synced_at, can_review,
 	    records?: [{doctype, name, error, terminal}]}, arriving: {total, orders: [{name,
 	    distributor, status, outstanding, received, expected}]}, records (only with

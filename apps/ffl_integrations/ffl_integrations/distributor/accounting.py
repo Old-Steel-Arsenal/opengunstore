@@ -41,6 +41,7 @@ one against RSR's invoice.
 """
 from __future__ import annotations
 
+from ffl_core.utils import default_company  # noqa: F401 — public name; ss_provider / api import it from here
 from ffl_integrations.distributor import lanes
 
 COGS_ACCOUNT = "Cost of Goods Sold"
@@ -160,7 +161,10 @@ def ensure_cost_invoice(do_name: str, *, bill_no=None) -> dict:
 
 	existing = frappe.db.get_value(
 		"Purchase Invoice",
-		{"distributor_order": do_name, "bill_no": bill_no or "", "docstatus": ("<", 2)},
+		# "is not set" matches NULL too: build_pi_payload leaves bill_no unset
+		# (NULL) when none is given, and a plain "" filter never matches NULL.
+		{"distributor_order": do_name, "bill_no": bill_no or ("is", "not set"),
+			"docstatus": ("<", 2)},
 		"name")
 	if existing:
 		return {"purchase_invoice": existing, "status": "exists"}
@@ -177,14 +181,6 @@ def ensure_cost_invoice(do_name: str, *, bill_no=None) -> dict:
 	pi.flags.ignore_permissions = True
 	pi.insert()
 	return {"purchase_invoice": pi.name, "status": "draft"}
-
-
-def default_company() -> str:
-	import erpnext
-	import frappe
-
-	return erpnext.get_default_company() or frappe.get_all(
-		"Company", pluck="name", limit=1)[0]
 
 
 # ------------------------------------------------------------- SRBNB re-pin

@@ -283,6 +283,22 @@ class DealerShipmentBooks(DealerTransferFixtures):
 			{"sales_invoice": si.name, "docstatus": ("<", 2)})
 		self.assertEqual(count, 1)
 
+	def test_book_disposition_is_idempotent_per_link(self):
+		"""The shared helper the web and GunBroker paths also book through:
+		a second call for the same {serial, link} returns None, books nothing."""
+		from ffl_core.compliance.dealer_transfer import book_disposition, serial_company
+		serial = self._stocked_serial("DLT-S5")
+		self.assertEqual(serial_company(serial), self.company)
+		si = self._ship(serial)
+		disp = self._disposition(si.name)
+		again = book_disposition(
+			serial=serial, item="DLT-GUN", link_field="sales_invoice",
+			link_name=si.name, destination=disp.destination_ffl,
+			disposition_type="Dealer Transfer", company=self.company, notes="retry")
+		self.assertIsNone(again)
+		self.assertEqual(frappe.db.count("FFL Disposition",
+			{"sales_invoice": si.name, "docstatus": ("<", 2)}), 1)
+
 	def test_cancel_si_cancels_disposition(self):
 		serial = self._stocked_serial("DLT-S4")
 		si = self._ship(serial)

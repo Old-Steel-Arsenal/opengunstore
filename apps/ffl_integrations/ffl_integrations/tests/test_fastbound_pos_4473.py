@@ -308,53 +308,16 @@ class FBPosWebhook(SettingsSandbox, FrappeTestCase):
 
 
 class FBClientDisposition(FrappeTestCase):
-	"""Pure-mock tests of the new disposition client methods. No DB needed."""
+	"""Pure-mock tests of _request's create-response handling. No DB needed."""
 
 	def _make_client(self):
 		"""Same fixture as _items_client, with no canned pages — these tests set
 		`session.request` themselves."""
 		return _items_client([])
 
-	def test_create_pending_disposition_omits_type_for_4473(self):
-		# Per FastBound integration guide: "a null disposition type indicates
-		# that the disposition is related to a 4473." Default call must NOT
-		# send a `type` field, otherwise FastBound treats it as B2B.
-		client, session = self._make_client()
-		response = type("R", (), {})()
-		response.status_code = 201
-		response.content = b'{"id":"FB-DISP-123"}'
-		response.headers = {}
-		response.json = lambda: {"id": "FB-DISP-123"}
-		session.request.return_value = response
-
-		out = client.create_pending_disposition(external_id="POS-001")
-		self.assertEqual(out, "FB-DISP-123")
-		call = session.request.call_args
-		self.assertEqual(call.args[0], "POST")
-		self.assertIn("/TEST-ACC/api/Dispositions", call.args[1])
-		body = call.kwargs["json"]
-		self.assertNotIn("type", body)
-		self.assertEqual(body["externalId"], "POS-001")
-
-	def test_attach_contact_to_disposition_PUTs(self):
-		client, session = self._make_client()
-		response = type("R", (), {})()
-		response.status_code = 204
-		response.content = b""
-		response.headers = {}
-		response.json = lambda: None
-		session.request.return_value = response
-
-		client.attach_contact_to_disposition(
-			disposition_id="DISP-1", contact_id="C-1",
-		)
-		call = session.request.call_args
-		self.assertEqual(call.args[0], "PUT")
-		self.assertIn("/Dispositions/DISP-1/AttachContact/C-1", call.args[1])
-
-	def test_create_pending_disposition_uses_location_header_when_body_empty(self):
-		"""Real FastBound returns 201 + Content-Length:0 + Location header
-		on POST /Dispositions. _request() must extract the id from Location."""
+	def test_request_returns_id_from_location_header_on_empty_201(self):
+		"""Real FastBound create endpoints return 201 + Content-Length:0 +
+		Location header. _request() must extract the id from Location."""
 		client, session = self._make_client()
 		response = type("R", (), {})()
 		response.status_code = 201
@@ -362,37 +325,8 @@ class FBClientDisposition(FrappeTestCase):
 		response.headers = {"Location": "https://cloud.fastbound.com/TEST-ACC/api/Dispositions/abc-uuid-1"}
 		response.json = lambda: None
 		session.request.return_value = response
-		out = client.create_pending_disposition(external_id="POS-X")
-		self.assertEqual(out, "abc-uuid-1")
-
-	def test_find_or_create_contact_creates_on_miss(self):
-		client, session = self._make_client()
-		# First call: GetByExternalId → 404
-		not_found = type("R", (), {})()
-		not_found.status_code = 404
-		not_found.content = b"Not Found"
-		not_found.text = "Not Found"
-		not_found.headers = {}
-		not_found.json = lambda: {}
-		# Second call: POST /Contacts → 201 with empty body + Location header
-		# (FastBound's actual response shape for creates).
-		created = type("R", (), {})()
-		created.status_code = 201
-		created.content = b""
-		created.headers = {"Location": "https://cloud.fastbound.com/X/api/Contacts/NEW-CID"}
-		created.json = lambda: None
-		session.request.side_effect = [not_found, created]
-
-		cid = client.find_or_create_contact(
-			external_id="EXT-1",
-			create_payload={"firstName": "Jane", "lastName": "Roe"},
-		)
-		self.assertEqual(cid, "NEW-CID")
-		# Second call should be POST /Contacts with externalId stamped.
-		post_call = session.request.call_args_list[1]
-		self.assertEqual(post_call.args[0], "POST")
-		self.assertIn("/Contacts", post_call.args[1])
-		self.assertEqual(post_call.kwargs["json"]["externalId"], "EXT-1")
+		out = client._request("POST", "Dispositions/CreateAndCommit", json_body={})
+		self.assertEqual(out, {"id": "abc-uuid-1"})
 
 
 class FB4473Response(FrappeTestCase):

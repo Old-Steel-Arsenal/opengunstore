@@ -156,12 +156,7 @@ class SSProvider(RemoteCatalogMixin, DistributorProvider):
 			sku = ln.get("sku")
 			if not sku:
 				continue
-			row = self.catalog_row(sku) or {}
-			qty = int(row.get("qty") or 0)
-			wished = int(ln.get("qty") or 0)
-			out.append({"sku": sku, "qty": qty, "cost": float(row.get("cost") or 0),
-				"available": bool(row) and not row.get("discontinued") and qty >= wished and qty > 0,
-				"orderable": bool(row) and not row.get("discontinued")})
+			out.append(self.catalog_availability(sku, int(ln.get("qty") or 0)))
 		return out
 
 	# ---------------------------------------------------------- shipping choice
@@ -850,13 +845,15 @@ def normalize_order_status(web_ref: str, detail: list, invoices: list, tracking:
 	that a filled line is merely acknowledged. A 0-fill after invoicing is a
 	CANCELLED line (SS shorts are cancelled, never backordered); before it,
 	UNFILLED (pending)."""
+	from ffl_integrations.sports_south.api_client import _to_float
+
 	invoiced = bool(invoices)
 	invoice_nos = [i.get("S1INV") for i in invoices if i.get("S1INV")]
 	tracking_nos = [t.get("TRACKNO") for t in tracking if t.get("TRACKNO")]
 	ship_dates = [t.get("SHPDTE") for t in tracking if t.get("SHPDTE")]
 	# Flat-rate freight is per ORDER; every parcel row repeats it — take the
 	# first non-zero, never the sum.
-	freight = next((_f(t.get("SHPAMT")) for t in tracking if _f(t.get("SHPAMT"))), 0.0)
+	freight = next((_to_float(t.get("SHPAMT")) for t in tracking if _to_float(t.get("SHPAMT"))), 0.0)
 	serials_by_sku: dict[str, list] = {}
 	for s in serials:
 		if s.get("ITEMNO") and s.get("SERIAL"):
@@ -885,19 +882,12 @@ def normalize_order_status(web_ref: str, detail: list, invoices: list, tracking:
 			"serials": serials_by_sku.get(r["sku"], []),
 			# SS bills its current price, not the quote: the filled price is what
 			# the invoice charged. None when the detail row carries no price.
-			"unit_cost": (_f(r.get("filled_price")) or _f(r.get("order_price")) or None),
+			"unit_cost": (_to_float(r.get("filled_price")) or _to_float(r.get("order_price")) or None),
 			"date_shipped": ship_dates if invoiced else [],
 		})
 	return {"po_num": "", "web_ref": web_ref, "hold_status": "", "lines": lines,
 		"freight": round(freight, 2) if freight else None,
 		"raw": {"detail": detail, "invoices": invoices, "tracking": tracking}}
-
-
-def _f(v) -> float:
-	try:
-		return float(str(v).replace("$", "").replace(",", "").strip() or 0)
-	except ValueError:
-		return 0.0
 
 
 # ------------------------------------------------------------- invoices (pure)

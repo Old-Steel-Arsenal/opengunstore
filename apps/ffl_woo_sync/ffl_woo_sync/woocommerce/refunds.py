@@ -41,13 +41,9 @@ import frappe
 from frappe import _
 from frappe.utils import flt, now_datetime
 
-from ffl_woo_sync.woocommerce.revenue import _ensure_paid
+# _TOTAL_TOLERANCE: the amended SI must also mirror the Woo net to the cent.
+from ffl_woo_sync.woocommerce.revenue import _TOTAL_TOLERANCE, _ensure_paid
 from ffl_core.utils import guest_job_elevated
-
-# Mirror check: the amended SI must reproduce the Woo net to the cent (one
-# epsilon of float/rounding slack). Anything past this is a draft + error log,
-# never a silent post.
-_TOTAL_TOLERANCE = 0.02
 
 
 # ------------------------------------------------------------ parse + record

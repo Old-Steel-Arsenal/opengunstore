@@ -15,6 +15,7 @@ insert sets no allocated_to and sends no notification, so nobody would see it.
 from __future__ import annotations
 
 import frappe
+from frappe.utils.user import get_system_managers
 
 
 # Who hears about a stranded document by default.
@@ -40,16 +41,15 @@ def alert_assignees(roles=ALERT_ROLES) -> list[str]:
 	return sorted(set(out))
 
 
-def _log(title: str, message: str) -> None:
+def safe_log_error(title: str, message: str) -> None:
 	"""``frappe.log_error`` that cannot take its caller down with it.
 
 	It raises on its own when ``frappe.flags.currently_saving`` is uninitialised
-	(worker / scheduler contexts) — and every caller of :func:`alert_once` is
-	already in a failure path, where a raising logger turns "one thing went
-	wrong" into "the job died". Same hardening, and same reason, as
-	``ffl_integrations.notifications.safe_log_error``; duplicated rather than
-	imported because ffl_core must not depend on ffl_integrations (a POS-only
-	site installs ffl_core alone)."""
+	(worker / scheduler contexts, the bench test runner) — and every caller is
+	already in a failure path (or a webhook that must still ack), where a raising
+	logger turns "one thing went wrong" into "the job died". Falls back to the file
+	logger and never raises. The one copy for all three apps: ffl_integrations and
+	ffl_woo_sync re-export it under their historical names."""
 	try:
 		frappe.log_error(title=title, message=message)
 	except Exception:
@@ -58,6 +58,19 @@ def _log(title: str, message: str) -> None:
 				f"{title}: {message[:1000]}")
 		except Exception:
 			pass
+
+
+_log = safe_log_error
+
+
+def alert_recipients() -> list[str]:
+	"""Who gets operational-alert email: FFL Settings → Alert Recipients
+	(comma / newline separated), else every enabled System Manager, so an alert is
+	never silently dropped. Not :func:`alert_assignees` — that is the desk-ToDo
+	rule (several roles, user names)."""
+	raw = frappe.db.get_single_value("FFL Settings", "alert_recipients") or ""
+	emails = [e.strip() for e in raw.replace("\n", ",").split(",") if e.strip()]
+	return emails or get_system_managers(only_name=True)
 
 
 def alert_once(reference_type: str, reference_name: str, *, title: str, message: str,

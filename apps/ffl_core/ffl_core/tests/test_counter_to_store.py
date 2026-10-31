@@ -509,8 +509,9 @@ class CounterToStoreIntegration(CounterToStoreFixtures):
 	def test_pickup_refuses_a_firearm_from_stock(self):
 		"""A gun on the shelf that the customer takes home today is a register
 		sale with a 4473 — not a counter order."""
-		self._receive(self._ship_to_store(self._only_do(
-			self._counter([self._line(GUN)], ffl=DEST_FFL)["sales_invoice"]), serial="TS-P2-SHELF-PU"))
+		# A free shelf gun: one that arrived for another customer's order is held
+		# by that order, and the submit gate refuses it before the pickup rule.
+		self._stocked_serial("TS-P2-SHELF-PU", GUN)
 		with self.assertRaises(frappe.ValidationError) as ctx:
 			manual_order.create_order({
 				"buyer_type": "individual", "customer": self._indiv("Pick Up Pete"),

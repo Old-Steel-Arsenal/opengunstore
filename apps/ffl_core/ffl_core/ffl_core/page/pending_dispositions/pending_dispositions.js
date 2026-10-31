@@ -338,9 +338,9 @@ class PendingDispositionsApp {
 	}
 
 	// Re-read one counter order's agreements and redraw just its card.
-	_refreshAgreements(row) {
+	_refreshAgreements(row, callOpts = {}) {
 		return frappe.call({ method: 'ffl_core.api.manual_order.order_agreements',
-			args: { sales_invoice: row.sales_invoice } }).then((r) => {
+			args: { sales_invoice: row.sales_invoice }, ...callOpts }).then((r) => {
 			const m = r.message || {};
 			row.agreements = m.rows || [];
 			row.agreements_missing = row.agreements.filter((a) => !a.signed);
@@ -413,14 +413,14 @@ class PendingDispositionsApp {
 		frappe.call({
 			method: 'ffl_core.customer_flags.banned_order_rows',
 			args: { woo_orders: pick('woo_online_order'), gb_orders: pick('gunbroker_order'),
-				customers: rows.filter((r) => !r.source || r.source === 'counter').map((r) => r.customer).filter(Boolean) },
+				customers: rows.filter((r) => (KIND[r.source] || 'counter') === 'counter').map((r) => r.customer).filter(Boolean) },
 		}).then((r) => {
 			const hit = r.message || {};
 			const woo = new Set(hit.woo || []), gb = new Set(hit.gb || []), cust = new Set(hit.customers || []);
 			let any = false;
 			rows.forEach((row) => {
 				row.banned_customer = woo.has(row.woo_online_order) || gb.has(row.gunbroker_order)
-					|| ((!row.source || row.source === 'counter') && cust.has(row.customer));
+					|| ((KIND[row.source] || 'counter') === 'counter' && cust.has(row.customer));
 				any = any || row.banned_customer;
 			});
 			if (any && this.rows === rows) this._render(rows);
@@ -529,7 +529,10 @@ class PendingDispositionsApp {
 			const pickupBlock = isPickup && !pickupInvoice ? (row.pickup_block || '') : '';
 			// A model-level unit with no gun yet: Dispose would ship one short.
 			const openUnits = can.assignSerial ? pdOpenUnits(row.assign_units) : 0;
-			const disposeDisabled = row.ffl_expired || blockShipUnpaid || awaiting || openUnits > 0;
+			// GunBroker: nothing disposes before Mark Payment Received (the server's
+			// _require_ready_to_dispose refuses it, same stage as shipDisabled below).
+			const disposeDisabled = row.ffl_expired || blockShipUnpaid || awaiting || openUnits > 0
+				|| (isGb && row.channel_stage === 'awaiting_payment');
 			// A pickup with a gun on it is NOT "hand it over and Mark Picked Up":
 			// the server refuses Mark Picked Up for exactly those rows, and the
 			// gun leaves on its 4473 ticket. Its hint is the server's pickup_block
@@ -550,7 +553,8 @@ class PendingDispositionsApp {
 				: (openUnits ? __('Assign a gun to every unit first.')
 				: (serialErrors.length ? __('Serial rejected — correct it on the WooCommerce order.')
 					: (awaiting ? __('Awaiting serial from WooCommerce.')
-						: (blockShipUnpaid ? __('Record payment before shipping.')
+						: (blockShipUnpaid ? (noAddress ? __('Record payment before it is picked up.')
+							: __('Record payment before shipping.'))
 							: (noAddressHint ? __('Counter pickup — hand it over and Mark Picked Up.')
 								: (awaitingGoods ? __('Waiting for ship-to-store goods to arrive.') : '')))))));
 			// A direct row never disposes — there is no FFL transfer to book;
@@ -1037,13 +1041,12 @@ class PendingDispositionsApp {
 	// The server's pre-ship payment rule (manual_order.ship_payment_block) as the
 	// page sees it: a counter individual's order ships once it is paid. Both ship
 	// actions ask it — push_shipment and mark_shipped_manually are both refused by
-	// that rule, so neither surface may offer a live button without it.
+	// that rule, so neither surface may offer a live button without it. The rule
+	// does not exempt a counter pickup: Mark Picked Up clears through the same
+	// gate, so an unpaid individual pickup is paid before it is handed over.
 	_blockShipUnpaid(row) {
 		const kind = KIND[row.source] || 'counter';
-		// A counter pickup need not be paid to be handed over;
-		// the rule is about SHIPPING an individual's order.
-		const ships = !!row.has_ship_address || !!row.destination_ffl;
-		return kind === 'counter' && ships && !row.is_business && !row.paid;
+		return kind === 'counter' && !row.is_business && !row.paid;
 	}
 
 	// THE Mark Shipped gate, shared by the card's button and the Ship
@@ -1218,22 +1221,17 @@ class PendingDispositionsApp {
 				// below, reference = the gateway's). The shared helper reports
 				// declines / cancels itself; the queue reloads either way. Already
 				// charged on the Virtual Terminal → typed record below, never the A80.
-				const cardMop = (frappe.boot && frappe.boot.card_mop) || 'Credit Card';
+				const cardMop = window.ffl.switches.cardMop();
 				const card = frappe.boot && frappe.boot.ffl_card_processor;
 				if (v.mode === cardMop && Number(card && card.enabled)
-						&& !v.charged_outside && window.ffl && window.ffl.terminalCharge) {
+						&& !v.charged_outside && window.ffl && window.ffl.chargeSalesInvoice) {
 					const saveCard = saveOffer && v.save_card ? 1 : 0;
 					d.hide();
 					if (saveCard && !(await cof.ensureSigned(row.customer, saveOffer, row.customer_name))) {
 						d.show();   // not signed: back to the dialog
 						return;
 					}
-					const res = await window.ffl.terminalCharge({
-						amount: flt(v.amount),
-						start: { method: 'ffl_integrations.payments.api.charge_sales_invoice', args: { sales_invoice: row.sales_invoice, amount: v.amount, ...(saveCard ? { save_card: 1 } : {}) } },
-						poll: { method: 'ffl_integrations.payments.api.poll_sales_invoice_charge', args: { sales_invoice: row.sales_invoice } },
-						cancel: { method: 'ffl_integrations.payments.api.cancel_sales_invoice_charge', args: { sales_invoice: row.sales_invoice } },
-					});
+					const res = await window.ffl.chargeSalesInvoice(row.sales_invoice, flt(v.amount), { saveCard });
 					if (res && res.skip) {
 						frappe.msgprint({ title: __('Terminal not configured'), indicator: 'orange',
 							message: __('The {0} device is not set up on this store. Take the card on the Virtual Terminal or your standalone terminal first, then tick "Already charged on Virtual Terminal" and enter its approval code.', [(card && card.label) || __('card processor')]) });
@@ -1320,15 +1318,8 @@ class PendingDispositionsApp {
 		// Unsigned agreements: read them again (the customer may have just signed),
 		// so the dialog asks about exactly what is still missing.
 		if (kind === 'counter' && (row.agreements_missing || []).length) {
-			frappe.call({ method: 'ffl_core.api.manual_order.order_agreements', args: { sales_invoice: row.sales_invoice },
-				freeze: true, freeze_message: __('Checking the order…') }).then((r) => {
-				const m = r.message || {};
-				row.agreements = m.rows || [];
-				row.agreements_missing = row.agreements.filter((a) => !a.signed);
-				row.agreement_email = m.email || '';
-				this._redrawCard(row);
-				this._confirmDispose(row);
-			});
+			this._refreshAgreements(row, { freeze: true, freeze_message: __('Checking the order…') })
+				.then(() => this._confirmDispose(row));
 			return;
 		}
 		const method = PD_STOCK_LINES_METHOD[kind];
@@ -1410,7 +1401,7 @@ class PendingDispositionsApp {
 				...(locFields.length ? [{
 					fieldtype: 'HTML', fieldname: 'stg_head',
 					options: `<div style="font-weight:600;margin:6px 0 2px">${__('Where did these come from?')}</div>
-						<div class="text-muted" style="font-size:12px">${__('Pick the location each was taken from. Leave blank if you are not sure — it goes on the Not placed list.')}</div>`,
+						<div class="text-muted" style="font-size:12px">${__('Leave blank if you are not sure; it goes on the Not placed list.')}</div>`,
 				}] : []),
 				...locFields.map((f) => ({ fieldtype: 'Select', fieldname: f.fieldname, label: f.label,
 					options: f.options, default: f.default })),
@@ -1641,7 +1632,7 @@ class PendingDispositionsApp {
 				<div><b>${__('Recipient')}:</b> ${esc(row.customer_name || row.customer)}</div>
 				${coLine}
 				<div class="text-muted" style="font-size:12px">
-					${!p.line1 && row.destination_ffl ? __('Address is read from the licence when this is pushed.') + '<br>' : ''}${esc(p.line1 || '')}${p.line2 ? ', ' + esc(p.line2) : ''}<br>
+					${!p.line1 && row.destination_ffl ? __('Address comes from the FFL licence.') + '<br>' : ''}${esc(p.line1 || '')}${p.line2 ? ', ' + esc(p.line2) : ''}<br>
 					${esc(cityLine)}${p.phone ? ' · ' + esc(p.phone) : ''}${fflLine}
 				</div>
 				<div style="margin-top:8px"><b>${__('Items')}:</b><ul>${items}</ul></div>
@@ -1753,7 +1744,7 @@ class PendingDispositionsApp {
 				+ '.includes(doc.refund_mode)';
 			fields.push({
 				fieldtype: 'Data', fieldname: 'refund_reference', label: __('Refund Reference'),
-				description: __('Zelle / ACH: the confirmation number. Check/Money Order: the number of the check you wrote. Credit Card: the terminal approval code.'),
+				description: __('The confirmation, check or approval number for the refund method.'),
 				depends_on: needsRef, mandatory_depends_on: needsRef,
 			});
 		}

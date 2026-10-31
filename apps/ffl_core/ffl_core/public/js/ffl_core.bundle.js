@@ -429,25 +429,28 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 			|| row.sku;
 		// The law's answer (the service class), not RSR's dealer-only shipping flag.
 		const serialDefault = (row.is_firearm ?? row.ffl_required) ? 1 : 0;
+		// The house whose SKU this is: a named row's tag, or an unnamed (product) row's
+		// best offer — row.sku is that offer's SKU (distributor.api.product_search).
+		const house = row.distributor || ((row.offers || [])[0] || {}).distributor || '';
 		const dialog = new frappe.ui.Dialog({
-			title: __('Create Item from RSR'),
+			title: house ? __('Create Item from {0}', [house]) : __('Create Item from RSR'),
 			size: 'small',
 			fields: [
 				{ fieldtype: 'HTML', fieldname: 'preview' },
 				{ label: __('Item Code (SKU)'), fieldname: 'item_code', fieldtype: 'Data', reqd: 1, default: row.sku },
 				{ label: __('Item Name'), fieldname: 'item_name', fieldtype: 'Data', default: itemName },
 				{ label: __('Item Group'), fieldname: 'item_group', fieldtype: 'Link', options: 'Item Group',
-					description: __('Leave blank to file it under the catalog\'s category; set only to override.') },
+					description: __('Leave blank to use the catalog\'s category.') },
 				{ label: __('Has Serial No (track per unit)'), fieldname: 'has_serial_no', fieldtype: 'Check',
 					default: serialDefault,
-					description: __('Always on for firearm groups (incl. NFA) — the server forces it; only meaningful for non-firearm stock.') },
+					description: __('Always on for firearms; only choose for non-firearm stock.') },
 				{ label: __('Uniform Selling Price'), fieldname: 'uniform_sell_price', fieldtype: 'Check', default: 1,
-					description: __('When checked (recommended for RSR SKUs — one price for many like units), all units share the Selling Price below. Uncheck for per-gun pricing entered at receive.') },
+					description: __('All units share the Selling Price below; uncheck to price each gun at receive.') },
 				{ label: __('Selling Price (MAP / MSRP)'), fieldname: 'standard_rate', fieldtype: 'Currency',
 					default: row.map || row.msrp || 0,
 					depends_on: 'eval:doc.uniform_sell_price',
 					mandatory_depends_on: 'eval:doc.uniform_sell_price',
-					description: __('Item.standard_rate — only used in Uniform mode. Defaults to MAP (RSR-enforced floor), else MSRP. In per-gun mode the price lives on each Serial No.') },
+					description: __('Defaults to MAP, else MSRP.') },
 			],
 			primary_action_label: __('Create & Add'),
 			primary_action: (values) => {
@@ -456,6 +459,8 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 					method: 'ffl_integrations.rsr.promote.promote_to_item',
 					args: { payload: JSON.stringify({
 						rsr_stock_number: row.sku,
+						// The house that offered this row: a non-RSR SKU promotes through it.
+						distributor: house || undefined,
 						item_code: values.item_code,
 						item_name: values.item_name,
 						item_group: values.item_group || undefined,
@@ -500,10 +505,10 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 				{ label: __('Item Name'), fieldname: 'item_name', fieldtype: 'Data', default: seed },
 				{ label: __('Item Group'), fieldname: 'item_group', fieldtype: 'Link', options: 'Item Group', reqd: 1 },
 				{ label: __('Has Serial No (track per unit)'), fieldname: 'has_serial_no', fieldtype: 'Check',
-					description: __('Always on for firearm groups (incl. NFA, used guns) — the server forces it. Off only for non-serialized stock.') },
+					description: __('Always on for firearms; off only for non-serialized stock.') },
 				{ label: __('Stock UoM'), fieldname: 'stock_uom', fieldtype: 'Link', options: 'UOM', default: 'Nos' },
 				{ label: __('Uniform Selling Price'), fieldname: 'uniform_sell_price', fieldtype: 'Check',
-					description: __('When checked, all serials of this item sell at the Default Selling Price below. Uncheck (default) for per-gun pricing entered at receive.') },
+					description: __('All units share the Default Selling Price below; leave unticked to price each gun at receive.') },
 				{ label: __('Default Selling Price'), fieldname: 'standard_rate', fieldtype: 'Currency',
 					depends_on: 'eval:doc.uniform_sell_price',
 					mandatory_depends_on: 'eval:doc.uniform_sell_price',
@@ -1119,7 +1124,6 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 				{
 					label: __('Customer'), fieldname: 'source_name', fieldtype: 'Link',
 					options: 'Customer', reqd: 1, default: posCustomer,
-					description: __('Person trading in the firearm. Pre-filled from POS customer.'),
 					change: () => {
 						// Banned box / alerts first (customer_flags.js): a Banned seller is
 						// cleared and nothing of theirs is filled in.
@@ -1214,8 +1218,7 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 				{
 					label: __('Storage location'), fieldname: 'storage_location', fieldtype: 'Link',
 					options: 'Storage Location', depends_on: GUN,
-					description: __('Where the gun goes in the store. A slot holds one firearm. '
-						+ 'Leave blank to place it later from Storage Locations.'),
+					description: __('Leave blank to place it later.'),
 					get_query: () => ({
 						query: 'ffl_core.api.storage.location_query', filters: { only_free: 1 },
 					}),
@@ -1230,13 +1233,12 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 				{
 					label: __('Retail Price ($)'), fieldname: 'retail_price',
 					fieldtype: 'Currency', depends_on: GUN,
-					description: __('Optional — set later when pricing the unit.'),
 				},
 				{ fieldtype: 'Section Break', label: __('Accessories & ammo') },
 				{
 					fieldname: 'accessories', fieldtype: 'Table', label: __('Accessories & ammo'),
 					in_place_edit: true, data: [],
-					description: __('Anything else the seller brings, counted by quantity. No serial numbers.'),
+					description: __('Counted by quantity; no serial numbers.'),
 					fields: [
 						{
 							label: __('Item'), fieldname: 'item_code', fieldtype: 'Link', options: 'Item',
@@ -1365,6 +1367,8 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 				ffl.tradeInModelFill(item).forEach(([f, v]) => dialog.set_value(f, v));
 			},
 		});
+		// Editing the box by hand drops the earlier pick (onSelect's .val() fires no input event).
+		$skuWrap.find('.ffl-ti-sku-input').on('input', () => { selectedItemCode = ''; });
 		// The picker binds a document-level click handler (+ a debounce timer);
 		// tear it down when the dialog closes so it doesn't accumulate across a
 		// long POS shift that never reloads the page.
@@ -2068,87 +2072,27 @@ frappe.provide('frappe.ui.form');
 
 		const $input = $banner.find('.rsr-qe-scan-input');
 		const $results = $banner.find('.rsr-qe-scan-results');
-		let lastQuery = '';
-		let debounceTimer = null;
-
-		$input.on('input', function () {
-			const q = ($(this).val() || '').trim();
-			if (q === lastQuery) return;
-			lastQuery = q;
-			clearTimeout(debounceTimer);
-			if (q.length < 3) {
-				$results.empty();
-				return;
-			}
-			debounceTimer = setTimeout(() => doLookup(qe, $banner, q), 220);
-		});
-
-		$input.on('keydown', function (e) {
-			if (e.key === 'Enter') {
-				e.preventDefault();
-				const q = ($(this).val() || '').trim();
-				if (q) doLookup(qe, $banner, q, /*autoApply=*/true);
-			}
-		});
-
-		setTimeout(() => $input.focus(), 80);
-	}
-
-	function doLookup(qe, $banner, q, autoApply) {
-		// No distributor catalog here: the shared notice, not a request the server refuses.
-		if (ffl.FirearmItemPicker.catalogOff()) {
-			$banner.find('.rsr-qe-scan-results').html(ffl.capabilities.notice('catalog'));
-			return;
-		}
-		frappe.call({
-			method: 'ffl_integrations.rsr.promote.lookup_for_item_form',
-			args: { scan: q },
-			callback: (r) => {
-				const m = r.message || {};
-				renderResult($banner, m, q);
-				if (m.found) {
-					const isUpcShape = /^\d{8,14}$/.test(q);
-					if (autoApply || (isUpcShape && m.rsr.upc === q)) {
-						window.gunstore.applyRsrToDoc(qe, m.defaults, m.rsr);
-						$banner.find('.rsr-qe-scan-input').val('');
-						$banner.find('.rsr-qe-scan-results').empty();
-						frappe.show_alert({
-							message: __('Filled from RSR · {0}', [m.rsr.rsr_stock_number]),
-							indicator: 'green',
-						});
-					}
-				} else if (autoApply) {
-					frappe.show_alert({ message: __('No RSR match for {0}', [q]), indicator: 'orange' });
-				}
-			},
-		});
-	}
-
-	function renderResult($banner, m, q) {
-		const $results = $banner.find('.rsr-qe-scan-results');
-		if (!m.found) {
-			$results.html(`
+		window.gunstore.wireRsrScan($input, $results, {
+			// Compact card variant for the QuickEntry dialog (smaller thumb / fonts).
+			cardSize: {thumb: 56, name: 12, meta: 11},
+			decorate: ($card) => $card.addClass('rsr-qe-scan-row'),
+			noMatchHtml: (q) => `
 				<div style="color:var(--text-muted); font-size:11px; padding:8px; text-align:center; border:1px dashed var(--border-color); border-radius:4px">
 					${__('No RSR catalog match for {0}.', [frappe.utils.escape_html(q)])}
 				</div>
-			`);
-			return;
-		}
-		// Compact card variant for the QuickEntry dialog (smaller thumb / fonts).
-		const $card = $(window.gunstore.renderRsrCard(m.rsr || {}, m.defaults || {},
-			{thumb: 56, name: 12, meta: 11}));
-		$card.addClass('rsr-qe-scan-row');
-		$results.empty().append($card);
-		$card.on('click', () => {
-			const qe = frappe.quick_entry;
-			if (qe) window.gunstore.applyRsrToDoc(qe, m.defaults, m.rsr);
-			$banner.find('.rsr-qe-scan-input').val('');
-			$results.empty();
-			frappe.show_alert({
-				message: __('Filled from RSR · {0}', [m.rsr.rsr_stock_number]),
-				indicator: 'green',
-			});
+			`,
+			onApply: (m) => {
+				window.gunstore.applyRsrToDoc(qe, m.defaults, m.rsr);
+				$input.val('');
+				$results.empty();
+				frappe.show_alert({
+					message: __('Filled from RSR · {0}', [m.rsr.rsr_stock_number]),
+					indicator: 'green',
+				});
+			},
 		});
+
+		setTimeout(() => $input.focus(), 80);
 	}
 })();
 
@@ -2301,7 +2245,7 @@ frappe.provide('frappe.ui.form');
 						},
 						{
 							label: __('Reason'), fieldname: 'reason', fieldtype: 'Small Text', reqd: 1,
-							description: __('Required for the audit trail (e.g. "Found dealer invoice — true cost $900").'),
+							description: __('For example "Found dealer invoice — true cost $900".'),
 						},
 						{
 							label: __('The amount actually paid to the seller was different'),
@@ -2449,7 +2393,7 @@ frappe.provide('frappe.ui.form');
 					allowed_file_types: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
 					max_file_size: 10 * 1024 * 1024,
 				},
-				upload_notes: __('JPG / PNG / WEBP, up to 10 MB each. You can select several at once. Photos are made public — the web store uses them.'),
+				upload_notes: __('JPG / PNG / WEBP up to 10 MB each; photos are made public for the web store.'),
 				on_success(file) { if (file && file.file_url) urls.push(file.file_url); },
 			});
 			const $w = up.dialog && up.dialog.$wrapper;
@@ -2593,6 +2537,57 @@ frappe.provide('frappe.ui.form');
 			frm._photoSectionCollapsed = true;
 			sec.collapse(true);
 		}
+	};
+
+	// The RSR scan box both banners share (Item form, Item quick entry): 3+ characters
+	// look up after a 220 ms pause, Enter looks up and applies the first match, an
+	// exact UPC scan applies itself. Each host keeps its own markup and its own
+	// onApply(m); `decorate($card)` and `noMatchHtml(q)` style the result.
+	window.gunstore.wireRsrScan = function ($input, $results, { cardSize, decorate, noMatchHtml, onApply }) {
+		let lastQuery = '';
+		let debounceTimer = null;
+		const lookup = (q, autoApply) => {
+			// No distributor catalog here: the shared notice, not a request the server refuses.
+			if (ffl.FirearmItemPicker.catalogOff()) {
+				$results.html(ffl.capabilities.notice('catalog'));
+				return;
+			}
+			frappe.call({
+				method: 'ffl_integrations.rsr.promote.lookup_for_item_form',
+				args: { scan: q },
+				callback: (r) => {
+					const m = r.message || {};
+					if (!m.found) {
+						$results.html(noMatchHtml(q));
+						if (autoApply) frappe.show_alert({ message: __('No RSR match for {0}', [q]), indicator: 'orange' });
+						return;
+					}
+					const $card = $(window.gunstore.renderRsrCard(m.rsr || {}, m.defaults || {}, cardSize));
+					if (decorate) decorate($card);
+					$results.empty().append($card);
+					$card.on('click', () => onApply(m));
+					// Auto-apply on Enter, or on an exact UPC scan (numeric, length 8-14, exact match).
+					if (autoApply || (/^\d{8,14}$/.test(q) && m.rsr.upc === q)) onApply(m);
+				},
+			});
+		};
+		$input.on('input', function () {
+			const q = ($(this).val() || '').trim();
+			if (q === lastQuery) return;
+			lastQuery = q;
+			clearTimeout(debounceTimer);
+			if (q.length < 3) {
+				$results.empty();
+				return;
+			}
+			debounceTimer = setTimeout(() => lookup(q), 220);
+		});
+		$input.on('keydown', function (e) {
+			if (e.key !== 'Enter') return;
+			e.preventDefault();
+			const q = ($(this).val() || '').trim();
+			if (q) lookup(q, /*autoApply=*/true);
+		});
 	};
 
 	window.gunstore.renderRsrCard = function (rsr, defaults, opts) {
@@ -2961,14 +2956,14 @@ frappe.provide('frappe.ui.form');
 				fieldtype: 'Data', fieldname: 'transaction_number',
 				label: __('Transaction Number / Approval Code'),
 				depends_on: needs, mandatory_depends_on: needs,
-				description: __('Zelle / ACH: the bank or app confirmation number. Check/Money Order: the check or money order number. Credit Card: the approval code from the terminal or Virtual Terminal receipt — never the card number.'),
+				description: __('The check, bank-confirmation or card approval number; never the card number.'),
 			};
 			if (!terminal) return [ref];
 			return [{
 				fieldtype: 'Check', fieldname: 'charged_outside',
 				label: __('Already charged on Virtual Terminal'),
 				depends_on: sw.cardProcessorEnabled() ? 'eval:doc.mode==' + card : 'eval:false',
-				description: __('Records the card payment without running the terminal. Enter the approval code below.'),
+				description: __('Records the card payment without running the terminal.'),
 			}, ref];
 		},
 		// Single-field form, kept for dialogs built before fields() existed.
@@ -3007,6 +3002,48 @@ frappe.provide('frappe.ui.form');
 			}
 		},
 	};
+
+	// A Test Connection report ({checks: [{ok, label, detail}]}, every integration's
+	// test_connection) as one dialog: a dot per check, OK / problems in the title.
+	window.ffl.showConnectionChecks = function (name, checks) {
+		var esc = frappe.utils.escape_html;
+		var color = function (ok) {
+			return ok === true ? 'var(--green-500, #28a745)'
+				: ok === false ? 'var(--red-500, #dc3545)' : 'var(--gray-400, #adb5bd)';
+		};
+		var rows = (checks || []).map(function (c) {
+			return '<tr><td style="white-space:nowrap;padding:4px 12px 4px 0">'
+				+ '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:middle;background:'
+				+ color(c.ok) + '"></span>' + esc(c.label) + '</td>'
+				+ '<td style="padding:4px 0">' + esc(c.detail || '') + '</td></tr>';
+		}).join('');
+		var allOk = (checks || []).every(function (c) { return c.ok !== false; });
+		frappe.msgprint({
+			title: allOk ? __('{0} — connection OK', [name]) : __('{0} — connection problems', [name]),
+			indicator: allOk ? 'green' : 'red',
+			message: '<table style="width:100%">' + rows + '</table>',
+		});
+	};
+
+	// Fill a Select's options from a server list (Acquisition Type, Receive Source),
+	// keeping the value already chosen: Frappe's Select.refresh() clears a value that
+	// is not in the options, so a current value missing from the list goes back in
+	// first. An empty list with nothing chosen leaves the field alone (not synced yet).
+	// get() reads the current value; set(options, current) writes the options.
+	// quiet: no error dialog (an endpoint of a soft-coupled app).
+	window.ffl.loadSelectOptions = function (o) {
+		frappe.call({
+			method: o.method,
+			callback: function (r) {
+				var list = (r.message || []).slice();
+				var cur = o.get();
+				if (!list.length && !cur) return;
+				if (cur && list.indexOf(cur) === -1) list.unshift(cur);
+				o.set([''].concat(list).join('\n'), cur);
+			},
+			error: o.quiet ? function () {} : undefined,
+		});
+	};
 })();
 
 
@@ -3032,12 +3069,13 @@ frappe.provide('frappe.ui.form');
 (function setupCardPosHook() {
 	const POLL_TIMEOUT_MS = 120000;   // overall wait for the terminal
 
-	// The card tender name, served from the backend's single definition
-	// (ffl_integrations.boot → frappe.boot.card_mop). Read lazily — boot may
-	// not be populated yet when this bundle first executes.
-	function cardMop() {
-		return (frappe.boot && frappe.boot.card_mop) || 'Credit Card';
-	}
+	// The card tender name, card processor label and on/off switch all come from
+	// ffl.switches (defined above in this bundle). Read lazily — boot may not be
+	// populated yet when this bundle first executes.
+	const switches = () => window.ffl.switches;
+	const cardMop = () => window.ffl.switches.cardMop();
+	const cardLabel = () => window.ffl.switches.cardProcessorLabel();
+	const cardProcessorLive = () => window.ffl.switches.cardProcessorEnabled();
 
 	// Sum of the card tender rows in DECIMAL major units — the processor wants
 	// order.totalAmount as 42.50, NOT integer cents.
@@ -3198,23 +3236,6 @@ frappe.provide('frappe.ui.form');
 
 	window.ffl = window.ffl || {};
 	window.ffl.bindCardChargeNow = bindCardChargeNow;
-
-	// Which integrations are live. Lazy, like cardMop() — boot isn't guaranteed
-	// populated when this bundle first runs.
-	function switches() {
-		return (window.ffl && window.ffl.switches) || null;
-	}
-
-	// The active card processor's name, for messages ("Payroc" on a Payroc store).
-	function cardLabel() {
-		const s = switches();
-		return (s && s.cardProcessorLabel) ? s.cardProcessorLabel() : __('card processor');
-	}
-
-	function cardProcessorLive() {
-		const s = switches();
-		return s ? s.cardProcessorEnabled() : true;   // no switches module → pre-switch behaviour
-	}
 
 	// A counter pickup's 4473 ticket (pos_tender_guard.pickupTicketState). Kernel
 	// missing (asset problem) → the same reading here, so a ticket is still never
@@ -3642,6 +3663,15 @@ frappe.provide('frappe.ui.form');
 		return { skip: false, ok: false };
 	};
 
+	// Terminal charge against a Sales Invoice (counter order, membership dues).
+	// Callers handle skip / ok / decline themselves.
+	window.ffl.chargeSalesInvoice = (si, amount, { saveCard } = {}) => window.ffl.terminalCharge({
+		amount,
+		start: { method: 'ffl_integrations.payments.api.charge_sales_invoice', args: { sales_invoice: si, amount, ...(saveCard ? { save_card: 1 } : {}) } },
+		poll: { method: 'ffl_integrations.payments.api.poll_sales_invoice_charge', args: { sales_invoice: si } },
+		cancel: { method: 'ffl_integrations.payments.api.cancel_sales_invoice_charge', args: { sales_invoice: si } },
+	});
+
 	// COUNTER PICKUP TICKET: the ticket is $0 — the money is on the counter order
 	// (Sales Invoice) it hands the gun over for. Complete Order collects whatever
 	// that order still owes right here (terminal / cash / Zelle / ACH / check), booking it
@@ -3702,13 +3732,8 @@ frappe.provide('frappe.ui.form');
 			if (owed <= 0.005) return { ok: true };
 			const choice = await promptCounterBalance(si, owed);
 			if (!choice) return { ok: false };
-			if (choice.mode === cardMop() && cardProcessorLive() && !choice.charged_outside && window.ffl.terminalCharge) {
-				const res = await window.ffl.terminalCharge({
-					amount: choice.amount,
-					start: { method: 'ffl_integrations.payments.api.charge_sales_invoice', args: { sales_invoice: si, amount: choice.amount } },
-					poll: { method: 'ffl_integrations.payments.api.poll_sales_invoice_charge', args: { sales_invoice: si } },
-					cancel: { method: 'ffl_integrations.payments.api.cancel_sales_invoice_charge', args: { sales_invoice: si } },
-				});
+			if (choice.mode === cardMop() && cardProcessorLive() && !choice.charged_outside && window.ffl.chargeSalesInvoice) {
+				const res = await window.ffl.chargeSalesInvoice(si, choice.amount);
 				if (res && res.skip) {
 					frappe.msgprint({ title: __('Terminal not configured'), indicator: 'orange',
 						message: __('The {0} device is not set up on this store. Take the card on the Virtual Terminal or your standalone terminal first, then tick "Already charged on Virtual Terminal" and enter its approval code.', [cardLabel()]) });
@@ -3922,7 +3947,7 @@ frappe.provide('frappe.ui.form');
 			mode: 'Zelle',
 			title: __('Zelle Transaction Number'),
 			label: __('Transaction Number'),
-			description: __('Enter the Zelle confirmation / transaction number to complete this sale.'),
+			description: __('Zelle confirmation number.'),
 		});
 	}
 
@@ -3931,7 +3956,7 @@ frappe.provide('frappe.ui.form');
 			mode: 'Check/Money Order',
 			title: __('Check or Money Order Number'),
 			label: __('Check / money order number'),
-			description: __('Enter the number printed on the check or money order to complete this sale.'),
+			description: __('Number printed on the check or money order.'),
 		});
 	}
 
@@ -3948,7 +3973,7 @@ frappe.provide('frappe.ui.form');
 			// The APPROVAL CODE, not the batch number (one batch covers many sales
 			// and does not exist until the batch is closed) and not the card's last
 			// 4 (not unique). Only the approval code identifies this transaction.
-			description: __('The approval code printed on the terminal receipt for this transaction.'),
+			description: __('Printed on the terminal receipt.'),
 			// Refunds too: a negative card row reverses revenue and sales tax, and on
 			// a standalone terminal nothing else shows the money went back. The server
 			// gate says the same (include_refunds=True) — if this did not, the counter
@@ -4295,39 +4320,27 @@ frappe.provide('frappe.ui.form');
 		return s ? s.fastboundEnabled() : true;   // no switches module → pre-switch behaviour
 	}
 
+	// The payment screen's 4473 button: the Recent Orders chips' decision
+	// (pos_order_status.js form4473Label), in hex. The dead end ('4473 Not
+	// Configured') has to be said here: the server's refusal names the setting to
+	// change, but the client's own 4473 check blocks before submit.
+	const BADGE_HEX = { green: '#388e3c', red: '#c0392b', orange: '#f57c00', gray: '#6c7680' };
+
 	function getStatusBadge(frm) {
 		const f = (frm && frm.doc && frm.doc.form_4473_status) || 'N/A';
 		const n = (frm && frm.doc && frm.doc.nics_status) || 'N/A';
-		const done = f === 'Completed' && n === 'Proceed';
-		// A recorded 4473 is a recorded 4473 whatever the settings say — an order a
-		// manager already overrode, or one whose webhook landed before FastBound was
-		// switched off, submits fine and must not be painted as broken. So the
-		// dead-end check comes AFTER this.
-		if (done && !paperMode()) return { color: '#388e3c', label: __('4473 Complete') };
-		if (!paperMode() && !fastboundLive()) {
-			// The dead end: FastBound switched off, paper mode not switched on. The
-			// server's refusal names the setting to change, but the counter never
-			// gets that far — the client's own 4473 check blocks before submit — so
-			// the button has to say it. Red, because this is a configuration fault,
-			// not a step in anyone's workflow.
-			return { color: '#c0392b', label: __('4473 Not Configured') };
-		}
-		if (paperMode()) {
-			// Never "Awaiting": nothing is coming, and a cashier told to wait for a
-			// webhook this store does not receive is stuck with no way forward.
-			return done
-				? { color: '#388e3c', label: __('4473 Recorded') }
-				: { color: '#6c7680', label: __('Record Paper 4473') };
-		}
-		// Pending, or a finished form whose NICS did not clear (Delayed / Denied /
-		// Cancelled): a 4473 is under way, so never the grey "FastBound 4473" that
-		// reads as not started. The same three-level rule as the Recent Orders
-		// chips (pos_tender_guard.js form4473State).
-		const state = (window.ffl && typeof window.ffl.form4473State === 'function')
-			? window.ffl.form4473State(f, n)
-			: (f === 'Pending' || f === 'Completed' ? 'awaiting' : 'not_started');
-		if (state === 'awaiting') return { color: '#f57c00', label: __('Awaiting 4473') };
-		return { color: '#6c7680', label: __('FastBound 4473') };
+		const pos = window.ffl && window.ffl.posOrderStatus;
+		if (!pos) return { color: BADGE_HEX.gray, label: __('FastBound 4473') };   // asset failed to load
+		const r = pos.form4473Label({ form_4473_status: f, nics_status: n }, {
+			// pos_tender_guard.js form4473State; kernel missing → the same reading here.
+			state: (a, b) => ((window.ffl && typeof window.ffl.form4473State === 'function')
+				? window.ffl.form4473State(a, b)
+				: (a === 'Completed' && b === 'Proceed' ? 'complete'
+					: (a === 'Pending' || a === 'Completed' ? 'awaiting' : 'not_started'))),
+			paperMode,
+			fastboundOn: fastboundLive,
+		}, { notStartedText: __('FastBound 4473') });
+		return { color: BADGE_HEX[r.color], label: r.text };
 	}
 
 	// The Refresh 4473 button's server call: re-read the order, self-heal the
@@ -4742,34 +4755,10 @@ frappe.provide('frappe.ui.form');
 							serial_by_item_row: remapped,
 						},
 					});
-				}).then((r) => {
-					frappe.dom.unfreeze();
-					const m = (r && r.message) || {};
-					if (!m.ok) {
-						dialog.enable_primary_action();
-						return;
-					}
-					dialog.hide();
-					// Paper mode returns no URL — there is no wizard to send anyone to,
-					// and window.open('') would pop a blank tab in the cashier's face.
-					if (m.fastbound_url) window.open(m.fastbound_url, '_blank');
-					frappe.show_alert({
-						message: m.fastbound_url
-							? __('Order parked for 4473. Serve other customers meanwhile — reopen it from Recent Orders → Draft; submit unlocks once the 4473 + NICS clear in FastBound.')
-							: __('Order parked for the paper 4473. Complete the form and the background check, then reopen it from Recent Orders → Draft and click <b>Record Paper 4473</b>.'),
-						indicator: 'green',
-					}, 8);
-					// Park this firearm order (already saved as Draft) and start a
-					// fresh cart, so the register isn't stuck waiting on NICS (which
-					// can take minutes to days). Resume later from Recent Orders →
-					// Draft (built-in). Fall back to a plain reload if the POS
-					// controller API isn't available.
-					if (window.cur_pos && typeof window.cur_pos.load_new_invoice_on_pos === 'function') {
-						window.cur_pos.load_new_invoice_on_pos();
-					} else {
-						frm.reload_doc();
-					}
-				}).catch(() => {
+				}).then((r) => parkFor4473(frm, dialog, r,
+					__('Order parked for 4473. Serve other customers meanwhile — reopen it from Recent Orders → Draft; submit unlocks once the 4473 + NICS clear in FastBound.'),
+					__('Order parked for the paper 4473. Complete the form and the background check, then reopen it from Recent Orders → Draft and click <b>Record Paper 4473</b>.'),
+				)).catch(() => {
 					frappe.dom.unfreeze();
 					dialog.enable_primary_action();
 				});
@@ -4777,6 +4766,33 @@ frappe.provide('frappe.ui.form');
 		});
 		if (anyUnavailable) dialog.disable_primary_action();
 		dialog.show();
+	}
+
+	// Start 4473 / Customer Transfer, once the server started the 4473: open the
+	// FastBound tab, say what happens next, and start a fresh cart. A refusal
+	// (!m.ok) leaves the dialog open.
+	function parkFor4473(frm, dialog, r, fastboundMsg, paperMsg) {
+		frappe.dom.unfreeze();
+		const m = (r && r.message) || {};
+		if (!m.ok) {
+			dialog.enable_primary_action();
+			return;
+		}
+		dialog.hide();
+		// Paper mode returns no URL — there is no wizard to send anyone to,
+		// and window.open('') would pop a blank tab in the cashier's face.
+		if (m.fastbound_url) window.open(m.fastbound_url, '_blank');
+		frappe.show_alert({ message: m.fastbound_url ? fastboundMsg : paperMsg, indicator: 'green' }, 8);
+		// Park this firearm order (already saved as Draft) and start a
+		// fresh cart, so the register isn't stuck waiting on NICS (which
+		// can take minutes to days). Resume later from Recent Orders →
+		// Draft (built-in). Fall back to a plain reload if the POS
+		// controller API isn't available.
+		if (window.cur_pos && typeof window.cur_pos.load_new_invoice_on_pos === 'function') {
+			window.cur_pos.load_new_invoice_on_pos();
+		} else {
+			frm.reload_doc();
+		}
 	}
 
 	// Manager-only: re-open a COMPLETED 4473. The server cancels this order's
@@ -4973,15 +4989,15 @@ frappe.provide('frappe.ui.form');
 				fieldtype: 'HTML',
 				options: `<div class="alert alert-info" style="margin-bottom:10px">
 					${(window.ffl && window.ffl.switches && window.ffl.switches.paper4473Mode())
-						? __("Scan or type the serial of each firearm this customer is transferring in. Each is added at $0 (already the customer's) plus one Transfer Fee per gun. Then complete the PAPER 4473 and record it with <b>Record Paper 4473</b> on the payment screen.")
-						: __("Scan or type the serial of each firearm this customer is transferring in. Each is added at $0 (already the customer's) plus one Transfer Fee per gun, then you finish the 4473 in FastBound.")}
+						? __("Each firearm is added at $0 (already the customer's) plus one Transfer Fee per gun. Then complete the PAPER 4473 and record it with <b>Record Paper 4473</b> on the payment screen.")
+						: __("Each firearm is added at $0 (already the customer's) plus one Transfer Fee per gun, then you finish the 4473 in FastBound.")}
 				</div>`,
 			}, {
 				fieldtype: 'Autocomplete',
 				fieldname: 'serial_input',
 				label: __('Scan or type serial'),
 				options: acOptions,
-				description: __('Type a few characters to match in-stock firearms, or scan the serial; press Enter to add.'),
+				description: __('Press Enter to add.'),
 			}, {
 				fieldtype: 'HTML',
 				fieldname: 'added',
@@ -4992,7 +5008,7 @@ frappe.provide('frappe.ui.form');
 				fieldname: 'fee',
 				label: __('Transfer Fee (per firearm)'),
 				default: cfg.fee_amount || 0,
-				description: __('Charged once per added firearm. Editable.'),
+				description: __('Charged once per added firearm.'),
 			}],
 			// Paper mode never opens FastBound — this button parks the transfer so the
 			// counter can record the paper 4473 on it.
@@ -5022,26 +5038,10 @@ frappe.provide('frappe.ui.form');
 						pos_profile: frm.doc.pos_profile || '',
 						invoice_name: frm.doc.__islocal ? '' : frm.doc.name,
 					},
-				}).then((r) => {
-					frappe.dom.unfreeze();
-					const m = (r && r.message) || {};
-					if (!m.ok) { dialog.enable_primary_action(); return; }
-					dialog.hide();
-					// Paper mode returns no URL — there is no wizard to send anyone to,
-					// and window.open('') would pop a blank tab in the cashier's face.
-					if (m.fastbound_url) window.open(m.fastbound_url, '_blank');
-					frappe.show_alert({
-						message: m.fastbound_url
-							? __('Transfer parked for 4473. Serve other customers meanwhile — reopen from Recent Orders → Draft; submit unlocks once the 4473 + NICS clear in FastBound.')
-							: __('Transfer parked for the paper 4473. Complete the form and the background check, then reopen it from Recent Orders → Draft and click <b>Record Paper 4473</b>.'),
-						indicator: 'green',
-					}, 8);
-					if (window.cur_pos && typeof window.cur_pos.load_new_invoice_on_pos === 'function') {
-						window.cur_pos.load_new_invoice_on_pos();
-					} else {
-						frm.reload_doc();
-					}
-				}).catch(() => {
+				}).then((r) => parkFor4473(frm, dialog, r,
+					__('Transfer parked for 4473. Serve other customers meanwhile — reopen from Recent Orders → Draft; submit unlocks once the 4473 + NICS clear in FastBound.'),
+					__('Transfer parked for the paper 4473. Complete the form and the background check, then reopen it from Recent Orders → Draft and click <b>Record Paper 4473</b>.'),
+				)).catch(() => {
 					frappe.dom.unfreeze();
 					dialog.enable_primary_action();
 				});
@@ -5228,7 +5228,7 @@ frappe.provide('frappe.ui.form');
 						filters,
 						fields: ['name', 'serial_no', 'warehouse', 'status', 'image',
 							'fastbound_item_id', 'needs_service', 'purchase_rate', 'sell_price', 'condition_grade', 'creation',
-							'woo_product_id'],
+							'woo_product_id', 'woo_delisted'],
 						order_by: 'creation desc',
 						limit: 200,
 					}),
@@ -5280,8 +5280,12 @@ frappe.provide('frappe.ui.form');
 						const svc = r.needs_service
 							? `<span class="indicator-pill orange ffl-svc-toggle" data-serial="${esc(r.name)}" data-current="1" style="cursor:pointer" title="${__('Click to mark as serviced')}">${__('Service Needed')}</span>`
 							: `<span class="ffl-svc-toggle text-muted" data-serial="${esc(r.name)}" data-current="0" style="cursor:pointer;font-size:11px" title="${__('Click to flag for service')}">${__('— mark')}</span>`;
-						const woo = r.woo_product_id
+						// A delist keeps woo_product_id (the drafted product is how a relist finds
+						// it again); woo_delisted says it is off the shop — same gate as serial_no_woo.js.
+						const woo = r.woo_product_id && !cint(r.woo_delisted)
 							? `<span class="indicator-pill green ffl-woo-pill" data-serial="${esc(r.name)}" data-woo-listed="1" style="cursor:pointer" title="${__('Click to delist from WooCommerce')}">${__('Listed')}</span>`
+							: cint(r.woo_delisted)
+							? `<span class="indicator-pill orange ffl-woo-pill" data-serial="${esc(r.name)}" data-woo-listed="0" style="cursor:pointer" title="${__('Click to relist on WooCommerce')}">${__('Delisted')}</span>`
 							: `<span class="ffl-woo-pill text-muted" data-serial="${esc(r.name)}" data-woo-listed="0" style="cursor:pointer;font-size:11px" title="${__('Click to list on WooCommerce')}">${__('— list')}</span>`;
 						const costCell = `<span class="text-muted">${frappe.format(r.purchase_rate || 0, {fieldtype: 'Currency'})}</span>`;
 						const sellCell = uniform
@@ -5393,7 +5397,14 @@ frappe.provide('frappe.ui.form');
 										args: { serial_no: serial },
 										freeze: true,
 										freeze_message: __('Pushing {0} to WooCommerce…', [serial]),
-									}).then(() => frm.trigger('refresh'));
+									}).then((resp) => {
+										// A guard refused (no price, transfer custody…): say so, not silence.
+										const m = (resp && resp.message) || {};
+										if (!m.ok && m.skipped) {
+											frappe.msgprint({ title: __('Not sent to WooCommerce'), message: m.message, indicator: 'orange' });
+										}
+										frm.trigger('refresh');
+									});
 								}
 							);
 						}
@@ -5525,11 +5536,18 @@ frappe.provide('frappe.ui.form');
 		};
 		C.prototype.__fflRateSeedPatched = true;
 	}
-	(function tryPatchCart(retriesLeft) {
+	function tryPatchCart(retriesLeft) {
 		if (window.erpnext && erpnext.PointOfSale && erpnext.PointOfSale.Controller)
 			return patchOnCartUpdate();
 		if (retriesLeft > 0) setTimeout(() => tryPatchCart(retriesLeft - 1), 250);
-	})(40);
+	}
+	tryPatchCart(40);
+	// The Controller class only exists once the POS page lazy-loads its bundle, which
+	// can be long after boot (login lands on Store Overview): re-arm on every POS
+	// visit, like the location picker. patchOnCartUpdate is idempotent.
+	if (frappe.router && frappe.router.on) {
+		frappe.router.on('change', () => { if (isPosRoute()) tryPatchCart(40); });
+	}
 
 	// --- gap 2: card price ranges ---------------------------------------------
 	function isPosRoute() {

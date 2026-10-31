@@ -61,8 +61,7 @@
    "fieldtype": "Small Text",
    "label": "POS Invoice(s)",
    "read_only": 1,
-   "in_standard_filter": 1,
-   "description": "Order(s) the 4473 ran on. Plain text on purpose: the draft may be deleted later and the record must stay."
+   "in_standard_filter": 1
   },
   {
    "fieldname": "customer",

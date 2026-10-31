@@ -34,7 +34,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, escape_html, flt, format_datetime, get_datetime
 
-from ffl_core.utils import commit
+from ffl_core.utils import commit, split_serials
 
 from ffl_core.warehouses import consignment_warehouse_names, custody_warehouse_names
 
@@ -826,7 +826,7 @@ def release_departed(serials: list[str] | None = None) -> int:
 
 
 def _serials_of(bundle, text) -> list[str]:
-	found = [s.strip() for s in (text or "").split("\n") if s.strip()]
+	found = split_serials(text)
 	if bundle:
 		found += [s for s in frappe.get_all("Serial and Batch Entry", filters={"parent": bundle},
 			pluck="serial_no") if s]

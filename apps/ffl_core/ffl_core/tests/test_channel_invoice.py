@@ -82,6 +82,20 @@ class TestQueueExclusions(FrappeTestCase):
 		self.assertTrue(all(v == ("is", "not set") for v in out.values()))
 		self.assertIn("gunbroker_order", out)
 
+	def test_the_shared_base_filter_adds_the_exclusions_to_the_counter_rule(self):
+		# One filter for the Pending Order queue and the counter-hold registry:
+		# submitted, not consolidated, not a return, plus the column-guarded
+		# channel exclusions — no hard-coded woo key on a site without ffl_woo_sync.
+		with patch("frappe.db.has_column", return_value=False):
+			out = channel_invoice.pending_si_base_filter()
+		self.assertEqual(out, {"docstatus": 1, "is_consolidated": 0, "is_return": 0})
+		with patch("frappe.db.has_column", return_value=True):
+			out = channel_invoice.pending_si_base_filter()
+			expected = channel_invoice.pending_queue_exclusions()
+		self.assertIn("woo_online_order", expected)
+		self.assertEqual(out, {"docstatus": 1, "is_consolidated": 0, "is_return": 0,
+			**expected})
+
 
 class TestTheQueueCallSites(FrappeTestCase):
 	"""A shipped GunBroker gun must not read as still on an open counter order.

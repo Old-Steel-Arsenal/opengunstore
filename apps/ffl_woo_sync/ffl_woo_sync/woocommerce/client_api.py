@@ -208,28 +208,7 @@ def push_item_now(item_code: str, site: str = "retail") -> dict:
 
 	if is_per_serial:
 		# Per-serial firearm: push each Active Serial No with error aggregation.
-		try:
-			client = WooCommerceClient.from_settings(site)
-			attr_ids = client.get_attribute_ids()
-		except WooCommerceConfigError as exc:
-			frappe.throw(_("WooCommerce is not configured: {0}").format(str(exc)))
-
-		serials = frappe.get_all(
-			"Serial No",
-			filters={"item_code": item_code, "status": "Active"},
-			pluck="name",
-		)
-		pushed, errors, skipped = _push_serial_list(
-			serials, sync=sync, client=client, attr_ids=attr_ids, site=site)
-		return {
-			# A guard refusal is NOT a success: `ok` must go false or the Item
-			# form reports a green "Pushed N/N" over guns still draft on the shop.
-			"ok": not errors and not skipped,
-			"pushed": pushed,
-			"errors": errors,
-			"skipped": skipped,
-			"total": len(serials),
-		}
+		return push_all_serials(item_code, site)
 
 	# Non-firearm or uniform-price firearm: single item-level product.
 	try:
@@ -288,6 +267,8 @@ def push_all_serials(item_code: str, site: str = "retail") -> dict:
 	pushed, errors, skipped = _push_serial_list(
 		serials, sync=sync, client=client, attr_ids=attr_ids, site=site)
 	return {
+		# A guard refusal is NOT a success: `ok` must go false or the Item
+		# form reports a green "Pushed N/N" over guns still draft on the shop.
 		"ok": not errors and not skipped,
 		"pushed": pushed,
 		"errors": errors,
@@ -383,6 +364,8 @@ def delist_serial_now(serial_no: str, site: str = "retail") -> dict:
 		frappe.throw(_("WooCommerce is not configured: {0}").format(str(exc)))
 	except (WooCommerceError, ValueError) as exc:
 		frappe.throw(_("WooCommerce delist failed: {0}").format(str(exc)))
+	# A person hid it: a GunBroker release must not bring it back (channel.serial_channel_return).
+	frappe.db.set_value("Serial No", serial_no, sync._f(site, "channel_delisted"), 0)
 	return {"ok": True, "raw": result}
 
 

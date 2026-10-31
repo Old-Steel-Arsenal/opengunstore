@@ -305,12 +305,12 @@ class CrDisposeSuccessPathTest(FrappeTestCase):
 		calls = self.calls = []
 		order.save.side_effect = lambda *a, **k: calls.append("save")
 		with patch("frappe.only_for"), \
-			 patch("ffl_woo_sync.woocommerce.fulfillment.commit",
+			 patch("ffl_core.compliance.cr_transfer.commit",
 				side_effect=lambda: calls.append("commit")) as commit_mock, \
 			 patch("frappe.get_doc", side_effect=get_doc), \
 			 patch("ffl_woo_sync.woocommerce.fulfillment._locally_disposed_rows",
 				return_value=[sr]), \
-			 patch("ffl_woo_sync.woocommerce.fulfillment.ensure_cr_ffl_record",
+			 patch("ffl_core.compliance.cr_transfer.ensure_cr_ffl_record",
 				return_value=CR) as ensure, \
 			 patch("ffl_woo_sync.woocommerce.fulfillment._resolve_and_validate_ffl",
 				return_value=CR), \

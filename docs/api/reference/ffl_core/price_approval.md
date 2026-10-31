@@ -28,7 +28,7 @@ taken from the screen. The token is good for 15 minutes, once, for the user who 
 
 **Returns:** {"token", "approver", "approver_name", "expires_in": seconds, "lines", "discount", "refund"}.
 
-<sub>`apps/ffl_core/ffl_core/price_approval.py:701`</sub>
+<sub>`apps/ffl_core/ffl_core/price_approval.py:693`</sub>
 
 ## `check`
 

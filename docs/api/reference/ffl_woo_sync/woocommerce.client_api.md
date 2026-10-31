@@ -22,7 +22,7 @@ raises the republish sentinel.
 
 **Returns:** {"ok": True, "raw": <WC response>}.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:300`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:281`</sub>
 
 ## `delist_serial_now`
 
@@ -39,7 +39,7 @@ Set the WooCommerce product for a Serial No to ``draft`` + stock 0.
 
 **Returns:** {"ok": True, "raw": <WC response>}.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:367`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:348`</sub>
 
 ## `pull_product_from_woo`
 
@@ -64,7 +64,7 @@ push the change straight back at WooCommerce.
 
 **Returns:** {"ok": True, "doctype": ..., "name": ..., "updated": {field: summary}, "images_imported": n, "image_errors": [...]} — plus "price_note" (optional) when the price was deliberately not written (uniform-priced parent). The Item branch reports the applied price as updated["selling_price"] (it lands via the canonical selling-price helper, not a bare standard_rate write). Refusals (unknown record, never pushed, missing write permission, product deleted on the store) raise a ValidationError with the reason.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:469`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:452`</sub>
 
 ## `push_all_serials`
 
@@ -90,7 +90,7 @@ HTTP round-trips.  Returns per-serial results and any errors encountered.
 
 **Returns:** {ok, pushed, errors, skipped, total}.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:255`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:234`</sub>
 
 ## `push_item_now`
 
@@ -144,7 +144,7 @@ hide).
 
 **Returns:** {"ok": True, "woo_product_id": "<id>", "raw": <WC response>} — or a skipped response when the sync guard refuses.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:329`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:310`</sub>
 
 ## `reconcile_now`
 
@@ -173,7 +173,7 @@ to the scheduled reconcile, which is pos_fields_only and content-safe.
 
 **Returns:** {ok, item_result, item_error, dangling, pushed_serials, serial_errors, skipped_serials, ...}.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:390`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:373`</sub>
 
 ## `test_connection`
 

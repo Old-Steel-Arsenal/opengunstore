@@ -521,6 +521,24 @@ class Cases:
 		self.assertEqual([l["amount"] for l in page["lines"]], [40.0])
 		self.assertEqual((page["older_lines"], page["older_net"], page["other"], page["expected"]), (1, 700.0, 0.0, 740.0))
 
+	def test_the_page_totals_cash_in_and_out_like_the_log(self):
+		"""get_today's cash_in / cash_out (the Cash Drawer page and the Overview show them) use get_log's rule."""
+		self._sale(500)
+		frappe.set_user(self.clerk)
+		api.record_deposit(self.company, 200, "SLIP-IO")
+		frappe.set_user(self.manager)
+		page = api.get_today(self.company)
+		log = api.get_log(self.company, nowdate(), nowdate())
+		frappe.set_user("Administrator")
+		self.assertEqual((page["cash_in"], page["cash_out"]), (500, 200))
+		self.assertEqual((page["cash_in"], page["cash_out"]), (log["cash_in"], log["cash_out"]))
+		# a count difference and the first count are neither in nor out
+		lines = [{"kind": "sale_pos", "amount": 100}, {"kind": "payment_in", "amount": 250.5},
+			{"kind": "deposit", "amount": -100}, {"kind": "expense", "amount": -43.3},
+			{"kind": "variance", "amount": -8.91}, {"kind": "cutoff", "amount": -880}, {"kind": "cutoff_trueup", "amount": -300}]
+		self.assertEqual(api._in_out(lines), (350.5, 143.3))
+		self.assertEqual(api._in_out([]), (0, 0))
+
 	def test_a_register_return_that_has_not_merged_is_a_refund(self):
 		inv = frappe.new_doc("POS Invoice")
 		inv.update({"name": f"CD-RET-{frappe.generate_hash(length=6)}", "company": self.company, "docstatus": 1,

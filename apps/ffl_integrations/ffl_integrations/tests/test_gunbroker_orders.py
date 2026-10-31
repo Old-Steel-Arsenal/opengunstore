@@ -47,6 +47,7 @@ class _OrderCase(FrappeTestCase):
 		self.serial_rows: dict[str, dict] = {}
 		self.alerts: list[str] = []
 		self.exits: list[tuple] = []
+		self.returns: list[str] = []
 
 		def _set_single(_doctype, field, value=None, **_kw):
 			updates = field if isinstance(field, dict) else {field: value}
@@ -64,6 +65,8 @@ class _OrderCase(FrappeTestCase):
 			side_effect=lambda s, m, **kw: self.alerts.append(kw["dedup_key"]))
 		self._patch_object(orders, "fire_serial_channel_exit",
 			side_effect=lambda serial, **kw: self.exits.append((serial, kw.get("reason"))))
+		self._patch_object(orders, "fire_serial_channel_return",
+			side_effect=lambda serial, **kw: self.returns.append(serial))
 		self._patch_object(orders, "safe_commit", side_effect=lambda: None)
 
 	def _patch(self, target, **kw):
@@ -171,9 +174,13 @@ class TestCancellationBeforeInvoicing(_OrderCase):
 		return order
 
 	def test_an_unpaid_cancellation_is_announced_plainly(self):
+		sent = []
+		self._patch_object(orders, "notify_admins",
+			side_effect=lambda s, m, **kw: sent.append((kw["dedup_key"], m)))
 		with patch("frappe.db.get_value", return_value=None):
 			orders._detect_unwound(self._cancelled())
-		self.assertEqual(self.alerts, ["gb_cancel_998877"])
+		self.assertEqual([key for key, _m in sent], ["gb_cancel_998877"])
+		self.assertIn("back on sale on the other channels", sent[0][1])
 
 	def test_a_cancellation_after_the_cheque_was_banked_names_the_refund(self):
 		order = self._cancelled(payment_mode_used="GunBroker Check",
@@ -873,6 +880,38 @@ class TestUnwoundOrders(_OrderCase):
 		orders._detect_unwound(order)
 		self.assertEqual(self.serial_rows["SN-001"], {"gb_reserved": 0, "gb_order": ""})
 		self.assertEqual(order.order_status, "Cancelled")
+		# Back on the shelf, so the storefronts that took it down are told to
+		# put it back up.
+		self.assertEqual(self.returns, ["SN-001"])
+
+	def test_a_cancellation_ends_the_sold_listing_on_the_serial(self):
+		# GunBroker does not un-sell an item when it cancels the order. Left on
+		# the serial, the sweep reads that listing as sold with no order holding
+		# the gun and raises "may have sold on GunBroker" for a gun on the shelf.
+		order = fx.FakeDoc(name="GB-ORD-1", gb_order_id="998877", gb_status=6,
+			order_status="Pending Fulfillment", sales_invoice=None)
+		order.append("lines", {"gb_item_id": "555111"})
+		order.append("serials", {"confirmed_serial": "SN-001"})
+		self._patch("frappe.db.get_value", return_value=frappe._dict(
+			{"gb_reserved": 1, "gb_order": "GB-ORD-1", "gb_item_id": "555111",
+			 "gb_item_history": "444000"}))
+		orders._detect_unwound(order)
+		row = self.serial_rows["SN-001"]
+		self.assertEqual(row["gb_reserved"], 0)
+		self.assertEqual(row["gb_item_id"], "")
+		self.assertEqual(row["gb_delisted"], 1)
+		self.assertIn("555111", row["gb_item_history"])
+		self.assertIn("444000", row["gb_item_history"])
+
+	def test_a_listing_that_is_not_this_orders_stays_on_the_serial(self):
+		order = fx.FakeDoc(name="GB-ORD-1", gb_order_id="998877", gb_status=6,
+			order_status="Pending Fulfillment", sales_invoice=None)
+		order.append("lines", {"gb_item_id": "555111"})
+		order.append("serials", {"confirmed_serial": "SN-001"})
+		self._patch("frappe.db.get_value", return_value=frappe._dict(
+			{"gb_reserved": 1, "gb_order": "GB-ORD-1", "gb_item_id": "777999"}))
+		orders._detect_unwound(order)
+		self.assertEqual(self.serial_rows["SN-001"], {"gb_reserved": 0, "gb_order": ""})
 
 	def test_another_channels_hold_is_never_released_by_ours(self):
 		order = fx.FakeDoc(name="GB-ORD-1", gb_order_id="998877", gb_status=6,
@@ -882,6 +921,7 @@ class TestUnwoundOrders(_OrderCase):
 			{"gb_reserved": 1, "gb_order": "GB-ORD-OTHER"}))
 		orders._detect_unwound(order)
 		self.assertNotIn("SN-001", self.serial_rows)
+		self.assertEqual(self.returns, [])
 
 	def test_a_refund_after_invoicing_alerts_and_reverses_nothing(self):
 		# GunBroker recomputes its own tax statement when a refund is raised

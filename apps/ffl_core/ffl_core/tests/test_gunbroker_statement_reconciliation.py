@@ -240,6 +240,48 @@ class TimingIsNotADifference(FrappeTestCase):
 		self.assertEqual(len(_by_status(rows, "matched")), 1)
 
 
+class TimingSurvivesTheFetch(FrappeTestCase):
+	"""The tests above hand `_reconcile` an out-of-period POS row. The fetch used
+	to keep only invoices posted inside the period, so through `execute()` no
+	such row ever arrived: a January-statement order invoiced on 2 February was
+	reported "On statement, not in POS" and the Timing card was always 0."""
+
+	def setUp(self):
+		if not sr._gb_installed():
+			self.skipTest("GunBroker Order is not installed on this site")
+		tag = frappe.generate_hash(length=6)
+		self.straddling = self._order(f"GBSR-{tag}-1", "2027-02-02", 89.99)
+		self.next_month = self._order(f"GBSR-{tag}-2", "2027-02-03", 12.00)
+
+	def _order(self, gb_order_id, posting_date, tax):
+		si = frappe.new_doc("Sales Invoice")
+		si.update({"name": f"SI-{gb_order_id}", "docstatus": 1,
+			"posting_date": posting_date})
+		si.db_insert()
+		order = frappe.new_doc("GunBroker Order")
+		order.update({"name": f"ORD-{gb_order_id}", "gb_order_id": gb_order_id,
+			"order_status": "Transferred", "sales_invoice": si.name,
+			"sales_tax_total": tax, "compliance_fee": 0})
+		order.db_insert()
+		return gb_order_id
+
+	def _run(self):
+		_columns, rows, *_rest = sr.execute({
+			"statement_type": sr.TAX_STATEMENT,
+			"from_date": "2027-01-01", "to_date": "2027-01-31",
+			"statement_text": f"Order ID,Sales Tax\n{self.straddling},89.99\n"})
+		return rows
+
+	def test_a_statement_order_invoiced_next_month_is_a_timing_gap(self):
+		mine = [r for r in self._run() if r["order_id"] == self.straddling]
+		self.assertEqual([r["status"] for r in mine], ["timing"])
+		self.assertEqual(str(mine[0]["posting_date"]), "2027-02-02")
+
+	def test_next_months_orders_the_statement_does_not_list_stay_out(self):
+		rows = self._run()
+		self.assertEqual([r for r in rows if r["order_id"] == self.next_month], [])
+
+
 class TheOperatorSeesTheThreeCounts(FrappeTestCase):
 	def test_each_class_is_counted_on_its_own_card(self):
 		rows = sr._reconcile(sr._parse_statement(FEE_CSV),

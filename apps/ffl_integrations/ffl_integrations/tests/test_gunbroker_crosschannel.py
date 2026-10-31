@@ -47,6 +47,15 @@ class _HookCase(FrappeTestCase):
 
 
 class FiringTheExitHook(_HookCase):
+	def test_a_release_fires_the_return_hook(self):
+		seen = []
+		self._hooks({crosschannel.RETURN_HOOK: ["x.y.z"]})
+		self._patch("frappe.get_attr",
+			return_value=lambda serial, **kw: seen.append((serial, kw)))
+		ok, _error = crosschannel.fire_serial_channel_return("SN-1")
+		self.assertTrue(ok)
+		self.assertEqual(seen, [("SN-1", {"channel": "gunbroker", "reason": "released"})])
+
 	def test_no_registrant_is_a_recorded_skip_not_a_failure(self):
 		"""A POS without ffl_woo_sync is a legitimate deployment."""
 		self._hooks({crosschannel.EXIT_HOOK: []})
@@ -142,13 +151,21 @@ class TheHooksAreRegisteredBothWays(FrappeTestCase):
 		self.assertIn("ffl_woo_sync.woocommerce.channel.serial_channel_exit",
 			registrants)
 
+	def test_woocommerce_answers_serial_channel_return(self):
+		registrants = frappe.get_hooks("serial_channel_return") or []
+		if "ffl_woo_sync" not in frappe.get_installed_apps():
+			self.skipTest("ffl_woo_sync is not installed in this bench")
+		self.assertIn("ffl_woo_sync.woocommerce.channel.serial_channel_return",
+			registrants)
+
 	def test_gunbroker_answers_channel_presale_probe(self):
 		registrants = frappe.get_hooks("channel_presale_probe") or []
 		self.assertIn("ffl_integrations.gunbroker.crosschannel.presale_probe",
 			registrants)
 
 	def test_both_registered_paths_resolve(self):
-		for name in ("serial_channel_exit", "channel_presale_probe"):
+		for name in ("serial_channel_exit", "serial_channel_return",
+				"channel_presale_probe"):
 			for path in (frappe.get_hooks(name) or []):
 				with self.subTest(hook=name, path=path):
 					self.assertTrue(callable(frappe.get_attr(path)))
@@ -180,6 +197,9 @@ class TheWooRegistrantTakesGunsOffTheStore(FrappeTestCase):
 		patcher = patch("frappe.db.get_value", side_effect=_get_value)
 		patcher.start()
 		self.addCleanup(patcher.stop)
+		patcher = patch("frappe.db.set_value")  # the exit's woo_channel_delisted mark
+		patcher.start()
+		self.addCleanup(patcher.stop)
 
 	def test_a_listed_serial_is_delisted_on_the_retail_store(self):
 		from ffl_woo_sync.woocommerce import channel
@@ -201,3 +221,18 @@ class TheWooRegistrantTakesGunsOffTheStore(FrappeTestCase):
 		self._serial()
 		channel.serial_channel_exit("SN-1", channel="gunbroker", reason="sold")
 		self.assertEqual(self.enqueued, [])
+
+	def test_a_released_serial_is_relisted_on_the_retail_store(self):
+		"""The exit drafted the page and set ``woo_delisted`` (marking
+		``woo_channel_delisted``); only a relist push lifts that, so the return
+		must ask for one explicitly."""
+		from ffl_woo_sync.woocommerce import channel
+
+		self._serial(woo_product_id="11", woo_channel_delisted=1)
+		channel.serial_channel_return("SN-1", channel="gunbroker", reason="released")
+		self.assertEqual(len(self.enqueued), 1)
+		job = self.enqueued[0]
+		self.assertTrue(job["path"].endswith("push_serial_task"))
+		self.assertEqual(job["site"], "retail")
+		self.assertTrue(job["relist"])
+		self.assertTrue(job["enqueue_after_commit"])

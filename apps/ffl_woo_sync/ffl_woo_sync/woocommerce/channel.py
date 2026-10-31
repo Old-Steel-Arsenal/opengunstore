@@ -68,13 +68,19 @@ def serial_channel_exit(serial_no: str, *, channel: str, reason: str) -> None:
 		return
 	row = frappe.db.get_value(
 		"Serial No", serial_no,
-		["item_code", *(_f(site, "product_id") for site in SITES)],
+		["item_code", *(_f(site, key) for site in SITES for key in ("product_id", "delisted"))],
 		as_dict=True)
 	if not row:
 		return
 	item_code = (row.get("item_code") or "").strip()
 	for site in SITES:
 		if row.get(_f(site, "product_id")):
+			# Record that THIS exit is what hides it, so serial_channel_return undoes
+			# only its own delist. A gun the owner had already hidden stays unmarked.
+			# Never cleared here: a re-polled order finds its own delist already set.
+			if not row.get(_f(site, "delisted")):
+				frappe.db.set_value("Serial No", serial_no, _f(site, "channel_delisted"), 1,
+					update_modified=False)
 			frappe.enqueue(
 				"ffl_woo_sync.woocommerce.tasks.delist_serial_task",
 				queue="short", enqueue_after_commit=True,
@@ -88,6 +94,44 @@ def serial_channel_exit(serial_no: str, *, channel: str, reason: str) -> None:
 				item_code=item_code, site=site)
 	frappe.logger("ffl_woo_sync").info(
 		f"serial_channel_exit: {serial_no} left via {channel} ({reason})")
+
+
+def serial_channel_return(serial_no: str, *, channel: str, reason: str) -> None:
+	"""Put a gun back on the WooCommerce storefront: the other channel let it go.
+
+	The undo of :func:`serial_channel_exit`. GunBroker released its hold (the
+	order was cancelled before invoicing, a unit was dropped or reassigned), so
+	the gun is on the shelf again and the page the exit took down — draft, stock
+	0, ``{site}_delisted`` set — goes back up, unless a person had hidden it.
+
+	Args:
+	    serial_no: The Serial No the other channel released.
+	    channel: Which channel released it (e.g. "gunbroker").
+	    reason: Always "released" today; kept for the shared contract.
+
+	Same door the web store's own cancellation uses
+	(``webhook._enqueue_serial_or_item_push``), so a gun with no price, one in
+	custody, or one another channel still holds is refused by ``push_serial``'s
+	own guards. Enqueued after commit, so the push reads the released hold.
+
+	``relist`` only where the exit itself raised ``{site}_delisted``
+	(``{site}_channel_delisted``): a gun the owner hid before GunBroker took it
+	stays hidden. The marker is cleared by the relisting push, not here, so a
+	push refused this time leaves it for the next release.
+	"""
+	from ffl_woo_sync.woocommerce.webhook import _enqueue_serial_or_item_push
+
+	serial_no = (serial_no or "").strip()
+	if not serial_no:
+		return
+	row = frappe.db.get_value(
+		"Serial No", serial_no, [_f(site, "channel_delisted") for site in SITES],
+		as_dict=True) or {}
+	for site in SITES:
+		_enqueue_serial_or_item_push(
+			serial_no, site=site, relist=bool(row.get(_f(site, "channel_delisted"))))
+	frappe.logger("ffl_woo_sync").info(
+		f"serial_channel_return: {serial_no} released by {channel} ({reason})")
 
 
 def channel_commitments_changed(item_code: str, *, source: str) -> None:

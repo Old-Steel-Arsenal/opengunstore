@@ -25,7 +25,7 @@
   },
   {
    "default": "0",
-   "description": "Master switch for the Pending Order page's Ship button (push to ShipStation). Leave OFF until credentials are verified via Test Connection.",
+   "description": "Turns on the Pending Order page's Ship button; leave off until Test Connection passes.",
    "fieldname": "enabled",
    "fieldtype": "Check",
    "label": "Enabled"
@@ -42,7 +42,7 @@
    "label": "Credentials"
   },
   {
-   "description": "ShipStation V2 API key, sent in the 'API-Key' request header. Stored encrypted. Sandbox keys start with TEST_ (generate under ShipStation → Account → API Settings, V2).",
+   "description": "A V2 key from ShipStation → Account → API Settings; sandbox keys start with TEST_.",
    "fieldname": "api_key",
    "fieldtype": "Password",
    "label": "API Key"
@@ -53,7 +53,7 @@
   },
   {
    "default": "https://api.shipstation.com/v2",
-   "description": "Override the ShipStation V2 base URL (e.g. for a sandbox host).",
+   "description": "Leave blank unless pointing at a sandbox host.",
    "fieldname": "base_url_override",
    "fieldtype": "Data",
    "label": "Base URL Override"
@@ -70,13 +70,11 @@
    "label": "Shipping Defaults"
   },
   {
-   "description": "ShipStation store id orders are created under.",
    "fieldname": "store_id",
    "fieldtype": "Data",
    "label": "Store ID"
   },
   {
-   "description": "ShipStation ship-from warehouse id (the store's origin address).",
    "fieldname": "ship_from_warehouse_id",
    "fieldtype": "Data",
    "label": "Ship-From Warehouse ID"

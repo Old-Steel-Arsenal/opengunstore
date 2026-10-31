@@ -14,7 +14,7 @@
    "fieldname": "auto_renew_enabled",
    "fieldtype": "Check",
    "label": "Charge renewals automatically",
-   "description": "Every morning, charge the saved card of each auto-renewing membership that is due."
+   "description": "Charges run every morning."
   },
   {
    "default": "7",
@@ -22,7 +22,7 @@
    "fieldtype": "Int",
    "label": "Yearly renewal reminder (days before)",
    "non_negative": 1,
-   "description": "Email yearly members this many days before their renewal charge. 0 sends no reminder."
+   "description": "Emails yearly members this many days before their renewal charge; 0 sends no reminder."
   }
  ],
  "issingle": 1,

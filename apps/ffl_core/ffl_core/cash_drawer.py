@@ -49,6 +49,8 @@ import frappe
 from frappe import _
 from frappe.utils import add_days, add_to_date, cint, flt, get_datetime, getdate, now_datetime, nowdate
 
+from ffl_core.utils import single_raw
+
 VARIANCE = "CASH-VARIANCE"
 CUTOFF = "CASH-CUTOFF"
 PAYOUT = "CASH-PAYOUT"
@@ -110,9 +112,8 @@ _ACCOUNT_SPECS = {
 def _setting(field: str, default):
 	"""A Cash Drawer Settings value, or ``default`` while the shop has never saved the page (a Single
 	that was never saved reads 0 for a Currency field, which would silently mean "no limit")."""
-	rows = frappe.db.sql(
-		"SELECT value FROM `tabSingles` WHERE doctype = 'Cash Drawer Settings' AND field = %s", (field,))
-	return default if not rows or rows[0][0] in (None, "") else rows[0][0]
+	value = single_raw("Cash Drawer Settings", field)
+	return default if value in (None, "") else value
 
 
 def variance_threshold() -> float:

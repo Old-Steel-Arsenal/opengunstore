@@ -13,7 +13,7 @@ frappe.query_reports["Pending 4473 Orders"] = {
 			label: __("Check FastBound"),
 			fieldtype: "Check",
 			default: 0,
-			description: __("Ask FastBound whether an abandoned 4473 left a pending disposition holding each gun. One round trip per firearm — off by default."),
+			description: __("Checks FastBound for a pending disposition still holding each gun; slower with many firearms."),
 		},
 	],
 
@@ -39,7 +39,7 @@ frappe.query_reports["Pending 4473 Orders"] = {
 		}
 		// Past the Brady date and still no Proceed — flag the row's date.
 		if (column.fieldname === "brady_date" && data && data.brady_date) {
-			const past = frappe.datetime.get_diff(frappe.datetime.get_today(), data.brady_date) >= 0;
+			const past = frappe.datetime.get_diff(frappe.datetime.get_today(), data.brady_date) > 0;
 			if (past && data.nics_status === "Delayed") {
 				value = `<span style="color:var(--orange-600);font-weight:600">${value}</span>`;
 			}
@@ -64,7 +64,7 @@ function _p4473_open_cleanup(report) {
 				options: "POS Invoice",
 				reqd: 1,
 				get_query: () => ({ filters: { docstatus: 0 } }),
-				description: __("Draft orders only. The invoice is deleted, not cancelled — the POS recycle bin keeps it restorable."),
+				description: __("Draft orders only; the invoice is deleted, and the POS recycle bin can restore it."),
 			},
 			{
 				fieldtype: "Small Text",

@@ -44,7 +44,7 @@ charge up at the gateway and records it.
 
 **Returns:** {ok, status, unique_reference, approval_code, amount, payment_entry, outstanding, paid} on approval; {ok: False, status, error} on a decline; resolved=True when an earlier charge was settled instead of a new one.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:515`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:506`</sub>
 
 ## `list_saved_cards`
 
@@ -82,7 +82,7 @@ refused while the charge is younger than the lookup grace period.
 
 **Returns:** {ok: False, status: "CANCELED"} when released; the settle answer when the gateway had it.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:466`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:457`</sub>
 
 ## `remove_saved_card`
 
@@ -102,4 +102,4 @@ When the default card goes, the newest remaining card becomes the default.
 
 **Returns:** {ok: True, status: "Removed"}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:542`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/saved_cards.py:533`</sub>

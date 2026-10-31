@@ -252,6 +252,21 @@ class TerminalPaymentTest(BuildOrderMixin, FrappeTestCase):
 		self.assertEqual(frappe.db.count("Payment Entry Reference",
 			{"reference_doctype": "Sales Invoice", "reference_name": si, "docstatus": 1}), 1)
 
+	def test_a_racing_settle_from_a_stale_row_does_not_book_twice(self, cc, _p, _r):
+		"""A poll and a cancel (or two screens) each read the row IN_PROGRESS before
+		either settled: the second settle must re-read the record, not book again."""
+		client = cc.from_settings.return_value
+		si, _ = self._unpaid_order()
+		self._start(client, si, amount=30)
+		stale = api._terminal_payment_row(si, "PI-TP-1")
+		_approved(client, amount=30)
+		first = api.poll_sales_invoice_charge(si, "PI-TP-1")
+		p = api._gateways()(stale.processor or api.LEGACY_PROCESSOR)
+		second = api._settle_terminal_payment(p, p.poll("PI-TP-1"), stale)
+		self.assertEqual(second["payment_entry"], first["payment_entry"])
+		self.assertEqual(frappe.db.count("Payment Entry Reference",
+			{"reference_doctype": "Sales Invoice", "reference_name": si, "docstatus": 1}), 1)
+
 	@patch("ffl_integrations.payments.api.notify_admins")
 	@patch("ffl_core.api.manual_order.record_payment", side_effect=RuntimeError("ledger down"))
 	def test_booking_failure_keeps_the_money_fact_and_stops_a_reswipe(self, _rp, alert, cc, _p, _r):
@@ -303,3 +318,20 @@ class TerminalPaymentTest(BuildOrderMixin, FrappeTestCase):
 		name = self._records(si)[0].name
 		with self.assertRaises(frappe.ValidationError):
 			frappe.delete_doc(api.TERMINAL_PAYMENT, name, ignore_permissions=True)
+
+
+class ChargeAmountTest(FrappeTestCase):
+	"""The one amount rule both card paths (terminal and saved card) share."""
+
+	def test_blank_amount_takes_the_whole_balance(self):
+		self.assertEqual(api._charge_amount("SI-X", 125.004, None), 125.0)
+		self.assertEqual(api._charge_amount("SI-X", 125, ""), 125.0)
+
+	def test_partial_and_within_tolerance(self):
+		self.assertEqual(api._charge_amount("SI-X", 125, "50"), 50.0)
+		self.assertEqual(api._charge_amount("SI-X", 125, 125.01), 125.01)
+
+	def test_rejects_paid_zero_and_over_balance(self):
+		for outstanding, amount in ((0.01, None), (125, 0), (125, -5), (125, 125.02)):
+			with self.assertRaises(frappe.ValidationError):
+				api._charge_amount("SI-X", outstanding, amount)

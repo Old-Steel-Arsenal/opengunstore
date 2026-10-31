@@ -99,6 +99,20 @@ frappe.ui.form.on('Item Image Gallery', {
 
 // --- Quick "+ Add Stock" dialog (Material Receipt Stock Entry) -----------
 
+// Pre-fill a stock dialog's warehouse from the first POS Profile of the user's company.
+function prefillPosWarehouse(d) {
+	const company = frappe.defaults.get_user_default('Company');
+	if (!company) return;
+	frappe.db.get_list('POS Profile', {
+		filters: { company, disabled: 0 },
+		fields: ['warehouse'],
+		limit: 1,
+	}).then((rows) => {
+		const wh = rows && rows[0] && rows[0].warehouse;
+		if (wh) d.set_value('warehouse', wh);
+	});
+}
+
 function openAddStockDialog(frm) {
 	const d = new frappe.ui.Dialog({
 		title: __('Add Stock — {0}', [frm.doc.item_name || frm.doc.name]),
@@ -107,7 +121,6 @@ function openAddStockDialog(frm) {
 			{
 				label: __('Quantity'), fieldname: 'qty', fieldtype: 'Float',
 				reqd: 1, default: 1,
-				description: __('Number of units to add to stock.'),
 			},
 			{
 				label: __('Warehouse'), fieldname: 'warehouse', fieldtype: 'Link',
@@ -117,11 +130,10 @@ function openAddStockDialog(frm) {
 			{
 				label: __('Cost / Rate'), fieldname: 'rate', fieldtype: 'Currency',
 				default: frm.doc.last_purchase_rate || frm.doc.dealer_price || 0,
-				description: __('Optional — defaults to last purchase rate, then RSR dealer price.'),
+				description: __('Defaults to the last purchase rate, then the RSR dealer price.'),
 			},
 			{
 				label: __('Remarks'), fieldname: 'remarks', fieldtype: 'Small Text',
-				description: __('Optional note on the Stock Entry (found inventory, opening stock, etc.).'),
 			},
 		],
 		primary_action_label: __('Add to Stock'),
@@ -152,18 +164,7 @@ function openAddStockDialog(frm) {
 		},
 	});
 
-	// Pre-fill warehouse from POS Profile for the user's company.
-	const company = frappe.defaults.get_user_default('Company');
-	if (company) {
-		frappe.db.get_list('POS Profile', {
-			filters: { company, disabled: 0 },
-			fields: ['warehouse'],
-			limit: 1,
-		}).then((rows) => {
-			const wh = rows && rows[0] && rows[0].warehouse;
-			if (wh) d.set_value('warehouse', wh);
-		});
-	}
+	prefillPosWarehouse(d);
 
 	d.show();
 	setTimeout(() => d.fields_dict.qty.input?.focus(), 60);
@@ -180,7 +181,7 @@ function openAdjustQtyDialog(frm) {
 			{
 				label: __('Set Quantity To'), fieldname: 'new_qty', fieldtype: 'Float',
 				reqd: 1, default: frm.doc.actual_qty || 0,
-				description: __('Sets the absolute on-hand quantity at the chosen warehouse. Creates a Stock Reconciliation entry for the audit trail.'),
+				description: __('Units on the shelf now at the chosen warehouse. Register sales not closed yet are allowed for.'),
 			},
 			{
 				label: __('Warehouse'), fieldname: 'warehouse', fieldtype: 'Link',
@@ -189,7 +190,7 @@ function openAdjustQtyDialog(frm) {
 			},
 			{
 				label: __('Reason'), fieldname: 'reason', fieldtype: 'Small Text',
-				description: __('Required for the audit trail (e.g. "Annual physical count", "Found in back room", "Write-off — damaged").'),
+				description: __('For example "Annual physical count" or "Write-off — damaged".'),
 				reqd: 1,
 			},
 		],
@@ -221,17 +222,7 @@ function openAdjustQtyDialog(frm) {
 		},
 	});
 
-	const company = frappe.defaults.get_user_default('Company');
-	if (company) {
-		frappe.db.get_list('POS Profile', {
-			filters: { company, disabled: 0 },
-			fields: ['warehouse'],
-			limit: 1,
-		}).then((rows) => {
-			const wh = rows && rows[0] && rows[0].warehouse;
-			if (wh) d.set_value('warehouse', wh);
-		});
-	}
+	prefillPosWarehouse(d);
 
 	d.show();
 	setTimeout(() => d.fields_dict.new_qty.input?.focus(), 60);
@@ -328,29 +319,28 @@ function ensureScanBanner(frm) {
 
 	const $input = $banner.find('.rsr-scan-input');
 	const $results = $banner.find('.rsr-scan-results');
-	let lastQuery = '';
-	let debounceTimer = null;
-
-	$input.on('input', function () {
-		const q = ($(this).val() || '').trim();
-		if (q === lastQuery) return;
-		lastQuery = q;
-		clearTimeout(debounceTimer);
-		if (q.length < 3) {
-			$results.empty();
-			return;
-		}
-		debounceTimer = setTimeout(() => doLookup(frm, $banner, q), 220);
+	window.gunstore.wireRsrScan($input, $results, {
+		cardSize: {thumb: 72, name: 13, meta: 12},
+		decorate: ($card) => {
+			$card.addClass('rsr-scan-row').css({transition: 'background .15s, border-color .15s'});
+			$card.append(`<div style="color:var(--text-muted); font-size:11px; align-self:center; padding-right:4px">${__('Click or ↵ Enter')}</div>`);
+			$card.hover(
+				function () { $(this).css({background: 'var(--fg-hover-color)', borderColor: 'var(--blue-300)'}); },
+				function () { $(this).css({background: 'var(--card-bg)', borderColor: 'var(--border-color)'}); }
+			);
+		},
+		noMatchHtml: (q) => `
+			<div style="color:var(--text-muted); font-size:12px; padding:10px; text-align:center; border:1px dashed var(--border-color); border-radius:6px">
+				${__('No RSR catalog match for {0}.', [frappe.utils.escape_html(q)])}
+				${__('Continue typing or fill the form manually below.')}
+			</div>
+		`,
+		onApply: (m) => applyAndCollapse(frm, $banner, m),
 	});
 
-	// Enter = take the first result, if any
+	// Esc = enter the item manually (Enter is the shared scan box's)
 	$input.on('keydown', function (e) {
-		if (e.key === 'Enter') {
-			e.preventDefault();
-			const q = ($(this).val() || '').trim();
-			if (!q) return;
-			doLookup(frm, $banner, q, /*autoApply=*/true);
-		} else if (e.key === 'Escape') {
+		if (e.key === 'Escape') {
 			$banner.remove();
 			frm._scanBanner = null;
 		}
@@ -362,62 +352,6 @@ function ensureScanBanner(frm) {
 	});
 
 	setTimeout(() => $input.focus(), 100);
-}
-
-// No distributor catalog on this site (frappe.boot.ffl_capabilities): the lookups
-// below show the shared notice instead of sending a request the server refuses.
-function catalogOff() {
-	return !!(window.ffl && ffl.capabilities && ffl.capabilities.isOff('catalog'));
-}
-
-function doLookup(frm, $banner, q, autoApply) {
-	if (catalogOff()) {
-		$banner.find('.rsr-scan-results').html(ffl.capabilities.notice('catalog'));
-		return;
-	}
-	frappe.call({
-		method: 'ffl_integrations.rsr.promote.lookup_for_item_form',
-		args: { scan: q },
-		callback: (r) => {
-			const m = r.message || {};
-			renderScanResult($banner, m, q);
-			if (m.found) {
-				// Auto-apply on exact UPC scan (numeric, length 8-14, exact match)
-				const isUpcShape = /^\d{8,14}$/.test(q);
-				if ((autoApply && m.found) || (isUpcShape && m.rsr.upc === q)) {
-					applyAndCollapse(frm, $banner, m);
-				}
-			} else if (autoApply) {
-				frappe.show_alert({ message: __('No RSR match for {0}', [q]), indicator: 'orange' });
-			}
-		},
-	});
-}
-
-function renderScanResult($banner, m, q) {
-	const $results = $banner.find('.rsr-scan-results');
-	if (!m.found) {
-		$results.html(`
-			<div style="color:var(--text-muted); font-size:12px; padding:10px; text-align:center; border:1px dashed var(--border-color); border-radius:6px">
-				${__('No RSR catalog match for {0}.', [frappe.utils.escape_html(q)])}
-				${__('Continue typing or fill the form manually below.')}
-			</div>
-		`);
-		return;
-	}
-	const $card = $(window.gunstore.renderRsrCard(m.rsr || {}, m.defaults || {},
-		{thumb: 72, name: 13, meta: 12}));
-	$card.addClass('rsr-scan-row').css({transition: 'background .15s, border-color .15s'});
-	$card.append(`<div style="color:var(--text-muted); font-size:11px; align-self:center; padding-right:4px">${__('Click or ↵ Enter')}</div>`);
-	$results.empty().append($card);
-	$card.hover(
-		function () { $(this).css({background: 'var(--fg-hover-color)', borderColor: 'var(--blue-300)'}); },
-		function () { $(this).css({background: 'var(--card-bg)', borderColor: 'var(--border-color)'}); }
-	);
-	$card.on('click', () => {
-		const frm = cur_frm;
-		if (frm) applyAndCollapse(frm, $banner, m);
-	});
 }
 
 function applyAndCollapse(frm, $banner, m) {
@@ -445,7 +379,6 @@ function openScanDialog(frm) {
 				fieldname: 'scan',
 				label: __('UPC / RSR Stock # / MFG #'),
 				reqd: 1,
-				description: __('Type or scan a barcode. Matches against UPC, RSR stock number, or manufacturer part number.'),
 			},
 			{ fieldtype: 'HTML', fieldname: 'preview' },
 		],
@@ -453,7 +386,7 @@ function openScanDialog(frm) {
 		primary_action() {
 			const v = (d.get_value('scan') || '').trim();
 			if (!v) return;
-			if (catalogOff()) {
+			if (ffl.FirearmItemPicker.catalogOff()) {
 				d.fields_dict.preview.$wrapper.html(ffl.capabilities.notice('catalog'));
 				return;
 			}
@@ -485,7 +418,7 @@ function openScanDialog(frm) {
 function livePreview(d) {
 	const $p = d.fields_dict.preview.$wrapper;
 	const v = (d.get_value('scan') || '').trim();
-	if (catalogOff()) { $p.html(ffl.capabilities.notice('catalog')); return; }
+	if (ffl.FirearmItemPicker.catalogOff()) { $p.html(ffl.capabilities.notice('catalog')); return; }
 	if (v.length < 3) { $p.empty(); return; }
 	frappe.call({
 		method: 'ffl_integrations.rsr.promote.lookup_for_item_form',

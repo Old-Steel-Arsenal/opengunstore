@@ -96,22 +96,19 @@
    "default": "dealer",
    "reqd": 1,
    "read_only": 1,
-   "description": "Machine key for the account the lane places on (drop-ship → fulfillment, to the store → dealer). Not shown; the house's own account number is.",
    "hidden": 1
   },
   {
    "fieldname": "account_number",
    "fieldtype": "Data",
    "label": "Account",
-   "read_only": 1,
-   "description": "The account at the house this order is placed on, as the distributor knows it."
+   "read_only": 1
   },
   {
    "fieldname": "company",
    "fieldtype": "Link",
    "label": "Company",
-   "options": "Company",
-   "description": "Booking company for the cost Purchase Invoice (defaults to the system default company)."
+   "options": "Company"
   },
   {
    "fieldname": "status",
@@ -131,8 +128,7 @@
    "fieldname": "web_ref",
    "fieldtype": "Data",
    "label": "Distributor Order No.",
-   "read_only": 1,
-   "description": "The house's own number for this order — what status polls and holds are keyed by."
+   "read_only": 1
   },
   {
    "fieldname": "fill_or_kill",
@@ -140,14 +136,13 @@
    "label": "Fill or Kill",
    "default": "0",
    "read_only": 1,
-   "description": "Sent to the distributor as FillOrKill=Y: a line it cannot fill is dropped instead of back-ordered. Counter orders go out ticked (the buyer is waiting); web and stocking orders clear."
+   "description": "A line the distributor cannot fill is dropped instead of back-ordered."
   },
   {
    "fieldname": "shipping_service",
    "fieldtype": "Data",
    "label": "Shipping service code",
-   "read_only": 1,
-   "description": "The carrier service sent to the distributor (chosen before Confirm; blank = the provider's default)."
+   "read_only": 1
   },
   {
    "fieldname": "shipping_service_label",
@@ -344,15 +339,13 @@
    "fieldname": "freight_cost",
    "fieldtype": "Currency",
    "label": "Freight Cost",
-   "read_only": 1,
-   "description": "Distributor shipping charge from the place-order response; the PI freight line (Freight and Forwarding Charges) is booked from it."
+   "read_only": 1
   },
   {
    "fieldname": "invoiced_freight",
    "fieldtype": "Currency",
    "label": "Invoiced Freight",
-   "read_only": 1,
-   "description": "Freight the distributor actually invoiced (poll write-back); compared with freight_cost, the placement-time figure."
+   "read_only": 1
   },
   {
    "fieldname": "receive_status",
@@ -372,15 +365,13 @@
    "fieldname": "notes_posted",
    "fieldtype": "Small Text",
    "label": "Tracking Notes Posted",
-   "read_only": 1,
-   "description": "Tracking numbers already posted as WooCommerce order notes; guards against re-posting on a completion retry (CSV)."
+   "read_only": 1
   },
   {
    "fieldname": "woo_notified_status",
    "fieldtype": "Data",
    "label": "Shop Notified Status",
-   "read_only": 1,
-   "description": "The last status the shop's WooCommerce FFL plugin acknowledged (drop-ship status webhook). The hourly resend sweep re-posts while it differs from Status."
+   "read_only": 1
   },
   {
    "fieldname": "section_raw",

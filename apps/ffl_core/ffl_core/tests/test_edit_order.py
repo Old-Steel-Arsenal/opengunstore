@@ -333,6 +333,40 @@ class TestUpdateOrder(EditOrderFixtures):
 			pluck="parent")
 		self.assertEqual(len(pes), 1)
 
+	def test_inline_paid_with_change_rebooks_only_the_net(self):
+		"""$700 cash handed over on a $600 order books $100 change. The cancel
+		reverses the NET $600 the drawer kept, so the edit must re-book $600 —
+		re-booking the gross $700 leaves cash $100 above the drawer and a
+		phantom $100 advance on the customer."""
+		pos = frappe.db.get_value(
+			"POS Profile", {"company": self.company, "disabled": 0}, "name")
+		serial = self._stocked_serial("EO-IC1")
+		customer = self._indiv("EO Inline Change Buyer")
+		created = manual_order.create_order({
+			"buyer_type": "individual", "customer": customer,
+			"pos_profile": pos, "destination_ffl": DEST_FFL, "dispose_now": 0,
+			"payment_received": 1, "mode_of_payment": "Cash", "tax_exempt": 1,
+			"paid_amount": 700,
+			"items": [{"item_code": "BO-GUN", "qty": 1, "rate": 600,
+				"serials": [serial]}],
+		})
+		si = frappe.get_doc("Sales Invoice", created["sales_invoice"])
+		self.assertEqual(si.is_pos, 1)
+		self.assertAlmostEqual(flt(si.change_amount), 100, places=2)
+		net = sum(g.net for g in manual_order._inline_tender_gl(si))
+		self.assertAlmostEqual(net, flt(si.grand_total), places=2)
+
+		out = self._edit(si)
+		self.assertAlmostEqual(out["outstanding"], 0, places=2)
+		self.assertFalse(out["refund_entry"])
+		pes = frappe.get_all("Payment Entry", filters={
+			"party_type": "Customer", "party": customer,
+			"payment_type": "Receive", "docstatus": 1, "reference_no": si.name,
+		}, fields=["name", "paid_amount", "unallocated_amount"])
+		self.assertEqual(len(pes), 1)
+		self.assertAlmostEqual(flt(pes[0].paid_amount), flt(si.grand_total), places=2)
+		self.assertAlmostEqual(flt(pes[0].unallocated_amount), 0, places=2)
+
 	def test_update_refuses_disposed(self):
 		si = self._ship(self._stocked_serial("EO-X1"), update_stock=0,
 			buyer_type="Business")

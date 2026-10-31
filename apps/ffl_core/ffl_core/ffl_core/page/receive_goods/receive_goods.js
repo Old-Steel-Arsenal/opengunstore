@@ -545,16 +545,13 @@ class ReceiveGoodsApp {
 			is_ffl_transfer: f('#f-is_ffl_transfer', {
 				label: __('FFL Transfer (customer\'s gun)'), fieldtype: 'Check',
 				fieldname: 'is_ffl_transfer',
-				description: __('Tick when this shipment is a CUSTOMER\'s firearm coming in '
-					+ 'for a transfer. It is received into customer custody at zero cost, '
-					+ 'never enters sellable stock, and is never listed online.'),
+				description: __('Customer\'s gun: received at zero cost, never put up for sale.'),
 				change: () => this._onTransferChange(),
 			}),
 			transfer_for_customer: f('#f-transfer_for_customer', {
 				label: __('Transfer for Customer'), fieldtype: 'Link', options: 'Customer',
 				fieldname: 'transfer_for_customer',
-				description: __('Inbound customer transfer: who picks this gun up. '
-					+ 'Feeds the Pending Transfer Pickups report — leave blank for store stock.'),
+				description: __('Who picks this gun up; leave blank for store stock.'),
 				// A transfer gun arrives either way: warn about a Banned owner, never clear.
 				change: () => {
 					const cf = window.ffl && ffl.customerFlags;
@@ -567,7 +564,6 @@ class ReceiveGoodsApp {
 			}),
 			seller_middle_name: f('#f-seller_middle_name', {
 				label: __('Seller Middle Name'), fieldtype: 'Data', fieldname: 'seller_middle_name',
-				description: __('Optional.'),
 			}),
 			seller_last_name: f('#f-seller_last_name', {
 				label: __('Seller Last Name'), fieldtype: 'Data', fieldname: 'seller_last_name',
@@ -579,7 +575,6 @@ class ReceiveGoodsApp {
 			}),
 			seller_customer: f('#f-seller_customer', {
 				label: __('Seller (Customer)'), fieldtype: 'Link', options: 'Customer', fieldname: 'seller_customer',
-				description: __('Private party selling the firearm — the POS customer record.'),
 				change: () => { this._guardCustomer('seller_customer').then((ok) => ok && this._prefillSellerName()); this._reflectReadiness(); },
 			}),
 			seller_id_type: f('#f-seller_id_type', {
@@ -612,7 +607,6 @@ class ReceiveGoodsApp {
 			}),
 			seller_id_document: f('#f-seller_id_document', {
 				label: __('Seller ID Document'), fieldtype: 'Attach', fieldname: 'seller_id_document',
-				description: __('Photo/scan of the seller ID (stored privately).'),
 			}),
 			source: f('#f-source', {
 				label: __('Source'), fieldtype: 'Select', fieldname: 'source',
@@ -814,40 +808,28 @@ class ReceiveGoodsApp {
 		// AcquireType list. Soft-coupled to ffl_integrations: silent on failure.
 		// Preserves a value the cashier picked before this async sync resolved
 		// — Frappe's Select.refresh() clears the value when it's not in the
-		// new options list; unshift it back in (mirrors ffl_acquisition.js).
-		frappe.call({
-			method: 'ffl_integrations.fastbound.client_api.get_acquire_types',
-			callback: (r) => {
-				const types = (r.message || []).slice();
-				const ctrl = this.fields.acquisition_type;
-				if (!ctrl) return;
-				const cur = ctrl.get_value && ctrl.get_value();
-				if (!types.length && !cur) return;
-				if (cur && !types.includes(cur)) types.unshift(cur);
-				ctrl.df.options = ['', ...types].join('\n');
-				ctrl.refresh();
-				if (cur) ctrl.set_value(cur);
-			},
-			error: () => {},
-		});
+		// new options list; unshift it back in (ffl.loadSelectOptions).
+		this._loadControlOptions('acquisition_type', 'ffl_integrations.fastbound.client_api.get_acquire_types', true);
 	}
 
 	_loadReceiveSources() {
 		// Populate the Source dropdown from FFL Settings → Receive Sources.
 		// Admin-managed list (one per line); edits take effect on next page load.
 		// Same unshift-current pattern as _loadAcquireTypes above.
-		frappe.call({
-			method: 'ffl_core.api.receive_goods.get_receive_sources',
-			callback: (r) => {
-				const list = (r.message || []).slice();
-				const ctrl = this.fields.source;
-				if (!ctrl) return;
-				const cur = ctrl.get_value && ctrl.get_value();
-				if (!list.length && !cur) return;
-				if (cur && !list.includes(cur)) list.unshift(cur);
-				ctrl.df.options = ['', ...list].join('\n');
-				ctrl.refresh();
-				if (cur) ctrl.set_value(cur);
+		this._loadControlOptions('source', 'ffl_core.api.receive_goods.get_receive_sources', false);
+	}
+
+	// A bare page control: set df.options and refresh, then put the value back.
+	_loadControlOptions(field, method, quiet) {
+		ffl.loadSelectOptions({
+			method, quiet,
+			get: () => { const c = this.fields[field]; return c && c.get_value && c.get_value(); },
+			set: (options, cur) => {
+				const c = this.fields[field];
+				if (!c) return;
+				c.df.options = options;
+				c.refresh();
+				if (cur) c.set_value(cur);
 			},
 		});
 	}
@@ -1252,7 +1234,7 @@ class ReceiveGoodsApp {
 	// default, and a pre-filled number is a number nobody read off the gun.
 	// It's offered as a hint instead.
 	_yearMadeDf(itemYear) {
-		const base = __('Optional — this gun\'s year of manufacture (antique = made in or before 1898). Leave blank if unknown.');
+		const base = __('Leave blank if unknown.');
 		return {
 			label: __('Year Made'), fieldtype: 'Int', fieldname: 'year_made',
 			description: itemYear
@@ -1310,9 +1292,7 @@ class ReceiveGoodsApp {
 		trio.confirmed = fp(sel.confirmed, {
 			label: __('Cost really was $0'), fieldtype: 'Check',
 			fieldname: 'zero_cost_confirmed',
-			description: __('Tick ONLY when the store truly paid nothing — a supplier '
-				+ 'gift, a promo, a warranty replacement. NOT for a cost nobody has '
-				+ 'looked up yet: that one gets entered, not confirmed.'),
+			description: __('Only when the store truly paid nothing (gift, promo, warranty replacement), not for a cost nobody has looked up yet.'),
 			change: resync,
 		});
 		trio.reason = fp(sel.reason, {
@@ -1324,8 +1304,7 @@ class ReceiveGoodsApp {
 		trio.note = fp(sel.note, {
 			label: __('What happened'), fieldtype: 'Small Text',
 			fieldname: 'zero_cost_note',
-			description: __('Required for "{0}" — one line a later audit can read '
-				+ 'instead of asking.', [RG_ZERO_COST_OTHER]),
+			description: __('Required for "{0}".', [RG_ZERO_COST_OTHER]),
 		});
 		// Asked only where a confirmation can change the answer: not on a
 		// transfer (the server forces $0), not on a consignment intake (a
@@ -1447,7 +1426,7 @@ class ReceiveGoodsApp {
 					<div class="row" style="margin-top:8px"><div id="p-firearm_type"></div><div id="p-caliber"></div></div>
 					<div class="row" style="margin-top:8px"><div id="p-importer"></div><div></div></div>
 					<div class="row" style="margin-top:8px"><div id="p-is_antique"></div><div id="p-year_made"></div></div>
-					<div class="helper">${__('Confirm firearm details against the gun — required for the bound book. Prefilled from the distributor / catalog where available.')}</div>
+					<div class="helper">${__('Check these against the gun; they go in the bound book.')}</div>
 				</div>
 				<div id="p-serials-wrapper" style="display:${rgNeedsSerials(item) ? 'block' : 'none'}; margin-top: 8px">
 					<div id="p-serials"></div>
@@ -1498,7 +1477,7 @@ class ReceiveGoodsApp {
 			reqd: transferMode ? 0 : 1,
 			read_only: transferMode ? 1 : 0,
 			description: transferMode
-				? __('The store did not buy this gun — a transfer is received at zero cost.')
+				? __('A transfer is received at zero cost.')
 				: '',
 			change: () => {
 				this.pending.rate = parseFloat(this.pending.rateCtrl.get_value()) || 0;
@@ -1531,10 +1510,10 @@ class ReceiveGoodsApp {
 			label: __('Sell Price'), fieldtype: 'Currency', fieldname: 'sell_price',
 			read_only: transferMode ? 1 : 0,
 			description: transferMode
-				? __('A customer\'s gun is not for sale — a transfer records no price.')
+				? __('A transfer records no price.')
 				: (perGunPrice
-					? __('Optional — leave blank if not priced yet. Editable later per-serial on the Item form.')
-					: __('Retail price for this item — saved to the item (and POS) on receive.')),
+					? __('Leave blank if not priced yet.')
+					: __('Becomes the item\'s selling price.')),
 			change: () => { this.pending.sell_price = parseFloat(this.pending.sellPriceCtrl.get_value()) || 0; },
 		});
 		// A transfer records no price at all (no price can be entered). The server
@@ -1621,7 +1600,7 @@ class ReceiveGoodsApp {
 			};
 			this.pending.antiqueCtrl = fp('#p-is_antique', {
 				label: __('Antique (pre-1899 / GCA-exempt)'), fieldtype: 'Check', fieldname: 'is_antique',
-				description: __('Antique / GCA-exempt: still tracked as a serialized gun, but NOT entered in the bound book and no 4473 at sale.'),
+				description: __('Not entered in the bound book and no 4473 at sale.'),
 				change: () => {
 					this.pending.is_antique = this.pending.antiqueCtrl.get_value() ? 1 : 0;
 					toggleYearMade();
@@ -1651,7 +1630,7 @@ class ReceiveGoodsApp {
 			label: __('Storage location'), fieldtype: 'Link', options: 'Storage Location',
 			fieldname: 'storage_location',
 			description: isGun
-				? __('A slot holds one firearm. Several guns on one line fill the next free slots.')
+				? __('Several guns on one line fill the next free slots.')
 				: __('A display case, rack or safe.'),
 			get_query: () => ({
 				query: 'ffl_core.api.storage.location_query',
@@ -2415,6 +2394,16 @@ class ReceiveGoodsApp {
 		this.session = { choices: {} };
 		this.fields.scan.set_value('');
 		this.fields.notes.set_value('');
+		// The seller's identity and the transfer box belong to THIS receive: kept,
+		// the next private purchase would be booked (and pushed to the bound book)
+		// under the previous seller's name, ID and address. Supplier, source and
+		// acquisition type stay, so batch distributor receiving still works.
+		['seller_customer', 'seller_first_name', 'seller_middle_name', 'seller_last_name',
+			'seller_suffix', 'seller_id_type', 'seller_id_number', 'seller_id_document',
+			'seller_address_line1', 'seller_city', 'seller_state', 'seller_zip',
+		].forEach((f) => this.fields[f].set_value(''));
+		this.fields.is_ffl_transfer.set_value(0);
+		this._onTransferChange();  // hides transfer_for_customer and clears it
 		this.$body.find('#pending-area').empty();
 		if (this._itemPicker) this._itemPicker.close();
 		this._renderLines();

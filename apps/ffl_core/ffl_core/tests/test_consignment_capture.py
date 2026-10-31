@@ -227,6 +227,18 @@ class ValidateConsignmentSerial(FrappeTestCase):
 		validate_consignment_serial(doc)
 		self.assertEqual(float(doc.consignment_commission_pct), 20.0)
 
+	def test_default_commission_pct_reads_setting_and_falls_back(self):
+		"""setup/consignment.default_commission_pct — the one store-default rule
+		intake stamping and this form backfill both read."""
+		from ffl_core.setup.consignment import DEFAULT_COMMISSION_PCT, default_commission_pct
+		field = "consignment_default_commission_pct"
+		saved = frappe.db.get_single_value("FFL Settings", field)
+		self.addCleanup(frappe.db.set_single_value, "FFL Settings", field, saved)
+		frappe.db.set_single_value("FFL Settings", field, 15)
+		self.assertEqual(default_commission_pct(), 15.0)
+		frappe.db.set_single_value("FFL Settings", field, 0)
+		self.assertEqual(default_commission_pct(), DEFAULT_COMMISSION_PCT)
+
 	def test_typed_pct_is_left_alone(self):
 		from ffl_core.compliance.consignment import validate_consignment_serial
 		doc = SimpleNamespace(is_consignment=1, consignor="VCS-CONSIGNOR",

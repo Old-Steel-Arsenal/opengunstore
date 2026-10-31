@@ -71,15 +71,6 @@ class AtfFflRecordFieldContractTest(unittest.TestCase):
 			self.assertIn(f, self.fieldnames,
 				f"_counter_ffl_block reads ATF FFL Record.{f}, which does not exist")
 
-	def test_distributor_counter_ffl_block_reads_real_columns(self):
-		from ffl_integrations.distributor import counter
-
-		fields = _queried_fields(counter.__file__, "_ffl_block", "ATF FFL Record")
-		self.assertTrue(fields, "could not find the ATF get_value call")
-		for f in fields:
-			self.assertIn(f, self.fieldnames,
-				f"counter._ffl_block reads ATF FFL Record.{f}, which does not exist")
-
 
 if __name__ == "__main__":
 	unittest.main()

@@ -283,7 +283,7 @@ function draw(frm, st) {
 function logDialog(frm) {
 	const d = frm.doc;
 	frappe.prompt([
-		{ fieldtype: 'HTML', options: '<p>' + __('The gun is received from {0} as a Gunsmithing acquisition and held in customer custody at zero cost (never for sale). At pick-up a Gunsmithing disposition returns it to them.', [frappe.utils.escape_html(d.customer_name || d.customer)]) + '</p>' },
+		{ fieldtype: 'HTML', options: '<p>' + __('{0}\'s gun is logged into the bound book as a Gunsmithing acquisition and held for them at zero cost, never for sale. At pick-up a Gunsmithing disposition returns it to them.', [frappe.utils.escape_html(d.customer_name || d.customer)]) + '</p>' },
 		{ fieldtype: 'Select', fieldname: 'id_type', label: __('ID Type'), reqd: 1, default: d.id_type,
 			options: ['', 'Driver License', 'State ID', 'Passport', 'Military ID', 'Other'] },
 		{ fieldtype: 'Data', fieldname: 'id_number', label: __('ID Number'), reqd: 1, default: d.id_number },
@@ -293,7 +293,7 @@ function logDialog(frm) {
 function notifyDialog(frm) {
 	frappe.prompt({ fieldtype: 'Select', fieldname: 'via', label: __('How'), reqd: 1,
 		options: ['Email', 'Phone', 'Text'], default: frm.doc.email ? 'Email' : 'Phone',
-		description: __('Email sends the "ready for pick-up" email now. Phone and Text: call or text the customer, then record it here.') },
+		description: __('Email sends the pick-up email now; Phone and Text only record that you called or texted.') },
 	(v) => act(frm, 'notify_customer', { via: v.via }, (m) => {
 		frappe.show_alert({ indicator: 'green', message: m.email ? __('Emailed {0}', [m.email]) : __('Recorded') });
 		frm.reload_doc();

@@ -31,7 +31,7 @@ compliance flow runs.
 
 **Permissions:** Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:88`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:116`</sub>
 
 ## `force_delete`
 
@@ -57,7 +57,7 @@ history rows are left alone — they're audit trail.
 
 **Permissions:** System Manager only (destructive).
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:574`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:587`</sub>
 
 ## `get_item_stock`
 
@@ -77,7 +77,7 @@ show a stock badge without forcing the user to open Stock Balance.
 
 **Returns:** {item_code: total_actual_qty} — every requested code is present.
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:410`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:423`</sub>
 
 ## `preview_delete`
 
@@ -95,7 +95,7 @@ Preview a force_delete: per-doctype counts of rows that would be touched.
 
 **Permissions:** System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:498`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:511`</sub>
 
 ## `recompute_all_item_actual_qty`
 
@@ -116,7 +116,7 @@ Two statements:
 
 **Permissions:** System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:369`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:382`</sub>
 
 ## `set_stock`
 
@@ -132,17 +132,22 @@ inventory correction, write-off). For positive deltas a Material
 Receipt is faster (see add_stock); set_stock is the right primitive
 when the user already knows the absolute target.
 
+The quantity entered is what is on the shelf now. A register sale not yet
+closed has left the shelf but is still in the Bin (ERPNext posts it at the
+register close), so the reconciliation sets the Bin to the entered quantity
+plus those units; once the close posts them the Bin reads the entered figure.
+
 | arg | type | required | default | description |
 |---|---|---|---|---|
 | `item_code` | string | yes | — | Non-serialized stock Item to adjust. |
-| `new_qty` | — | yes | — | Absolute on-hand target, >= 0. |
+| `new_qty` | — | yes | — | Units physically on the shelf now, >= 0. |
 | `warehouse` | string \| null | no | `None` | Optional target; defaults to the configured warehouse. |
 | `reason` | string \| null | no | `None` | Optional audit note (stored as a Comment on the Stock Reconciliation). |
 
-**Returns:** {ok, name (Stock Reconciliation #), prev_qty, new_qty, delta, warehouse}.
+**Returns:** {ok, name (Stock Reconciliation #), prev_qty, new_qty (as entered), open_register_qty (units on register sales not closed yet), delta (what the reconciliation changed the Bin by), warehouse}.
 
-**Raises:** ValidationError: Serial-tracked item, invalid qty, missing warehouse, or no qty change.
+**Raises:** ValidationError: Serial-tracked item, invalid qty, missing warehouse, no qty change, or a count below the units on an open register return.
 
 **Permissions:** Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:187`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:193`</sub>

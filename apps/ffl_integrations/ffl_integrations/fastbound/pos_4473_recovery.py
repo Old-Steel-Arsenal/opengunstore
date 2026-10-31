@@ -24,9 +24,9 @@ from frappe import _
 from ffl_core.compliance.firearm import (
 	FORM_4473_REQUIRED,
 	covered_serials_for_invoice,
+	regulated_firearm_serials,
 )
 from ffl_core.firearm import is_regulated_firearm_item
-from ffl_core.serials import serials_for_line
 from ffl_core.utils import commit
 
 from ffl_integrations.fastbound.client import (
@@ -74,12 +74,9 @@ def _firearm_serials(doc) -> list[str]:
 	while FastBound's pending disposition went on holding it and the call still
 	reported success.
 
-	Antiques are GCA-exempt and never need a 4473."""
-	out: list[str] = []
-	for row in (doc.items or []):
-		if is_regulated_firearm_item(row.item_code):
-			out.extend(serials_for_line(row))
-	return list(dict.fromkeys(out))
+	Antiques are GCA-exempt and never need a 4473. Shared with the submit gate
+	via ``regulated_firearm_serials``."""
+	return regulated_firearm_serials(doc.items)
 
 
 def _flags(invoice_name: str) -> dict:

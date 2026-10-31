@@ -103,7 +103,7 @@ function _update_ffl(frm) {
 			fieldtype: 'Data', fieldname: 'ffl_license', reqd: 1,
 			label: __('New transfer FFL license'),
 			default: frm.doc.transfer_ffl_license || '',
-			description: __('Re-validated (unexpired + complete address) before the distributor is called.'),
+			description: __('Must be unexpired with a complete address.'),
 		}],
 		(v) => {
 			frappe.call({
@@ -136,13 +136,13 @@ function _confirm(frm) {
 // in — unless the operator says the house has already confirmed the
 // cancellation, in which case that alert would only be noise.
 function _cancel(frm) {
-	const live = ['Placed', 'Acknowledged', 'Hold', 'Partially Shipped'].includes(frm.doc.status);
+	const live = ['Placed', 'Acknowledged', 'Hold', 'Partially Shipped', 'Error'].includes(frm.doc.status);
 	const fields = [{ fieldtype: 'Small Text', fieldname: 'reason', label: __('Reason'), reqd: 0 }];
 	if (live) {
 		fields.push({
 			fieldtype: 'Check', fieldname: 'confirmed',
 			label: __('{0} has confirmed the cancellation (phone / email)', [frm.doc.distributor]),
-			description: __('This order is live at {0} (ref {1}). Left unticked, ops are alerted to arrange the cancellation with the house.',
+			description: __('This order is live at {0} (ref {1}); left unticked, ops are alerted to arrange the cancellation.',
 				[frm.doc.distributor, frm.doc.web_ref || '—']),
 		});
 	}

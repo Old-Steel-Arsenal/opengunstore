@@ -9,11 +9,13 @@ from frappe import _
 from frappe.model.document import Document
 
 from ffl_core.acquisition import INDIVIDUAL_SOURCES
+from ffl_core.serials import only_active_serial
 
 
 class FFLAcquisition(Document):
 	def validate(self) -> None:
-		self._fill_serial_from_item()
+		if not self.serial:
+			self.serial = only_active_serial(self.item) or self.serial
 		self._reject_dealer_source_without_ffl()
 		self._reject_individual_source_without_id()
 
@@ -23,21 +25,6 @@ class FFLAcquisition(Document):
 				_("Source FFL number is required when source type is 'FFL Dealer'."),
 				title=_("FFL Required"),
 			)
-
-	def _fill_serial_from_item(self) -> None:
-		"""Server-side defence in depth: when there's exactly one active Serial
-		No for the selected Item and the field is blank, fill it. (Every firearm
-		is has_serial_no=1 now — the legacy Item.firearm_serial fallback was
-		removed when the Used Firearm path was unified.)"""
-		if not self.item or self.serial:
-			return
-		active = frappe.get_all(
-			"Serial No",
-			filters={"item_code": self.item, "status": "Active"},
-			pluck="name", limit=2,
-		)
-		if len(active) == 1:
-			self.serial = active[0]
 
 	def _reject_individual_source_without_id(self) -> None:
 		if self.source_type in INDIVIDUAL_SOURCES and not (

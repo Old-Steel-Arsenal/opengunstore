@@ -136,7 +136,7 @@
 					fieldtype: "HTML",
 					options: `
 						<p class="text-muted small" style="margin-bottom:6px">${__(
-							"Every unit that entered stock in the period, straight from the stock ledger, so the Cost Received card ties to Stock In Hand. Before handing this to the accountant, the two flag cards should read Clean."
+							"Before handing this to the accountant, the two flag cards should read Clean."
 						)}</p>
 						<h6 style="margin-top:10px">${__("Receipt type")}</h6>
 						<table class="table table-sm">${classes}</table>

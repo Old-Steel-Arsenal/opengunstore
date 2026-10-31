@@ -47,6 +47,7 @@ from ffl_core.marketplace_accounts import refund_remarks_rule
 from ffl_core.reservations import (
 	CHANNEL_GUNBROKER,
 	committed_units,
+	is_uniform_firearm_item,
 	notify_channel_commitments_changed,
 	serial_shelf_state,
 	uniform_free_serials,
@@ -61,7 +62,11 @@ from ffl_integrations.gunbroker.client import (
 	kv_key,
 )
 from ffl_integrations.gunbroker import mapping
-from ffl_integrations.gunbroker.crosschannel import REASON_SOLD, fire_serial_channel_exit
+from ffl_integrations.gunbroker.crosschannel import (
+	REASON_SOLD,
+	fire_serial_channel_exit,
+	fire_serial_channel_return,
+)
 from ffl_integrations.integration_gate import gunbroker_enabled
 from ffl_integrations.notifications import notify_admins, safe_log_error
 
@@ -1166,9 +1171,7 @@ def is_model_unit_line(line) -> bool:
 	item_code, serial = split_sku(line.sku or "")
 	if serial or not item_code:
 		return False
-	item = frappe.db.get_value(
-		"Item", item_code, ["is_firearm", "uniform_sell_price"], as_dict=True)
-	return bool(item and _int(item.get("is_firearm")) and _int(item.get("uniform_sell_price")))
+	return is_uniform_firearm_item(item_code)
 
 
 def _match_serial(line, claimed: dict[str, str]) -> tuple[str | None, str]:
@@ -1430,7 +1433,11 @@ def _announce_cancellation(order) -> None:
 
 def release_serial_if_held_by(order_name: str, serial: str) -> bool:
 	"""Drop one gun's GunBroker hold, but only if THIS order holds it. Never
-	another order's or another channel's. True when something was released."""
+	another order's or another channel's. True when something was released.
+
+	A released gun is back on the shelf, so the storefronts that took it down
+	when GunBroker held it (``serial_channel_exit``) are told to put it back
+	(``serial_channel_return``). Never raises."""
 	serial = (serial or "").strip()
 	if not serial:
 		return False
@@ -1439,17 +1446,33 @@ def release_serial_if_held_by(order_name: str, serial: str) -> bool:
 	if held.get("gb_reserved") and (held.get("gb_order") or "") == order_name:
 		frappe.db.set_value("Serial No", serial,
 			{"gb_reserved": 0, "gb_order": ""}, update_modified=False)
+		fire_serial_channel_return(serial)
 		return True
 	return False
 
 
 def release_order_serials(order, *, order_status: str | None = None) -> list[str]:
-	"""Drop this order's holds. Only its own — never another channel's."""
+	"""Drop this order's holds. Only its own — never another channel's.
+
+	A released gun whose serial still names the listing this order bought has
+	that listing ended on the serial (ENDED, not UNLISTED). GunBroker does not
+	un-sell an item when the order is cancelled, so left in place the sweep
+	reads it as sold with no order holding the gun and raises "may have sold on
+	GunBroker". Only a person re-lists it, as after any other end.
+	"""
+	from ffl_integrations.gunbroker import listings
+
+	sold_ids = {str(line.gb_item_id or "").strip() for line in (order.lines or [])}
+	sold_ids.discard("")
 	released = []
 	for row in (order.serials or []):
 		serial = (row.confirmed_serial or "").strip()
 		if serial and release_serial_if_held_by(order.name, serial):
 			released.append(serial)
+			state = listings.serial_state(serial)
+			item_id = str(state.get("gb_item_id") or "").strip()
+			if item_id and item_id in sold_ids:
+				listings.confirm_ended(serial, item_id, state)
 	if order_status and (order.order_status or "") != order_status:
 		frappe.db.set_value(ORDER_DOCTYPE, order.name, "order_status", order_status,
 			update_modified=False)

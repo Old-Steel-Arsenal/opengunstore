@@ -74,7 +74,7 @@
    "read_only": 1,
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "description": "Pending until the first invoice is paid. Changes only from the customer's Memberships panel."
+   "description": "Changes only from the customer's Memberships panel."
   },
   {
    "fieldname": "column_break_a",
@@ -123,7 +123,7 @@
    "label": "Saved Card",
    "options": "Saved Card",
    "read_only": 1,
-   "description": "The card renewals are charged to (saved for recurring charges)."
+   "description": "Renewals are charged to this card."
   },
   {
    "fieldname": "column_break_b",
@@ -146,8 +146,7 @@
    "fieldtype": "Date",
    "label": "Last Renewal Attempt",
    "read_only": 1,
-   "no_copy": 1,
-   "description": "The day the renewal job last tried the card (it tries once a day)."
+   "no_copy": 1
   },
   {
    "fieldname": "renewal_reminder_for",

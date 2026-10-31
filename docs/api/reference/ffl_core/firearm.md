@@ -27,7 +27,7 @@ warn + block the sale.
 
 **Returns:** {item_code: [in-stock serial, ...]}.
 
-<sub>`apps/ffl_core/ffl_core/firearm.py:602`</sub>
+<sub>`apps/ffl_core/ffl_core/firearm.py:599`</sub>
 
 ## `available_serials_with_prices`
 
@@ -49,7 +49,7 @@ picker to render a price-first dropdown.
 
 **Returns:** {item_code: [{"serial", "sell_price", "purchase_rate"}, ...]}, sorted by sell_price ascending.
 
-<sub>`apps/ffl_core/ffl_core/firearm.py:1317`</sub>
+<sub>`apps/ffl_core/ffl_core/firearm.py:1337`</sub>
 
 ## `firearm_items_in`
 
@@ -87,7 +87,7 @@ receive_goods.get_receive_sources for reading FFL Settings.
 
 **Returns:** {"fee_item": <service Item code>, "fee_amount": <default fee>}.
 
-<sub>`apps/ffl_core/ffl_core/firearm.py:1456`</sub>
+<sub>`apps/ffl_core/ffl_core/firearm.py:1473`</sub>
 
 ## `in_stock_firearm_serials`
 
@@ -114,7 +114,7 @@ warehouse receives, which is the opposite of the point.
 
 **Returns:** [{serial, item_code, item_name, sell_price}], ordered item then serial.
 
-<sub>`apps/ffl_core/ffl_core/firearm.py:1515`</sub>
+<sub>`apps/ffl_core/ffl_core/firearm.py:1532`</sub>
 
 ## `pos_pricing_summary`
 
@@ -133,7 +133,7 @@ the checkout gate.
 
 **Returns:** {code: {"is_firearm": bool, "uniform": 0|1, "n": <active serials>, "min": float|None, "max": float|None}}. min/max range over the normalised per-serial prices (uniform mode → standard_rate; 0 → None un-priced, excluded from min/max). Non-firearm / unknown codes come back with n=0 so the frontend can cache the negative.
 
-<sub>`apps/ffl_core/ffl_core/firearm.py:1405`</sub>
+<sub>`apps/ffl_core/ffl_core/firearm.py:1425`</sub>
 
 ## `toggle_serial_service_need`
 
@@ -163,4 +163,4 @@ to roles that already own Serial No writes.
 
 **Permissions:** Frappe write permission on Serial No (a DocType permission check, not a fixed role list — whichever roles carry Serial No write).
 
-<sub>`apps/ffl_core/ffl_core/firearm.py:694`</sub>
+<sub>`apps/ffl_core/ffl_core/firearm.py:691`</sub>

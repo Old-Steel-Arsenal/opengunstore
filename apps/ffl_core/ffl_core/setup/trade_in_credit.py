@@ -131,30 +131,11 @@ def credit_income_account(company: str) -> str | None:
 def _ensure_credit_income_accounts() -> int:
 	"""Point the credit item's Item Default income account at Stock Adjustment for every company. Only the
 	item's default changes: lines already on invoices keep the account they were booked to. Returns how many
-	companies changed (0 at steady state).
+	companies changed (0 at steady state)."""
+	from ffl_core.setup.item_defaults import set_item_default_accounts
 
-	Written row by row, not through Item.save: saving fills a new row's default warehouse from the site default,
-	which belongs to one company only, and the Item then refuses the row of any other company."""
-	rows = {r.company: r for r in frappe.get_all(
-		"Item Default", filters={"parent": TRADE_IN_CREDIT_ITEM, "parenttype": "Item"},
-		fields=["name", "company", "income_account", "idx"])}
-	last = max((r.idx for r in rows.values()), default=0)
-	changed = 0
-	for company in frappe.get_all("Company", pluck="name"):
-		account = credit_income_account(company)
-		row = rows.get(company)
-		if not account or (row and row.income_account == account):
-			continue
-		if row:
-			frappe.db.set_value("Item Default", row.name, "income_account", account, update_modified=False)
-		else:
-			last += 1
-			frappe.get_doc({
-				"doctype": "Item Default", "name": frappe.generate_hash(length=10), "parent": TRADE_IN_CREDIT_ITEM,
-				"parenttype": "Item", "parentfield": "item_defaults", "idx": last, "company": company,
-				"income_account": account,
-			}).db_insert()
-		changed += 1
+	changed = set_item_default_accounts(
+		TRADE_IN_CREDIT_ITEM, lambda company: (account := credit_income_account(company)) and {"income_account": account})
 	if changed:
 		frappe.clear_document_cache("Item", TRADE_IN_CREDIT_ITEM)  # ERPNext reads item defaults off the cached Item
 	return changed

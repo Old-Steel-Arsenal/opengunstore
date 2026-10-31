@@ -51,6 +51,7 @@ from ffl_core.compliance.ffl_number import (
 	CR_LICENSE_TYPE_LABEL,
 	is_cr_license,
 )
+from ffl_core.utils import commit  # test-safe: a no-op under frappe.flags.in_test
 
 # The eight keys of the frozen `cr_details` payload, with the
 # operator-facing label used when one is missing. `premise_street2` is
@@ -309,6 +310,56 @@ def _persist_cr_details(order, details: dict, *,
 	if changed or not (order.cr_verified_by or ""):
 		order.cr_verified_by = frappe.session.user
 		order.cr_verified_at = now_datetime()
+
+
+def record_cr_verification(order, cr_details, *,
+		license_field: str = "ffl_license") -> str:
+	"""Validate, persist and commit an operator's C&R licence check on a channel
+	order (web or GunBroker); return the destination ATF FFL Record.
+
+	Runs BEFORE the destination is resolved, because it is what makes it
+	resolvable at all. ``license_field`` names the order's licence column, as in
+	:func:`_persist_cr_details`.
+	"""
+	details = _validate_cr_details(cr_details, order)   # throws; nothing written yet
+	_persist_cr_details(order, details, license_field=license_field)
+	order.atf_ffl_record = ensure_cr_ffl_record(
+		ffl_number=details["license_number"],
+		licensee_name=details["contact_name"],
+		street=details["premise_street"],
+		street2=details["premise_street2"],
+		city=details["premise_city"],
+		state=details["premise_state"],
+		zip_code=details["premise_zip"],
+		expiry_date=details["license_expiry"],
+		phone=order.customer_phone or "",
+	)
+	order.flags.ignore_permissions = True
+	order.save()
+	order.add_comment("Comment", _(
+		"C&R verification recorded by {0}: {1} / {2} / {3} {4}."
+	).format(frappe.session.user, details["license_number"], details["contact_name"],
+		details["premise_city"], details["premise_state"]))
+	# Commit boundary: the verification is a completed unit of work. If the
+	# disposition that follows fails (a serial vanished, a stock error), Frappe
+	# rolls back to the last commit — without this line the nine cr_* fields and
+	# the audit Comment go with it, and the operator must re-read and re-key the
+	# licence.
+	commit()
+	return order.atf_ffl_record
+
+
+def cr_note_suffix(order) -> str:
+	"""The bound-book note's C&R sentence: WHO verified the licence and WHEN.
+	On this path there is no dealer at the far end and no 4473, so the store's
+	own check is the entire paper trail."""
+	verified_at = order.cr_verified_at
+	stamp = (verified_at.strftime("%Y-%m-%d")
+		if hasattr(verified_at, "strftime") else str(verified_at or "")[:10])
+	return _(
+		"C&R (Type 03) transfer — shipped to the collector's own licensed "
+		"premises. Verified by {0} on {1}."
+	).format(order.cr_verified_by or "—", stamp or "—")
 
 
 def _clear_cr_verification(order) -> None:

@@ -1214,6 +1214,7 @@ def push_serial(
             # push erase the record that a gun had been hidden — after which
             # nothing remembered, and the next sweep republished it.
             writeback[_f(site, "delisted")] = 0
+            writeback[_f(site, "channel_delisted")] = 0
         # Sold-aware sentinel handling.  A post-sale gallery/detail edit re-pushes
         # a SOLD gun; clearing the archive sentinel there would make reconcile
         # re-archive the same gun on every 2-hourly sweep.  Only a genuine relist

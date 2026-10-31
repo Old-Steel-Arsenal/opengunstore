@@ -45,7 +45,7 @@ is free.
 
 **Permissions:** Sales Manager / System Manager (manager gate) + required reason.
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/pos_4473_recovery.py:469`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/pos_4473_recovery.py:466`</sub>
 
 ## `manager_redo_4473`
 
@@ -86,7 +86,7 @@ Does NOT touch FastBound — void the disposition there first.
 
 **Permissions:** Sales Manager / System Manager (manager gate) + required reason.
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/pos_4473_recovery.py:297`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/pos_4473_recovery.py:294`</sub>
 
 ## `refresh_4473_status`
 
@@ -115,4 +115,4 @@ compliance fact.
 
 **Permissions:** POS 4473 roles (_check_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/pos_4473_recovery.py:214`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/pos_4473_recovery.py:211`</sub>

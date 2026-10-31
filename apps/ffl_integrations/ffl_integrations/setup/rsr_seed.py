@@ -63,22 +63,11 @@ def _seed_rsr_distributor() -> bool:
 	"""Ensure the RSR Distributor row exists so the provider registry + restock
 	page are coherent out of the box. Seeded DISABLED and with no creds/supplier —
 	inert until go-live config enables it (mirrors api_enabled=0). Create-once: an
-	existing row (with operator edits) is never overwritten."""
-	if frappe.db.exists("Distributor", "RSR"):
-		return False
-	frappe.get_doc({
-		"doctype": "Distributor",
-		"code": "RSR",
-		"distributor_name": "RSR Group, Inc.",
-		"provider": "rsr",
-		"enabled": 0,
-		"stocking_enabled": 1,
-		"dropship_enabled": 1,
-		"poll_enabled": 0,
-		"safety_buffer": 3,
-		"display_cap": 5,
-	}).insert(ignore_permissions=True)
-	return True
+	existing row (with operator edits, or an rsr-provider row under another
+	name) is never overwritten."""
+	from ffl_integrations.distributor.policy import ensure_distributor_row
+
+	return ensure_distributor_row("RSR", "RSR Group, Inc.", "rsr")
 
 
 def run() -> dict:

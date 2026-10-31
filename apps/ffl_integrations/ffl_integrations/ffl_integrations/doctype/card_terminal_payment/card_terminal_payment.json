@@ -38,7 +38,6 @@
    "reqd": 1
   },
   {
-   "description": "Requested while the terminal holds the card; the authorized amount once it answers.",
    "fieldname": "amount",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -72,14 +71,12 @@
    "read_only": 1
   },
   {
-   "description": "Card type + masked digits from the gateway, e.g. \"Visa Debit •5938\".",
    "fieldname": "card_summary",
    "fieldtype": "Data",
    "label": "Card",
    "read_only": 1
   },
   {
-   "description": "The ledger side of a charged card: the Payment Entry booked against the Sales Invoice.",
    "fieldname": "payment_entry",
    "fieldtype": "Link",
    "label": "Payment Entry",
@@ -88,7 +85,6 @@
   },
   {
    "default": "0",
-   "description": "Card money given back on this charge through the POS (refunds; a void gives back the whole charge).",
    "fieldname": "refunded_amount",
    "fieldtype": "Currency",
    "label": "Refunded",
@@ -103,7 +99,6 @@
    "read_only": 1
   },
   {
-   "description": "The void's booking: the cancelled Payment Entry, or the Journal Entry that reversed it.",
    "fieldname": "reversal_entry",
    "fieldtype": "Dynamic Link",
    "label": "Void Entry",
@@ -111,7 +106,7 @@
    "read_only": 1
   },
   {
-   "description": "Set while a void or refund the processor never confirmed waits for a manager to check its portal (Resolve card reversal). Nothing else may move money on this charge until then.",
+   "description": "A manager must check the processor's portal and resolve it; no other card action is allowed on this charge until then.",
    "fieldname": "reversal_lock",
    "fieldtype": "Small Text",
    "label": "Unconfirmed Void / Refund",
@@ -124,7 +119,6 @@
    "label": "Gateway"
   },
   {
-   "description": "The card processor that took this charge (its registry code). Void, refund and poll go back to it.",
    "fieldname": "processor",
    "fieldtype": "Data",
    "label": "Processor",
@@ -138,28 +132,24 @@
   },
   {
    "default": "0",
-   "description": "The cashier asked to keep this card for later charges (card on file).",
    "fieldname": "save_card",
    "fieldtype": "Check",
    "label": "Save Card Requested",
    "read_only": 1
   },
   {
-   "description": "The merchant reference the card was saved under at the gateway.",
    "fieldname": "save_reference",
    "fieldtype": "Data",
    "label": "Saved Card Reference",
    "read_only": 1
   },
   {
-   "description": "How the saved card may be charged later: UNSCHEDULED (a balance when due) or RECURRING (an auto-renewing membership).",
    "fieldname": "save_usage",
    "fieldtype": "Data",
    "label": "Saved Card Usage",
    "read_only": 1
   },
   {
-   "description": "The card this charge saved, or the saved card it charged.",
    "fieldname": "saved_card",
    "fieldtype": "Link",
    "label": "Saved Card",

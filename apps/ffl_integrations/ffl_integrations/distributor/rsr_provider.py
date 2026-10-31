@@ -21,7 +21,7 @@ from typing import Optional
 
 from ffl_integrations.distributor import lanes
 from ffl_integrations.distributor.base import DistributorProvider
-from ffl_integrations.distributor.remote_catalog_mixin import RemoteCatalogMixin, remote_normalised
+from ffl_integrations.distributor.remote_catalog_mixin import RemoteCatalogMixin
 from ffl_integrations.distributor.util import setting_value
 
 # RSR handgun departments — the only firearms RSR force-upgrades to 2Day.
@@ -40,24 +40,6 @@ RSR_CAPABILITIES = frozenset({
 
 
 DISTRIBUTOR_CODE = "rsr"
-
-
-def _parse_service_ts(value):
-	"""Service ISO timestamp (UTC) → naive datetime on the SITE's clock,
-	comparable with frappe.utils.now_datetime().
-
-	Delegates: the implementation moved to `remote_catalog.parse_service_ts` (the
-	module that owns /v1/catalog wire shapes) when the Catalog Service page needed
-	the same conversion. Kept as a lazy delegate rather than a module-level alias
-	so this module stays import-light (see the module docstring) — remote_catalog
-	imports frappe at module scope."""
-	from ffl_integrations.distributor.remote_catalog import parse_service_ts
-
-	return parse_service_ts(value)
-
-
-# Kept as a name: tests and the console still import it from here.
-_remote_normalised = remote_normalised
 
 
 class RSRProvider(RemoteCatalogMixin, DistributorProvider):

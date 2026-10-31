@@ -47,6 +47,37 @@ class FulfillFromStock(CounterToStoreFixtures):
 		self.assertEqual(q["legs"]["substitutable"], [])
 		self.assertEqual([p["serial"] for p in q["pending_serials"]], [shelf])
 
+	def test_holding_a_shelf_gun_tells_the_sales_channels(self):
+		"""The serial is written onto an invoice submitted long ago, so no
+		on_submit fires — the channels must still hear the gun is now promised,
+		or it stays buyable online."""
+		from unittest import mock
+		shelf = self._shelf_gun("TS-FFS-SHELF3")
+		out = self._counter([self._line(GUN)], ffl=DEST_FFL)
+		si = frappe.get_doc("Sales Invoice", out["sales_invoice"])
+		seen = []
+		real_get_hooks, real_get_attr = frappe.get_hooks, frappe.get_attr
+		probe = "test.ffl_counter_hold_changed.registrant"
+
+		def _record(doc):
+			seen.append((doc.name, [r.serial_no for r in doc.items if r.serial_no]))
+
+		def _hooks(name=None, *a, **kw):
+			return [probe] if name == "ffl_counter_hold_changed" else real_get_hooks(name, *a, **kw)
+
+		def _attr(path, *a, **kw):
+			return _record if path == probe else real_get_attr(path, *a, **kw)
+
+		with mock.patch.object(manual_order.frappe, "get_hooks", _hooks), \
+				mock.patch.object(manual_order.frappe, "get_attr", _attr):
+			manual_order.fulfill_from_stock(si.name, si.items[0].name, serial_no=shelf)
+		self.assertEqual(seen, [(si.name, [shelf])])
+
+	def test_both_channels_listen_for_a_counter_hold_change(self):
+		hooks = frappe.get_hooks("ffl_counter_hold_changed")
+		self.assertIn("ffl_woo_sync.woocommerce.doc_events.on_invoice_change", hooks)
+		self.assertIn("ffl_integrations.gunbroker.doc_events.on_invoice_change", hooks)
+
 	def test_a_held_or_missing_serial_is_refused(self):
 		out = self._counter([self._line(GUN)], ffl=DEST_FFL)
 		si = frappe.get_doc("Sales Invoice", out["sales_invoice"])
@@ -128,6 +159,26 @@ class FulfillFromStock(CounterToStoreFixtures):
 		self.assertEqual(self._only_do(si.name).lines[0].substituted_qty, 2)
 		self.assertIsNone(manual_order.ship_arrival_block(frappe.get_doc("Sales Invoice", si.name)))
 
+	def test_a_substituted_leg_stops_holding_the_order_once_the_house_completes(self):
+		"""The parcel of a fully substituted line books as plain restock, never
+		against the DO, so its receive_status never reads Received — the queue must
+		judge the leg by what it still owes, or the shipped order never leaves."""
+		from ffl_core.api.receive_goods import create_receive
+		from ffl_core.warehouses import default_stock_warehouse
+		create_receive({
+			"supplier": SUPPLIER, "source": "RSR", "acquisition_type": "Purchase",
+			"warehouse": default_stock_warehouse(self.company),
+			"items": [{"item_code": ACC, "qty": 2, "rate": 20, "serials": []}],
+		})
+		ship_to = {"address_line1": "5 Elm St", "city": "Springfield", "state": "TX", "pincode": "75024"}
+		si_name = self._counter([self._line(ACC, qty=2, rate=40)], ship_to=ship_to)["sales_invoice"]
+		si = frappe.get_doc("Sales Invoice", si_name)
+		manual_order.fulfill_from_stock(si_name, si.items[0].name)
+		self._ship_to_store(self._only_do(si_name))   # the house ships it anyway: Complete
+		manual_order.mark_shipped_manually(si_name)
+		self.assertIsNone(self._queue_row(si_name),
+			"a Complete leg that owes nothing must not keep the order on the queue")
+
 	def test_a_received_line_cannot_be_substituted(self):
 		out = self._counter([self._line(GUN)], ffl=DEST_FFL)
 		si_name = out["sales_invoice"]
@@ -205,6 +256,30 @@ class TroubleAndResource(CounterToStoreFixtures):
 			"ffl_to_store_distributor"), "TS-P2-DC2")
 		self.assertIn(new.name, manual_order._unreceived_to_store_orders(si.name))
 		self.assertNotIn(old.name, manual_order._unreceived_to_store_orders(si.name))
+
+	def test_resource_of_a_short_shipped_line_orders_only_what_is_still_owed(self):
+		"""Two of three units already arrived from the old house: the new house is
+		asked for the one still missing, and the old line is retired by one — not
+		the full line quantity bought again."""
+		from ffl_core.tests.test_counter_to_store import _ensure
+		_ensure("Distributor", "TS-P2-DC2", {
+			"code": "TS-P2-DC2", "distributor_name": "P2 Second House",
+			"provider": "rsr", "enabled": 1, "dropship_enabled": 1, "stocking_enabled": 1,
+			"supplier": SUPPLIER, "safety_buffer": 0, "display_cap": 0})
+		frappe.db.set_value("Distributor", "TS-P2-DC2", {"enabled": 1, "stocking_enabled": 1},
+			update_modified=False)
+		ship_to = {"address_line1": "5 Elm St", "city": "Springfield", "state": "TX", "pincode": "75024"}
+		si_name = self._counter([self._line(ACC, qty=3, rate=40)], ship_to=ship_to)["sales_invoice"]
+		si = frappe.get_doc("Sales Invoice", si_name)
+		old = self._only_do(si_name)
+		frappe.db.set_value("Distributor Order Line", old.lines[0].name,
+			{"received_qty": 2, "invoiced_qty": 2, "line_status": "Shipped"},
+			update_modified=False)
+		res = manual_order.resource_line(si_name, si.items[0].name, "TS-P2-DC2")
+		new = frappe.get_doc("Distributor Order", res["do_name"])
+		self.assertEqual(sum(int(l.wish_qty or 0) for l in new.lines), 1)
+		self.assertEqual(frappe.db.get_value("Distributor Order Line", old.lines[0].name,
+			"substituted_qty"), 1)
 
 	def test_resourcing_to_the_same_house_is_refused(self):
 		out = self._counter([self._line(GUN)], ffl=DEST_FFL)

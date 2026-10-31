@@ -119,27 +119,15 @@ def order_line_to_store(item_code, distributor, qty, is_firearm) -> str | None:
 def _ffl_block(value):
 	"""Normalise a context ``destination_ffl``.
 
-	create_order passes the already-resolved block (it has the premise to hand); the
-	``on_submit`` rebuild only has the ATF record name off the invoice. Accept
-	both so the two entry points share one snapshot builder.
+	create_order passes the already-resolved block; the ``on_submit`` rebuild only
+	has the ATF record name off the invoice, which resolves through the counter's
+	own snapshot builder (``manual_order._counter_ffl_block``) so there is one copy.
 	"""
-	if not value:
-		return None
 	if isinstance(value, dict):
 		return value
-	rec = frappe.db.get_value(
-		"ATF FFL Record", value,
-		["ffl_number", "street", "city", "state", "zip"], as_dict=True) or frappe._dict()
-	return {
-		# The ATF doctype's licence column is `ffl_number` (its autoname); the
-		# OrderPlan / transfer_dealer contract key is `license`. Not the same name.
-		"license": rec.get("ffl_number") or value,
-		"premise_street": rec.get("street") or "",
-		"premise_city": rec.get("city") or "",
-		"premise_state": rec.get("state") or "",
-		"premise_zip": rec.get("zip") or "",
-		"ffl_record": value,
-	}
+	from ffl_core.api.manual_order import _counter_ffl_block
+
+	return _counter_ffl_block(value)
 
 
 def ffl_counter_order_distributor(sales_invoice_name: str, context: dict) -> None:

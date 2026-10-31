@@ -44,7 +44,7 @@ function openLookupDialog(listview) {
 				fieldname: 'ffl_number',
 				label: __('FFL Number'),
 				reqd: 1,
-				description: __('Format: 1-99-999-99-9X-99999. Hyphens are optional. The lookup hits ATF EZ Check live and caches the result here.'),
+				description: __('Format: 1-99-999-99-9X-99999; hyphens are optional. The lookup hits ATF EZ Check live and caches the result here.'),
 			},
 		],
 		primary_action_label: __('Lookup & Save'),

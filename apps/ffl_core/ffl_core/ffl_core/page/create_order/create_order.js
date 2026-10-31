@@ -242,7 +242,7 @@ class CreateOrderApp {
 						</div>
 					</div>
 					<div id="dest-cr" style="display:none">
-						<div class="helper">${__('The ATF directory holds no Type 03 collectors, so nothing can be looked up — read the license copy and type what it says. The gun ships to the licensed premises.')}</div>
+						<div class="helper">${__('Type what the license copy says; the ATF directory does not list Type 03 collectors. The gun ships to the licensed premises.')}</div>
 						<div class="row" style="margin-top:12px">
 							<div id="f-cr_license_number"></div>
 							<div id="f-cr_license_expiry"></div>
@@ -294,7 +294,7 @@ class CreateOrderApp {
 						<div id="f-scan"></div>
 						<div class="typeahead" id="typeahead"></div>
 					</div>
-					<div class="helper">${__('Scan barcode, type SKU / item name — or scan a firearm serial # to add that gun, its serial, and its tag price in one step. Use ↑↓ + Enter to pick. Store stock and distributor drop-ship results appear together; picking a drop-ship result quotes it below.')}</div>
+					<div class="helper">${__('Scan a barcode or type an SKU or item name; scanning a firearm serial adds that gun at its tag price.')}</div>
 					<div id="pending-area"></div>
 					<div class="lines" id="lines-area" style="display:none">
 						<table>
@@ -417,7 +417,7 @@ class CreateOrderApp {
 			}),
 			le_excise_exempt: this._f('#f-le_excise_exempt', {
 				label: __('Peace officer / law enforcement agency — excise tax exempt'),
-				description: __('Active or retired peace officer, or the agency employing one, with a CDTFA-230-FET certificate for this sale. Takes off the excise tax only; sales tax stays.'),
+				description: __('Active or retired peace officer, or the agency employing one, with a CDTFA-230-FET certificate for this sale; takes off the excise tax only, sales tax stays.'),
 				fieldtype: 'Check', fieldname: 'le_excise_exempt',
 				change: () => this._onLeExemptChange(),
 			}),
@@ -487,12 +487,11 @@ class CreateOrderApp {
 			}),
 			pay_later: this._f('#f-pay-later', {
 				label: __('Pay later'), fieldtype: 'Check', fieldname: 'pay_later',
-				description: __('No payment now — the order books on account; collect it from Pending Order.'),
+				description: __('No payment now: the order books on account; collect it from Pending Order.'),
 				change: () => this._syncPaymentFields(),
 			}),
 			note: this._f('#f-note', {
 				label: __('Order Note (staff)'), fieldtype: 'Small Text', fieldname: 'note',
-				description: __('Shown on the Pending Order queue and saved on the invoice.'),
 			}),
 			transaction_number: this._f('#f-txn', {
 				label: __('Transaction Number'), fieldtype: 'Data', fieldname: 'transaction_number',
@@ -614,7 +613,7 @@ class CreateOrderApp {
 			this.$body.find('#seg-dispose button').removeClass('active');
 			$(e.currentTarget).addClass('active');
 			this.$body.find('#dispose-note').text(this.disposeNow
-				? __('Ship now: book the transfer, take the gun out of stock, push to FastBound.')
+				? __('Takes the gun out of stock, books the transfer and pushes to FastBound now.')
 				: __('Defer: the order joins the Pending Dispositions queue; the gun stays in stock and on the bound book until you ship it.'));
 			this._syncDepositNote();
 			this._syncTerminalNote();
@@ -706,8 +705,6 @@ class CreateOrderApp {
 	}
 
 	_renderApiPending(row) {
-		const $area = this.$body.find('#pending-area').empty();
-		const esc = frappe.utils.escape_html;
 		const isFirearm = !!(row.is_firearm ?? row.ffl_required);
 		const name = (row.item_name || ((row.manufacturer || '') + ' ' + (row.model || '')).trim() || row.upc || row.sku);
 		const offers = row.offers || [];
@@ -719,43 +716,16 @@ class CreateOrderApp {
 			`${__('Total qty')} ${cint(row.qty)}`,
 			__('source chosen in the Fulfillment plan'),
 		].join(' · ');
-		const $card = $(`
-			<div class="pending">
-				<div style="font-weight:600;margin-bottom:8px">
-					${isFirearm ? `<span class="firearm-mark">${__('Firearm')}</span>` : ''}
-					<span class="dropship-mark">${__('API')}</span>
-					${esc(name)}
-				</div>
-				<div class="helper" style="margin-bottom:8px">${facts}</div>
-				<div class="ffl-row">
-					<div><label>${__('Qty')}</label><br><input type="number" id="rp-qty" class="form-control" value="1" min="1" step="1" ${isFirearm ? 'readonly' : ''} style="width:80px"></div>
-					<div><label>${__('Price')}</label><br><input type="number" id="rp-rate" class="form-control" value="${flt(row.map || row.msrp || 0).toFixed(2)}" min="0" step="0.01" style="width:130px"></div>
-					<div class="grow"></div>
-					<button class="btn btn-default btn-sm" id="rp-cancel">${__('Cancel')}</button>
-					<button class="btn btn-primary btn-sm" id="rp-add">${__('Add to order')}</button>
-				</div>
-			</div>`).appendTo($area);
-		$card.find('#rp-cancel').on('click', () => { $area.empty(); this.fields.scan.set_focus?.(); });
-		$card.find('#rp-add').on('click', () => {
-			const qty = isFirearm ? 1 : Math.max(1, cint($card.find('#rp-qty').val()));
-			const rate = Math.max(0, flt($card.find('#rp-rate').val()));
-			if (!this._addLine({
-				item_code: null, sku: null, upc: row.upc || null,
-				item_name: name,
-				is_firearm: isFirearm, is_antique: false,
-				qty, rate, serial: null,
-				channel: 'dropship', channel_confirmed: false,
-				distributor: null, sources: row.sources || [], cost: null,
-			})) return;
-			$area.empty();
-			this.fields.scan.set_value('');
-			this.fields.scan.set_focus?.();
+		this._renderDropshipPending({
+			mark: __('API'), name, facts, isFirearm,
+			price: flt(row.map || row.msrp || 0).toFixed(2),
+			line: { sku: null, upc: row.upc || null, item_name: name, distributor: null, sources: row.sources || [], cost: null },
 		});
 	}
 
 	_renderRemotePending(q, row) {
-		const $area = this.$body.find('#pending-area').empty();
 		if (!q.found) {
+			this.$body.find('#pending-area').empty();
 			frappe.show_alert({ message: __('This distributor item is not currently orderable.'), indicator: 'orange' });
 			this.fields.scan.set_focus?.();
 			return;
@@ -775,17 +745,29 @@ class CreateOrderApp {
 				? `<span class="text-danger">${esc(q.fulfillment_reason || __('cannot drop-ship — ship to store only'))}</span>`
 				: __('drop-ship OK'),
 		].join(' · ');
+		this._renderDropshipPending({
+			mark: q.distributor || __('Distributor'), name, facts, isFirearm,
+			price: flt(q.suggested_price),
+			line: { sku: q.sku, item_name: name || q.sku, distributor: q.distributor, cost: flt(q.cost) || null },
+		});
+	}
+
+	// The pending drop-ship card both lookups share. `facts` is HTML the caller
+	// already escaped; `line` carries the caller's own line fields.
+	_renderDropshipPending({ mark, name, facts, price, isFirearm, line }) {
+		const $area = this.$body.find('#pending-area').empty();
+		const esc = frappe.utils.escape_html;
 		const $card = $(`
 			<div class="pending">
 				<div style="font-weight:600;margin-bottom:8px">
 					${isFirearm ? `<span class="firearm-mark">${__('Firearm')}</span>` : ''}
-					<span class="dropship-mark">${esc(q.distributor || __('Distributor'))}</span>
+					<span class="dropship-mark">${esc(mark)}</span>
 					${esc(name)}
 				</div>
 				<div class="helper" style="margin-bottom:8px">${facts}</div>
 				<div class="ffl-row">
 					<div><label>${__('Qty')}</label><br><input type="number" id="rp-qty" class="form-control" value="1" min="1" step="1" ${isFirearm ? 'readonly' : ''} style="width:80px"></div>
-					<div><label>${__('Price')}</label><br><input type="number" id="rp-rate" class="form-control" value="${flt(q.suggested_price)}" min="0" step="0.01" style="width:130px"></div>
+					<div><label>${__('Price')}</label><br><input type="number" id="rp-rate" class="form-control" value="${price}" min="0" step="0.01" style="width:130px"></div>
 					<div class="grow"></div>
 					<button class="btn btn-default btn-sm" id="rp-cancel">${__('Cancel')}</button>
 					<button class="btn btn-primary btn-sm" id="rp-add">${__('Add to order')}</button>
@@ -796,12 +778,11 @@ class CreateOrderApp {
 			const qty = isFirearm ? 1 : Math.max(1, cint($card.find('#rp-qty').val()));
 			const rate = Math.max(0, flt($card.find('#rp-rate').val()));
 			if (!this._addLine({
-				item_code: null, sku: q.sku,
-				item_name: name || q.sku,
+				item_code: null,
 				is_firearm: isFirearm, is_antique: false,
 				qty, rate, serial: null,
 				channel: 'dropship', channel_confirmed: false,
-				distributor: q.distributor, cost: flt(q.cost) || null,
+				...line,
 			})) return;
 			$area.empty();
 			this.fields.scan.set_value('');
@@ -1662,7 +1643,7 @@ class CreateOrderApp {
 			CreateOrderApp.SHIP_TO_FIELDS.forEach(([, f]) => this.fields[f].set_value(''));
 			this._lockShipTo(true);
 			this.$body.find('#shipto-note').text(
-				__('Counter pickup — no shipping address needed. Distributor lines can only be ordered to the store.'));
+				__('Counter pickup: no shipping address needed. Distributor lines can only be ordered to the store.'));
 			let unplanned = 0;
 			this.lines.forEach((l) => {
 				if (l.channel === 'dropship') { l.channel_confirmed = false; unplanned++; }
@@ -1705,7 +1686,16 @@ class CreateOrderApp {
 		}
 		this.fields.pickup?.$input?.prop('disabled', this._hasStockRegulated());
 		this.$body.find('#sec-dest').toggle(show);
-		if (this.buyerType === 'individual') this.destinationFfl = this.fields.dest_ffl.get_value() || null;
+		// The last firearm line was removed: drop the now-hidden destination FFL so
+		// the remaining goods do not ship to that dealer and the ship-to unlocks.
+		// (set_value is async, so treat it as cleared right away.)
+		const staleDest = this.buyerType === 'individual' && !show && !this._isPickup()
+			&& !!this.fields.dest_ffl.get_value();
+		if (staleDest) {
+			this.fields.dest_ffl.set_value('');
+			this.$body.find('#dest-ffl-card').empty();
+		}
+		if (this.buyerType === 'individual') this.destinationFfl = staleDest ? null : (this.fields.dest_ffl.get_value() || null);
 		// No FFL governs the ship-to (individual without a destination FFL, or a
 		// business buyer that cleared its FFL) — unlock the address fields, which
 		// _applyFflToShipTo locked. They re-lock when an FFL is picked again.
@@ -1847,7 +1837,7 @@ class CreateOrderApp {
 			this.fields.ship_zip.set_value(m.zip || '');
 			// Firearm orders ship to the FFL — lock the ship-to so it can't drift.
 			this._lockShipTo(true);
-			this.$body.find('#shipto-note').text(__('Locked to the destination FFL address (firearms ship to the FFL).'));
+			this.$body.find('#shipto-note').text(__('Locked to the destination FFL\'s address.'));
 			this._updateTotals();
 		});
 	}
@@ -2332,7 +2322,7 @@ class CreateOrderApp {
 				this._usStates = m.us_states || {};
 				this._stateCodes = new Set(Object.values(this._usStates));
 				this.fields.shipping.set_description(this._freightTaxable ? '' : __(
-					'The actual carrier cost — shipping charged at cost is not taxed here. Put any mark-up or handling on its own taxable line.'));
+					'Enter the actual carrier cost (not taxed here); put any mark-up or handling on its own taxable line.'));
 				this._updateTotals();
 			},
 		});
@@ -2348,7 +2338,7 @@ class CreateOrderApp {
 		if (!buyerOk) missing.push(__('Buyer'));
 		// Recommended, not required: no email just means no receipt is sent.
 		this.fields.email.set_description(this.fields.email.get_value() ? '' : __(
-			'Recommended — without an email no receipt is sent.'));
+			'Without an email no receipt is sent.'));
 		if (!this.lines.length) missing.push(__('At least one item'));
 		if (this._hasRegulated() && !this.destinationFfl && !this._isPickup()) {
 			// Typing the C&R block is not choosing a destination — the license
@@ -2484,7 +2474,7 @@ class CreateOrderApp {
 		this._refundRefCtl = this._f('#edit-refund-controls', {
 			label: __('Refund Reference'), fieldtype: 'Data',
 			fieldname: 'refund_reference', change: () => this._reflectReadiness(),
-			description: __('Zelle / ACH: the confirmation number. Check/Money Order: the number of the check you wrote. Credit Card: the terminal approval code.'),
+			description: __('The confirmation, check or approval number for the refund method.'),
 		});
 		// Surface the staff Order Note (normally in the edit-hidden Fulfillment
 		// section) right under the money summary, so an edit can read and change
@@ -2556,10 +2546,13 @@ class CreateOrderApp {
 			}
 		}
 		// A price lowered in this edit asks a manager first (price_approval.js).
-		if (!(await ffl.priceApproval.forOrder(payload, this._editing.si))) return;
-		args.payload = JSON.stringify(payload);
+		// Disable before the (network) approval check so a second click in that
+		// window cannot send a second update.
 		const $btn = this.$body.find('#btn-submit');
-		$btn.prop('disabled', true).text(__('Saving…'));
+		$btn.prop('disabled', true);
+		if (!(await ffl.priceApproval.forOrder(payload, this._editing.si))) { $btn.prop('disabled', false); return; }
+		args.payload = JSON.stringify(payload);
+		$btn.text(__('Saving…'));
 		frappe.call({
 			method: 'ffl_core.api.manual_order.update_order',
 			args,
@@ -2593,7 +2586,7 @@ class CreateOrderApp {
 			title: __('Fix Customer Name'),
 			fields: [
 				{ fieldtype: 'HTML', fieldname: 'note', options:
-					`<div class="text-muted" style="margin-bottom:8px">${__('Renames {0} everywhere — use this for spelling fixes, not to switch buyers (pick a different customer for that).', [frappe.utils.escape_html(cust)])}</div>` },
+					`<div class="text-muted" style="margin-bottom:8px">${__('Renames {0} everywhere; use it for spelling fixes only.', [frappe.utils.escape_html(cust)])}</div>` },
 				{ fieldtype: 'Data', fieldname: 'new_name', label: __('Correct Name'), reqd: 1, default: cust },
 			],
 			primary_action_label: __('Rename'),
@@ -2654,9 +2647,12 @@ class CreateOrderApp {
 			payload.dispose_now = 0;
 		}
 		// A price below list asks a manager first (price_approval.js); cancelled = not sent.
-		if (!(await ffl.priceApproval.forOrder(payload))) return;
+		// Disable before the (network) approval check: a double click in that
+		// window would otherwise book the order and its payment twice.
 		const $btn = this.$body.find('#btn-submit');
-		$btn.prop('disabled', true).text(__('Creating…'));
+		$btn.prop('disabled', true);
+		if (!(await ffl.priceApproval.forOrder(payload))) { $btn.prop('disabled', false); return; }
+		$btn.text(__('Creating…'));
 		frappe.call({
 			method: 'ffl_core.api.manual_order.create_order',
 			args: { payload: JSON.stringify(payload) },
@@ -2758,13 +2754,8 @@ class CreateOrderApp {
 			return { text: `<span style="color:var(--orange-700,#92400e)">${__('Card not charged — on account, {0} outstanding. Retry the card here or collect it from Pending Order → Record Payment.', [format_currency(outstanding)])}</span>`,
 				retry: () => this._chargeOnTerminal(si, amount, outstanding) };
 		};
-		if (!(window.ffl && window.ffl.terminalCharge)) return outcome({ skip: true });
-		const res = await window.ffl.terminalCharge({
-			amount,
-			start: { method: 'ffl_integrations.payments.api.charge_sales_invoice', args: { sales_invoice: si, amount } },
-			poll: { method: 'ffl_integrations.payments.api.poll_sales_invoice_charge', args: { sales_invoice: si } },
-			cancel: { method: 'ffl_integrations.payments.api.cancel_sales_invoice_charge', args: { sales_invoice: si } },
-		});
+		if (!(window.ffl && window.ffl.chargeSalesInvoice)) return outcome({ skip: true });
+		const res = await window.ffl.chargeSalesInvoice(si, amount);
 		return outcome(res || { ok: false });
 	}
 

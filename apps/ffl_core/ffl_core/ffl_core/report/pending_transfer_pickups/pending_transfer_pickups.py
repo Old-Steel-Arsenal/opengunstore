@@ -36,7 +36,16 @@ def _columns():
 
 def _rows(filters):
 	conditions = ["acq.docstatus = 1", "acq.transfer_for_customer IS NOT NULL",
-		"acq.transfer_for_customer != ''", "sn.status = 'Active'"]
+		"acq.transfer_for_customer != ''", "sn.status = 'Active'",
+		# Only the serial's current acquisition: once a transfer gun is picked up
+		# and the store later receives the same serial again, the old transfer
+		# acquisition must not put the earlier customer back on the call list.
+		# Same "latest" order as acquisition._existing.
+		"""NOT EXISTS (SELECT 1 FROM `tabFFL Acquisition` a2
+			WHERE a2.serial = acq.serial AND a2.docstatus = 1 AND a2.name != acq.name
+			  AND (a2.acquisition_date > acq.acquisition_date
+			    OR (a2.acquisition_date = acq.acquisition_date
+			        AND a2.creation > acq.creation)))"""]
 	params = {}
 	if filters.get("customer"):
 		conditions.append("acq.transfer_for_customer = %(customer)s")

@@ -92,19 +92,8 @@ def counter_users() -> list[dict]:
 	    by picking yourself, whatever your roles.
 	"""
 	frappe.only_for(COUNTER_ROLES)
-	holders = set(frappe.get_all("Has Role", filters={"role": ("in", COUNTER_ROLES), "parenttype": "User"},
-		pluck="parent"))
-	holders -= {"Guest", "Administrator"}
-	if frappe.session.user != "Guest":
-		holders.add(frappe.session.user)
-	if not holders:
-		return []
-	rows = frappe.get_all("User", filters={"name": ("in", list(holders)), "enabled": 1, "user_type": "System User"},
-		fields=["name", "full_name", "user_image"], order_by="full_name asc")
-	pins = _users_with_pin([r.name for r in rows])
-	return [{"user": r.name, "full_name": r.full_name or r.name, "image": r.user_image,
-		"current": r.name == frappe.session.user, "has_pin": r.name in pins,
-		"pin_off": r.name in pins and _pin_off(r.name)} for r in rows]
+	return [{**r, "current": r["user"] == frappe.session.user}
+		for r in _staff_rows(COUNTER_ROLES, also=frappe.session.user)]
 
 
 @frappe.whitelist(methods=["POST"])
@@ -183,6 +172,23 @@ def _users_with_pin(users: list[str]) -> set[str]:
 	auth = frappe.qb.Table("__Auth")
 	return set((frappe.qb.from_(auth).select(auth.name)
 		.where((auth.doctype == "User") & (auth.fieldname == PIN_FIELD) & (auth.name.isin(users)))).run(pluck=True))
+
+
+def _staff_rows(roles, also: str | None = None) -> list[dict]:
+	"""Enabled desk users holding one of *roles*, by name (never Guest/Administrator; *also* is
+	added after that), as [{"user", "full_name", "image", "has_pin", "pin_off"}]. Shared by
+	:func:`counter_users` and price_approval.approvers: who may appear is one rule."""
+	holders = set(frappe.get_all("Has Role", filters={"role": ("in", roles), "parenttype": "User"},
+		pluck="parent")) - {"Guest", "Administrator"}
+	if also and also != "Guest":
+		holders.add(also)
+	if not holders:
+		return []
+	rows = frappe.get_all("User", filters={"name": ("in", list(holders)), "enabled": 1, "user_type": "System User"},
+		fields=["name", "full_name", "user_image"], order_by="full_name asc")
+	pins = _users_with_pin([r.name for r in rows])
+	return [{"user": r.name, "full_name": r.full_name or r.name, "image": r.user_image, "has_pin": r.name in pins,
+		"pin_off": r.name in pins and _pin_off(r.name)} for r in rows]
 
 
 def pin_problem(pin: str | None, confirm: str | None = None) -> str | None:

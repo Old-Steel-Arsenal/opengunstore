@@ -724,7 +724,7 @@ class StorageMapApp {
 	noZones() {
 		return `<div class="card-box"><b>${__('No zones yet.')}</b>
 			<div class="muted">${this.canManage
-				? __('Open the Zones tab and create the first one: a bank of numbered slots (one firearm each), or a display case, rack or safe.')
+				? __('Open the Zones tab and create the first one.')
 				: __('Ask a manager to set up the store zones.')}</div></div>`;
 	}
 
@@ -757,7 +757,7 @@ class StorageMapApp {
 				</div>
 			</div>` : ''}
 			${!plans.length && this.canManage ? `<div class="card-box"><b>${__('Draw the store')}</b>
-				<div class="muted" style="margin:4px 0 8px">${__('Make a floor plan of each room, then put the zones where they really are. Everyone then sees the shop as a map.')}</div>
+				<div class="muted" style="margin:4px 0 8px">${__('Make a floor plan of each room and put the zones where they really are.')}</div>
 				<button class="btn btn-sm btn-primary new-plan">${__('Create floor plan')}</button></div>` : ''}
 			${showPlan ? '<div class="canvas fit-plan"></div>' : ''}
 			<div class="zones"></div>`);
@@ -1239,7 +1239,7 @@ class StorageMapApp {
 					description: __('One plan per room or floor, like Showroom or Back Room.') },
 				{ fieldname: 'width', fieldtype: 'Float', label: __('Width (ft)'), reqd: 1, default: 60 },
 				{ fieldname: 'height', fieldtype: 'Float', label: __('Depth (ft)'), reqd: 1, default: 40,
-					description: __('A rough size is fine; you can change it later.') },
+					description: __('A rough size is fine.') },
 			],
 			primary_action_label: __('Create'),
 			primary_action: (v) => {
@@ -1344,7 +1344,7 @@ class StorageMapApp {
 						data-zone="${this.e(f.name)}">${this.e(f.zone_name)}</button>`).join('')}</div>
 					<div class="muted small">${__('Tap a zone to put it in the middle of the view, then drag it into place.')}</div>`
 				: `<div class="muted small">${__('Every zone is on a plan.')}</div>`}</div>`;
-		const hint = s ? '' : `<div class="panel-sec muted small">${__('Tap a shape to select it, then drag it to move it, drag a square handle to resize it, or the round knob to turn it. Drag the floor to look around; pinch, or use + and −, to zoom.')}</div>`;
+		const hint = s ? '' : `<div class="panel-sec muted small">${__('Tap a shape to select it, then drag it to move it or use its handles to resize and turn it.')}</div>`;
 		const $side = this.$tab.find('.side');
 		$side.html(`<button class="sheet-head" type="button"><span>${s ? __('Shape settings') : __('Zones and shapes')}</span>
 				<span>${ed.sheet ? '▾' : '▴'}</span></button>
@@ -1595,6 +1595,9 @@ class StorageMapApp {
 			<div class="card-box"><b>${__('This session')}</b><div class="session muted" style="margin-top:6px"></div></div>`);
 		this.$scan = this.$tab.find('input.scan');
 		this.$feedback = this.$tab.find('.feedback');
+		// Opened with a destination already set (Map's "Put things here", or a
+		// tab switch back): setDestination is the one place that binds 'change'.
+		if (this.destination) this.setDestination(this.destination);
 		this.$scan.on('keydown', (ev) => {
 			if (ev.key !== 'Enter') return;
 			ev.preventDefault();
@@ -1721,7 +1724,7 @@ class StorageMapApp {
 		const none = (text) => `<div class="muted">${text}</div>`;
 		this.$tab.html(`
 			<div class="card-box"><b>${__('Sold or shipped without a location')} (${u.to_confirm.length})</b>
-				<div class="muted" style="margin:4px 0 8px">${__('These left the shop but nobody said which location they came from. Pick where they were taken from so the location counts stay right.')}</div>
+				<div class="muted" style="margin:4px 0 8px">${__('These left the shop with no location recorded; say where each was taken from so the location counts stay right.')}</div>
 				${confirmRows ? `<table><thead><tr><th>${__('Item')}</th><th class="num">${__('Units to confirm')}</th><th></th></tr></thead><tbody>${confirmRows}</tbody></table>` : none(__('Nothing to confirm.'))}</div>
 			<div class="card-box"><b>${__('Firearms not in a location')} (${u.guns.length})</b>
 				${gunRows ? `<table style="margin-top:8px"><thead><tr><th>${__('Serial')}</th><th>${__('Item')}</th><th>${__('Details')}</th><th></th></tr></thead><tbody>${gunRows}</tbody></table>` : none(__('Every firearm is in a location.'))}</div>
@@ -1828,7 +1831,7 @@ class StorageMapApp {
 					description: __('Short, like A or Display Case.'), change: () => paint() },
 				{ fieldname: 'kind', fieldtype: 'Select', label: __('Kind'), reqd: 1, default: 'Slots',
 					options: 'Slots\nOpen', change: () => paint(),
-					description: __('Slots: numbered slots, one firearm each (A1, A2…). Open: one location with no limit; it holds firearms and everything else. Create one per rack or case (Rack 1, Rack 2…).') },
+					description: __('Slots: numbered places, one firearm each. Open: one location with no limit, for a rack, case or safe.') },
 				{ fieldname: 'count', fieldtype: 'Int', label: __('How many slots (one firearm each)'), default: 10,
 					depends_on: "eval:doc.kind=='Slots'", mandatory_depends_on: "eval:doc.kind=='Slots'",
 					change: () => paint() },
@@ -1864,12 +1867,12 @@ class StorageMapApp {
 		return [
 			{ fieldname: 'sides', fieldtype: 'Int', label: __('Sides'), default: z && z.slot_lines ? z.slot_lines : undefined,
 				depends_on: `eval:${when}`, change: () => paint(),
-				description: __('A two-sided rack is 2: 30 slots = 15 a side. Leave empty to fit the slots to the shape on the map.') },
+				description: __('A two-sided rack is 2; leave empty to fit the slots to the shape on the map.') },
 			{ fieldname: 'numbering', fieldtype: 'Select', label: __('Numbering on two sides'),
 				default: z && z.numbering === STG_IN_ORDER ? STG_IN_ORDER : 'Odd / even',
 				options: `Odd / even\n${STG_IN_ORDER}`, depends_on: `eval:${when} && (!doc.sides || doc.sides == 2)`,
 				change: () => paint(),
-				description: __('Odd / even: 1, 3, 5 … down one side and 2, 4, 6 … facing them. In order: 1, 2, 3 … down the first side, then the second. One side or three and more always count in order.') },
+				description: __('Odd / even runs 1, 3, 5 down one side and 2, 4, 6 facing them; in order runs 1, 2, 3 down the first side, then the second.') },
 		];
 	}
 

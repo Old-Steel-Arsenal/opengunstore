@@ -17,15 +17,14 @@
    "options": "Brand",
    "label": "Brand",
    "reqd": 1,
-   "in_list_view": 1,
-   "description": "One policy per brand (the record is named after it)."
+   "in_list_view": 1
   },
   {
    "fieldname": "distributor",
    "fieldtype": "Link",
    "label": "Distributor",
    "options": "Distributor",
-   "description": "Blank: applies to every distributor. Set: applies only to this distributor's catalog (overrides a blank row for the same brand)."
+   "description": "Blank applies to every distributor; set applies to this distributor only."
   },
   {
    "fieldname": "policy",
@@ -36,13 +35,12 @@
    "reqd": 1,
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "description": "To Store: never drop-ship this brand direct to the buyer \u2014 procure it into the store first. Direct OK: the distributor accepts our direct orders for this brand despite its feed flags."
+   "description": "To Store: never drop-ship this brand direct to the buyer; Direct OK: allow it despite the distributor's feed flags."
   },
   {
    "fieldname": "reason",
    "fieldtype": "Data",
-   "label": "Reason shown to staff",
-   "description": "Shown on the counter and web-order fulfilment panels when this policy sends a line to the store, e.g. \"Sports South does not fulfil this manufacturer\"."
+   "label": "Reason shown to staff"
   },
   {
    "fieldname": "notes",

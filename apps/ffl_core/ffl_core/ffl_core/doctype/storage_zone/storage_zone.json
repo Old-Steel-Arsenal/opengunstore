@@ -81,7 +81,7 @@
    "reqd": 1,
    "read_only": 1,
    "in_list_view": 1,
-   "description": "Slots = numbered slots that each hold exactly one firearm. Open = one location with no limit that holds firearms and everything else (create one zone per rack, case or safe)."
+   "description": "Slots are numbered and hold one firearm each; Open is a single location with no limit, for firearms and anything else."
   },
   {
    "fieldname": "column_break_1",
@@ -92,14 +92,14 @@
    "fieldtype": "Int",
    "label": "Positions",
    "read_only": 1,
-   "description": "How many positions the zone has had created. Positions are only ever added, never removed."
+   "description": "Positions are only ever added, never removed."
   },
   {
    "fieldname": "slot_lines",
    "fieldtype": "Int",
    "label": "Sides",
    "read_only": 1,
-   "description": "How many sides (lines of slots) a Slots zone has on the map: a two-sided rack is 2. 0 = fit them to the shape it is drawn as. A plan shape's own Lines of slots wins over this."
+   "description": "How many lines of slots the zone has on the map: a two-sided rack is 2; 0 fits them to the drawn shape."
   },
   {
    "fieldname": "numbering",
@@ -108,7 +108,7 @@
    "options": "Odd / even\nIn order",
    "default": "Odd / even",
    "read_only": 1,
-   "description": "How a two-sided Slots zone's numbers run on the map. Odd / even: 1, 3, 5 … down one side and 2, 4, 6 … facing them. In order: 1, 2, 3 … down the first side, then the second. One side or three and more always count in order."
+   "description": "Odd / even runs 1, 3, 5 … down one side and 2, 4, 6 … facing them; In order runs 1, 2, 3 … down the first side, then the second."
   },
   {
    "fieldname": "sort_order",

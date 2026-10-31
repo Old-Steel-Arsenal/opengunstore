@@ -248,6 +248,13 @@ class TheItemGuards(FrappeTestCase):
 				return_value=[]):
 			self.assertEqual(self._check()["skipped"], "no_images")
 
+	def test_a_banned_title_is_refused_with_the_phrase_named(self):
+		"""The serial and model matrices had this guard and this one did not, so
+		an accessory got GunBroker's unexplained policy 400 instead."""
+		refusal = self._check(item_name="9mm practice ammo do not buy")
+		self.assertEqual(refusal["skipped"], listings.BANNED_TITLE)
+		self.assertIn("do not buy", refusal["message"])
+
 
 # ---------------------------------------------------------------------------
 # Quantity

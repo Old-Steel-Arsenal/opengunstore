@@ -297,7 +297,7 @@ class FastBoundClient:
 		json_body: Any | None = None,
 	) -> Any:
 		response = self._send(method, path, params=params, json_body=json_body)
-		# FastBound's create endpoints (POST /Contacts, POST /Dispositions, ...)
+		# FastBound's create endpoints (POST /Acquisitions, POST /Dispositions/CreateAndCommit, ...)
 		# return 201 Created with EMPTY body + Location header pointing at
 		# the new resource. Surface the new id so callers don't have to
 		# re-fetch by externalId.
@@ -359,19 +359,6 @@ class FastBoundClient:
 			# early-returning on it would silently truncate the bound book.
 			page += 1
 
-	def iter_acquisitions(self, *, page_size: int = 100) -> Iterator[list[dict]]:
-		page = 0
-		while True:
-			body = self._request("GET", "Acquisitions", params={"skip": page, "take": page_size})
-			items = _coerce_items(body)
-			if not items:
-				return
-			yield items
-			# Stop only on an EMPTY page. A short non-empty page is NOT a reliable
-			# end signal (FastBound can return a partial intermediate page), so
-			# early-returning on it would silently truncate the bound book.
-			page += 1
-
 	def _resolve_existing_contact_id(self, acq) -> str | None:
 		"""Find an existing FastBound contact for this acquisition's seller so the
 		push references it (ContactId) instead of creating a duplicate — the fix
@@ -417,7 +404,10 @@ class FastBoundClient:
 				f"DISPOSED/deleted — refusing to auto-adopt; resolve manually.", terminal=True)
 		item_id = item.get("id") or item.get("itemId")
 		acq_id = self.find_acquisition_id_by_item(item_id) or item_id
-		return {"acquisitionId": acq_id, "items": [{"fbItemId": item_id, "serial": serial}]}
+		# adopted=True: acq_id is a PRE-EXISTING acquisition (it can hold other
+		# guns) — the atomic receive's compensation must never delete it.
+		return {"acquisitionId": acq_id, "adopted": True,
+			"items": [{"fbItemId": item_id, "serial": serial}]}
 
 	def _free_closed_cycle_external_ids(self, body: dict) -> list[dict]:
 		"""Rename the externalId of every closed-cycle FastBound item that holds
@@ -671,79 +661,6 @@ class FastBoundClient:
 			raise
 
 	# -------------------------------------------------- Disposition (4473) flow
-
-	def create_pending_disposition(
-		self,
-		*,
-		type_: str | None = None,
-		external_id: str | None = None,
-		date_iso: str | None = None,
-		note: str | None = None,
-	) -> str:
-		"""POST /Dispositions — create a pending disposition. Returns FB id.
-
-		Pending dispositions do NOT touch the A&D book. The dealer commits
-		later (from FastBound UI, after 4473 + NICS) via the Commit endpoint
-		— which we DO NOT call from our side in MVP. Webhook
-		`disposition.committed` notifies us when that happens.
-
-		`type_=None` (default) is the 4473 path: per the FastBound integration
-		guide, "a null disposition type indicates that the disposition is
-		related to a 4473." Pass an explicit string only for B2B / non-4473
-		transfers (e.g. dealer-to-dealer, theft/loss, destruction).
-		"""
-		body: dict[str, Any] = {}
-		if type_:
-			body["type"] = type_[:100]
-		if external_id:
-			body["externalId"] = external_id
-		if date_iso:
-			body["date"] = date_iso
-		if note:
-			body["note"] = note[:1000]
-		response = self._request("POST", "Dispositions", json_body=body)
-		fb_id = (response or {}).get("id") or (response or {}).get("dispositionId")
-		if not fb_id:
-			raise FastBoundError(f"POST /Dispositions returned no id: {response!r}")
-		return fb_id
-
-	def attach_contact_to_disposition(self, *, disposition_id: str, contact_id: str) -> None:
-		"""PUT /Dispositions/{id}/AttachContact/{contactId} — link customer."""
-		self._request(
-			"PUT",
-			f"Dispositions/{disposition_id}/AttachContact/{contact_id}",
-		)
-
-	def add_items_to_disposition_by_external_id(
-		self,
-		*,
-		disposition_external_id: str,
-		items: list[dict],
-	) -> None:
-		"""POST /Dispositions/{dispositionExternalId}/Items/AddByExternalId.
-
-		`items` is [{"externalId": <item externalId>, "price": <optional>}, ...].
-		Each item's externalId is the firearm's serial — the per-unit key set
-		at acquisition time in _acquisition_payload (unique per physical gun,
-		unlike the Item code which is shared across units of a catalog SKU).
-		"""
-		self._request(
-			"POST",
-			f"Dispositions/{disposition_external_id}/Items/AddByExternalId",
-			json_body={"items": items},
-		)
-
-	def commit_disposition(self, disposition_id: str) -> dict:
-		"""POST /Dispositions/{id}/Commit — finalize the disposition into the
-		A&D book.
-
-		**MVP does NOT call this from our side.** The dealer commits in
-		FastBound UI after running NICS and getting the customer's signature
-		on the 4473. We listen for the `disposition.committed` webhook to
-		record the audit trail. Exposed here for future use (auto-commit on
-		`form4473.completed` webhook in a Phase 2 enhancement).
-		"""
-		return self._request("POST", f"Dispositions/{disposition_id}/Commit") or {}
 
 	def get_disposition(self, disposition_id: str) -> dict:
 		"""GET /Dispositions/{id} — webhook fallback / reconciliation."""
@@ -1355,44 +1272,6 @@ class FastBoundClient:
 			)
 		return next(iter(matches.values())) if matches else None
 
-	def create_contact(self, contact_payload: dict) -> str:
-		"""POST /Contacts — create an Individual or FFL contact. Returns FB id.
-
-		`contact_payload` shape (per swagger CreateContact.Command — Individual):
-		    {externalId, firstName, lastName, middleName?, suffix?,
-		     premiseAddress1, premiseAddress2?, premiseCity, premiseCounty?,
-		     premiseState, premiseZipCode, premiseCountry, phone?, email?, ...}
-
-		For FFL contacts: include `fflNumber` + `lookupFFL: true` to let
-		FastBound enrich from their FFL database.
-		"""
-		response = self._request("POST", "Contacts", json_body=contact_payload)
-		fb_id = (response or {}).get("id") or (response or {}).get("contactId")
-		if not fb_id:
-			raise FastBoundError(f"POST /Contacts returned no id: {response!r}")
-		return fb_id
-
-	def find_or_create_contact(
-		self,
-		*,
-		external_id: str,
-		create_payload: dict,
-	) -> str:
-		"""Lookup-or-create by our externalId. Returns FastBound contact id.
-
-		external_id is our stable identifier (typically `Customer.name` from
-		ERPNext). On lookup miss, POSTs `create_payload` (must include all
-		Individual required fields plus externalId == this same external_id).
-		"""
-		found = self.find_contact_by_external_id(external_id)
-		if found and (found.get("id") or found.get("contactId")):
-			return found.get("id") or found.get("contactId")
-		# Make sure the new contact carries the same externalId so future
-		# find_or_create calls are idempotent.
-		payload = dict(create_payload)
-		payload.setdefault("externalId", external_id)
-		return self.create_contact(payload)
-
 	@staticmethod
 	def _firearm_item_fields(item_code: str, serial: str | None) -> dict:
 		"""The FastBound item attribute block for one physical firearm.
@@ -1594,33 +1473,6 @@ def _upc_from_barcode(item_code: str | None) -> str | None:
 		return None
 	return frappe.db.get_value(
 		"Item Barcode", {"parent": item_code, "barcode_type": "UPC"}, "barcode")
-
-
-def _split_licensee_name(name: str | None) -> tuple[str, str]:
-	"""'Jane Q. Collector' -> ('Jane Q.', 'Collector').
-
-	⚠ NOT for FFL contacts, and no production caller remains.
-
-	This used to feed firstName/lastName into the C&R contact payload on the
-	belief — written here as fact, never measured — that "FastBound wants
-	first/last alongside licenseName". The opposite is true. Measured against
-	FastBound test account 147648 on 2026-07-29:
-
-	    400 "When FFL information provided, Organization Name -AND- First Name,
-	         Middle Name, Last Name, and Suffix must be empty."
-
-	The same payload with those keys removed returned 201. So a contact that
-	carries an fflNumber must carry NO person-name fields; the person's name
-	belongs in licenseName alone. Do not wire this back into any payload that
-	includes FFL information — that shape 400s every disposition it touches.
-	Kept only because tests exercise it directly.
-	"""
-	parts = (name or "").split()
-	if not parts:
-		return "", ""
-	if len(parts) == 1:
-		return parts[0], parts[0]
-	return " ".join(parts[:-1]), parts[-1]
 
 
 def _normalize_ffl(value: str | None) -> str:

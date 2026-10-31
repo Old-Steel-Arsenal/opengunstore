@@ -238,7 +238,8 @@ class TestRetireAntiqueWebOrder(FrappeTestCase):
 				"line_total": 1795.0, "unit_price": 1795.0})],
 		})
 
-	def _run(self, order, *, sn_status="Active", sn_warehouse="Stores - TSA"):
+	def _run(self, order, *, sn_status="Active", sn_warehouse="Stores - TSA",
+			sn_item_code=ANTIQUE):
 		"""Run retirement with every sink recorded in call order."""
 		from ffl_woo_sync.woocommerce import antique, fulfillment, revenue
 		calls: list[str] = []
@@ -254,7 +255,7 @@ class TestRetireAntiqueWebOrder(FrappeTestCase):
 			calls.append("invoice")
 			return {"sales_invoice": "ACC-SINV-1", "status": "created"}
 
-		row = (frappe._dict({"item_code": ANTIQUE, "warehouse": sn_warehouse,
+		row = (frappe._dict({"item_code": sn_item_code, "warehouse": sn_warehouse,
 			"status": sn_status}) if sn_status else None)
 		real_get_value = frappe.db.get_value
 
@@ -268,7 +269,9 @@ class TestRetireAntiqueWebOrder(FrappeTestCase):
 
 		with patch.object(antique, "is_antique_item",
 				side_effect=lambda ic: ic == ANTIQUE), \
-			 patch.object(antique, "issue_serial", side_effect=_issue) as issue, \
+			 patch("ffl_core.firearm.is_antique_item",
+				side_effect=lambda ic: ic == ANTIQUE), \
+			 patch("ffl_core.firearm.issue_serial", side_effect=_issue) as issue, \
 			 patch.object(fulfillment, "_delist_disposed", side_effect=_delist) as delist, \
 			 patch.object(revenue, "create_sales_invoice_for_web_order",
 				side_effect=_invoice) as invoice, \
@@ -346,6 +349,14 @@ class TestRetireAntiqueWebOrder(FrappeTestCase):
 		_, _, issue, _, _ = self._run(
 			self._order([_srow(item_code=MODERN, confirmed_serial="SN-9")]))
 		self.assertFalse(issue.called)
+
+	def test_a_regulated_serial_on_an_antique_row_is_refused_not_issued(self):
+		"""The row says antique but the serial belongs to a regulated gun (a
+		mismatched reservation or staff pick). Issuing it here would take a real
+		gun out of stock with no FFL Disposition — a hole in the A&D book. The
+		canonical antique exit refuses it before anything is issued or delisted."""
+		with self.assertRaises(frappe.ValidationError):
+			self._run(self._order(), sn_item_code=MODERN)
 
 	def test_a_non_transferred_order_is_refused(self):
 		from ffl_woo_sync.woocommerce import antique

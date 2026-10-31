@@ -64,7 +64,7 @@
    "fieldtype": "Check",
    "default": "1",
    "label": "Include Customer-Custody Warehouses",
-   "description": "Guns held for customers (transfers waiting for pickup) are counted too. Turn off to leave them out.",
+   "description": "Guns held for customers, such as transfers waiting for pickup, are counted too.",
    "set_only_once": 1
   },
   {
@@ -127,8 +127,7 @@
    "options": "JSON",
    "label": "Firearm Difference Report",
    "read_only": 1,
-   "no_copy": 1,
-   "description": "Saved when the count is finalized: guns missing from the shelf, guns scanned that were not expected, and unknown barcodes."
+   "no_copy": 1
   }
  ],
  "permissions": [

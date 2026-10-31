@@ -22,8 +22,11 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime
 from ffl_core import storage
+from ffl_core.api._helpers import coerce_payload
 from ffl_core.roles import COUNTER_ROLES
 from ffl_core.firearm import (
+	ensure_brand,
+	ensure_caliber,
 	serial_firearm_attr_updates,
 	serialized_receipt_row,
 	used_firearm_item_doc,
@@ -111,6 +114,34 @@ def _lookup_serial(serial: str) -> dict:
 	return {"found": False}
 
 
+def _check_serial_free(p: dict) -> None:
+	"""Refuse a trade-in of a serial the store still holds (it is in a warehouse) or whose
+	bound-book stay is still open. A gun the store disposed of and now takes back is a new
+	stay (a closed cycle, acquisition._existing): it is filed under the Item its Serial No
+	already belongs to, since ERPNext receives a serial only under its own Item. Writes
+	that Item into ``p["item_code"]``."""
+	from ffl_core.acquisition import TRADE_IN_SOURCE, _existing
+	serial = (p.get("serial") or "").strip()
+	if not serial:
+		return
+	sn = frappe.db.get_value("Serial No", serial, ["item_code", "warehouse"], as_dict=True)
+	if sn and sn.item_code:
+		if sn.warehouse or _existing(sn.item_code, serial):
+			frappe.throw(_("Serial '{0}' is already on file (item {1}) and the store still holds it.").format(
+				serial, sn.item_code))
+		if p.get("item_code") and p["item_code"] != sn.item_code:
+			frappe.throw(_("Serial '{0}' was filed under item {1} before. Take it in under that item.").format(
+				serial, sn.item_code))
+		p["item_code"] = sn.item_code
+		return
+	# No Serial No: an acquisition whose Item is gone. A pending trade-in draft is not one --
+	# re-running the dialog reuses or replaces it (trade_in._refresh_pending_draft / _buy_now).
+	acq = next((a.name for a in frappe.get_all("FFL Acquisition", {"serial": serial},
+		["name", "docstatus", "source_type"]) if not (a.docstatus == 0 and a.source_type == TRADE_IN_SOURCE)), None)
+	if acq:
+		frappe.throw(_("Serial '{0}' is already on file (acquisition {1}).").format(serial, acq))
+
+
 def create_intake(payload, defer_booking: bool = False) -> dict:
 	"""Atomically intake a used firearm: Item + FFL Acquisition + stock receipt.
 
@@ -147,13 +178,7 @@ def create_intake(payload, defer_booking: bool = False) -> dict:
 	    api/trade_in._buy_now). Every write below runs with ignore_permissions.
 	"""
 	import json as _json
-	if isinstance(payload, str):
-		try:
-			payload = _json.loads(payload)
-		except _json.JSONDecodeError:
-			frappe.throw(_("Invalid payload (not JSON)"))
-	if not isinstance(payload, dict):
-		frappe.throw(_("Invalid payload"))
+	payload = coerce_payload(payload)
 
 	_validate_required(payload)
 	_validate_source(payload)
@@ -162,11 +187,7 @@ def create_intake(payload, defer_booking: bool = False) -> dict:
 	storage.validate_placements(_placements(payload), _company())
 
 	# Idempotency at the serial level — same serial twice means human error.
-	existing_lookup = _lookup_serial(payload["serial"])
-	if existing_lookup.get("found"):
-		frappe.throw(_(
-			"Serial '{0}' is already on file (record: {1}). Edit the existing item instead."
-		).format(payload["serial"], existing_lookup.get("item", existing_lookup.get("acquisition"))))
+	_check_serial_free(payload)
 
 	savepoint = "intake_savepoint"
 	frappe.db.savepoint(savepoint)
@@ -251,6 +272,13 @@ def complete_intake(acquisition: str) -> dict:
 	doc.flags.ignore_permissions = True
 	doc.submit()
 	_create_stock_receipt(doc.item, p, company=doc.company)
+	# A gun taken back after a sale is a new stay: start it from "the store's own gun",
+	# as every Purchase Receipt does (compliance/purchase.py), or the last stay's
+	# consignor / pay-on-sale / custody stamps would bill or block its next sale.
+	from ffl_core.compliance.purchase import _STORE_OWNED, _acquired_stamps
+	frappe.db.set_value("Serial No", doc.serial, {
+		**_STORE_OWNED, **_acquired_stamps(frappe._dict(), frappe._dict()), "needs_service": 0,
+	}, update_modified=False)
 	_stamp_serial(p)
 	# The slot picked at the counter may have been taken since. This runs inside the
 	# checkout, so a taken slot must never fail it: the gun stays unassigned and the
@@ -304,10 +332,8 @@ def _has(p: dict, field: str) -> bool:
 
 def _ensure_masters(manufacturer: str, caliber_name: str) -> None:
 	"""Auto-create the Brand / Caliber master records a firearm references."""
-	if manufacturer and not frappe.db.exists("Brand", manufacturer):
-		frappe.get_doc({"doctype": "Brand", "brand": manufacturer}).insert(ignore_permissions=True)
-	if caliber_name and not frappe.db.exists("Caliber", caliber_name):
-		frappe.get_doc({"doctype": "Caliber", "caliber_name": caliber_name}).insert(ignore_permissions=True)
+	ensure_brand(manufacturer)
+	ensure_caliber(caliber_name)
 
 
 def _resolve_item(p: dict) -> str:

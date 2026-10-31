@@ -612,6 +612,21 @@ class MergeCustomer(SettingsSandbox, FrappeTestCase):
 				self.assertEqual(frappe.db.get_value(dt, cancelled[dt], "customer_name"), src.customer_name)
 		self.assertEqual(frappe.db.get_value("Quotation", lead_quote, "customer_name"), "A Lead")
 
+	def test_an_id_image_moves_with_its_row(self):
+		"""The copied ID row keeps the source's private image, which is then the target's."""
+		src, tgt = _customer(_uniq("Img Src")), _customer(_uniq("Img Tgt"))
+		file_doc = _public_file(attached_to=("Customer", src.name))
+		src.append("customer_ids", {"id_type": "State ID", "attachment": file_doc.file_url})
+		src.save()
+		private_url = frappe.db.get_value("Customer ID Document", src.customer_ids[0].name, "attachment")
+		self.assertTrue(private_url.startswith("/private/files/"), private_url)
+
+		self.assertEqual(customer_profile.merge_customer(src.name, tgt.name)["ids_copied"], 1)
+
+		kept = frappe.get_doc("Customer", tgt.name)
+		self.assertEqual([r.attachment for r in kept.customer_ids], [private_url])
+		self.assertEqual(frappe.db.get_value("File", file_doc.name, "attached_to_name"), tgt.name)
+
 	def test_two_different_dealers_are_never_merged(self):
 		src, tgt = _customer(), _customer()
 		frappe.db.set_value("Customer", src.name, {"is_ffl_dealer": 1, "ffl_number": "1-23-456-01-2A-11111"})

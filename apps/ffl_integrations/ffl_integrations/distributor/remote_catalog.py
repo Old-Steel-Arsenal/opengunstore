@@ -221,10 +221,9 @@ def parse_service_ts(value):
 	the shop kept publishing quantities from a feed that had stopped answering.
 
 	Lives here because "how the service spells a timestamp on the wire" is a wire
-	shape, and this module owns those. `rsr_provider._parse_service_ts` delegates
-	to it rather than keeping a second copy — which matters, because the two
-	heartbeats it produces are read by three independent judges: the `*/15`
-	watchdog and its interlock, `console._feed_stale_verdict` (the WP apply gate),
+	shape, and this module owns those. It is the only copy — which matters,
+	because the two heartbeats it produces are read by three independent judges:
+	the `*/15` watchdog and its interlock, `console._feed_stale_verdict` (the WP apply gate),
 	and the Catalog Service page. One conversion, so they cannot disagree."""
 	if not value:
 		return None

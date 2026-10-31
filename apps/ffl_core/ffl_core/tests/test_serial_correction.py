@@ -223,6 +223,30 @@ class SerialCorrection(SettingsSandbox, FrappeTestCase):
 		self.assertFalse(frappe.db.exists("Serial No", f"SC-NEW-{tag}"))
 		client.update_item_serial.assert_not_called()
 
+	def test_gun_held_on_a_parked_pos_sale_rejected(self):
+		"""The order line holds the gun by its serial TEXT, which a rename does not
+		follow: the hold would vanish and the order would point at nothing."""
+		tag = self._testMethodName
+		serial, _acq, _fb = self._make_gun(tag)
+		# A parked (Draft) POS sale carrying the gun, written straight to the tables:
+		# a real one needs a shift, a profile and payments, none of which this is about.
+		inv = frappe.new_doc("POS Invoice")
+		inv.update({"name": f"SC-POS-{frappe.generate_hash(length=8)}", "company": self.company,
+			"docstatus": 0, "posting_date": now_datetime().date().isoformat()})
+		inv.db_insert()
+		line = frappe.new_doc("POS Invoice Item")
+		line.update({"name": frappe.generate_hash(length=10), "parent": inv.name, "parenttype": "POS Invoice",
+			"parentfield": "items", "idx": 1, "docstatus": 0, "item_code": self.ITEM, "qty": 1,
+			"serial_no": serial, "warehouse": self.warehouse})
+		line.db_insert()
+		client = MagicMock()
+		with patch(_FB_FROM_SETTINGS, return_value=client):
+			with self.assertRaisesRegex(frappe.ValidationError, "is held on"):
+				correct_serial(serial, f"SC-NEW-{tag}", "typo")
+		self.assertTrue(frappe.db.exists("Serial No", serial))
+		self.assertFalse(frappe.db.exists("Serial No", f"SC-NEW-{tag}"))
+		client.update_item_serial.assert_not_called()
+
 	def test_empty_reason_rejected(self):
 		tag = self._testMethodName
 		serial, _acq, _fb = self._make_gun(tag)

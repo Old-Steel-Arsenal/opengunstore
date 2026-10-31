@@ -436,16 +436,6 @@ class TestUnhandledAmounts(_RevenueCase):
 		heads = [r["account_head"] for r in revenue._tax_rows(order, "TSA")]
 		self.assertEqual(heads, ["GunBroker Marketplace Fee Payable - TSA"])
 
-	def test_nothing_with_a_negative_row_on_it_can_be_submitted(self):
-		# The hard stop, where it can still be one. For a caller that reached
-		# submit without going through unhandled_amounts.
-		si = fx.FakeDoc("Sales Invoice", name="ACC-SINV-1")
-		si["taxes"] = [{"account_head": "GunBroker MPF Sales Tax Payable - TSA",
-			"tax_amount": -6.00}]
-		with self.assertRaises(Exception) as caught:
-			revenue._refuse_to_post_a_negative_liability(si, self._order())
-		self.assertIn("negative", str(caught.exception).lower())
-
 	def test_per_line_tax_above_the_marketplace_tax_stops_the_invoice(self):
 		# The same question from the other side, for free. Freight tax can
 		# only make the order-level figure bigger, so the per-line sum can never

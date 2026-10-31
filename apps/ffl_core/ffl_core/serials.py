@@ -11,6 +11,22 @@ from __future__ import annotations
 import frappe
 
 
+def only_active_serial(item_code: str | None) -> str | None:
+	"""The Item's Serial No when it has exactly ONE Active serial, else None.
+
+	The A&D auto-fill rule shared by FFL Acquisition and FFL Disposition: a
+	blank serial on a single-gun Item is stamped server-side too (defence in
+	depth for REST/script callers that bypass the form's auto-pick)."""
+	if not item_code:
+		return None
+	active = frappe.get_all(
+		"Serial No",
+		filters={"item_code": item_code, "status": "Active"},
+		pluck="name", limit=2,
+	)
+	return active[0] if len(active) == 1 else None
+
+
 def serials_for_line(row) -> list[str]:
 	# Legacy path: newline-separated string in row.serial_no
 	if row.get("serial_no"):

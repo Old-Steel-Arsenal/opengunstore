@@ -44,7 +44,7 @@
    "label": "Active",
    "default": "1",
    "in_list_view": 1,
-   "description": "Only active plans can be sold. Switching a plan off leaves its members as they are."
+   "description": "Switching a plan off leaves its members as they are."
   },
   {
    "fieldname": "billing_period",
@@ -54,15 +54,14 @@
    "default": "Monthly",
    "reqd": 1,
    "in_list_view": 1,
-   "description": "Monthly: from the start day to the day before the same day next month. Yearly: to the day before the same day next year."
+   "description": "A period runs from the start day to the day before the same day next month or year."
   },
   {
    "fieldname": "price",
    "fieldtype": "Currency",
    "label": "Price per Period",
    "reqd": 1,
-   "in_list_view": 1,
-   "description": "Saved as the plan item's selling price."
+   "in_list_view": 1
   },
   {
    "fieldname": "column_break_a",
@@ -73,7 +72,7 @@
    "fieldtype": "Link",
    "label": "Billed Item",
    "options": "Item",
-   "description": "The service item on the invoice: non-stock, one per plan. Left empty, saving the plan makes one. Saving the plan turns on deferred revenue for it and points it at the Deferred Membership Revenue and Membership Revenue accounts. Whether it is taxed follows the item's own Item Tax Template."
+   "description": "Left empty, saving the plan creates it; whether it is taxed follows the item's own Item Tax Template. Saving the plan books its revenue as deferred, earned over each period."
   },
   {
    "fieldname": "description",
@@ -90,7 +89,7 @@
    "fieldtype": "Link",
    "label": "Registration Item",
    "options": "Item",
-      "description": "Charged on a customer's first invoice of this plan only, over the same service dates as that first period. Left empty with a fee set, saving the plan makes one."
+      "description": "Charged on a customer's first invoice of this plan only; left empty with a fee set, saving the plan creates one."
   },
   {
    "fieldname": "column_break_b",
@@ -111,14 +110,14 @@
    "fieldtype": "Check",
    "label": "Auto-renew by Default",
    "default": "1",
-   "description": "Pre-ticks Auto-renew when the plan is sold. Auto-renew saves the customer's card for recurring charges."
+   "description": "Pre-ticks Auto-renew when the plan is sold; Auto-renew saves the customer's card for recurring charges."
   },
   {
    "fieldname": "terms_template",
    "fieldtype": "Link",
    "label": "Membership Terms",
    "options": "Agreement Template",
-   "description": "Optional. A Per document agreement the customer signs for each membership before it is invoiced."
+   "description": "The customer signs this before each membership is invoiced."
   },
   {
    "fieldname": "column_break_c",
@@ -129,7 +128,7 @@
    "fieldtype": "Check",
    "label": "Grace Period on Failed Renewal",
    "default": "0",
-   "description": "Off: the first failed renewal charge suspends the membership. On: the charge is retried daily for the grace days, then the membership is suspended."
+   "description": "Off suspends the membership on the first failed renewal charge; on retries daily for the grace days first."
   },
   {
    "fieldname": "grace_days",

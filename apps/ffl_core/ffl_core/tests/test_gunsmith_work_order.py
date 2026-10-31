@@ -260,6 +260,24 @@ class Authorization(_Base):
 		self.assertEqual(gunsmith.get_state(other.name)["authorization"]["state"], "pending")
 		self.assertIsNone(frappe.db.get_value("Customer Agreement", r["name"], "expires_on"))
 
+	def test_a_text_change_before_signing_keeps_the_jobs_details(self):
+		job = _job(self.cust, estimated_cost=200)
+		r = self._request(job)
+		tpl = frappe.get_doc("Agreement Template", setup.agreement_template())
+		tpl.body = (tpl.body or "") + "<p>Revised.</p>"
+		tpl.save(ignore_permissions=True)
+		token = r["sign_url"].split("#t=", 1)[1]
+		frappe.set_user("Guest")
+		try:
+			body = agreements.load_for_signing(token)["body_html"]
+		finally:
+			frappe.set_user("Administrator")
+		self.assertIn("Revised.", body)
+		self.assertIn(job.name, body)
+		self.assertIn("Replace the extractor.", body)
+		self.assertIn("200.00", body)
+		self.assertEqual(frappe.db.get_value("Customer Agreement", r["name"], "template_version"), tpl.version)
+
 	def test_needs_its_record_and_the_records_customer(self):
 		job = _job(self.cust)
 		with self.assertRaises(frappe.ValidationError):
@@ -729,6 +747,16 @@ class SalesReport(FrappeTestCase):
 		self.assertEqual(flt(rows["GWD"]["net_sales"]), 0)
 		self.assertEqual(flt(rows["GWD"]["cost"]), 0)
 		self.assertEqual(flt(rows["GWP"]["net_sales"]), 190)
+
+		# The Order Detail parent row mirrors the Order view: same net, no deposit product row.
+		from ffl_core.ffl_core.report.sales_report.sales_report import _build_product_rows
+
+		detail = _build_product_rows(headers, lines, {}, {}, {}, {}, {}, {}, "", True)
+		parents = {r["invoice"]: r for r in detail if r.get("row_kind") == "order"}
+		for inv in ("GWD", "GWP"):
+			self.assertEqual(flt(parents[inv]["net_sales"]), flt(rows[inv]["net_sales"]))
+			self.assertEqual(parents[inv]["order_ref"], rows[inv]["order_ref"])
+		self.assertFalse(any(r.get("item_code") == DEPOSIT_ITEM for r in detail))
 
 
 class BoundBook(_Base):

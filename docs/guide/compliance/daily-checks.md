@@ -62,9 +62,9 @@ Work it in three passes:
 
 1. **Denied.** The NICS cell is red. The sale cannot go ahead. A manager refunds
    the card or returns the cash, then deletes the draft.
-2. **Delayed with an orange Brady Day 3.** The third business day has arrived
+2. **Delayed with an orange Brady Day 3.** The third business day has passed
    and the check is still delayed. Federal law lets the dealer transfer at their
-   discretion from that point. Decide, and call the customer either way.
+   discretion from today. Decide, and call the customer either way.
 3. **4473 still Pending.** Nobody finished the form. Call the customer, or chase
    whoever left it open.
 

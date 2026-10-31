@@ -31,7 +31,7 @@
   },
   {
    "default": "1",
-   "description": "Uncheck to run WITHOUT the integrated Payroc terminal. Cards are then swiped on a standalone terminal and POS records the Credit Card tender as plain money — no gateway call, no charge/void/refund, Complete Order finishes in one click. Everything else (tax, GL, bound book) is unchanged. Re-checking it requires the Merchant API Key, which is what arms the terminal flow again. Takes effect on the next POS page load — reload any till that is already open, or it keeps acting on the old setting.",
+   "description": "Uncheck to use a standalone terminal (Credit Card is then recorded as plain money, with no gateway call); reload open tills after changing it.",
    "fieldname": "enabled",
    "fieldtype": "Check",
    "label": "Enable Payroc Terminal Integration"
@@ -39,32 +39,31 @@
   {
    "default": "1",
    "depends_on": "eval:!doc.enabled",
-   "description": "Standalone-terminal mode only, and ON by default. A Credit Card sale or refund cannot complete without the terminal's APPROVAL CODE typed in. Ask for the approval code specifically, not the batch number (one batch covers many sales, and it does not exist until the batch is closed) and not the card's last 4 (not unique). Stored on the payment line's standard Transaction Number field, exactly like Zelle. Unchecking it means a card swipe leaves nothing in this system that can be matched against the terminal's batch report. Takes effect on the next POS page load — reload any till that is already open, or it keeps acting on the old setting.",
+   "description": "Standalone-terminal mode only: a Credit Card sale or refund cannot complete without the terminal's approval code (not the batch number or the last 4); turning it off leaves card sales with nothing to match against the terminal's batch report.",
    "fieldname": "require_card_reference",
    "fieldtype": "Check",
    "label": "Require Card Reference (manual terminal)"
   },
   {
-   "description": "Payroc Merchant API Key. Sent RAW in the 'Authorization: Basic <key>' header to GET /merchant/api/v1/account/authenticate to mint a JWT. Stored encrypted.",
    "fieldname": "api_key",
    "fieldtype": "Password",
    "label": "Merchant API Key",
    "mandatory_depends_on": "eval:doc.enabled"
   },
   {
-   "description": "Payroc gateway terminal number (sent in the request body, e.g. sandbox 4480001). Distinct from the device serial number.",
+   "description": "The gateway terminal number, not the device serial number.",
    "fieldname": "default_terminal",
    "fieldtype": "Data",
    "label": "Gateway Terminal Number"
   },
   {
-   "description": "Physical PAX A80 device serial number (goes in the API URL path). Leave blank to keep card payments DISABLED (charge errors out) — fill in only after verification = go-live switch.",
+   "description": "Leave blank to keep card payments disabled; fill in only when going live.",
    "fieldname": "device_serial_number",
    "fieldtype": "Data",
    "label": "Device Serial Number"
   },
   {
-   "description": "Gateway terminal that charges saved cards (card not present, MOTO). Leave blank to use the Gateway Terminal Number. Cards are always saved and removed on the Gateway Terminal Number.",
+   "description": "Charges saved cards (card not present); leave blank to use the Gateway Terminal Number.",
    "fieldname": "saved_card_terminal",
    "fieldtype": "Data",
    "label": "Saved-Card Terminal Number"
@@ -81,7 +80,7 @@
    "options": "Currency"
   },
   {
-   "description": "X-Integration-ID header value — REQUIRED only if this Merchant API Key sits under an ISV integration. Leave blank for a pure merchant-level key.",
+   "description": "Required only if the Merchant API Key sits under an ISV integration; otherwise leave blank.",
    "fieldname": "integration_id",
    "fieldtype": "Data",
    "label": "X-Integration-ID (ISV only)"
@@ -93,13 +92,13 @@
   },
   {
    "default": "0",
-   "description": "When checked, calls hit https://testpayments.worldnettps.com/merchant (Payroc sandbox). Uncheck for production (https://payments.worldnettps.com/merchant).",
+   "description": "Test charges only; uncheck for production.",
    "fieldname": "sandbox_mode",
    "fieldtype": "Check",
    "label": "Sandbox Mode"
   },
   {
-   "description": "Override the base URL (must end in /merchant). Leave blank to use the sandbox/prod default per Sandbox Mode.",
+   "description": "Must end in /merchant; leave blank to use the default for Sandbox Mode.",
    "fieldname": "base_url_override",
    "fieldtype": "Data",
    "label": "Base URL Override"

@@ -82,9 +82,7 @@ test('the five surfaces and the panel use the shared component', () => {
 	assert.match(restock, /ffl\.capabilities\.notice\('catalog'\)/);
 	const hubPage = read('../../../../ffl_integrations/ffl_integrations/ffl_integrations/page/distributor_hub/distributor_hub.js');
 	assert.match(hubPage, /ffl\.capabilities\.notice\('catalog'\)/);
-	for (const form of ['customer_form.js', 'supplier_form.js']) {
-		assert.match(read(`../../public/js/${form}`), /ffl\.capabilities\.notice\('ffl_national_search'\)/, form);
-	}
+	assert.match(read('../../public/js/ffl_dealer_atf_form.js'), /ffl\.capabilities\.notice\('ffl_national_search'\)/);
 	assert.match(read('../../ffl_core/page/extensions/extensions.js'), /ffl\.capabilities\.notice\('extension_updates'\)/);
 	assert.match(read('../../hooks.py'), /_hashed\("js\/capability_notice\.js"\)/);
 });
@@ -156,12 +154,13 @@ test('installed beside other handlers; frappe.call keeps its error callback', ()
 
 test('the Item form lookups and the counter FFL field ask the shared component first', () => {
 	const itemForm = read('../../public/js/item_form.js');
-	assert.match(itemForm, /function catalogOff\(\)/);
-	// doLookup, the dialog's Apply and its live preview each stop before the request
-	assert.strictEqual((itemForm.match(/if \(catalogOff\(\)\)/g) || []).length, 3);
-	assert.ok(itemForm.indexOf('if (catalogOff())') < itemForm.indexOf("method: 'ffl_integrations.rsr.promote.lookup_for_item_form'"));
+	// the dialog's Apply and its live preview each stop before the request
+	assert.strictEqual((itemForm.match(/if \(ffl\.FirearmItemPicker\.catalogOff\(\)\)/g) || []).length, 2);
+	assert.ok(itemForm.indexOf('if (ffl.FirearmItemPicker.catalogOff())') < itemForm.indexOf("method: 'ffl_integrations.rsr.promote.lookup_for_item_form'"));
+	// the scan banners (Item form, Item quick entry) share gunstore.wireRsrScan, which stops first too
+	assert.match(itemForm, /window\.gunstore\.wireRsrScan\(/);
 	const bundle = read('../../public/js/ffl_core.bundle.js');
-	assert.match(bundle, /function doLookup\(qe, \$banner, q, autoApply\) \{\s*\/\/ No distributor catalog here[^\n]*\n\s*if \(ffl\.FirearmItemPicker\.catalogOff\(\)\)/);
+	assert.match(bundle, /const lookup = \(q, autoApply\) => \{\s*\/\/ No distributor catalog here[^\n]*\n\s*if \(ffl\.FirearmItemPicker\.catalogOff\(\)\)/);
 	const counter = read('../../ffl_core/page/create_order/create_order.js');
 	assert.match(counter, /<div id="biz-ffl-notice"/);
 	assert.match(counter, /isOff\('ffl_national_search'\)/);

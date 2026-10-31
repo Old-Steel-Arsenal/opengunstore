@@ -50,7 +50,7 @@
 		const d = new frappe.ui.Dialog({
 			title: __('Void card charge — {0}', [frm.doc.name]),
 			fields: [
-				{ fieldtype: 'HTML', options: `<p class="text-muted">${esc(__('Gives back the whole charge before the processor settles it (usually the same day). The invoice owes the amount again.'))}</p>` },
+				{ fieldtype: 'HTML', options: `<p class="text-muted">${esc(__('Gives back the whole charge before the processor settles it; the invoice owes the amount again.'))}</p>` },
 				pickField(charges),
 				{ fieldtype: 'Small Text', fieldname: 'reason', label: __('Reason'), reqd: 1 },
 			],

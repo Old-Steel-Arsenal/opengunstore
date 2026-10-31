@@ -17,16 +17,7 @@ frappe.ui.form.on('Sports South Settings', {
 				freeze: true,
 				freeze_message: __('Contacting Sports South…'),
 				callback(resp) {
-					const checks = (resp.message || {}).checks || [];
-					const rows = checks.map((c) => {
-						const mark = c.ok === true ? '✅' : c.ok === false ? '❌' : '➖';
-						return `<tr><td>${mark}</td><td>${frappe.utils.escape_html(c.label)}</td>` +
-							`<td>${frappe.utils.escape_html(c.detail || '')}</td></tr>`;
-					}).join('');
-					frappe.msgprint({
-						title: __('Sports South connection'),
-						message: `<table class="table table-sm"><tbody>${rows}</tbody></table>`,
-					});
+					ffl.showConnectionChecks(__('Sports South'), (resp.message || {}).checks || []);
 				},
 			});
 		});

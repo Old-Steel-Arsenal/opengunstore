@@ -152,11 +152,7 @@ class LipseysProvider(RemoteCatalogMixin, DistributorProvider):
 				except Exception:  # noqa: BLE001 — degrade to the catalog, logged
 					_log_error(f"Lipsey's ValidateItem failed ({sku}); using the catalog")
 					live = False
-			row = self.catalog_row(sku) or {}
-			qty = int(row.get("qty") or 0)
-			out.append({"sku": sku, "qty": qty, "cost": float(row.get("cost") or 0),
-				"available": bool(row) and not row.get("discontinued") and qty >= wished and qty > 0,
-				"orderable": bool(row) and not row.get("discontinued")})
+			out.append(self.catalog_availability(sku, wished))
 		return out
 
 	# ---------------------------------------------------------- ordering

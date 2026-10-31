@@ -70,7 +70,7 @@ entries at all (firearms only) finishes without a reconciliation.
 
 **Returns:** {ok, stock_reconciliation, adjusted: [{item_code, warehouse, expected, adjust_to}], skipped: [{item_code, item_name, warehouse, counted, reason}], serial: {missing, unexpected, unknown}}.
 
-<sub>`apps/ffl_core/ffl_core/api/inventory_count.py:1016`</sub>
+<sub>`apps/ffl_core/ffl_core/api/inventory_count.py:1019`</sub>
 
 ## `get_counts`
 
@@ -102,7 +102,7 @@ added that this page has no row for yet — cheaper than reloading the whole sta
 
 **Returns:** {item_code, item_name, item_group, warehouse, expected, upc, counted, last_entry, last_delta}.
 
-<sub>`apps/ffl_core/ffl_core/api/inventory_count.py:947`</sub>
+<sub>`apps/ffl_core/ffl_core/api/inventory_count.py:950`</sub>
 
 ## `get_scope_options`
 
@@ -135,7 +135,7 @@ Everything the page shows for one count.
 
 **Returns:** {status, server_time, found: {serial: {entry, by, at, method, item_code}}, counted: [{item_code, warehouse, counted, last_entry, last_delta}], unknown: [{entry, code, by, at}]} and, unless counts_only, also {company, warehouses, default_warehouse, stock_reconciliation, serials: [expected guns with label], items: [{item_code, item_name, warehouse, upc, expected, counted, last_entry, last_delta}]}.
 
-<sub>`apps/ffl_core/ffl_core/api/inventory_count.py:907`</sub>
+<sub>`apps/ffl_core/ffl_core/api/inventory_count.py:910`</sub>
 
 ## `scan`
 
@@ -233,4 +233,4 @@ listed. A finalized count returns the report saved when it was finalized.
 
 **Returns:** {status, stock_reconciliation, serial: {missing, unexpected, unknown}, items: [{item_code, item_name, warehouse, expected, counted, moved, adjust_to, difference, never_scanned, open_register_sales: [{invoice, posted}]}], skipped: [{item_code, item_name, warehouse, counted, reason}], quantity_counted, entries}. ``moved`` is what sold or arrived since the item was counted. ``skipped`` items cannot be reconciled (adjust them by hand). ``open_register_sales`` lists POS sales not yet closed: a row with any cannot be adjusted (finalize refuses) until the register closes. ``quantity_counted`` is false for a firearms-only count, which finishes with the firearm report alone.
 
-<sub>`apps/ffl_core/ffl_core/api/inventory_count.py:974`</sub>
+<sub>`apps/ffl_core/ffl_core/api/inventory_count.py:977`</sub>

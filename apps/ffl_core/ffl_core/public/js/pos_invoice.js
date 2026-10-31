@@ -130,8 +130,7 @@ frappe.ui.form.on('POS Invoice', {
 
 // The active card processor's name for messages ("Payroc" on a Payroc store).
 function cardLabel() {
-	const s = window.ffl && window.ffl.switches;
-	return (s && s.cardProcessorLabel) ? s.cardProcessorLabel() : __('card processor');
+	return window.ffl.switches.cardProcessorLabel();
 }
 
 function unlockCardRefund(frm) {
@@ -189,7 +188,6 @@ function override4473(frm) {
 			{
 				fieldtype: 'Small Text', fieldname: 'reason', reqd: 1,
 				label: __('Reason'),
-				description: __('e.g. 4473 completed in FastBound, disposition deleted by partner FFL; serial mismatch — webhook did not sync.'),
 			},
 		],
 		primary_action_label: __('Force-complete the sale'),

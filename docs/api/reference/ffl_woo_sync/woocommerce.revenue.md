@@ -23,4 +23,4 @@ mismatch).
 
 **Permissions:** Counter roles (same as the fulfillment actions).
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/revenue.py:839`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/revenue.py:836`</sub>

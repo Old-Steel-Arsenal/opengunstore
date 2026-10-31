@@ -87,9 +87,9 @@ class ReacquiredGun(FrappeTestCase):
 		line = frappe._dict(parent=si.name, item_code=ITEM, qty=row.qty, serial_no=serial, posting_date=si.posting_date,
 			base_net_amount=row.base_net_amount, consignment_commission_pct=row.get("consignment_commission_pct"))
 		lines = {si.name: [line]}
-		consignment = sales_report._fetch_serial_consignment(lines)
+		serial_cost, consignment, _ = sales_report._fetch_serial_facts(lines)
 		cost, missing = sales_report._line_cost(line, sales_report._fetch_item_meta(lines),
-			sales_report._fetch_serial_costs(lines), consignment)
+			serial_cost, consignment)
 		return round(cost, 2), missing, bool(sales_report._consigned(line, [serial], consignment))
 
 	def _receive(self, supplier, serial, rate, item=ITEM, **extra):

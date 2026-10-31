@@ -18,7 +18,7 @@ Clear someone's counter PIN (they sign in with the password, and may set a new o
 
 **Returns:** {"has_pin": False}.
 
-<sub>`apps/ffl_core/ffl_core/staff_switch.py:243`</sub>
+<sub>`apps/ffl_core/ffl_core/staff_switch.py:249`</sub>
 
 ## `counter_users`
 
@@ -42,7 +42,7 @@ Lock this session's screen (idle, or the clerk walked away).
 
 **Returns:** {"locked": 1}.
 
-<sub>`apps/ffl_core/ffl_core/staff_switch.py:111`</sub>
+<sub>`apps/ffl_core/ffl_core/staff_switch.py:100`</sub>
 
 ## `set_pin`
 
@@ -60,7 +60,7 @@ Set (or change) the signed-in user's counter PIN.
 
 **Returns:** {"has_pin": True}.
 
-<sub>`apps/ffl_core/ffl_core/staff_switch.py:219`</sub>
+<sub>`apps/ffl_core/ffl_core/staff_switch.py:225`</sub>
 
 ## `switch_with_pin`
 
@@ -81,7 +81,7 @@ step; anyone else signs in with their password (frappe's login).
 
 **Returns:** {"user"}.
 
-<sub>`apps/ffl_core/ffl_core/staff_switch.py:259`</sub>
+<sub>`apps/ffl_core/ffl_core/staff_switch.py:265`</sub>
 
 ## `unlock_screen`
 
@@ -102,4 +102,4 @@ Signing in as someone else is frappe's login, or :func:`switch_with_pin`.
 
 **Returns:** {"locked": 0}.
 
-<sub>`apps/ffl_core/ffl_core/staff_switch.py:123`</sub>
+<sub>`apps/ffl_core/ffl_core/staff_switch.py:112`</sub>

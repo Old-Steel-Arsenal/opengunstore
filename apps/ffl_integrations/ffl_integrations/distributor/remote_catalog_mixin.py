@@ -119,6 +119,16 @@ class RemoteCatalogMixin:
 		row = remote_catalog.cached_row(self.code, sku)
 		return self.normalise_row(row) if row else None
 
+	def catalog_availability(self, sku: str, wished: int) -> dict:
+		"""One ``check_availability`` line off the catalog row: orderable while the
+		house carries it and has not discontinued it; available when it also has
+		``wished`` (and at least one) on hand."""
+		row = self.catalog_row(sku) or {}
+		qty = int(row.get("qty") or 0)
+		return {"sku": sku, "qty": qty, "cost": float(row.get("cost") or 0),
+			"available": bool(row) and not row.get("discontinued") and qty >= wished and qty > 0,
+			"orderable": bool(row) and not row.get("discontinued")}
+
 	def catalog_row_by_upc(self, upc: str) -> Optional[dict]:
 		"""This house's offer on a UPC — the counter-ensure population has no
 		listing row mapping item_code → sku and its item_code IS the UPC."""

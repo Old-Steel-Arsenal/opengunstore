@@ -130,7 +130,11 @@ def _open_counter_invoice(order) -> str:
 		"company": company,
 		"pos_profile": shift.pos_profile,
 		"customer": _resolve_web_customer(order),
-		"set_posting_time": 1,
+		# NOT set_posting_time: the draft opens at the Pickup click and is
+		# submitted when the 4473 clears, possibly days later. Left to ERPNext,
+		# the posting date refreshes to the day of the submit, so the stock
+		# issue, revenue and sales tax book on the day the gun actually left —
+		# the same day as its FastBound 4473 disposition.
 		"po_no": order.woo_order_id,
 		"woo_online_order": order.name,
 		# Shared with the revenue path rather than re-derived: that builder also

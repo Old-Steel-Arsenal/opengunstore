@@ -36,7 +36,6 @@
  },
  {
   "allow_on_submit": 1,
-  "description": "Provenance: the Distributor Order (RSR restock) this acquisition was received against.",
   "doctype": "Custom Field",
   "dt": "FFL Acquisition",
   "fieldname": "distributor_order",
@@ -54,7 +53,7 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "Set when this line was filled by a distributor. The Sales Report costs such a line from the Distributor Order's acknowledged cost rather than a serial or Bin valuation (cpa C-1).",
+  "description": "Set when a distributor filled this line; the Sales Report costs it from the distributor's acknowledged cost.",
   "doctype": "Custom Field",
   "dt": "Sales Invoice Item",
   "fieldname": "dropship_distributor",
@@ -72,7 +71,6 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "The drop-ship order whose acknowledged cost this invoice books.",
   "doctype": "Custom Field",
   "dt": "Purchase Invoice",
   "fieldname": "distributor_order",
@@ -90,7 +88,7 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "One row per card the customer paid with. A sale split across several cards has one row for each.",
+  "description": "One row per card the customer paid with; a split sale has several.",
   "doctype": "Custom Field",
   "dt": "POS Invoice",
   "fieldname": "card_charges",
@@ -122,7 +120,7 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "Buyer-paid shipping for this gun's listing. Empty: the default rate in GunBroker Settings.",
+  "description": "Buyer-paid; empty uses the default rate in GunBroker Settings.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_ship_cost",
@@ -143,7 +141,7 @@
  {
   "allow_on_submit": 0,
   "default": "0",
-  "description": "List this gun with free shipping (seller pays). Ticked from Free shipping in Send to GunBroker.",
+  "description": "Seller pays shipping; set by Free shipping in Send to GunBroker.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_free_shipping",
@@ -162,7 +160,7 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "Title for this gun's listing. Empty: the item name.",
+  "description": "Empty uses the item name.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_listing_title",
@@ -181,7 +179,7 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "Fixed price for this gun's listing. Empty: the POS sell price, including later changes to it.",
+  "description": "Empty uses the POS sell price, including later changes to it.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_list_price",
@@ -201,7 +199,6 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "How the current listing was made. Chosen in the Send dialog.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_listing_type",
@@ -221,7 +218,6 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "The opening bid the auction was listed with.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_starting_bid",
@@ -240,7 +236,6 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "The reserve the auction was listed with; 0 = none.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_reserve_price",
@@ -259,7 +254,6 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "The Buy Now price the auction was listed with; 0 = none.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_buy_now_price",
@@ -316,7 +310,7 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "Listed as a Featured item (GunBroker charges extra). Chosen in the Send dialog when the listing is created.",
+  "description": "GunBroker charges extra.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_featured",
@@ -335,7 +329,7 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "Listed as a Showcase item (GunBroker charges extra). Chosen in the Send dialog when the listing is created.",
+  "description": "GunBroker charges extra.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_showcase",
@@ -354,7 +348,7 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "Listed as Sponsored on-site (GunBroker charges extra). Chosen in the Send dialog when the listing is created.",
+  "description": "GunBroker charges extra.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_sponsored_onsite",
@@ -373,7 +367,7 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "Listed with a view counter (GunBroker charges extra). Chosen in the Send dialog when the listing is created.",
+  "description": "GunBroker charges extra.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_view_counter",
@@ -392,7 +386,7 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "Condition this gun is listed with on GunBroker. Empty: follows the item (used or new). Chosen in the Send dialog.",
+  "description": "Empty follows the item (used or new).",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_condition",
@@ -412,7 +406,6 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "The high bid as of the last check.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_current_bid",
@@ -431,7 +424,6 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "Bids on the auction as of the last check.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_bid_count",
@@ -450,7 +442,7 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "The auction has bids, so the gun is promised to the high bidder: not for sale at the counter or on the web until the auction ends.",
+  "description": "Has bids: not for sale at the counter or on the web until the auction ends.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_bid_locked",
@@ -488,7 +480,6 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "Current GunBroker listing for this gun. A cache; lookups match on SKU.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_item_id",
@@ -506,7 +497,6 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "Item numbers this gun has listed under before, oldest first, most recent 20 kept. The trail for tracing a sale back through a relist.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_item_history",
@@ -524,7 +514,6 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "When the current listing was created.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_listed_at",
@@ -542,7 +531,6 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "The last successful write to GunBroker for this gun \u2014 created, repriced or ended.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_synced_at",
@@ -560,7 +548,6 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "Why the last GunBroker action failed, in the words GunBroker used. Cleared on the next success.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_sync_error",
@@ -598,7 +585,7 @@
  {
   "allow_on_submit": 0,
   "default": "0",
-  "description": "Listing must end and is not yet confirmed ended, so it may still be buyable; raises an alert.",
+  "description": "Not yet confirmed ended, so the gun may still be bought on GunBroker.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_end_pending",
@@ -617,7 +604,6 @@
  {
   "allow_on_submit": 0,
   "default": "0",
-  "description": "Sold on GunBroker, awaiting fulfilment.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_reserved",
@@ -635,7 +621,6 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "The GunBroker order holding this gun.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_order",
@@ -673,7 +658,6 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "When the unconfirmed attempt was made; the grace period runs from here.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_push_attempted_at",
@@ -730,7 +714,6 @@
  {
   "allow_on_submit": 0,
   "default": "0",
-  "description": "Consecutive sweeps in which GunBroker said the listing does not exist.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_gone_strikes",
@@ -748,7 +731,6 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "When the listing first went missing; cleared with the strike count.",
   "doctype": "Custom Field",
   "dt": "Serial No",
   "fieldname": "gb_gone_first_at",
@@ -804,7 +786,7 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "Set when this Sales Invoice is the auto-booked revenue for a GunBroker order \u2014 accounting only (update_stock=0; the bound-book exit was booked before this invoice existed and hangs off the GunBroker Order). Every channel-mirrored rule keys off this: no interstate tax, no exemption engine, no freight tax row, no POS receipt email, no counter Edit/Cancel, and out of the counter's Pending Order queue.",
+  "description": "Set on invoices auto-booked from a GunBroker order, which are accounting only: no sales tax rules or receipt email apply, and the bound-book exit is on the GunBroker Order.",
   "doctype": "Custom Field",
   "dt": "Sales Invoice",
   "fieldname": "gunbroker_order",
@@ -825,7 +807,7 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "Sum of the per-line final value fees accrued for this sale. Per line, not per order: the tiers are applied to each gun's own price, which is how GunBroker bills.",
+  "description": "Sum of the per-line fees, each tiered on the gun's own price as GunBroker bills it.",
   "doctype": "Custom Field",
   "dt": "Sales Invoice",
   "fieldname": "gb_final_value_fee",
@@ -844,7 +826,7 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "Sum of the per-line licence document fees \u2014 charged only on lines that actually require an FFL.",
+  "description": "Charged only on lines that require an FFL.",
   "doctype": "Custom Field",
   "dt": "Sales Invoice",
   "fieldname": "gb_ffl_doc_fee",
@@ -863,7 +845,7 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "The receiving FFL's state. Texas marketplace sales go in Item 1 (Total Texas Sales) and come OUT of Item 2 (Taxable Sales) on the return, so the worksheet needs the destination on the invoice itself.",
+  "description": "The receiving FFL's state, used for the Texas marketplace-sales worksheet.",
   "doctype": "Custom Field",
   "dt": "Sales Invoice",
   "fieldname": "gb_ship_to_state",
@@ -882,7 +864,7 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "Set when this bound-book exit was auto-booked from a GunBroker order. Linked to the ORDER and never to the Sales Invoice: cancelling an invoice must not cascade into the A&D record.",
+  "description": "Set when this bound-book exit was auto-booked from a GunBroker order; cancelling the Sales Invoice does not undo this A&D entry.",
   "doctype": "Custom Field",
   "dt": "FFL Disposition",
   "fieldname": "gunbroker_order",
@@ -901,7 +883,6 @@
  },
  {
   "allow_on_submit": 0,
-  "description": "The GunBroker buyer account this customer was created from. The dedup key for repeat buyers \u2014 a username can be changed, the numeric id cannot.",
   "doctype": "Custom Field",
   "dt": "Customer",
   "fieldname": "gb_user_id",
@@ -1196,7 +1177,7 @@
  {
   "allow_on_submit": 0,
   "default": "0",
-  "description": "Listed as a Featured item (GunBroker charges extra). Chosen in the Send dialog when the listing is created.",
+  "description": "GunBroker charges extra.",
   "doctype": "Custom Field",
   "dt": "Item",
   "fieldname": "gb_featured",
@@ -1216,7 +1197,7 @@
  {
   "allow_on_submit": 0,
   "default": "0",
-  "description": "Listed as a Showcase item (GunBroker charges extra). Chosen in the Send dialog when the listing is created.",
+  "description": "GunBroker charges extra.",
   "doctype": "Custom Field",
   "dt": "Item",
   "fieldname": "gb_showcase",
@@ -1236,7 +1217,7 @@
  {
   "allow_on_submit": 0,
   "default": "0",
-  "description": "Sponsored on-site (GunBroker charges extra). Chosen in the Send dialog when the listing is created.",
+  "description": "GunBroker charges extra.",
   "doctype": "Custom Field",
   "dt": "Item",
   "fieldname": "gb_sponsored_onsite",
@@ -1256,7 +1237,7 @@
  {
   "allow_on_submit": 0,
   "default": "0",
-  "description": "With a view counter (GunBroker charges extra). Chosen in the Send dialog when the listing is created.",
+  "description": "GunBroker charges extra.",
   "doctype": "Custom Field",
   "dt": "Item",
   "fieldname": "gb_view_counter",

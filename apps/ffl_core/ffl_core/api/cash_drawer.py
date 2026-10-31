@@ -18,6 +18,8 @@ from ffl_core.roles import CASH_LOG_ROLES, CASH_MANAGER_ROLES, COUNTER_ROLES
 # (undo, then record the payment again), because it is tied to the acquisition; a seller payment for a
 # Receive Goods receipt is a manager's, like any other cash entry.
 _UNDOABLE = frozenset({"Deposit", "From Bank", "Expense", "Owner Draw", "Goods Payout"})  # an old owner draw can still be undone
+# Lines that move the balance without being cash in or out: a count difference or the first count.
+_NOT_CASH = ("variance", "cutoff", "cutoff_trueup")
 
 
 def _company(company: str | None) -> str:
@@ -45,7 +47,8 @@ def get_today(company: str | None = None) -> dict:
 	Returns:
 	    {company, is_manager, expected, gl_balance, pending, history, opening, last_close, closed_today,
 	    can_undo_close, first_count, open_shifts, bank_account, threshold, expense_cap,
-	    expense_accounts, lines: [{kind, label, direction, voucher_type, voucher_no, amount, when, detail,
+	    expense_accounts, cash_in, cash_out (the lines' cash in and out, both positive; count differences and the
+	    first count are neither), lines: [{kind, label, direction, voucher_type, voucher_no, amount, when, detail,
 	    entry, can_undo, can_fix, acquisition, purchase_receipt}], older_lines, older_net, other,
 	    bank_payouts: [{entry, acquisition, purchase_receipt, serial, amount, method, detail, can_fix}],
 	    unpaid_goods_receipts: [{purchase_receipt, customer, amount, method, posting_date, can_fix}] (Receive Goods
@@ -88,6 +91,7 @@ def get_today(company: str | None = None) -> dict:
 			"purchase_receipt": e.purchase_receipt if e else None,
 		})
 	opening = flt(last.carry_forward) if last else 0.0
+	cash_in, cash_out = _in_out(lines)
 	today = nowdate()
 	closed_today = next((c for c in closes if c.business_date and str(c.business_date) == today and c.is_counted), None)
 	bank_payouts = [{
@@ -115,6 +119,7 @@ def get_today(company: str | None = None) -> dict:
 			{"name": a, "label": frappe.db.get_value("Account", a, "account_name") or a}
 			for a in cd.expense_account_list(company)],
 		"lines": lines, "older_lines": older_lines, "older_net": older_net,
+		"cash_in": cash_in, "cash_out": cash_out,
 		# What neither the list nor the older lines explain (cash of a sale that merged after the last close...).
 		"other": flt(exp.expected - opening - older_net - sum(flt(l["amount"]) for l in lines), 2),
 		"bank_payouts": bank_payouts,
@@ -123,6 +128,12 @@ def get_today(company: str | None = None) -> dict:
 			"posting_date": str(r.posting_date), "can_fix": manager} for r in (cd.receipts_to_pay(company) if manager else [])],
 		"payout_methods": list(cd.PAYOUT_METHODS),
 	}
+
+
+def _in_out(lines: list[dict]) -> tuple[float, float]:
+	"""Cash in and cash out (both positive) of a list of drawer lines, leaving _NOT_CASH kinds out."""
+	moves = [flt(l["amount"], 2) for l in lines if l["kind"] not in _NOT_CASH]
+	return flt(sum(a for a in moves if a > 0), 2), flt(-sum(a for a in moves if a < 0), 2)
 
 
 def _can_fix(entry, manager: bool, system_manager: bool, locked: bool) -> bool:
@@ -252,23 +263,19 @@ def get_log(company: str | None = None, from_date: str | None = None, to_date: s
 	if date_diff(to_date, from_date) > 366:
 		frappe.throw(_("Show at most a year at a time."))
 	opening, rows = cd.log_rows(company, cd.cash_account(company), from_date, to_date)
-	balance, cash_in, cash_out, lines = flt(opening, 2), 0.0, 0.0, []
+	balance, lines = flt(opening, 2), []
 	for r in rows:
 		amount = flt(r.amount, 2)
 		balance = flt(balance + amount, 2)
-		if r.kind not in ("variance", "cutoff", "cutoff_trueup"):
-			if amount > 0:
-				cash_in += amount
-			else:
-				cash_out -= amount
 		lines.append({
 			"posting_date": str(r.posting_date), "when": str(r.creation), "kind": r.kind,
 			"label": _(cd.KIND_LABELS[r.kind]), "detail": cd.entry_detail(r.entry) if r.entry else (r.party or ""),
 			"by": r.get("owner"), "voucher_type": r.voucher_type, "voucher_no": r.voucher_no,
 			"amount": amount, "balance": balance,
 		})
+	cash_in, cash_out = _in_out(lines)
 	return {"company": company, "from_date": str(from_date), "to_date": str(to_date), "opening": flt(opening, 2),
-		"closing": balance, "cash_in": flt(cash_in, 2), "cash_out": flt(cash_out, 2), "lines": lines}
+		"closing": balance, "cash_in": cash_in, "cash_out": cash_out, "lines": lines}
 
 
 @frappe.whitelist()

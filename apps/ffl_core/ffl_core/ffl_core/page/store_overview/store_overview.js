@@ -11,9 +11,6 @@
 
 const SOV_OLD_PICKUP_DAYS = 21;
 const SOV_ROWS_4473 = 5;
-// Lines that move the drawer's balance without being cash in or out: the Cash Drawer page's rule
-// (cdrwTotals in cash_drawer.js), pinned to it by the Node test.
-const SOV_NOT_CASH_KINDS = ['variance', 'cutoff', 'cutoff_trueup'];
 const SOV_WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const SOV_MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
@@ -176,19 +173,6 @@ function sovNeedRecords(records) {
 function sovBars(values) {
 	const max = Math.max(0, ...values);
 	return values.map((v) => (max > 0 && v > 0 ? Math.max(6, Math.round((v / max) * 36)) : 4));
-}
-
-// ---- cash drawer
-
-function sovDrawerTotals(lines) {
-	let cashIn = 0;
-	let cashOut = 0;
-	(lines || []).forEach((l) => {
-		if (SOV_NOT_CASH_KINDS.includes(l.kind)) return;
-		const a = Number(l.amount) || 0;
-		if (a > 0) cashIn += a; else cashOut += -a;
-	});
-	return { cashIn: Math.round(cashIn * 100) / 100, cashOut: Math.round(cashOut * 100) / 100 };
 }
 
 // ---- arriving
@@ -552,7 +536,7 @@ class StoreOverview {
 			<div class="sov-ch"><div><div class="sov-ct">${__('Waiting on pickup')}</div>
 				<div class="sov-cs">${__('Inbound FFL transfers logged in, customer not in yet.')}</div></div>${all}</div>
 			${rows || `<div class="sov-empty">${__('No transfer guns waiting.')}</div>`}
-			<div class="sov-foot">${__('Oldest first. Past {0} days turns amber.', [SOV_OLD_PICKUP_DAYS])}</div>
+			<div class="sov-foot">${__('Past {0} days turns amber.', [SOV_OLD_PICKUP_DAYS])}</div>
 		</section>`;
 	}
 
@@ -560,7 +544,6 @@ class StoreOverview {
 		const b = this.data.drawer;
 		if (!b) return '';
 		if (b.error) return this.error(__('Cash drawer'));
-		const t = sovDrawerTotals(b.lines);
 		const status = b.counted
 			? `<span class="sov-pill ok sov-push"><span class="sov-dot"></span><span>${__('Counted')}</span></span>`
 			: `<span class="sov-pill warn sov-push"><span class="sov-dot"></span><span>${__('Not counted')}</span></span>`;
@@ -571,8 +554,8 @@ class StoreOverview {
 		return `<section class="sov-card sov-pad">
 			<div class="sov-rowh"><div><div class="sov-ct">${__('Cash drawer')}</div><div class="sov-cs">${sovEsc(sub)}</div></div>${status}</div>
 			<div class="sov-kv"><span class="sov-kvl">${__('Opening')}</span><span>${sovMoney(b.opening)}</span></div>
-			<div class="sov-kv"><span class="sov-kvl">${__('Cash in')}</span><span>${sovMoney(t.cashIn)}</span></div>
-			<div class="sov-kv"><span class="sov-kvl">${__('Paid out')}</span><span>${sovMoney(-t.cashOut)}</span></div>
+			<div class="sov-kv"><span class="sov-kvl">${__('Cash in')}</span><span>${sovMoney(b.cash_in)}</span></div>
+			<div class="sov-kv"><span class="sov-kvl">${__('Paid out')}</span><span>${sovMoney(-b.cash_out)}</span></div>
 			<div class="sov-kv sov-kvt"><span>${__('Expected in drawer')}</span><span>${sovMoney(b.expected)}</span></div>
 			${go}
 		</section>`;
@@ -666,8 +649,8 @@ class StoreOverview {
 // Node (the unit tests) has `module`; the browser does not.
 if (typeof module !== 'undefined' && module.exports) {
 	module.exports = {
-		SOV_NOT_CASH_KINDS, sovMoney, sovEsc, sovNoNics, sovEyebrow, sovWeekday, sovStarted, sovAgo, sovInitials, sovNicsState, sovNicsPill,
-		sovTabs, sovTabRows, sovRowAction, sovGunLabel, sovDaysClass, sovSales, sovBars, sovDrawerTotals, sovArrival,
+		sovMoney, sovEsc, sovNoNics, sovEyebrow, sovWeekday, sovStarted, sovAgo, sovInitials, sovNicsState, sovNicsPill,
+		sovTabs, sovTabRows, sovRowAction, sovGunLabel, sovDaysClass, sovSales, sovBars, sovArrival,
 		sovSummary, sovFilterRecords, sovRoute, sovRecordHref, sovNeedRecords,
 	};
 }

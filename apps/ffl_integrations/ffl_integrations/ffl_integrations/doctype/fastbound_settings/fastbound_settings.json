@@ -68,14 +68,14 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Production: https://cloud.fastbound.com. Test sites use the test account's URL. Blank stops the integration.",
+   "description": "Production is https://cloud.fastbound.com (test sites must use the test account's URL, or they write to the real bound book); blank stops the integration.",
    "fieldname": "base_url",
    "fieldtype": "Data",
    "label": "Base URL"
   },
   {
    "default": "import@gunshop.local",
-   "description": "Sent as X-AuditUser on every call.",
+   "description": "Shown in FastBound's audit trail for every change made from POS.",
    "fieldname": "default_audit_user",
    "fieldtype": "Data",
    "label": "Audit user"
@@ -139,7 +139,6 @@
    "label": "Cached lists"
   },
   {
-   "description": "Refreshed by Sync FastBound Lists.",
    "fieldname": "acquire_types",
    "fieldtype": "Small Text",
    "label": "Acquisition types",

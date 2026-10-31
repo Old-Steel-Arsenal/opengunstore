@@ -23,7 +23,7 @@ button on the ATF FFL Record list view to seed a new row in one click.
 
 **Raises:** ValidationError: The number is missing, malformed, or the provider returns NotFound.
 
-<sub>`apps/ffl_integrations/ffl_integrations/atf/ez_check.py:106`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/atf/ez_check.py:124`</sub>
 
 ## `re_verify_all`
 
@@ -38,6 +38,6 @@ derivation, address column persistence) so existing rows are filled in
 without manual clicks. Skips gracefully when a row no longer exists
 upstream.
 
-**Returns:** {updated, failed, total, errors: ["<record>: <error>", ...]}.
+**Returns:** {updated, not_found, failed, total, errors: ["<record>: <error>", ...]}. not_found counts rows EZ Check did not list (C&R records are left as entered; a dealer's expiry is voided).
 
-<sub>`apps/ffl_integrations/ffl_integrations/atf/ez_check.py:80`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/atf/ez_check.py:90`</sub>

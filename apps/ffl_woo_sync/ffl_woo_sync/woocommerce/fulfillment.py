@@ -27,16 +27,14 @@ from frappe.utils import flt, get_datetime, getdate, now_datetime, nowdate
 from ffl_core.api.manual_order import _ROLES, _has_ship_role  # canonical "may ship firearms" roles
 from ffl_core.api.manual_order import overdue_limit_days, stamp_stage
 from ffl_core.compliance.ffl_number import is_cr_license
+from ffl_core.compliance.dealer_transfer import book_disposition
+# Aliased: tests patch fulfillment._serial_company.
+from ffl_core.compliance.dealer_transfer import serial_company as _serial_company
 from ffl_core.firearm import _is_regulated_firearm_row  # row-level twin of is_regulated_firearm_item
 from ffl_core.firearm import is_antique_item, is_own_license
 from ffl_woo_sync.woocommerce.pickup import open_drafts_for_orders
-from ffl_core.utils import commit  # test-safe: a no-op under frappe.flags.in_test
-from ffl_woo_sync.woocommerce.cr_transfer import (
-	_persist_cr_details,
-	_validate_cr_details,
-	ensure_cr_ffl_record,
-	reject_cr_details_on_non_cr_order,
-)
+from ffl_core.compliance.cr_transfer import cr_note_suffix, record_cr_verification
+from ffl_woo_sync.woocommerce.cr_transfer import reject_cr_details_on_non_cr_order
 from ffl_woo_sync.woocommerce.revenue import create_sales_invoice_for_web_order
 from ffl_woo_sync.woocommerce.sync import _f  # site -> Serial/Item product_id field name
 
@@ -737,33 +735,9 @@ def dispose_web_order(woo_online_order: str, cr_details=None, locations=None) ->
 	# corrected by a path that did not recompute it). Deriving here means the
 	# gate cannot be escaped by a wrong flag.
 	if is_cr_license(order.ffl_license or ""):
-		details = _validate_cr_details(cr_details, order)   # throws; nothing written yet
-		_persist_cr_details(order, details)
-		order.atf_ffl_record = ensure_cr_ffl_record(
-			ffl_number=details["license_number"],
-			licensee_name=details["contact_name"],
-			street=details["premise_street"],
-			street2=details["premise_street2"],
-			city=details["premise_city"],
-			state=details["premise_state"],
-			zip_code=details["premise_zip"],
-			expiry_date=details["license_expiry"],
-			phone=order.customer_phone or "",
-		)
-		order.flags.ignore_permissions = True
-		order.save()
-		order.add_comment("Comment", _(
-			"C&R verification recorded by {0}: {1} / {2} / {3} {4}."
-		).format(frappe.session.user, details["license_number"], details["contact_name"],
-			details["premise_city"], details["premise_state"]))
-		# Commit boundary: the verification is a completed unit of work. If the
-		# disposition below fails (a serial vanished, a stock error), Frappe rolls
-		# back to the last commit — without this line the nine cr_* fields and the
-		# audit Comment go with it, and the operator must re-read and re-key the
-		# licence. Imported at module level so this boundary is a visible
-		# dependency and can be pinned by a test; it is a no-op under in_test, so
-		# it never moves the test rollback floor.
-		commit()
+		# Validates, persists, saves, comments and commits (the commit is the
+		# boundary that keeps the verification when the booking below fails).
+		record_cr_verification(order, cr_details)
 	else:
 		# Refuse verification data aimed at the wrong order rather than silently
 		# stamping collector details onto an ordinary dealer transfer.
@@ -776,25 +750,16 @@ def dispose_web_order(woo_online_order: str, cr_details=None, locations=None) ->
 	created: list[str] = []
 	disposed: list[tuple[str, str]] = []  # (item_code, serial) actually booked here
 	for item_code, serial in firearm_serials:
-		if frappe.db.exists("FFL Disposition", {
-			"serial": serial, "woo_online_order": order.name, "docstatus": ("<", 2),
-		}):
+		name = book_disposition(
+			serial=serial, item=item_code, link_field="woo_online_order",
+			link_name=order.name, destination=destination,
+			disposition_type="FFL Transfer", company=_serial_company(serial),
+			notes=_disposition_note(order),
+			# This module's clock, so tests that pin it keep pinning the date.
+			disposition_date=now_datetime())
+		if not name:
 			continue  # idempotent — already booked
-		disp = frappe.get_doc({
-			"doctype": "FFL Disposition",
-			"disposition_date": now_datetime(),
-			"disposition_type": "FFL Transfer",
-			"company": _serial_company(serial),
-			"destination_ffl": destination,
-			"item": item_code,
-			"serial": serial,
-			"woo_online_order": order.name,
-			"notes": _disposition_note(order),
-		})
-		disp.flags.ignore_permissions = True
-		disp.insert()
-		disp.submit()
-		created.append(disp.name)
+		created.append(name)
 		disposed.append((item_code, serial))
 
 	# Release the soft-reserve on disposed serials (the Material Issue just took
@@ -938,13 +903,7 @@ def _disposition_note(order) -> str:
 		order.name, order.woo_order_id)
 	if not is_cr_license(order.ffl_license or ""):
 		return base
-	verified_at = order.cr_verified_at
-	stamp = (verified_at.strftime("%Y-%m-%d")
-		if hasattr(verified_at, "strftime") else str(verified_at or "")[:10])
-	return base + " " + _(
-		"C&R (Type 03) transfer — shipped to the collector's own licensed "
-		"premises. Verified by {0} on {1}."
-	).format(order.cr_verified_by or "—", stamp or "—")
+	return base + " " + cr_note_suffix(order)
 
 
 def _resolve_and_validate_ffl(order) -> str:
@@ -980,14 +939,6 @@ def _resolve_and_validate_ffl(order) -> str:
 		frappe.db.set_value("Woo Online Order", order.name, "atf_ffl_record", dest,
 			update_modified=False)
 	return dest
-
-
-def _serial_company(serial: str) -> str | None:
-	"""The company that stocks a serial, via its warehouse — the FFL Disposition's
-	required `company`. (The stock-out Material Issue derives the warehouse from
-	the serial itself.)"""
-	warehouse = frappe.db.get_value("Serial No", serial, "warehouse")
-	return frappe.db.get_value("Warehouse", warehouse, "company") if warehouse else None
 
 
 def _ffl_status(o) -> tuple[object, bool]:

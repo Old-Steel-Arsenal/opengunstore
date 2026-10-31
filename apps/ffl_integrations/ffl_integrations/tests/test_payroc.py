@@ -1901,6 +1901,23 @@ class RefundPersistWindow(FrappeTestCase):
         self.assertEqual(flt(frappe.db.get_value(
             "POS Invoice", ret_shell, "card_refunded_amount")), 50)
 
+    @patch("ffl_integrations.payroc.adapter.PayrocClient")
+    def test_return_with_booked_slice_but_no_reference_is_refused(self, cc):
+        """A second request on the same return wakes after the first one's slice
+        commit (booked, final reference not yet stamped): it must refuse, never
+        refund again from its stale pre-lock snapshot."""
+        inv = self._charged(cc)
+        ret_shell = _pos_draft_invoice(rate=1)
+        frappe.db.set_value("POS Invoice", ret_shell, "card_refunded_amount", 20,
+            update_modified=False)
+        c = cc.from_settings.return_value
+        with self.assertRaises(frappe.ValidationError) as ctx:
+            _refund_across_rows(frappe._dict(name=ret_shell), inv,
+                [r for r in _charge_rows(inv) if r.status == "CHARGED"], 30.0, None)
+        self.assertIn("already in progress", str(ctx.exception))
+        c.refund.assert_not_called()
+        self.assertEqual(flt(_charge_rows(inv)[0].refunded_amount), 0)
+
     @patch("ffl_integrations.payments.api.notify_admins")
     @patch("ffl_integrations.payroc.adapter.PayrocClient")
     def test_slice_double_write_failure_stops_with_trace(self, cc, na):

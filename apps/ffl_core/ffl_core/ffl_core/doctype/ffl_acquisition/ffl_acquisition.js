@@ -6,30 +6,20 @@
 // Both are soft-coupled — calls fail silently if the back-end is unavailable.
 frappe.ui.form.on('FFL Acquisition', {
 	refresh(frm) {
-		// Acquisition Type
-		frappe.call({
-			method: 'ffl_integrations.fastbound.client_api.get_acquire_types',
-			callback(r) {
-				const types = (r.message || []).slice();
-				const cur = frm.doc.transaction_type;
-				if (!types.length && !cur) return;  // not synced yet — leave field blank
-				if (cur && !types.includes(cur)) types.unshift(cur);
-				frm.set_df_property('transaction_type', 'options', ['', ...types].join('\n'));
-				frm.refresh_field('transaction_type');
-			},
-			error() { /* FastBound integration unavailable */ },
-		});
+		// Acquisition Type (quiet: FastBound integration may be unavailable)
+		loadFormSelect(frm, 'transaction_type', 'ffl_integrations.fastbound.client_api.get_acquire_types', true);
 		// Receive Source
-		frappe.call({
-			method: 'ffl_core.api.receive_goods.get_receive_sources',
-			callback(r) {
-				const list = (r.message || []).slice();
-				const cur = frm.doc.receive_source;
-				if (!list.length && !cur) return;
-				if (cur && !list.includes(cur)) list.unshift(cur);
-				frm.set_df_property('receive_source', 'options', ['', ...list].join('\n'));
-				frm.refresh_field('receive_source');
-			},
-		});
+		loadFormSelect(frm, 'receive_source', 'ffl_core.api.receive_goods.get_receive_sources', false);
 	},
 });
+
+function loadFormSelect(frm, field, method, quiet) {
+	ffl.loadSelectOptions({
+		method, quiet,
+		get: () => frm.doc[field],
+		set: (options) => {
+			frm.set_df_property(field, 'options', options);
+			frm.refresh_field(field);
+		},
+	});
+}
