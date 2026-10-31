@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
-# Production image for OpenGunstore: frappe + erpnext + our 3 apps
-# (ffl_core, ffl_integrations, ffl_woo_sync).
+# Production image for OpenGunstore: frappe + erpnext + hrms + our 3 apps
+# (ffl_core, ffl_integrations, ffl_woo_sync). hrms (Frappe HR) is only fetched
+# and built here; a store's site gets it with `bench install-app hrms`.
 #
 # Built in CI (.github/workflows/release-image.yml) and pushed to GHCR; the
 # server only pulls it. Mirrors frappe_docker's layered build, but our
@@ -20,6 +21,7 @@ FROM frappe/build:${FRAPPE_BRANCH} AS builder
 ARG FRAPPE_BRANCH=version-16
 ARG FRAPPE_PATH=https://github.com/frappe/frappe
 ARG ERPNEXT_REMOTE=https://github.com/frappe/erpnext
+ARG HRMS_REMOTE=https://github.com/frappe/hrms
 # Pinned app refs: frozen to fixed release tags so every build is reproducible and
 # deploys can't silently pull a newer version-16 with upstream regressions (e.g.
 # the v16.24.0 print.js `letter_head_for` bug that broke printing). Bump these
@@ -44,6 +46,11 @@ RUN : "${CACHE_BUST}" && \
     /home/frappe/frappe-bench && \
   cd /home/frappe/frappe-bench && \
   bench get-app --branch=${ERPNEXT_REF} erpnext ${ERPNEXT_REMOTE}
+
+# Its own layer, ARG declared only here: an hrms bump must not rebuild frappe + erpnext.
+ARG HRMS_REF=v16.52.0
+RUN cd /home/frappe/frappe-bench && \
+  bench get-app --branch=${HRMS_REF} hrms ${HRMS_REMOTE}
 
 # Our three apps, straight from this monorepo's build context.
 COPY --chown=frappe:frappe apps/ffl_core         /home/frappe/frappe-bench/apps/ffl_core

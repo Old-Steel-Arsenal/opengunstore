@@ -231,6 +231,7 @@ jobs:
           {
             echo "frappe_ref=${FRAPPE_REF}"
             echo "erpnext_ref=${ERPNEXT_REF}"
+            echo "hrms_ref=${HRMS_REF}"
           } >> "$GITHUB_OUTPUT"
 
       # Two build runners on one box run as the same user, and
@@ -278,6 +279,7 @@ jobs:
             FRAPPE_BRANCH=version-16
             FRAPPE_REF=${{ steps.meta.outputs.frappe_ref }}
             ERPNEXT_REF=${{ steps.meta.outputs.erpnext_ref }}
+            HRMS_REF=${{ steps.meta.outputs.hrms_ref }}
             # Stable across commits so frequent main builds reuse the cached
             # frappe+erpnext layer (fast). To force-refresh erpnext, run
             # `docker builder prune` on the build box or bump erpnext_ref via
@@ -299,11 +301,11 @@ jobs:
           import sys
           from importlib.metadata import metadata
           from packaging.specifiers import SpecifierSet
-          import frappe, erpnext
+          import frappe, erpnext, hrms
           need = metadata("frappe")["Requires-Python"]
           have = sys.version.split()[0]
           assert SpecifierSet(need).contains(have), f"image Python {have} does not satisfy frappe {need}"
-          print(f"image: Python {have} (frappe needs {need}), frappe {frappe.__version__}, erpnext {erpnext.__version__}")'
+          print(f"image: Python {have} (frappe needs {need}), frappe {frappe.__version__}, erpnext {erpnext.__version__}, hrms {hrms.__version__}")'
           # baked: exercise the copies inside the image (this commit), not a bind-mount
           EXT_TEST_BAKED=1 EXT_TEST_PLATFORM='' deploy/prod/tests/test_ext_replay.sh "$IMG"
           deploy/prod/tests/test_ext_agent.sh
