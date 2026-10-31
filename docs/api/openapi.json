@@ -8565,7 +8565,7 @@
           "ffl_core"
         ],
         "summary": "DESTRUCTIVE: cancel referencing docs, drop links, delete Items outright.",
-        "description": "Cancels referencing submitted docs, deletes referencing drafts, wipes\nsimple linked rows (Stock Ledger, Serial No, Bin, Batch, Item Price,\nFFL Acquisition/Disposition), then deletes the Items. Cancelled-doc\nhistory rows are left alone — they're audit trail.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager only (destructive).\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:578`",
+        "description": "Cancels referencing submitted docs, deletes referencing drafts, wipes\nsimple linked rows (Stock Ledger, Serial No, Bin, Batch, Item Price,\nFFL Acquisition/Disposition), then deletes the Items. Cancelled-doc\nhistory rows are left alone — they're audit trail.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager only (destructive).\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:587`",
         "operationId": "ffl_core.api.item_admin.force_delete",
         "responses": {
           "200": {
@@ -8616,7 +8616,7 @@
           "ffl_core"
         ],
         "summary": "Return {item_code: total_actual_qty} summed across all warehouses.",
-        "description": "Reads from `tabBin` (the per-warehouse stock-on-hand cache). Items with\nno Bin row return 0. Designed for the Item list view + Item form to\nshow a stock badge without forcing the user to open Stock Balance.\n\n**Auth (derived from code):** Requires read permission on Item (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:414`",
+        "description": "Reads from `tabBin` (the per-warehouse stock-on-hand cache). Items with\nno Bin row return 0. Designed for the Item list view + Item form to\nshow a stock badge without forcing the user to open Stock Balance.\n\n**Auth (derived from code):** Requires read permission on Item (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:423`",
         "operationId": "ffl_core.api.item_admin.get_item_stock",
         "responses": {
           "200": {
@@ -8663,7 +8663,7 @@
           "ffl_core"
         ],
         "summary": "Preview a force_delete: per-doctype counts of rows that would be touched.",
-        "description": "**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:502`",
+        "description": "**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:511`",
         "operationId": "ffl_core.api.item_admin.preview_delete",
         "responses": {
           "200": {
@@ -8710,7 +8710,7 @@
           "ffl_core"
         ],
         "summary": "One-shot reconciliation: refresh Item.actual_qty for every Item from",
-        "description": "current Bin sums in a single bulk UPDATE. Useful after migrate to backfill\nthe new field, or after data imports / direct-DB tweaks.\n\nTwo statements:\n1. UPDATE Item JOIN (SUM Bin) — set qty for items that have Bin rows\n2. UPDATE Item — zero out items with no Bin rows (e.g. after Force Delete)\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:373`",
+        "description": "current Bin sums in a single bulk UPDATE. Useful after migrate to backfill\nthe new field, or after data imports / direct-DB tweaks.\n\nTwo statements:\n1. UPDATE Item JOIN (SUM Bin) — set qty for items that have Bin rows\n2. UPDATE Item — zero out items with no Bin rows (e.g. after Force Delete)\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:382`",
         "operationId": "ffl_core.api.item_admin.recompute_all_item_actual_qty",
         "responses": {
           "200": {
@@ -22898,7 +22898,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Overwrite a POS record's listing content from its WooCommerce product.",
-        "description": "The reverse of push_item_now / push_serial_now, for the storefront plugin's product\npage's \"overwrite POS from WooCommerce\" button: pulls title, description,\nprice and gallery images from the live WC product and writes them onto\nthe Item (or, for an ``item_code::serial_no`` SKU, the Serial No).\nStock and attributes are never pulled — the POS stays their source of\ntruth. The save runs under the inbound loop guard, so doc_events does not\npush the change straight back at WooCommerce.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:450`",
+        "description": "The reverse of push_item_now / push_serial_now, for the storefront plugin's product\npage's \"overwrite POS from WooCommerce\" button: pulls title, description,\nprice and gallery images from the live WC product and writes them onto\nthe Item (or, for an ``item_code::serial_no`` SKU, the Serial No).\nStock and attributes are never pulled — the POS stays their source of\ntruth. The save runs under the inbound loop guard, so doc_events does not\npush the change straight back at WooCommerce.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:452`",
         "operationId": "ffl_woo_sync.woocommerce.client_api.pull_product_from_woo",
         "responses": {
           "200": {
@@ -23110,7 +23110,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Push the item product + all Active serials in a single call.",
-        "description": "Uses a shared client and pre-fetched attribute IDs.  Returns combined\nresults: the item push result plus per-serial results and any errors.\n\nSuitable for \"initial listing\" of a per-serial firearm item where you want\nto bring everything live in one operation.\n\nFULL-PAYLOAD by design: as a deliberate,\nconfirmed bulk action it keeps the manual-push semantics — which means it\nWILL overwrite wp-admin content edits (title / description / images) with\nthe POS versions on every product it touches. Routine drift healing belongs\nto the scheduled reconcile, which is pos_fields_only and content-safe.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:371`",
+        "description": "Uses a shared client and pre-fetched attribute IDs.  Returns combined\nresults: the item push result plus per-serial results and any errors.\n\nSuitable for \"initial listing\" of a per-serial firearm item where you want\nto bring everything live in one operation.\n\nFULL-PAYLOAD by design: as a deliberate,\nconfirmed bulk action it keeps the manual-push semantics — which means it\nWILL overwrite wp-admin content edits (title / description / images) with\nthe POS versions on every product it touches. Routine drift healing belongs\nto the scheduled reconcile, which is pos_fields_only and content-safe.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:373`",
         "operationId": "ffl_woo_sync.woocommerce.client_api.reconcile_now",
         "responses": {
           "200": {

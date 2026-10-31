@@ -65,6 +65,8 @@ STORES = {
 			"synced_at": "woo_synced_at",
 			"sync_error": "woo_sync_error",
 			"delisted": "woo_delisted",
+			# Serial No only: ``delisted`` was raised by a GunBroker exit, not by a person.
+			"channel_delisted": "woo_channel_delisted",
 			"sold_archived": "woo_sold_archived",
 		},
 		# Catalog Category's term id on this store, and whether the store follows the category

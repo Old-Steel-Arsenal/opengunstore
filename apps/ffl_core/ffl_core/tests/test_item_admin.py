@@ -550,6 +550,43 @@ class ItemAdminAddStock(FrappeTestCase):
 			set_stock("ADDSTOCK-CLEAN", 8, warehouse=warehouse)
 		self.assertIn("nothing to adjust", str(ctx.exception).lower())
 
+	def test_set_stock_refuses_a_count_below_an_open_register_return(self):
+		"""An open register return's units are back on the shelf but not yet in the
+		Bin; a shelf count short of them would leave the Bin wrong after the close,
+		so it is refused rather than clamped to zero."""
+		from frappe.utils import now_datetime
+		warehouse = self._clean_item()
+		add_stock("ADDSTOCK-CLEAN", 1, warehouse=warehouse, rate=5)
+		company = frappe.db.get_value("Warehouse", warehouse, "company")
+		when = now_datetime()
+		inv = frappe.new_doc("POS Invoice")
+		inv.update({"name": f"ADDSTOCK-POSRET-{frappe.generate_hash(length=8)}",
+			"company": company, "docstatus": 1, "is_return": 1,
+			"posting_date": when.date().isoformat(), "posting_time": when.time().isoformat()})
+		inv.db_insert()
+		line = frappe.new_doc("POS Invoice Item")
+		line.update({"name": frappe.generate_hash(length=10), "parent": inv.name,
+			"parenttype": "POS Invoice", "parentfield": "items", "idx": 1, "docstatus": 1,
+			"item_code": "ADDSTOCK-CLEAN", "qty": -3, "stock_qty": -3, "warehouse": warehouse})
+		line.db_insert()
+		self.addCleanup(lambda: (frappe.db.delete("POS Invoice Item", {"parent": inv.name}),
+			frappe.db.delete("POS Invoice", {"name": inv.name}), frappe.db.commit()))
+
+		with self.assertRaises(frappe.ValidationError) as ctx:
+			set_stock("ADDSTOCK-CLEAN", 2, warehouse=warehouse)
+		msg = str(ctx.exception).lower()
+		self.assertIn("open register return of 3", msg)
+		self.assertIn("close the register", msg)
+		self.assertEqual(float(frappe.db.get_value("Bin",
+			{"item_code": "ADDSTOCK-CLEAN", "warehouse": warehouse}, "actual_qty")), 1.0)
+
+		# A count that includes the returned units goes through: Bin = 5 - 3.
+		out = set_stock("ADDSTOCK-CLEAN", 5, warehouse=warehouse)
+		self.assertEqual(out["open_register_qty"], -3.0)
+		self.assertEqual(out["delta"], 1.0)
+		self.assertEqual(float(frappe.db.get_value("Bin",
+			{"item_code": "ADDSTOCK-CLEAN", "warehouse": warehouse}, "actual_qty")), 2.0)
+
 	def test_two_consecutive_add_stock_keeps_item_qty_in_sync(self):
 		"""Regression for race condition: when two stock-adding events hit
 		the same Item back-to-back, Item.actual_qty must reflect the cumulative

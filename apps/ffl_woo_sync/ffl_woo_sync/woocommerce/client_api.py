@@ -364,6 +364,8 @@ def delist_serial_now(serial_no: str, site: str = "retail") -> dict:
 		frappe.throw(_("WooCommerce is not configured: {0}").format(str(exc)))
 	except (WooCommerceError, ValueError) as exc:
 		frappe.throw(_("WooCommerce delist failed: {0}").format(str(exc)))
+	# A person hid it: a GunBroker release must not bring it back (channel.serial_channel_return).
+	frappe.db.set_value("Serial No", serial_no, sync._f(site, "channel_delisted"), 0)
 	return {"ok": True, "raw": result}
 
 

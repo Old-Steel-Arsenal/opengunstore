@@ -219,7 +219,8 @@ def set_stock(item_code: str, new_qty, warehouse: str | None = None,
 
 	Raises:
 	    ValidationError: Serial-tracked item, invalid qty, missing
-	        warehouse, or no qty change.
+	        warehouse, no qty change, or a count below the units on an
+	        open register return.
 
 	Permissions:
 	    Stock Manager / System Manager.
@@ -243,9 +244,17 @@ def set_stock(item_code: str, new_qty, warehouse: str | None = None,
 	# A register sale stays in the Bin until the register closes (a return's
 	# negative qty: out of it), so the Bin must hold the shelf count plus those units.
 	from ffl_core.api.inventory_count import _open_register_sales, _row_rate
-	open_qty = flt(sum(s["qty"] for s in _open_register_sales(
-		{(item_code, warehouse)}, now_datetime()).get((item_code, warehouse), [])), 6)
-	target = max(0.0, flt(new_qty_f + open_qty, 6))
+	open_rows = _open_register_sales(
+		{(item_code, warehouse)}, now_datetime()).get((item_code, warehouse), [])
+	open_qty = flt(sum(s["qty"] for s in open_rows), 6)
+	target = flt(new_qty_f + open_qty, 6)
+	if target < 0:
+		# An open return's units are on the shelf but not yet in the Bin; a count
+		# below them cannot be squared with the close that will post them.
+		returned = flt(-sum(s["qty"] for s in open_rows if s["qty"] < 0), 6)
+		frappe.throw(_("An open register return of {0} unit(s) of {1} is not closed yet. "
+			"Include the returned units in the count, or close the register first.")
+			.format(returned, item_code))
 
 	# Read current qty so we can short-circuit no-ops
 	prev_qty = float(frappe.db.get_value(
