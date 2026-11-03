@@ -512,7 +512,7 @@ def refuse_drawer_je_cancel(doc, method=None) -> None:
 	with no books behind it and quietly change what a count relied on (10-03: an old seller payment switched from Cash
 	to Zelle in Desk); the refusal names the way that works (``_drawer_refusal``). Every other journal entry is left
 	alone, and so is a leftover. A correction recipe in bench console that must cancel one sets
-	``je.flags.cash_drawer_cancel = True`` (docs/cash-drawer.md)."""
+	``je.flags.cash_drawer_cancel = True`` before ``je.cancel()``, then fixes the Cash Drawer Entry's status by hand."""
 	if doc.flags.cash_drawer_cancel:
 		return
 	rec = drawer_record_of(doc.name, doc.get("ffl_cash_drawer_source"))

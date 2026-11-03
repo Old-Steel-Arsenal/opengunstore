@@ -1,6 +1,6 @@
 # Working as an AI agent
 
-This page is for an AI agent that reads or acts on a store's OpenGunstore POS: what the system is made of, the rules it does not let you weigh, where each job is done, and what to check before you act. The rest of this documentation is written for the person at the counter. It is still your best source, because it describes what each screen actually does.
+This page is for an AI agent that reads or acts on a store's OpenGunstore POS: what the system is made of, the rules it does not let you weigh, where each job is done, and what to check before you act. For what each screen does, read the [User guide](../guide/index.md); for endpoints, the [API reference](../api/index.html).
 
 ## Machine readable copies
 
