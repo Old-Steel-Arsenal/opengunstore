@@ -120,6 +120,8 @@ The tiles at the top of the Memberships page show **Active members**, **Monthly
 billing**, **Renewing in 7 days** and **Needs attention**. Below them, **Needs
 attention** lists each problem with the reason and its invoice.
 
+![The Memberships page: tiles, Needs attention, plans and the members list](../screenshots/page-memberships.webp){ .screenshot }
+
 | Why | What to do |
 |---|---|
 | **Card charge not confirmed** | **Look up card charge**. If it still says not confirmed and the processor's portal shows no charge, open the renewal invoice, click **Charge saved card** and use **Release as not charged**. |

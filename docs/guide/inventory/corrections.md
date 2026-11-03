@@ -99,14 +99,20 @@ The journal entries the cash drawer books cannot be cancelled, reversed or amend
 **Steps**
 
 1. Click **Adjust Quantity**. The dialog is titled **Adjust Quantity — <item>**.
-2. Enter **Set Quantity To**. This is the absolute on-hand figure you counted, not a difference.
+2. Enter **Set Quantity To**. This is the absolute figure on the shelf now, not a difference. Units on register sales not closed yet have already left the shelf; the system allows for them, so do not add them back.
 3. Confirm the **Warehouse**.
 4. Enter a **Reason**. Required, for example "Annual physical count", "Found in back room" or "Write-off — damaged".
 5. Click **Update Quantity**.
 
 **What it leaves behind**
 
-A Stock Reconciliation setting the item to that quantity at that warehouse, with your reason stored as a comment on it. The valuation used is the item's valuation rate, falling back to the last purchase rate, falling back to zero. An item with no valuation history books the adjustment at $0.
+A Stock Reconciliation setting the item to that quantity at that warehouse, with your reason stored as a comment on it. The units already on the shelf keep the cost they have. Units the count adds are valued at that same cost, or at the item's cost when the warehouse held none.
+
+| Message you see | What it means | Fix |
+|---|---|---|
+| No cost on file for … | The count adds units and the item has no cost to value them at. | Set the item's valuation rate, or use **+ Add Stock** with a rate. |
+| An open register return of … is not closed yet. … | Returned units are on the shelf but not yet in stock, and your count is below them. | Include the returned units in the count, or close the register first. |
+| Stock is already … at …; nothing to adjust. | The count matches the system. | Nothing to do. |
 
 Nothing touches the bound book, because a serial-tracked firearm cannot reach this tool. If you try, the refusal explains why: "Item '<code>' is serial-tracked. Each unit is its own Serial No record — adjusting bulk qty here would orphan serial entries. Use Receive Goods to add or Stock Entry to remove specific units."
 
