@@ -54,6 +54,9 @@ line each, with the time, what it was, the document behind it and the amount.
 | **Cash expense** | A small purchase paid from the till |
 | **Count difference**, **First count** | What a count booked |
 
+**Owner took cash (old entry)** only appears on entries made before that button
+was removed.
+
 ## Close the day
 
 Count the drawer once, at the end of the day, and confirm once.
