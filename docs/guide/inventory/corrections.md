@@ -84,7 +84,7 @@ The gun's `purchase_rate` is updated. That is what the sales report reads for fi
 
 **The bound book is not touched.** Cost is not an ATF field, and FastBound's cost is not synced.
 
-**Refusals** include a sold gun ("an already-sold gun's cost is realised and needs a separate journal entry"), a non-firearm, and a frozen accounting period.
+**Refusals** include a sold gun ("an already-sold gun's cost is realised and needs a separate journal entry"), a gun on consignment from its owner ("it is not store inventory"), a non-firearm, and a frozen accounting period.
 
 ## Seller payments and cash entries
 
