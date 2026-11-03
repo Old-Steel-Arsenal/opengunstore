@@ -78,6 +78,14 @@ The second command opens your browser to sign in and approve. On a computer with
 2. Click **New Connector**, then **Custom**.
 3. Paste the address, then sign in and approve as above.
 
+If you use the Grok command line instead, the same address goes in with:
+
+```bash
+grok mcp add --transport http gunstore-pos https://<your POS address>/connector/full/mcp
+```
+
+`grok mcp doctor` checks the connection.
+
 On **Grok Business** or **Enterprise**, a team admin adds the connector first. Grok's plans and screens change often; if you do not see custom connectors, check your plan.
 
 ## Check it works
