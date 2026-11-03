@@ -21,6 +21,7 @@ from ffl_core.api.pos_consolidate import (
 	consolidate_firearm_invoice_on_submit,
 	consolidate_pos_invoice_now,
 )
+from ffl_core.tests.test_cash_drawer_pos import ShiftFixtures
 
 
 def _item(code: str, group: str, is_firearm: int) -> None:
@@ -441,6 +442,61 @@ class ConsolidateRowRace(unittest.TestCase):
 		self.assertIsInstance(r["raised"], frappe.ValidationError)
 		self.assertEqual(r["once"].call_count, 1)
 		r["rollback"].assert_not_called()    # the caller's failure path owns that
+
+
+class ConsolidateRetryReadsAfresh(ShiftFixtures):
+	"""A retry after a lost row race merges the invoice as it is in the database. ERPNext's merge had already moved
+	the cached invoice's tax rows onto the rolled-back Sales Invoice (renamed), so the retry failed with
+	"KeyError: <tax row>" and the sale waited for the next sweep."""
+
+	def _taxed_sale(self) -> str:
+		frappe.set_user(self.cashier)
+		try:
+			inv = frappe.new_doc("POS Invoice")
+			inv.pos_profile = self.profile
+			inv.customer = "_Test CD Customer"
+			inv.append("items", {"item_code": "CD-SERVICE", "qty": 1, "rate": 100, "price_list_rate": 100})
+			inv.set_missing_values()
+			inv.items[0].rate = inv.items[0].price_list_rate = 100
+			inv.append("taxes", {"charge_type": "On Net Total", "account_head": self.stp, "description": "Sales tax",
+				"rate": 8.25, "cost_center": frappe.db.get_value("Company", self.company, "cost_center")})
+			inv.set("payments", [])
+			inv.append("payments", {"mode_of_payment": "Cash", "amount": 108.25})
+			inv.flags.ignore_permissions = True
+			inv.save()
+			inv.submit()
+			return inv.name
+		finally:
+			frappe.set_user("Administrator")
+
+	def test_a_retry_after_a_lost_row_race_merges_the_invoice(self):
+		from erpnext.accounts.doctype.sales_invoice.sales_invoice import SalesInvoice
+
+		from ffl_core.api import pos_consolidate as m
+
+		self._open_shift()
+		sale = self._taxed_sale()
+		self.assertTrue(frappe.get_all("Item Wise Tax Detail", filters={"parent": sale}))
+		frappe.get_cached_doc("POS Invoice", sale)  # the register screen or a report read it already
+		frappe.db.savepoint("before_merge")
+		real_rollback, real_submit = frappe.db.rollback, SalesInvoice.submit
+		tries = []
+
+		def submit(si, *a, **k):
+			tries.append(si.name)
+			if len(tries) == 1:  # the Sales Invoice is in, its rows renamed: lose the race now
+				raise frappe.QueryDeadlockError("1020")
+			return real_submit(si, *a, **k)
+
+		with patch.object(SalesInvoice, "submit", submit), \
+			patch.object(m.frappe.db, "transaction_writes", 0), \
+			patch.object(m.frappe.db, "rollback", side_effect=lambda *a, **k: real_rollback(save_point="before_merge")), \
+			patch.object(m.time, "sleep"):
+			out = consolidate_pos_invoice_now(sale)
+		self.assertEqual(len(tries), 2)
+		self.assertTrue(out["consolidated"])
+		si = frappe.get_doc("Sales Invoice", out["sales_invoice"])
+		self.assertEqual((si.docstatus, si.total_taxes_and_charges), (1, 8.25))
 
 
 class FindStuckSweepQuery(FrappeTestCase):
