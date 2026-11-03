@@ -17,6 +17,8 @@ history     Design rationale or release history ("That is deliberate", "since
             version ...") on any page.
 paragraph   A paragraph or list item longer than MAX_PARAGRAPH characters.
 words       A staff page over STAFF_WORD_BUDGET words.
+images      A file in docs/guide/screenshots that no page uses. Screenshots are
+            generated from a shot list, so a stale one is deleted, not kept.
 
 Pages under admin/ are written for the administrator and the bookkeeper: they
 skip the doctype and words rules, not the others.
@@ -170,6 +172,10 @@ def main() -> int:
         findings.extend(page_findings)
         if args.words:
             print(f"{words:6d}  {path.relative_to(GUIDE).as_posix()}")
+    used = "".join(p.read_text(encoding="utf-8") for p in GUIDE.rglob("*.md") if p.name not in SKIP)
+    for shot in sorted((GUIDE / "screenshots").iterdir()):
+        if f"screenshots/{shot.name}" not in used:
+            findings.append(f"screenshots/{shot.name}:1: images: no page uses it")
     for line in findings:
         print(line)
     if findings:
