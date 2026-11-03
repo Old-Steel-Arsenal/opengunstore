@@ -325,6 +325,11 @@ until the 4473 clears, and nothing is paid out until then. See
 
 ## Completing a cash sale
 
+<figure markdown>
+![The payment screen](../screenshots/pos-payment.webp){ .screenshot }
+<figcaption>The payment screen: payment methods on the left, the number pad on the right.</figcaption>
+</figure>
+
 1. Click **Checkout**. The payment screen opens.
 2. Click **Cash** and enter the amount tendered. The screen shows the change to
    give.

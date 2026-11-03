@@ -626,9 +626,7 @@ The Payment and Fulfillment sections are replaced by a read-only **Money**
 summary showing what has been paid so far and what happens on save:
 
 - a lower new total shows the refund that will be made,
-- a higher new total shows the balance left to collect,
-- changing the buyer refunds the whole amount to the original buyer and starts
-  the new order unpaid.
+- a higher new total shows the balance left to collect.
 
 When a refund is due, pick a **Refund Method**. Zelle and ACH also ask for the
 confirmation number, and Check/Money Order for the number of the check you
@@ -636,6 +634,29 @@ write back, in **Refund Reference**. The staff order note moves up under the Mon
 can read and change it. The submit button reads **Save Changes**. Saving shows
 an **Order Updated** message naming the replacement invoice, any payment carried
 over, any refund, and any balance still to collect, then returns you to the queue.
+
+### Changing the buyer on a paid order
+
+When the order already has money on it and you pick a different buyer, a
+**Payment** box appears under the Money summary. It starts blank, and the order
+cannot be saved until you choose:
+
+| Choice | What happens on save |
+|---|---|
+| **Refund old buyer** | The full amount paid refunds to the original buyer. The new order starts unpaid. |
+| **Carry payment to new buyer** | The money already paid now pays the new order. Nothing is refunded. |
+
+With **Carry payment to new buyer**, a lower new total refunds only the
+difference to the original buyer, and you pick the **Refund Method** as for any
+refund. A higher new total
+shows the balance to collect after save. The receipt keeps a note of who really
+paid.
+
+When the payment cannot move, **Carry payment to new buyer** is not offered and
+the box says why: for example, the payment was taken in a closed period, it is
+already matched to the bank, or its card charge was voided or refunded. If the
+original buyer is not getting the money back, do not save. Leave the order as it
+is and ask the bookkeeper to move the payment.
 
 ### After the distributor order is placed
 
@@ -688,9 +709,13 @@ gun over on a completed pickup ticket. Use **Cancel Order** and rebuild instead.
 | Required: Card approval code | A recorded card payment needs its approval code. | Type the code from the terminal or Virtual Terminal receipt. |
 | Card not charged — on account, … outstanding | The terminal declined, timed out, or the charge was cancelled. The order exists. | Click **Retry card**, or collect from Pending Order. |
 | On account — outstanding …. Terminal not configured | The card integration is switched on but no terminal device is set up. | Run the card on the Virtual Terminal, then on Pending Order use **Record Payment** with **Already charged on Virtual Terminal** ticked and the approval code. |
+| Serial … is a customer's firearm held for an FFL transfer … | The gun is a customer's, in the store's safe for a transfer. | Pick the store's own gun. Hand a transfer back through the POS transfer flow. |
+| Serial … is out on consignment … | The gun is at a consignment dealer, not in the store. | Pick another serial. |
+| Serial … may have sold on GunBroker … | The gun is marked Sold Unknown on GunBroker. | Check GunBroker, then clear Sold Unknown before selling it. |
 | Some firearms are no longer available | A gun on the draft sold or was claimed since you saved. | Pick replacements from the item search. |
 | Wrong company for this inventory | The guns belong to a different company than your POS Profile. | Use a POS Profile for that company, or open a shift on it. |
 | That reference looks like a full card number | A card number was typed into the reference box. | Enter the terminal's approval code instead. |
 | … was already ordered from … — it can't be removed or reduced here … | You removed or reduced a line a distributor is already sending. | Put it back. Only its price may change. |
+| The payment on … cannot move to the new buyer: … | The payment cannot be carried to a new buyer, for the reason given. | Leave the order as it is. Ask the bookkeeper to move the payment. |
 | … has an open pickup ticket … for the current buyer … | You changed the buyer while the gun's pickup ticket is open. | Delete that POS Invoice first, then change the buyer. |
 | … handed its firearm over on … — a completed counter pickup cannot be cancelled or edited … | The gun already left on its pickup ticket. | Nothing to edit here. Ask a manager about a return. |
