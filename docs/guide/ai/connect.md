@@ -74,6 +74,14 @@ The second command opens your browser to sign in and approve. On a computer with
 
 ## Grok: web and phone
 
+The quickest way is to ask Grok in a chat:
+
+1. Start a new chat and send: "Connect to the MCP server at https://<your POS address>/connector/full/mcp" (or the read-only address).
+2. Grok sets up the connector and opens the POS sign-in. Sign in and approve as above.
+3. Ask it something to check, such as "List the firearms in stock."
+
+If Grok does not offer to connect, add the connector by hand:
+
 1. Go to grok.com/connectors.
 2. Click **New Connector**, then **Custom**.
 3. Paste the address, then sign in and approve as above.
