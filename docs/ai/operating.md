@@ -43,7 +43,7 @@ A store can also install extensions, which add pages and record types of their o
 
 These are not preferences. Each one is either federal recordkeeping or a control that exists because it was once absent.
 
-**Never book, edit or delete a bound-book record directly.** Acquisitions and dispositions are written by the workflow that moved the gun. Writing one by hand detaches the federal record from the event it is supposed to describe. If a bound-book entry looks wrong, read [Fixing mistakes](../guide/inventory/corrections.md) and surface it. Do not repair it yourself.
+**Never book, edit or delete a bound-book record directly.** Acquisitions and dispositions are written by the workflow that moved the gun. Writing one by hand detaches the federal record from the event it is supposed to describe. If a bound-book entry looks wrong, read [Fixing mistakes](../guide/stock/corrections.md) and surface it. Do not repair it yourself.
 
 **Never complete a firearm sale that the Form 4473 gate is holding.** The gate is the point of the system. Its statuses, the manager override and the paper route are described in [Form 4473 and NICS](../guide/compliance/4473.md). An override is a human decision that lands on a review report with that human's name on it. It is not an action for an agent.
 
@@ -53,7 +53,7 @@ These are not preferences. Each one is either federal recordkeeping or a control
 
 **Never move money.** Recording a payment, voiding a card charge, refunding or adjusting a price changes what a customer was charged. Propose it and let a person do it.
 
-**Undo cash drawer records only on the cash drawer page.** The journal entries the drawer books cannot be cancelled, reversed or amended from the accounting screens. Use Undo on [the cash drawer](../guide/selling/cash-drawer.md) page, or cancel the register ticket for a trade-in payout. That keeps the drawer count and the books in step.
+**Undo cash drawer records only on the cash drawer page.** The journal entries the drawer books cannot be cancelled, reversed or amended from the accounting screens. Use Undo on [the cash drawer](../guide/counter/cash-drawer.md) page, or cancel the register ticket for a trade-in payout. That keeps the drawer count and the books in step.
 
 **Do not resolve an ambiguity in a firearm's identity by guessing.** Ask.
 
@@ -72,7 +72,7 @@ Establish three things about yourself, in this order.
 
 1. **Which surface you have.** The Desk UI (pages at `/app/...`, which the browser may show as `/desk/...`), a whitelisted HTTP endpoint, [the store's MCP connectors](mcp.md), or the [API reference](../api/index.html). They are not equivalent: the UI runs client-side steps that an endpoint does not, and some workflows exist only as a page.
 2. **Whether you are on production.** A store runs a live site, and a developer runs a local development site that is also the automated test fixture. Records with names beginning `_Test` mean you are not on production, and nothing you do there means anything.
-3. **What your role opens.** Access is by role, and roles differ per page. On a remote connector you act with the signed-in person's own roles. See [Roles and permissions](../guide/getting-started/roles.md).
+3. **What your role opens.** Access is by role, and roles differ per page. On a remote connector you act with the signed-in person's own roles. See [Roles and permissions](../guide/start/roles.md).
 
 ## Reading
 
@@ -91,23 +91,23 @@ Reads are safe and should be your default. The reports are the store's own quest
 | What a distributor has invoiced, including orders placed outside the POS | Distributor Orders → Track Orders → Invoices |
 | Which sales a human vouched for rather than the system | Hand-Asserted 4473 Dispositions |
 
-[Reports](../guide/reports/index.md) covers the filters and the columns. Two of these carry a legal deadline rather than a preference: Pending 4473 Orders and Pending Transfer Pickups, which ages guns the store is holding for someone else.
+[Reports](../guide/manager/reports.md) covers the filters and the columns. Two of these carry a legal deadline rather than a preference: Pending 4473 Orders and Pending Transfer Pickups, which ages guns the store is holding for someone else.
 
 ## The work queues
 
 If you are asked what needs doing, start here.
 
-**The [Dashboard](../guide/getting-started/dashboard.md)** is where staff land. Its blocks are the store's own summary of what is open: 4473s waiting, guns waiting on pickup, the cash drawer, records not yet in the bound book, and distributor orders arriving.
+**The [Dashboard](../guide/start/dashboard.md)** is where staff land. Its blocks are the store's own summary of what is open: 4473s waiting, guns waiting on pickup, the cash drawer, records not yet in the bound book, and distributor orders arriving.
 
 **The notification bell** carries NICS verdicts, new web and GunBroker orders, a distributor shipping to the store, and a bound-book refusal, each linked to its document. It is per person.
 
-**[Pending Order](../guide/selling/pending-orders.md)** at `/app/pending-dispositions`, labelled **Orders** in the sidebar, merges counter orders, WooCommerce orders and GunBroker orders into one list. What a row can do depends on which of the three it came from. GunBroker rows deliberately cannot be edited or cancelled here.
+**[Pending Order](../guide/orders/pending-orders.md)** at `/app/pending-dispositions`, labelled **Orders** in the sidebar, merges counter orders, WooCommerce orders and GunBroker orders into one list. What a row can do depends on which of the three it came from. GunBroker rows deliberately cannot be edited or cancelled here.
 
-**[Distributor Orders](../guide/distributors/restock.md)** at `/app/distributor-restock` holds what is being ordered in from a wholesale house. Its **Track Orders** tab lists every open order.
+**[Distributor Orders](../guide/stock/distributor-orders.md)** at `/app/distributor-restock` holds what is being ordered in from a wholesale house. Its **Track Orders** tab lists every open order.
 
 **Receive Goods → Incoming shipments** at `/app/receive-goods` lists distributor parcels on their way to the store, including parcels ordered outside the POS.
 
-**The [cash drawer](../guide/selling/cash-drawer.md)** at `/app/cash-drawer` lists **Purchases from private sellers with no seller payment recorded**.
+**The [cash drawer](../guide/counter/cash-drawer.md)** at `/app/cash-drawer` lists **Purchases from private sellers with no seller payment recorded**.
 
 ## Doing
 
@@ -142,7 +142,7 @@ On the connector the call goes through the generic method tool, `frappe_run_meth
 
 **What clearing does.** It undoes the mark when the record turns out to belong in the bound book after all. The sync error is emptied, so the daily retry pushes it again, and the Dashboard lists it until it lands. A comment records who cleared it.
 
-The method refuses a reason left blank, a record that is not a submitted FFL Acquisition or FFL Disposition, and a record that already has a FastBound ID. The staff-side steps are on [FastBound](../guide/compliance/fastbound.md).
+The method refuses a reason left blank, a record that is not a submitted FFL Acquisition or FFL Disposition, and a record that already has a FastBound ID. The staff-side steps are on [FastBound](../guide/admin/fastbound.md).
 
 !!! warning "A federal record decision"
     Marking a record keeps it out of the bound book for good. Do it only on a
@@ -154,7 +154,7 @@ The method refuses a reason left blank, a record that is not a submitted FFL Acq
 
 ## What happens that you did not ask for
 
-The system acts on its own, and some of what you observe will be its work rather than a person's. [What runs automatically](../guide/reference/background-jobs.md) is the full schedule. The ones most likely to confuse a reading of current state:
+The system acts on its own, and some of what you observe will be its work rather than a person's. [What runs automatically](../guide/admin/background-jobs.md) is the full schedule. The ones most likely to confuse a reading of current state:
 
 - The register closes itself at night, so a shift left open is usually closed by morning.
 - Orders arrive from the outside channels on a poll, not instantly.
@@ -163,7 +163,7 @@ The system acts on its own, and some of what you observe will be its work rather
 
 ## Failure
 
-[Troubleshooting](../guide/reference/troubleshooting.md) maps the messages staff actually see to what they mean. Two habits matter more than the list.
+[Troubleshooting](../guide/help/troubleshooting.md) maps the messages staff actually see to what they mean. Two habits matter more than the list.
 
 **Read the refusal as information.** This system blocks things deliberately and says why. A refusal to receive a firearm, to ship to a dealer, or to complete a sale is the control doing its job. The correct response is to report the blocker, never to look for a path around it.
 

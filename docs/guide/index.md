@@ -1,33 +1,39 @@
 # User guide
 
-This guide is for the people who run an FFL gun shop on OpenGunstore: counter staff, inventory staff, managers and the bookkeeper. It assumes retail experience and no knowledge of ERPNext or Frappe.
+For everyone who works in an FFL gun shop that runs OpenGunstore: counter staff, inventory staff, managers and the bookkeeper. You need retail experience, not software knowledge.
 
 <figure markdown>
 ![The Dashboard](screenshots/page-dashboard.webp){ .screenshot }
 <figcaption>The Dashboard is where every day starts.</figcaption>
 </figure>
 
-Pick the section that matches your job.
+New here? Read [Your first day](start/first-day.md), then [A day at the counter](start/day-at-the-counter.md).
 
-| Section | For | What it covers |
-|---|---|---|
-| [Getting started](getting-started/index.md) | Everyone | Signing in, the Dashboard and sidebar, which roles open which pages, and how models, serials and prices fit together |
-| [Selling](selling/index.md) | Counter staff | The register, firearm sales, customer transfers, payments, the cash drawer and closing the day |
-| [Inventory](inventory/index.md) | Inventory staff, managers | Receiving goods, trade-ins, consignment, items and serial numbers, photos, the store map, counts and corrections |
-| [Compliance](compliance/index.md) | Counter staff, managers | The bound book, Form 4473 and NICS, FastBound, verifying an FFL and the daily checks |
-| [Online channels](channels/index.md) | Inventory staff, counter staff | Your WooCommerce store, GunBroker and the orders that come back |
-| [Distributors](distributors/index.md) | Purchasing staff, managers | Ordering from wholesale houses and tracking orders |
-| [Reports](reports/index.md) | Managers, bookkeeper | Every report, the Sales Report and the month-end checklist |
-| [Settings](settings/index.md) | Managers, administrators | FFL Settings and the connection pages for each integration |
-| [Reference](reference/glossary.md) | Everyone | The [glossary](reference/glossary.md), [troubleshooting](reference/troubleshooting.md) and [what the system does on its own](reference/background-jobs.md) |
+## Find your section
 
-## How the pieces fit
+| Section | What it covers |
+|---|---|
+| [Start here](start/first-day.md) | Signing in, the Dashboard, the sidebar, roles, and a whole day from open to close |
+| [At the counter](counter/index.md) | Selling a gun or accessories, payment, customers, memberships, transfers, trade-ins, the cash drawer |
+| [Orders and shipping](orders/index.md) | Orders built away from the register, shipping to a dealer or a customer, deposits, web and GunBroker orders |
+| [Stock](stock/index.md) | Receiving, buying from private sellers, distributor orders, the store map, counts, photos, online listings, fixes |
+| [Compliance](compliance/index.md) | Form 4473 and NICS, the bound book, verifying an FFL, the daily checks |
+| [Manager tools](manager/index.md) | Reports, the Sales Report, card voids and refunds, the store map, Settings |
+| [Admin and bookkeeper](admin/index.md) | Month-end, integrations, FFL Settings, FastBound, distributor and web store setup |
+| [Help](help/troubleshooting.md) | [Troubleshooting](help/troubleshooting.md) and the [glossary](help/glossary.md) |
 
-One record follows a gun from the door to the buyer. A firearm arrives through [Receive Goods](inventory/receive-goods.md), which creates its Serial No record, asks where it goes on the shelf, books the acquisition into the [bound book](compliance/bound-book.md), then pushes it to [FastBound](compliance/fastbound.md). While it sits in the safe it can be listed on the [web store](channels/woocommerce.md) and on [GunBroker](channels/gunbroker.md). When it sells, the [4473](compliance/4473.md) gate holds the order until the form and the background check clear. Only then does the sale complete, the disposition post and the gun leave stock. The money side flows into the [cash drawer](selling/cash-drawer.md), the [Sales Report](reports/sales-report.md) and the accounts.
+## How a gun moves through the system
+
+1. A gun arrives through [Receive goods](stock/receive-goods.md). The system creates its serial record, asks where it goes on the shelf, and books it into the [bound book](compliance/bound-book.md).
+2. While it sits in the safe, it can be [listed online](stock/list-online.md) on your web store and on GunBroker.
+3. When it sells, the [4473](compliance/4473.md) gate holds the sale until the form and the background check clear.
+4. Then the sale completes, the bound book records the disposition and the gun leaves stock.
+
+The money from each sale shows in the [cash drawer](counter/cash-drawer.md) and the [Sales Report](manager/sales-report.md).
 
 ## Conventions in this guide
 
-- **Bold** text is a button, field or tab as it appears on screen.
-- Messages in quotes or code blocks are the wording the system uses.
+- **Bold** text is a button, field or tab exactly as it appears on screen.
+- Text in quotes or code blocks is the wording the system shows.
 - A warning box marks something that affects federal recordkeeping. Read it before you act.
 - Developer and self-hosting material is in the [developer documentation](../developers/index.md).

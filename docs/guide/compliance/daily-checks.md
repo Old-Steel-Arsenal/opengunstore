@@ -1,248 +1,145 @@
 # Daily checks
 
-The morning routine starts on the Dashboard and drops into four reports when
-something needs a closer look. It takes a few minutes and catches nearly
-everything before it becomes a problem. A manager or whoever opens the store
-runs it.
+For the manager or whoever opens the store, every morning before the first customer.
 
 ## Start on the Dashboard
 
-Signing in lands you on the [Dashboard](../getting-started/dashboard.md). The
-line under its title sums up what is waiting, for example "3 forms open, 2
-transfers waiting on pickup, and 1 A&D record not in the bound book yet." When
-nothing is, it reads "Nothing is waiting on anyone right now." Each block only
-shows to roles that may open what it lists.
+Signing in lands you on the [Dashboard](../start/dashboard.md). The line under its title sums up what is waiting, for example "3 forms open, 2 transfers waiting on pickup, and 1 A&D record not in the bound book yet." Three blocks are compliance:
 
-**Open 4473s.** Background checks started, gun not yet transferred: the same
-orders as the Pending 4473 Orders report. Tabs split them: **Ready** (NICS
-Proceed), **Delayed**, **In progress** (no NICS result yet), and **All**, the
-only tab that also shows Denied and Cancelled. Each row opens the order with
-**Complete**, **Continue** or **View**. **All records** opens
-[4473 records](4473-records.md).
+| Block | What it shows |
+|---|---|
+| **Open 4473s** | Checks started, gun not yet handed over. Tabs **Ready**, **Delayed**, **In progress** and **All** (the only tab with Denied and Cancelled). |
+| **Waiting on pickup** | Customers' transfer guns, oldest first. Amber after 21 days in the store. |
+| **A&D** | Today's **Acquired** and **Disposed**, and **Not logged**: records FastBound does not have 15 minutes after they were made. |
 
-**Waiting on pickup.** Customers' transfer guns, oldest first. A gun in the
-store more than 21 days turns amber. **View all N** opens Pending Transfer
-Pickups.
+On **A&D**, click **Review N not logged**. A **Will retry** row is pushed again by the daily retry. A **Needs a person** row will not clear itself: follow [Failed pushes](../admin/fastbound.md#failed-pushes). With FastBound switched off, the block reads **FastBound off**.
 
-**A&D.** Today's **Acquired** and **Disposed** counts, and **Not logged**:
-bound-book records submitted more than 15 minutes ago that FastBound does not
-have yet. Click **Review N not logged** to list them. A **Will retry** row is
-pushed again by the daily retry. A **Needs a person** row will not clear itself.
-Open it and follow [What to do when a push fails](fastbound.md#what-to-do-when-a-push-fails).
-With FastBound switched off, the block reads **FastBound off**.
-
-Check the [notifications bell](../getting-started/dashboard.md#notifications)
-too. It holds each NICS result and any record FastBound refused for good.
+Check the bell too. It holds each NICS result and any record FastBound refused for good.
 
 ## The routine
 
-| Order | Check | Looking for |
+| Check | Looking for | How often |
 |---|---|---|
-| 1 | **Pending 4473 Orders** | Customers to call, Brady dates that have arrived |
-| 2 | **Pending Transfer Pickups** | Customers' guns nobody has collected |
-| 3 | **Hand-Asserted 4473 Dispositions** | Overrides and paper attestations to review |
-| 4 | **Firearms In Stock** vs FastBound | Guns the two books disagree about |
-
-Items 1 and 2 are daily, and the Dashboard blocks above are their summary.
-Item 3 is at least weekly, and daily is better. Item 4 is weekly, or whenever
-an alert points at it.
+| 1. **Pending 4473 Orders** | Customers to call, Brady dates that have arrived | Daily |
+| 2. **Pending Transfer Pickups** | Customers' guns nobody has collected | Daily |
+| 3. **Hand-Asserted 4473 Dispositions** | Overrides and paper forms to review | Daily if you can, weekly at the least |
+| 4. **Firearms In Stock** against FastBound | Guns the two books disagree about | Weekly, or when an alert points at it |
 
 ## 1. Pending 4473 Orders
 
-The morning call list. Every draft order carrying a regulated firearm, oldest
-first. It is not in the sidebar: open it from the Dashboard under **All records
-→ Compliance → Pending 4473 orders**.
+Every held order carrying a regulated firearm, oldest first. It is not in the sidebar: open it from the Dashboard under **All records → Compliance → Pending 4473 orders**.
 
 <figure markdown>
 ![Pending 4473 Orders](../screenshots/report-pending-4473.webp){ .screenshot }
-<figcaption>The morning call list. The NICS cell carries the color: red for Denied, orange for Delayed, green for Proceed.</figcaption>
+<figcaption>Held firearm orders, oldest first, with the third business day printed. A manager also sees Clear Abandoned Order… on the toolbar.</figcaption>
 </figure>
 
-Work it in three passes:
+| Column | Meaning |
+|---|---|
+| **Invoice**, **Total** | The held order and its value. |
+| **Parked On**, **Days Pending** | When the check started, and calendar days since. |
+| **Customer**, **Firearms** | Who to call, and the serials on the ticket. |
+| **4473**, **NICS** | The form and the check status. NICS is red for Denied, orange for Delayed, green for Proceed. |
+| **Brady Day 3** | The third business day. Orange once passed while still Delayed. |
+| **Transfer?** | Ticked for a customer transfer-in, not a sale. |
+| **FB Pending Disp.** | A pending disposition FastBound holds on the gun. Filled only with **Check FastBound** ticked. |
 
-1. **Denied.** The NICS cell is red. The sale cannot go ahead. A manager refunds
-   the card or returns the cash, then deletes the draft.
-2. **Delayed with an orange Brady Day 3.** The third business day has passed
-   and the check is still delayed. Federal law lets the dealer transfer at their
-   discretion from today. Decide, and call the customer either way.
-3. **4473 still Pending.** Nobody finished the form. Call the customer, or chase
-   whoever left it open.
+Work it in three passes. Use the **NICS Status** filter to take one outcome at a time; `N/A` finds orders where no check has started.
 
-Use the **NICS Status** filter to take one outcome at a time. **Days Pending**
-counts calendar days since the check started; **Brady Day 3** counts three
-business days, stepping over weekends but not holidays.
+1. **Denied.** The sale cannot go ahead. A manager refunds the card or returns the cash, then deletes the draft.
+2. **Delayed with an orange Brady Day 3.** Federal law lets the dealer transfer at their discretion from today. Decide, and call the customer either way. The rules are on [Form 4473 and NICS](4473.md#delayed-checks-and-the-brady-date).
+3. **4473 still Pending.** Nobody finished the form. Call the customer, or chase whoever left it open.
 
-A ticked **Transfer?** means the row is a customer transfer-in rather than a
-sale. The gun is already the customer's, so the conversation is different.
+A ticked **Transfer?** means the gun is already the customer's, so the conversation is different. To confirm that a 4473 no longer on this list was completed, look it up in [Find a 4473](4473-records.md).
 
-An order nobody is coming back for can be cleared by a manager with **Clear
-Abandoned Order…**. Detail, the **Check FastBound** filter and the **FB Pending
-Disp.** column are on [Form 4473 and NICS](4473.md#delayed-checks-and-the-brady-date).
+**Check FastBound** is a filter that asks FastBound, gun by gun, whether an abandoned 4473 left a pending disposition holding it. It is off by default because it makes one call per firearm. A gun held that way reads Available in the bound book, but its next real disposition fails.
 
-To confirm a 4473 that is no longer on this list was completed, look it up in
-[4473 records](4473-records.md).
+### Clear an abandoned order
+
+For a Sales Manager or System Manager, when nobody is coming back for a draft and FastBound still holds a pending disposition on its gun.
+
+1. On the report, click **Clear Abandoned Order…**. The dialog is **Clear an abandoned 4473 order**.
+2. Pick the **POS Invoice**. Only drafts are offered.
+3. Type a **Reason**.
+4. Click **Delete FastBound pending disposition & close order**.
+5. Confirm.
+
+FastBound's pending disposition is deleted first, then the draft. If FastBound cannot be reached or refuses, nothing changes. A completed order is refused with `Only a DRAFT order can be cleared`.
+
+The draft is deleted, not cancelled, and can be restored from the recycle bin. The reason goes to the Error Log, because the order is gone. Any [4473 record](4473-records.md) for it stays.
 
 ## 2. Pending Transfer Pickups
 
-Customers' guns sitting in the safe, oldest first. Every row is somebody else's
-property that the store is holding. Open it from the sidebar under **Compliance
-→ Transfer pickups**. Counter accounts with the Sales User role can open it.
+Customers' guns in the safe, oldest first. Every row is somebody else's property the store is holding. In the sidebar, open **Compliance → Transfer pickups**. Counter accounts with the Sales User role can open it.
 
 <figure markdown>
 ![Pending Transfer Pickups](../screenshots/report-pending-transfer-pickups.webp){ .screenshot }
 <figcaption>Somebody else's property, oldest first. Start at the top.</figcaption>
 </figure>
 
-| Column | Use |
-|---|---|
-| **Acquisition** | The bound-book record. |
-| **Received** | When the gun arrived. |
-| **Days In Store** | Calendar days since. |
-| **Customer** | Who to ring. |
-| **Phone** | Their mobile number, blank when none is on file. |
-| **Item**, **Serial** | Which gun. |
-| **Shipped By** | Which dealer sent it. |
+The columns are **Acquisition**, **Received**, **Days In Store**, **Customer**, **Phone** (their mobile, blank when none), **Item**, **Serial** and **Shipped By**. A row appears once a transfer is received with a **Transfer for Customer** named, and disappears when the gun leaves stock.
 
-A row appears once a transfer has been received with a **Transfer for Customer**
-named, and disappears the moment the gun leaves stock. So the list clears itself
-when the customer collects.
-
-Ring the top of the list. A gun with a high **Days In Store** is one nobody has
-chased, and a blank **Phone** is a customer record that needs fixing before it
-can be chased at all.
-
-Filter by **Customer** when somebody rings you.
+Ring the top of the list. A blank **Phone** is a customer record to fix first. Filter by **Customer** when somebody rings you. See [Customer transfers](../counter/transfers.md).
 
 ## 3. Hand-Asserted 4473 Dispositions
 
-Every bound-book disposition somebody asserted rather than one FastBound
-committed. Two things land here: a manager's 4473 override, and a paper 4473
-recorded at the counter.
+Every disposition somebody asserted instead of one FastBound committed: a manager's 4473 override, or a paper 4473 recorded at the counter. It opens for System Manager and Sales Manager only.
 
 <figure markdown>
 ![Hand-Asserted 4473 Dispositions](../screenshots/report-hand-asserted-4473.webp){ .screenshot }
 <figcaption>Newest first, no filters. The Reason column carries the whole story, and FastBound ID sits at the far right.</figcaption>
 </figure>
 
-The columns are Asserted On, Disposition, Serial, Type, Invoice, Asserted By,
-Reason and FastBound ID. Newest first, capped at 500 rows. There are no filters.
-It is visible to System Manager and Sales Manager only.
+It is not in the sidebar or on the Dashboard. Type **Hand-Asserted 4473 Dispositions** into the search bar and open it. The columns are Asserted On, Disposition, Serial, Type, Invoice, Asserted By, Reason and FastBound ID, newest first, up to 500 rows, with no filters.
 
-It has no link in the sidebar or on the Dashboard. Type **Hand-Asserted 4473
-Dispositions** into the search bar at the top of the desk, or go to
-`/desk/query-report/Hand-Asserted 4473 Dispositions`. The same forms appear in
-[4473 records](4473-records.md) filtered to Source `Paper / override`, which also
-shows forms whose order was later deleted or redone.
+The same forms appear in [Find a 4473](4473-records.md) with Source `Paper / override`, including forms whose order was later deleted or redone. Read each new row and ask three questions:
 
-Read each new row and ask three questions:
-
-1. **Does the reason make sense?** "FastBound down, form completed on the
-   terminal" is a reason. A blank-looking one-word reason is not.
-2. **Is the pattern normal?** One override in a month is an incident. Several a
-   week from one person is a habit worth a conversation.
-3. **Did FastBound catch up?** An empty **FastBound ID** means the bound book
-   there still does not carry this disposition. In paper mode that stays empty
-   by design. With FastBound running, an empty one after the fact means somebody
-   needs to reconcile.
+1. **Does the reason make sense?** "FastBound down, form completed on the terminal" is a reason. A one-word reason is not.
+2. **Is the pattern normal?** One override in a month is an incident. Several a week from one person is a habit worth a conversation.
+3. **Did FastBound catch up?** An empty **FastBound ID** means FastBound still does not carry this disposition. In paper mode it stays empty. With FastBound running, an empty one means somebody needs to reconcile.
 
 !!! danger "This is the whole control"
-    An asserted disposition satisfies the sale gate exactly like a real one.
-    Nothing downstream treats it differently. Reading this report back is the
-    only thing that turns the override from a hole into an audited exception. If
-    nobody reads it, "audited" only means "written down where nobody looks".
+    An asserted disposition satisfies the sale gate exactly like a real one. Reading this report back is what makes an override an audited exception. If nobody reads it, the override is a hole in the record.
 
 ## 4. Firearms In Stock against FastBound
 
-The two books have to agree about what is on the rack and what each gun is.
+The two books have to agree about what is on the rack and what each gun is. In the sidebar, open **Compliance → Firearms in stock**. It opens for Stock User, Stock Manager and System Manager.
 
 <figure markdown>
 ![Firearms In Stock](../screenshots/report-firearms-in-stock.webp){ .screenshot }
 <figcaption>The report opened on its filter bar, with Location before Acquired and the FastBound link as the last column. A dash in that column is itself a finding.</figcaption>
 </figure>
 
-Open it from the sidebar under **Compliance → Firearms in stock**. It opens for
-Stock User, Stock Manager and System Manager.
+It lists every serialized firearm, filtered by **Stock Status** (default `Active`), **Warehouse** and **Manufacturer**. Details show the gun's own value, or the model's when the gun has none. Importer comes from the gun only, so a blank importer means no import marking.
 
-The report lists every serialized firearm, filtered by **Stock Status** (default
-`Active`), **Warehouse** and **Manufacturer**. Manufacturer, model, caliber and
-firearm type show the gun's own value where it has one, falling back to the
-model's. Importer never falls back, so a blank importer column means that gun
-carries no import marking. **Location** is the gun's place in the store, blank
-when it has none. See [Storage locations](../inventory/storage-locations.md).
+**Location** is the gun's place in the store, blank when it has none ([Find and move stock](../stock/find-and-move.md)). The **FastBound** column links to the gun in the bound book, or shows a dash when it has no link. A dash on a regulated gun is itself a finding.
 
-The **FastBound** column links straight to the gun in the bound book, or shows a
-dash when the gun has no FastBound link at all. A dash on a regulated gun is
-itself a finding.
+Two buttons compare the books. Both are described on [FastBound](../admin/fastbound.md#checking-the-two-books-agree).
 
-Two buttons do the comparison:
+- **Check FastBound differences** lists the guns whose details differ, and in which fields.
+- **Sync Bound Book** finds guns in stock here but disposed in FastBound, and offers to take them out of stock after a preview.
 
-- **Check FastBound differences** compares each in-stock gun's identity fields
-  against the bound book and reports which guns differ and in which fields. Fix
-  each one from its Serial No with **Sync with FastBound**.
-- **Sync Bound Book** finds guns that are in stock here but disposed in
-  FastBound, and offers to issue them out. It previews first and only removes the
-  guns you were shown.
-
-Both are covered in detail on [FastBound](fastbound.md).
-
-Two mismatches to look for by eye while you are here:
-
-- A gun on the rack that is not on the report. It was never received properly.
-- A gun on the report that is not on the rack. It was sold or transferred
-  without being booked out.
+While you are there, look for two mismatches by eye. A gun on the rack but not on the report was never received properly. A gun on the report but not on the rack was sold or transferred without being booked out.
 
 ## Where alerts go
 
-The system does not rely on you opening these reports. It also pushes.
+The system also pushes alerts, so nothing waits on you opening a report.
 
-**The notifications bell.** In-app notices go to the people who act on them.
-They show in the app only; nothing is emailed.
+**The bell** shows in the app only. Who gets which notice is on [the Dashboard](../start/dashboard.md) page; the compliance ones are NICS results and "A&D book: FastBound refused …".
 
-| Notice | Who gets it |
-|---|---|
-| A NICS result on a sale (Proceed, Delayed, Denied, or a Delayed check that cleared) | Sales User, Sales Manager, System Manager |
-| A new web or GunBroker order | Sales User, Sales Manager, Stock Manager, System Manager |
-| A distributor shipped an order to the store | Sales User, Sales Manager, Stock Manager, System Manager |
-| "A&D book: FastBound refused …" | Stock Manager, Sales Manager, System Manager |
-
-See [the Dashboard](../getting-started/dashboard.md#notifications).
-
-**Email.** Operational alerts go to the addresses listed in
-[FFL Settings](../settings/ffl-settings.md) under **Alert Recipients**, comma or
-newline separated. Leave it empty and they go to every System Manager instead.
-Every subject is prefixed `[POS Alert]`.
-
-The ones that matter here:
+**Email** goes to **Alert Recipients** in [FFL Settings](../admin/ffl-settings.md), or to every System Manager when that is blank. Every subject starts `[POS Alert]`:
 
 | Alert | When | How often |
 |---|---|---|
-| `[POS Alert] N FastBound record(s) stuck unsynced` | A bound-book record carries a sync error, other than one marked `[NOT A&D]` | Once a day at most |
-| `[POS Alert] N trade-in draft(s) not yet in the bound book` | A trade-in draft is older than today | Twice a day at most |
-| `[POS Alert] Payroc: N card charge(s) no longer captured at the gateway` | The daily card check found a charge voided or reversed outside the POS | When found |
+| `N FastBound record(s) stuck unsynced` | A bound-book record has a sync error, other than one marked `[NOT A&D]` | Once a day at most |
+| `N trade-in draft(s) not yet in the bound book` | A trade-in draft is older than today | Twice a day at most |
+| `Payroc: N card charge(s) no longer captured at the gateway` | A card charge was voided or reversed outside the POS | When found |
 
-The trade-in reminder exists because of the next-business-day rule in 27 CFR
-478.125(e). It runs whether or not FastBound is switched on, because the
-obligation is the store's. See [Trade-ins](../inventory/trade-ins.md).
+The trade-in reminder follows the next-business-day rule in 27 CFR 478.125(e). It runs whether or not FastBound is on, because the obligation is the store's. See [Trade-ins](../counter/trade-ins.md).
 
-**Assigned to-dos.** Some conditions raise an assigned task rather than an
-email, and those go to enabled users holding Stock Manager, Sales Manager or
-System Manager. A document that already has an open task does not raise a second
-one, so a recurring problem shows as one item, not fifty.
+GunBroker sends its own daily audit emails, one per kind of problem. They are listed on [GunBroker orders](../orders/gunbroker-orders.md#daily-alerts).
 
-**On the record itself.** A serial mismatch between a 4473 and an invoice is
-posted as a comment on the order as well as raised as an alert, so whoever opens
-that order sees it.
+Some conditions raise an assigned to-do for Stock Manager, Sales Manager and System Manager instead, one per document. A serial mismatch between a 4473 and its order is also posted as a comment on the order.
 
 !!! note
-    Set **Alert Recipients** to a real, monitored address. Left blank, these
-    alerts go to every System Manager, which in practice is often nobody's
-    inbox.
-
-## Related pages
-
-- [Form 4473 and NICS](4473.md).
-- [4473 records](4473-records.md).
-- [FastBound](fastbound.md).
-- [The bound book](bound-book.md).
-- [Trade-ins](../inventory/trade-ins.md).
-- [The Pending Order queue](../selling/pending-orders.md).
+    Set **Alert Recipients** to a real, monitored address. Left blank, these alerts go to every System Manager, which is often nobody's inbox.
