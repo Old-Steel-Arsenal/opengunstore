@@ -16,7 +16,7 @@ Every finished sale is counted once:
 - Counter sales from the register, channel **POS**. They show the moment they are rung up, before the nightly close.
 - Orders, channel **Web**, **GunBroker** or **Manual**, depending on where the order came from.
 
-How the report avoids counting a sale twice is on [For the bookkeeper](../admin/bookkeeper.md#sales-report-what-it-reads).
+How the report avoids counting a sale twice is on [For the bookkeeper](../admin/bookkeeper-month-end.md#sales-report-what-it-reads).
 
 ## Filters
 
@@ -102,4 +102,4 @@ Click **Flags…** on the toolbar for the full symbol list:
 | Half circle, blue | A trade-in allowance on this sale |
 | Triangle, teal | A consigned gun: profit is the store's commission |
 
-Before anyone uses this report for a filing, the Cost Flags or Data Flags card must read **Clean**. How the report compares with the books is on [For the bookkeeper](../admin/bookkeeper.md#sales-report-and-the-books).
+Before anyone uses this report for a filing, the Cost Flags or Data Flags card must read **Clean**. How the report compares with the books is on [For the bookkeeper](../admin/bookkeeper-month-end.md#sales-report-and-the-books).

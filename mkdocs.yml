@@ -197,7 +197,11 @@ nav:
       - Admin and bookkeeper:
           - guide/admin/index.md
           - Month-end close: guide/admin/month-end.md
-          - For the bookkeeper: guide/admin/bookkeeper.md
+          - For the bookkeeper:
+              - guide/admin/bookkeeper.md
+              - Selling, cards and orders: guide/admin/bookkeeper-selling.md
+              - Stock and corrections: guide/admin/bookkeeper-stock.md
+              - Cash drawer, reports and month-end: guide/admin/bookkeeper-month-end.md
           - Integrations: guide/admin/integrations.md
           - FFL Settings: guide/admin/ffl-settings.md
           - What runs automatically: guide/admin/background-jobs.md
