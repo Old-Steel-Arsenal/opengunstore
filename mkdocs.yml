@@ -79,6 +79,50 @@ plugins:
   - glightbox:
       touchNavigation: true
       zoomable: true
+  # Every guide page that moved keeps its old address (guide/STYLE.md, Cross-links).
+  - redirects:
+      redirect_maps:
+        guide/getting-started/index.md: guide/start/first-day.md
+        guide/getting-started/models-and-serials.md: guide/stock/items-and-serials.md
+        guide/getting-started/dashboard.md: guide/start/dashboard.md
+        guide/getting-started/roles.md: guide/start/roles.md
+        guide/selling/index.md: guide/counter/index.md
+        guide/selling/pos.md: guide/counter/sell-accessories.md
+        guide/selling/firearm-sale.md: guide/counter/sell-a-gun.md
+        guide/selling/transfers.md: guide/counter/transfers.md
+        guide/selling/customers.md: guide/counter/customers.md
+        guide/selling/memberships.md: guide/counter/memberships.md
+        guide/selling/create-order.md: guide/orders/build-an-order.md
+        guide/selling/pending-orders.md: guide/orders/pending-orders.md
+        guide/selling/payments.md: guide/counter/payments.md
+        guide/selling/cash-drawer.md: guide/counter/cash-drawer.md
+        guide/selling/day-end.md: guide/start/day-at-the-counter.md
+        guide/inventory/index.md: guide/stock/index.md
+        guide/inventory/receive-goods.md: guide/stock/receive-goods.md
+        guide/inventory/trade-ins.md: guide/counter/trade-ins.md
+        guide/inventory/consignment.md: guide/stock/consignment.md
+        guide/inventory/items-and-serials.md: guide/stock/items-and-serials.md
+        guide/inventory/photos.md: guide/stock/photos.md
+        guide/inventory/storage-locations.md: guide/stock/find-and-move.md
+        guide/inventory/inventory-count.md: guide/stock/inventory-count.md
+        guide/inventory/corrections.md: guide/stock/corrections.md
+        guide/compliance/fastbound.md: guide/admin/fastbound.md
+        guide/channels/index.md: guide/orders/index.md
+        guide/channels/woocommerce.md: guide/stock/list-online.md
+        guide/channels/gunbroker.md: guide/orders/gunbroker-orders.md
+        guide/channels/web-orders.md: guide/orders/web-orders.md
+        guide/distributors/index.md: guide/admin/distributors.md
+        guide/distributors/hub.md: guide/admin/distributors.md
+        guide/distributors/restock.md: guide/stock/distributor-orders.md
+        guide/reports/index.md: guide/manager/reports.md
+        guide/reports/sales-report.md: guide/manager/sales-report.md
+        guide/reports/month-end.md: guide/admin/month-end.md
+        guide/settings/index.md: guide/manager/settings.md
+        guide/settings/ffl-settings.md: guide/admin/ffl-settings.md
+        guide/settings/integrations.md: guide/admin/integrations.md
+        guide/reference/glossary.md: guide/help/glossary.md
+        guide/reference/troubleshooting.md: guide/help/troubleshooting.md
+        guide/reference/background-jobs.md: guide/admin/background-jobs.md
 
 markdown_extensions:
   - admonition
