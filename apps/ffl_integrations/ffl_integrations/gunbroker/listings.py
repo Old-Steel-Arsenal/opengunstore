@@ -43,12 +43,14 @@ from ffl_core.utils import commit
 from ffl_integrations.gunbroker import mapping
 from ffl_integrations.gunbroker.client import (
 	DEV_KEY_CONF,
+	SELLER_NAME_CONF,
 	GunBrokerClient,
 	GunBrokerConfigError,
 	GunBrokerError,
 	dev_key,
 	get_field,
 	parse_item_id,
+	registered_seller_name,
 	sandbox_mode,
 )
 from ffl_integrations.notifications import notify_admins, safe_log_error
@@ -238,6 +240,11 @@ def _config_gap(settings) -> str:
 		# Not a form field: the key is the platform's and is set in site config.
 		missing.append(_("{0} DevKey (site config {1})").format(
 			_("sandbox") if sandbox else _("production"), DEV_KEY_CONF[sandbox]))
+	try:
+		registered_seller_name(sandbox)
+	except GunBrokerConfigError:
+		# Also platform config, not a form field: the name the DevKey is registered under.
+		missing.append(_("seller name (site config {0})").format(SELLER_NAME_CONF))
 	if not (settings.postal_code or "").strip():
 		missing.append(_("ship-from postal code"))
 	if not mapping.payment_methods():
