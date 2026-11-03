@@ -1779,8 +1779,8 @@ def explain_unapproved(message: str, user_agent: str = "") -> str:
 		"registered under — verbatim, case-sensitive — and answers everything "
 		"else, the login included, with exactly this message; it says nothing "
 		"about the key. The header is built in GunBroker's Software/Seller/"
-		"Version/Application format and its Seller segment (GunBroker Settings "
-		"→ Seller name) has to change with the DevKey. The sandbox does not "
+		"Version/Application format and its Seller segment (site config "
+		"gunbroker_seller_name) has to change with the DevKey. The sandbox does not "
 		"check it, so a configuration that worked there proves nothing here.")
 	if user_agent:
 		hint += "\n" + _("This store sent: {0}").format(user_agent)

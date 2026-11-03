@@ -1169,7 +1169,6 @@ app: `ffl_integrations` · module: FFL Integrations · single · roles: System M
 | `sandbox_mode` | Check | Sandbox mode |  |  |
 | `username` | Data | Seller username |  |  |
 | `password` | Password | Seller password |  |  |
-| `seller_name` | Data | Seller name (as registered for the DevKey) |  |  |
 | `last_listing_push_at` | Datetime | Last listing push |  |  |
 | `last_listing_push_count` | Int | Listings pushed |  |  |
 | `last_sweep_at` | Datetime | Last sweep |  |  |
