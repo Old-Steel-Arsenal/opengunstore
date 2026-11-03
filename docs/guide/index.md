@@ -20,6 +20,7 @@ New here? Read [Your first day](start/first-day.md), then [A day at the counter]
 | [Compliance](compliance/index.md) | Form 4473 and NICS, the bound book, verifying an FFL, the daily checks |
 | [Manager tools](manager/index.md) | Reports, the Sales Report, card voids and refunds, the store map, Settings |
 | [Admin and bookkeeper](admin/index.md) | Month-end, integrations, FFL Settings, FastBound, distributor and web store setup |
+| [AI assistants](ai/index.md) | Connecting Claude, ChatGPT or Grok to the store, and how to work with one |
 | [Help](help/troubleshooting.md) | [Troubleshooting](help/troubleshooting.md) and the [glossary](help/glossary.md) |
 
 ## How a gun moves through the system
