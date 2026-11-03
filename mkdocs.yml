@@ -54,17 +54,13 @@ extra_css:
 hooks:
   - scripts/docs/llms_hook.py
 
-# Repo notes that are not part of the published docs (store runbooks, field notes,
-# another service's API) stay in the repo but out of the site.
+# Repo files that stay out of the site: the RSR after-sale procedure (operator alerts in
+# ffl_integrations cite it), the Settings field notes (test_field_descriptions reads them),
+# another service's API.
 exclude_docs: |
   /requirements.txt
-  /cash-drawer.md
-  /consignment-payout.md
   /field-notes.md
-  /gunbroker-webhooks.md
-  /receiving-scan-first.md
   /rsr-fds-after-sale-sop.md
-  /sports-south-dropship.md
   /fastbound/
   /catalog-api/
   /api/README.md
@@ -211,19 +207,29 @@ nav:
       - Help:
           - Troubleshooting: guide/help/troubleshooting.md
           - Glossary: guide/help/glossary.md
-  - Self-hosting:
-      - self-hosting.md
-      - Install with an AI agent: deploy-with-ai.md
-      - Versions: versions.md
   - Developers:
-      - developers/index.md
-      - Extensions:
+      - Start here:
+          - Overview and architecture: developers/index.md
+          - Set up a dev environment: developers/dev-environment.md
+          - Contributing and releases: developers/contributing.md
+      - Build an extension:
           - extensions/README.md
-          - Developer specification: extensions/developer-spec.md
           - Quick start: extensions/quickstart.md
-          - Core hooks: extensions/hooks.md
-      - The MCP server: ai/mcp.md
-      - Working as an AI agent: ai/operating.md
-      - Data service: data-service.md
-      - Testing: testing.md
-      - API reference: api/index.html
+          - Manifest and layout: extensions/manifest.md
+          - Lifecycle: extensions/lifecycle.md
+          - Hooks and registry: extensions/hooks.md
+          - Rules: extensions/rules.md
+          - Testing and CI: extensions/testing.md
+          - Release checklist: extensions/release.md
+          - Common lint errors: extensions/lint-errors.md
+      - Integrate:
+          - API reference: api/index.html
+          - The MCP server: ai/mcp.md
+          - Working as an AI agent: ai/operating.md
+          - Data Service: data-service.md
+      - Testing the core: testing.md
+  - Operations:
+      - Self-hosting: self-hosting.md
+      - Install with an AI agent: deploy-with-ai.md
+      - Extensions runbook: extensions-runbook.md
+      - Pinned versions: versions.md

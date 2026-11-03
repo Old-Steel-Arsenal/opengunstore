@@ -303,7 +303,7 @@ jobs:
           while read -r id repo ref; do
             if ! git --config-env=http.https://github.com/.extraheader=GIT_AUTH_HEADER \
                 clone --quiet --depth 1 --single-branch --branch "$ref" "https://github.com/$repo.git" "ext/$id"; then
-              echo "::error title=First-party extension not fetched::cannot clone $repo@$ref with EXT_REPOS_TOKEN — the token may have expired or lost contents:read on $repo, or the ref is gone. Rotate the secret, or delete it to skip first-party extensions (docs/extensions/README.md)."
+              echo "::error title=First-party extension not fetched::cannot clone $repo@$ref with EXT_REPOS_TOKEN — the token may have expired or lost contents:read on $repo, or the ref is gone. Rotate the secret, or delete it to skip first-party extensions (the EXT_REPOS_TOKEN secret above)."
               exit 1
             fi
             echo "$id: $repo@$ref $(git -C "ext/$id" rev-parse --short HEAD)"
@@ -746,7 +746,7 @@ jobs:
             gunstore/scripts/ci/ext_test.sh frappe-bench ci.localhost "$id" "ext/$id" || rc=$?
             case $rc in
               0) ;;
-              3) echo "::warning title=First-party extension docs/api stale::$id — its tests and lint passed; its committed docs/api is not what this core's generator writes, or its Permissions prose names other roles than this core derives (PERMISSIONS DRIFT above). Drop hand-written role lists, regenerate docs/api with this core and merge that to $id (docs/extensions/README.md)." ;;
+              3) echo "::warning title=First-party extension docs/api stale::$id — its tests and lint passed; its committed docs/api is not what this core's generator writes, or its Permissions prose names other roles than this core derives (PERMISSIONS DRIFT above). Drop hand-written role lists, regenerate docs/api with this core and merge that to $id (docs/extensions/testing.md)." ;;
               *) status=1; echo "::error::first-party extension $id failed (see the ext-test lines above)" ;;
             esac
           done

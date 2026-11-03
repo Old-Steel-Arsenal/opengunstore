@@ -123,8 +123,7 @@ def block_consignment_returns(doc, method: str | None = None) -> None:
 
 	A consignment sale already committed a specific, commission-derived
 	payable to a specific consignor (post_consignment_payable, B1) — possibly
-	already paid out via a native Payment Entry (see
-	docs/consignment-payout.md). Letting a return quietly re-open that (does
+	already paid out via a native Payment Entry. Letting a return quietly re-open that (does
 	the payable claw back? was the consignor already paid?) is exactly the
 	ambiguity the owner wants to avoid, so returns are disallowed outright:
 	the only sanctioned way to unwind a consignment sale is to CANCEL the

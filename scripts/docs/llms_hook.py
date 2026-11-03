@@ -135,9 +135,10 @@ def _section_of(src_path: str) -> str:
     if head.endswith(".md"):
         # Pages at the docs root belong to different nav tabs.
         return {
-            "self-hosting.md": "Self-hosting",
-            "deploy-with-ai.md": "Self-hosting",
-            "versions.md": "Self-hosting",
+            "self-hosting.md": "Operations",
+            "deploy-with-ai.md": "Operations",
+            "extensions-runbook.md": "Operations",
+            "versions.md": "Operations",
             "data-service.md": "Developers",
             "testing.md": "Developers",
         }.get(head, "Start here")
@@ -169,8 +170,8 @@ def _write_index(site_dir: Path, site_url: str, config, entries) -> None:
         "have three parts: the user guide (selling at the counter, receiving "
         "inventory, the acquisition-and-disposition record, Form 4473 and NICS, the "
         "WooCommerce and GunBroker channels, distributors, reports and settings), "
-        "self-hosting, and the developer docs (architecture, extensions, the MCP "
-        "server). Source: https://github.com/Old-Steel-Arsenal/opengunstore",
+        "operations (self-hosting, the extensions runbook), and the developer docs "
+        "(architecture, building extensions, the MCP server, testing). Source: https://github.com/Old-Steel-Arsenal/opengunstore",
         "",
         "Every page is also available as Markdown at its own URL plus `.md`. "
         f"All of it as one file is at {site_url}/llms-full.txt. The HTTP API is "
