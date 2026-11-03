@@ -86,6 +86,8 @@ For a pay-now buy, at once:
 
 The condition grade you entered lands on the gun, so the Firearms In Stock report and the web listing describe it correctly. Barrel length, finish and year made are not on this dialog. Add them afterwards on the gun's own record.
 
+A gun the store once sold and now takes back starts fresh: an earlier consignor or supplier is never paid again for this new stay.
+
 ## The next-business-day deadline
 
 A draft acquisition is a gun the store has taken possession of that is not yet in the bound book. Under 27 CFR 478.125(e) the entry is due by the close of the next business day after taking possession, so the system watches for drafts that have been sitting. Only credit trade-ins leave drafts. A pay-now buy is booked at once.
