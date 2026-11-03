@@ -20,18 +20,13 @@ Notes for assistants: the self-hosting guide is the source of truth for commands
 - [Settings field notes](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/docs/field-notes.md): what each setting does, including Paper 4473 Mode
 - [Data Service](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/docs/data-service.md): the optional hosted catalog and what works without it
 - [FastBound integration notes](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/docs/fastbound/README.md): the A&D bound book and 4473 API the POS talks to
-- [GunBroker webhooks](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/docs/gunbroker-webhooks.md): instant sale notices from GunBroker
-- [Sports South drop-ship](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/docs/sports-south-dropship.md): operator guide for the second distributor
 - [Catalog API contract](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/docs/catalog-api/README.md): what a catalog service must implement
 
 ## Operate
 
 - [Backups, restore and upgrades](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/docs/self-hosting.md#backups-and-restore): machine snapshots, the 6-hourly database backup, restoring one database
-- [Extensions](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/docs/self-hosting.md#extensions): installing, upgrading and rolling back extensions
-- [Cash drawer](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/docs/cash-drawer.md): the daily count, entries and weekly report
-- [Receiving distributor parcels](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/docs/receiving-scan-first.md): scan-first receiving at the counter
+- [Extensions runbook](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/docs/extensions-runbook.md): replay, the extension agent, manual install, upgrade rollback
 - [RSR after-sale procedure](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/docs/rsr-fds-after-sale-sop.md): denied 4473, refused transfer and returns for drop-shipped guns
-- [Consignment payouts](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/docs/consignment-payout.md): tracking and paying consignors
 - [Pinned versions](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/docs/versions.md): the Frappe, ERPNext and runtime versions in use
 
 ## Develop
@@ -40,6 +35,8 @@ Notes for assistants: the self-hosting guide is the source of truth for commands
 - [Contributing](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/CONTRIBUTING.md): branches, CI, release preparation
 - [Testing](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/docs/testing.md): how make test works and the traps that make it lie
 - [API reference](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/docs/api/README.md): every whitelisted endpoint, generated from source (make api-docs)
+- [Architecture](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/docs/developers/index.md): the three apps, the data flow, where extensions, the Data Service and MCP attach
+- [Build an extension](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/docs/extensions/README.md): quick start, manifest, lifecycle, hooks, rules, testing and CI, release
 - [Extension hooks](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/docs/extensions/hooks.md): the named hooks the core exposes to extensions
 - [Makefile](https://github.com/Old-Steel-Arsenal/opengunstore/blob/main/Makefile): every development entry point (make help lists them)
 
