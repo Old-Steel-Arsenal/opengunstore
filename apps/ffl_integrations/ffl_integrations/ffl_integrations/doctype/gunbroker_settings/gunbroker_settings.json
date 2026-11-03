@@ -11,7 +11,6 @@
   "column_connection",
   "username",
   "password",
-  "seller_name",
   "section_status",
   "last_listing_push_at",
   "last_listing_push_count",
@@ -135,13 +134,6 @@
    "fieldtype": "Password",
    "label": "Seller password",
    "mandatory_depends_on": "eval:doc.enabled"
-  },
-  {
-   "description": "Must match the name the DevKey was registered under; required for the live marketplace.",
-   "fieldname": "seller_name",
-   "fieldtype": "Data",
-   "label": "Seller name (as registered for the DevKey)",
-   "mandatory_depends_on": "eval:doc.enabled && !doc.sandbox_mode"
   },
   {
    "collapsible": 1,
@@ -630,7 +622,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-30 12:30:00",
+ "modified": "2026-11-03 12:00:00",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "GunBroker Settings",

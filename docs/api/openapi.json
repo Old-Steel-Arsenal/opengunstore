@@ -4137,10 +4137,6 @@
             "type": "string",
             "description": "Seller password"
           },
-          "seller_name": {
-            "type": "string",
-            "description": "Seller name (as registered for the DevKey)"
-          },
           "last_listing_push_at": {
             "type": "string",
             "description": "Last listing push"

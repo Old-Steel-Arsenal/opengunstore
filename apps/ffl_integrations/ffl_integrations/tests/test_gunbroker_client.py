@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import timezone
 from unittest.mock import patch
 
+import frappe
 import requests
 from frappe.tests.utils import FrappeTestCase
 
@@ -524,15 +525,16 @@ class TheDevKeyLivesInSiteConfig(FrappeTestCase):
 		self.assertEqual(cfg.password, "secret")
 		self.assertEqual(cfg.base_url, SANDBOX_BASE)
 
-	def _config_for(self, *, sandbox, **settings_over):
+	def _config_for(self, *, sandbox, seller_name="", **settings_over):
 		settings = fx.settings_stub(**settings_over)
 		with fx.dev_keys(production="p", sandbox="s"), \
+				patch.dict(frappe.local.conf, {"gunbroker_seller_name": seller_name}), \
 				patch("ffl_integrations.integration_gate.gunbroker_enabled", return_value=True), \
 				patch("frappe.get_single", return_value=settings), \
 				patch.object(client_module, "sandbox_mode", return_value=sandbox):
 			return GunBrokerConfig.from_settings()
 
-	def test_the_seller_segment_comes_from_the_settings_field(self):
+	def test_the_seller_segment_comes_from_site_config(self):
 		for sandbox in (True, False):
 			cfg = self._config_for(sandbox=sandbox, seller_name="  Registered Seller LLC ")
 			self.assertEqual(cfg.seller_name, "Registered Seller LLC")
@@ -540,10 +542,10 @@ class TheDevKeyLivesInSiteConfig(FrappeTestCase):
 
 	def test_a_blank_seller_name_is_a_config_error_on_production(self):
 		"""No guess from the Company name: production answers a wrong segment with
-		the misleading DevKey 403, so the blank field is named instead."""
+		the misleading DevKey 403, so the blank site config key is named instead."""
 		with self.assertRaises(GunBrokerConfigError) as caught:
 			self._config_for(sandbox=False, seller_name="  ")
-		self.assertIn("Seller name", str(caught.exception))
+		self.assertIn("gunbroker_seller_name", str(caught.exception))
 		self.assertIn("DevKey is registered under", str(caught.exception))
 
 	def test_the_sandbox_does_not_check_the_segment_so_blank_gets_a_placeholder(self):
@@ -559,23 +561,21 @@ class TheDevKeyLivesInSiteConfig(FrappeTestCase):
 		from ffl_integrations.gunbroker import listings
 
 		with patch.object(GunBrokerClient, "from_settings", side_effect=GunBrokerConfigError(
-				"Set GunBroker Settings › Seller name to the name your DevKey is registered under.")):
+				"Set site config `gunbroker_seller_name` to the name your DevKey is registered under.")):
 			result = listings.test_connection()
 		self.assertFalse(result["ok"])
-		self.assertIn("Seller name", result["error"])
+		self.assertIn("gunbroker_seller_name", result["error"])
 
-	def test_the_form_refuses_a_blank_seller_name_while_live(self):
-		"""The form (client side) marks the field required once the integration is on
-		and out of the sandbox; the client above is the server-side guard."""
+	def test_the_form_no_longer_carries_the_seller_name(self):
+		"""It belongs to the DevKey, not the store; the form must not offer it."""
 		import json
 		from pathlib import Path
 
 		# Read the shipped doctype file: the form metadata is only as new as the last migrate.
 		path = Path(client_module.__file__).parents[1] / "ffl_integrations" / "doctype" \
 			/ "gunbroker_settings" / "gunbroker_settings.json"
-		field = next(f for f in json.loads(path.read_text(encoding="utf-8"))["fields"]
-			if f["fieldname"] == "seller_name")
-		self.assertEqual(field["mandatory_depends_on"], "eval:doc.enabled && !doc.sandbox_mode")
+		fields = {f["fieldname"] for f in json.loads(path.read_text(encoding="utf-8"))["fields"]}
+		self.assertNotIn("seller_name", fields)
 
 	def test_a_slash_in_the_seller_name_cannot_shift_the_segments(self):
 		self.assertEqual(client_module.build_user_agent("A/B Arms"),

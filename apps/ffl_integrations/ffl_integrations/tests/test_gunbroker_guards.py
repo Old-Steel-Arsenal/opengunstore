@@ -144,6 +144,14 @@ class GuardMatrix(FrappeTestCase):
 		self.assertIn("gunbroker_sandbox_dev_key", result["message"],
 			"the key is not on the form any more — say where it goes")
 
+	def test_02_live_without_the_registered_seller_name_is_a_configuration_gap(self):
+		"""Production refuses a User-Agent without the DevKey's registered name, so a
+		live store missing it must be told here, not by a failed push."""
+		self._patch_object(listings, "sandbox_mode", return_value=False)
+		with patch.dict(frappe.local.conf, {"gunbroker_seller_name": ""}):
+			result = self._assert_refused(listings.NOT_CONFIGURED)
+		self.assertIn("gunbroker_seller_name", result["message"])
+
 	def test_02_no_payment_method_is_a_configuration_gap(self):
 		"""A listing offering no way to pay costs a listing fee and produces
 		nothing. Cheques and money orders are the only route this phase accepts,
