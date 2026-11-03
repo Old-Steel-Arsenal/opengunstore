@@ -41,6 +41,23 @@
    just pushed. A merge whose version is already tagged releases nothing — a hotfix
    bumps the patch version (`make bump-version`) to ship.
 
+## Working in a git worktree
+
+To work on several branches at once, give each its own worktree and its own stack:
+
+```bash
+git worktree add ../opengunstore-fix-xyz -b fix/xyz develop
+cd ../opengunstore-fix-xyz
+make dev-up && make dev-bench-clone   # clones the main checkout's frappe-bench, then creates the site and installs the apps
+make dev-names                        # this checkout's Compose project (dev-<dir>) and containers
+make test
+make dev-down-volumes                 # when done: containers and the database volume go
+```
+
+- `make dev-bench-clone` copies the main checkout's `frappe-bench/` (seconds on macOS with APFS copy-on-write, a full copy elsewhere), so the main checkout needs `make dev-bench-init` first.
+- A worktree stack publishes no ports. `make dev-up PORT_OFFSET=10` then `make dev-serve` serves it at `http://dev.localhost:8010`.
+- Never run `docker compose` directly in a worktree: it attaches to the main checkout's project and recreates its containers on your tree. Check `make dev-names` before trusting a test run.
+
 ## Hotfix flow (emergencies only)
 
 For production-down / urgent fixes that can't wait for the full `develop` cycle:
@@ -58,6 +75,8 @@ For production-down / urgent fixes that can't wait for the full `develop` cycle:
   tested against a **restored copy of real production data** before promoting —
   local test data won't surface data-shape or migration issues. See
   `docs/self-hosting.md`.
+- Developer docs (architecture, dev stack, extensions, testing) are under `docs/developers/`,
+  `docs/extensions/` and `docs/testing.md`.
 - Integration / infra config (FastBound, RSR, Caddy) isn't exercised by local dev —
   review those changes carefully.
 - **Secrets are never committed** — they live in Desk Settings (DB) or a git-ignored

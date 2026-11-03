@@ -167,9 +167,9 @@ If an AI coding agent (Claude Code, Codex, Cursor and similar) is doing the inst
 
 ## Extensions
 
-The extension layer lets a site add behavior without a new core release. An extension is a separate Frappe app that is installed per site from Settings, Extensions, rather than baked into the image. Uploads are checked by a linter (package structure, naming, hook allow-list, declared permissions, endpoint gates) and reviewed before install; the core exposes named hooks and neutral defaults, so it behaves the same with or without any extension. Because extension code lives on a volume, it survives container rebuilds and image upgrades. The runtime mechanics, the agent and the rollback recipe are in the [Extensions section of the self-hosting guide](docs/self-hosting.md#extensions).
+The extension layer lets a site add behavior without a new core release. An extension is a separate Frappe app that is installed per site from Settings, Extensions, rather than baked into the image. Uploads are checked by a linter (package structure, naming, hook allow-list, declared permissions, endpoint gates) and reviewed before install; the core exposes named hooks and neutral defaults, so it behaves the same with or without any extension. Because extension code lives on a volume, it survives container rebuilds and image upgrades. The runtime mechanics, the agent and the rollback recipe are in the [Extensions runbook](docs/extensions-runbook.md).
 
-For developers: `make ext-new` scaffolds an extension, and `make ext-test` and `make ext-lint` check it. The core-side contracts and tooling are in [`docs/extensions/`](docs/extensions/README.md).
+For developers: `make ext-new` scaffolds an extension, and `make ext-test` and `make ext-lint` check it. Start with [Build an extension](docs/extensions/README.md); the architecture is in [`docs/developers/`](docs/developers/index.md).
 
 ## Release and versioning
 
