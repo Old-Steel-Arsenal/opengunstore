@@ -94,7 +94,7 @@ jobs:
   # skip them — see the header.
   # No extension leg here: first-party extensions are tested by the maintainers' deployment
   # pipeline, which calls this repo's _app-tests.yml with its own list and token
-  # (docs/extensions/README.md, "First-party extensions in CI").
+  # (inputs documented in _app-tests.yml; docs/extensions/testing.md, "First-party extensions").
   tests:
     if: >-
       (github.event_name != 'pull_request' && github.ref_name != 'develop')
