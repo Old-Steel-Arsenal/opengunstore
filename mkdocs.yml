@@ -64,6 +64,7 @@ exclude_docs: |
   /fastbound/
   /catalog-api/
   /api/README.md
+  /guide/STYLE.md
 
 plugins:
   - search
@@ -74,6 +75,50 @@ plugins:
   - glightbox:
       touchNavigation: true
       zoomable: true
+  # Every guide page that moved keeps its old address (guide/STYLE.md, Cross-links).
+  - redirects:
+      redirect_maps:
+        guide/getting-started/index.md: guide/start/first-day.md
+        guide/getting-started/models-and-serials.md: guide/stock/items-and-serials.md
+        guide/getting-started/dashboard.md: guide/start/dashboard.md
+        guide/getting-started/roles.md: guide/start/roles.md
+        guide/selling/index.md: guide/counter/index.md
+        guide/selling/pos.md: guide/counter/sell-accessories.md
+        guide/selling/firearm-sale.md: guide/counter/sell-a-gun.md
+        guide/selling/transfers.md: guide/counter/transfers.md
+        guide/selling/customers.md: guide/counter/customers.md
+        guide/selling/memberships.md: guide/counter/memberships.md
+        guide/selling/create-order.md: guide/orders/build-an-order.md
+        guide/selling/pending-orders.md: guide/orders/pending-orders.md
+        guide/selling/payments.md: guide/counter/payments.md
+        guide/selling/cash-drawer.md: guide/counter/cash-drawer.md
+        guide/selling/day-end.md: guide/start/day-at-the-counter.md
+        guide/inventory/index.md: guide/stock/index.md
+        guide/inventory/receive-goods.md: guide/stock/receive-goods.md
+        guide/inventory/trade-ins.md: guide/counter/trade-ins.md
+        guide/inventory/consignment.md: guide/stock/consignment.md
+        guide/inventory/items-and-serials.md: guide/stock/items-and-serials.md
+        guide/inventory/photos.md: guide/stock/photos.md
+        guide/inventory/storage-locations.md: guide/stock/find-and-move.md
+        guide/inventory/inventory-count.md: guide/stock/inventory-count.md
+        guide/inventory/corrections.md: guide/stock/corrections.md
+        guide/compliance/fastbound.md: guide/admin/fastbound.md
+        guide/channels/index.md: guide/orders/index.md
+        guide/channels/woocommerce.md: guide/stock/list-online.md
+        guide/channels/gunbroker.md: guide/orders/gunbroker-orders.md
+        guide/channels/web-orders.md: guide/orders/web-orders.md
+        guide/distributors/index.md: guide/admin/distributors.md
+        guide/distributors/hub.md: guide/admin/distributors.md
+        guide/distributors/restock.md: guide/stock/distributor-orders.md
+        guide/reports/index.md: guide/manager/reports.md
+        guide/reports/sales-report.md: guide/manager/sales-report.md
+        guide/reports/month-end.md: guide/admin/month-end.md
+        guide/settings/index.md: guide/manager/settings.md
+        guide/settings/ffl-settings.md: guide/admin/ffl-settings.md
+        guide/settings/integrations.md: guide/admin/integrations.md
+        guide/reference/glossary.md: guide/help/glossary.md
+        guide/reference/troubleshooting.md: guide/help/troubleshooting.md
+        guide/reference/background-jobs.md: guide/admin/background-jobs.md
 
 markdown_extensions:
   - admonition
@@ -96,62 +141,72 @@ nav:
   - Home: index.md
   - User guide:
       - guide/index.md
-      - Getting started:
-          - guide/getting-started/index.md
-          - Models, serials and prices: guide/getting-started/models-and-serials.md
-          - The Dashboard: guide/getting-started/dashboard.md
-          - Roles and permissions: guide/getting-started/roles.md
-      - Selling:
-          - guide/selling/index.md
-          - Point of Sale: guide/selling/pos.md
-          - Selling a firearm: guide/selling/firearm-sale.md
-          - Customer transfers: guide/selling/transfers.md
-          - Customers: guide/selling/customers.md
-          - Memberships: guide/selling/memberships.md
-          - Build and ship an order: guide/selling/create-order.md
-          - The Pending Order queue: guide/selling/pending-orders.md
-          - Taking payment: guide/selling/payments.md
-          - The cash drawer: guide/selling/cash-drawer.md
-          - Opening and closing the day: guide/selling/day-end.md
-      - Inventory:
-          - guide/inventory/index.md
-          - Receiving goods: guide/inventory/receive-goods.md
-          - Trade-ins: guide/inventory/trade-ins.md
-          - Selling guns on consignment: guide/inventory/consignment.md
-          - Items and serial numbers: guide/inventory/items-and-serials.md
-          - Photos: guide/inventory/photos.md
-          - Storage locations and the store map: guide/inventory/storage-locations.md
-          - Counting the shop: guide/inventory/inventory-count.md
-          - Fixing mistakes: guide/inventory/corrections.md
+      - Start here:
+          - Your first day: guide/start/first-day.md
+          - A day at the counter: guide/start/day-at-the-counter.md
+          - Roles and sign-in: guide/start/roles.md
+          - The Dashboard: guide/start/dashboard.md
+      - At the counter:
+          - guide/counter/index.md
+          - Sell a gun: guide/counter/sell-a-gun.md
+          - Sell accessories: guide/counter/sell-accessories.md
+          - Take payment: guide/counter/payments.md
+          - Customers: guide/counter/customers.md
+          - Memberships: guide/counter/memberships.md
+          - Customer transfers: guide/counter/transfers.md
+          - Trade-ins: guide/counter/trade-ins.md
+          - Cash drawer: guide/counter/cash-drawer.md
+      - Orders and shipping:
+          - guide/orders/index.md
+          - Build an order and its splits: guide/orders/build-an-order.md
+          - Ship a firearm to another dealer: guide/orders/ship-to-dealer.md
+          - Ship accessories to a customer: guide/orders/ship-to-customer.md
+          - Deposits and special orders: guide/orders/special-orders.md
+          - Change or cancel an order: guide/orders/change-an-order.md
+          - Pending Orders: guide/orders/pending-orders.md
+          - Ship or hand over an order: guide/orders/ship-or-hand-over.md
+          - Web orders: guide/orders/web-orders.md
+          - GunBroker orders: guide/orders/gunbroker-orders.md
+      - Stock:
+          - guide/stock/index.md
+          - Receive goods: guide/stock/receive-goods.md
+          - Receive a distributor delivery: guide/stock/receive-distributor.md
+          - Buy from a private seller: guide/stock/private-seller.md
+          - Order from a distributor: guide/stock/distributor-orders.md
+          - Models, serials and prices: guide/stock/items-and-serials.md
+          - Find and move stock: guide/stock/find-and-move.md
+          - Count the shop: guide/stock/inventory-count.md
+          - Photos: guide/stock/photos.md
+          - List a gun online: guide/stock/list-online.md
+          - Consignment: guide/stock/consignment.md
+          - Fix a mistake: guide/stock/corrections.md
       - Compliance:
           - guide/compliance/index.md
-          - The bound book: guide/compliance/bound-book.md
           - Form 4473 and NICS: guide/compliance/4473.md
-          - 4473 records: guide/compliance/4473-records.md
-          - FastBound: guide/compliance/fastbound.md
-          - Verifying an FFL: guide/compliance/ffl-verification.md
+          - Find a 4473: guide/compliance/4473-records.md
+          - The bound book: guide/compliance/bound-book.md
+          - Verify an FFL: guide/compliance/ffl-verification.md
           - Daily checks: guide/compliance/daily-checks.md
-      - Online channels:
-          - guide/channels/index.md
-          - WooCommerce store: guide/channels/woocommerce.md
-          - GunBroker: guide/channels/gunbroker.md
-          - Web orders: guide/channels/web-orders.md
-      - Distributors:
-          - guide/distributors/index.md
-          - Distributors hub: guide/distributors/hub.md
-          - Distributor orders: guide/distributors/restock.md
-      - Reports:
-          - guide/reports/index.md
-          - Sales Report: guide/reports/sales-report.md
-          - Month-end close: guide/reports/month-end.md
-      - Settings:
-          - guide/settings/index.md
-          - FFL Settings: guide/settings/ffl-settings.md
-          - Integrations: guide/settings/integrations.md
-      - Reference:
-          - Glossary: guide/reference/glossary.md
-          - Troubleshooting: guide/reference/troubleshooting.md
-          - What runs automatically: guide/reference/background-jobs.md
+      - Manager tools:
+          - guide/manager/index.md
+          - Reports: guide/manager/reports.md
+          - Sales Report: guide/manager/sales-report.md
+          - Card voids and refunds: guide/manager/card-refunds.md
+          - Set up the store map: guide/manager/store-map.md
+          - Settings: guide/manager/settings.md
+      - Admin and bookkeeper:
+          - guide/admin/index.md
+          - Month-end close: guide/admin/month-end.md
+          - For the bookkeeper: guide/admin/bookkeeper.md
+          - Integrations: guide/admin/integrations.md
+          - FFL Settings: guide/admin/ffl-settings.md
+          - What runs automatically: guide/admin/background-jobs.md
+          - FastBound: guide/admin/fastbound.md
+          - Distributor setup: guide/admin/distributors.md
+          - Web store and GunBroker setup: guide/admin/online-channels.md
+      - Help:
+          - Troubleshooting: guide/help/troubleshooting.md
+          - Glossary: guide/help/glossary.md
   - Developers:
       - Start here:
           - Overview and architecture: developers/index.md

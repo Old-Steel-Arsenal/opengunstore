@@ -159,6 +159,8 @@ jobs:
           python3 apps/ffl_core/ffl_core/tests/test_no_store_residue.py --standalone
           # No retired or unlisted product identifier in the core (same: plain Python).
           python3 apps/ffl_core/ffl_core/tests/test_no_retired_product_ids.py --standalone
+          # The user guide keeps its house style (docs/guide/STYLE.md): no Desk paths, no doc type names, short paragraphs.
+          python3 scripts/docs/guide_lint.py
           make api-docs-check
           openapi-spec-validator docs/api/openapi.json
 
