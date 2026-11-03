@@ -208,6 +208,10 @@ nav:
           - FastBound: guide/admin/fastbound.md
           - Distributor setup: guide/admin/distributors.md
           - Web store and GunBroker setup: guide/admin/online-channels.md
+      - AI assistants:
+          - guide/ai/index.md
+          - Connect your assistant: guide/ai/connect.md
+          - Working with an assistant: guide/ai/working-with.md
       - Help:
           - Troubleshooting: guide/help/troubleshooting.md
           - Glossary: guide/help/glossary.md
