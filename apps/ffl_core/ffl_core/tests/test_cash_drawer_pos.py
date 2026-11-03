@@ -242,6 +242,48 @@ class ShiftCases:
 			frappe.set_user("Administrator")
 		self.assertEqual(self._expected(), flt(before + total, 2))  # the sale now, not the draft as well
 
+	def test_cash_a_count_holds_is_not_listed_again_when_its_sale_merges(self):
+		"""Cash taken on a draft before a count, the sale completed and merged after it: already in the opening."""
+		from ffl_core.api.pos_consolidate import consolidate_pos_invoice_now
+
+		self._first_count(books=1000, counted=120)
+		self._next_day()
+		self._open_shift()
+		frappe.set_user(self.cashier)
+		try:
+			inv = frappe.new_doc("POS Invoice")
+			inv.pos_profile = self.profile
+			inv.customer = "_Test CD Customer"
+			inv.append("items", {"item_code": "CD-SERVICE", "qty": 1, "rate": 300, "price_list_rate": 300})
+			inv.set_missing_values()
+			inv.items[0].rate = inv.items[0].price_list_rate = 300
+			inv.set("payments", [])
+			inv.append("payments", {"mode_of_payment": "Cash", "amount": 300})
+			inv.ffl_cash_taken_at = now_datetime()  # paid in full while the 4473 is pending
+			inv.flags.ignore_permissions = True
+			inv.save()
+		finally:
+			frappe.set_user("Administrator")
+		self._close(self._expected())  # the count holds the draft's cash
+		self._open_shift()
+		frappe.set_user(self.cashier)
+		try:
+			inv = frappe.get_doc("POS Invoice", inv.name)
+			inv.flags.ignore_permissions = True
+			inv.submit()  # the 4473 cleared
+		finally:
+			frappe.set_user("Administrator")
+		consolidate_pos_invoice_now(inv.name)
+		later = self._pos_sale(rate=40, tendered=40)
+		consolidate_pos_invoice_now(later)
+		self.assertTrue(frappe.db.get_value("POS Invoice", inv.name, "consolidated_invoice"))
+		frappe.set_user(self.manager)
+		page = api.get_today(self.company)
+		frappe.set_user("Administrator")
+		self.assertEqual([(l["voucher_type"], l["voucher_no"], l["amount"]) for l in page["lines"]],
+			[("POS Invoice", later, 40)])  # the later sale one by one; the draft's cash not again
+		self.assertEqual((page["cash_in"], page["other"], page["expected"]), (40, 0, flt(page["opening"] + 40, 2)))
+
 	def test_a_closing_made_on_the_pos_screen_is_per_shift_and_not_a_count(self):
 		"""One shift at a time: the Cash row is that shift's own cash (ERPNext's figure), opening 0, never the whole drawer."""
 		from erpnext.accounts.doctype.pos_closing_entry.pos_closing_entry import make_closing_entry_from_opening
