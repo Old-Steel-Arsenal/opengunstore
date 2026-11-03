@@ -67,8 +67,9 @@ def get_today(company: str | None = None) -> dict:
 	# Corrections to the days before the first count never moved the drawer: not listed (``history`` says how much).
 	first = cd.cutoff_close(company)
 	cutoff_day = first.business_date if first else None
-	rows = [r for r in cd.cash_ledger_rows(company, created_after=window, account=account, from_date=cutoff_day)
-		if r.kind != "cutoff_trueup"] + cd.pending_pos_rows(company, account, created_after=since)
+	rows = _register_sales_one_by_one(company, account, [
+		r for r in cd.cash_ledger_rows(company, created_after=window, account=account, from_date=cutoff_day)
+		if r.kind != "cutoff_trueup"], since) + cd.pending_pos_rows(company, account, created_after=since)
 	rows.sort(key=lambda r: str(r.creation))
 	older_lines, older_net = cd.ledger_between(company, account, since, window, from_date=cutoff_day)
 	counted = next((c for c in closes if c.is_counted), None)
@@ -128,6 +129,24 @@ def get_today(company: str | None = None) -> dict:
 			"posting_date": str(r.posting_date), "can_fix": manager} for r in (cd.receipts_to_pay(company) if manager else [])],
 		"payout_methods": list(cd.PAYOUT_METHODS),
 	}
+
+
+def _register_sales_one_by_one(company: str, account: str, rows: list, since) -> list:
+	"""``rows`` with each merged register invoice replaced by its POS invoices, leaving out the ones whose cash the
+	drawer counted before ``since`` (the last close): a sale rung up, or a draft whose cash was taken, before that close
+	and merged after it is already in the opening. A merged invoice whose parts do not add up to its line stays as is."""
+	merged = [r.voucher_no for r in rows if r.voucher_type == "Sales Invoice"]
+	parts: dict[str, list] = {}
+	for p in cd.pending_pos_rows(company, account, merged_into=merged) if merged else ():
+		parts.setdefault(p.merged_into, []).append(p)
+	out = []
+	for r in rows:
+		mine = parts.get(r.voucher_no)
+		if mine and abs(sum(flt(p.amount) for p in mine) - flt(r.amount)) < 0.005:
+			out += [p for p in mine if not since or get_datetime(p.cash_at) > get_datetime(since)]
+		else:
+			out.append(r)
+	return out
 
 
 def _in_out(lines: list[dict]) -> tuple[float, float]:
