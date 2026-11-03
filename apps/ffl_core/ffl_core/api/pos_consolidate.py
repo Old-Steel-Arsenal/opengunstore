@@ -158,6 +158,10 @@ def _consolidate_once(pos_invoice: str) -> dict:
 	# This mirrors create_merge_logs(); its on_submit posts the consolidated
 	# Sales Invoice + stock ledger entry, taking the serial out at sale.
 	_repair_serial_case(pos_invoice)
+	# ERPNext's merge reads the invoice with get_cached_doc and moves that object's tax and payment rows onto the new
+	# Sales Invoice, renaming them. A rollback (a lost row race above) does not undo that on the cached object, so a
+	# retry would merge the renamed rows and fail on the tax details ("KeyError: <tax row>"). Read it afresh.
+	frappe.clear_document_cache("POS Invoice", pos_invoice)
 	merge_log = frappe.new_doc("POS Invoice Merge Log")
 	merge_log.posting_date = inv.posting_date
 	merge_log.posting_time = nowtime()
