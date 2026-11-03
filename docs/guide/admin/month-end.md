@@ -32,7 +32,7 @@ Every clearing account must reach zero or be explained.
 
 - [ ] Resolve every **Payroc: … card charge(s) no longer captured at the gateway** alert from the month. Each charge voided or refunded outside the POS also has a comment on its invoice. See [Card voids and refunds](../manager/card-refunds.md).
 - [ ] Check the card payments ledger. It lists every Payroc payment and refund for a date range, counter and web, matched to what the POS recorded, and flags a payment the POS never recorded, a different amount, or a charge voided or refunded in the Payroc portal.
-- [ ] Tie out GunBroker checks in transit against the sum of the **Banked Amount** column on item 3 of the Cash Basis Adjustments report. Do not use the sum of order totals, and do not net refunds out of it. See [For the bookkeeper](bookkeeper.md#gunbroker-checks-in-transit).
+- [ ] Tie out GunBroker checks in transit against the sum of the **Banked Amount** column on item 3 of the Cash Basis Adjustments report. Do not use the sum of order totals, and do not net refunds out of it. See [For the bookkeeper](bookkeeper-month-end.md#gunbroker-checks-in-transit).
 
 The card payments ledger has no report screen. Ask for it through an MCP connector (the `payroc_transactions` tool), at most 31 days at a time. It needs **Accounts User**, **Accounts Manager** or **System Manager**. Cards keyed on the Virtual Terminal are labeled as such. See [The MCP server](../../ai/mcp.md).
 
@@ -45,7 +45,7 @@ The card payments ledger has no report screen. Ask for it through an MCP connect
 - [ ] Check the **Counted?** column. A day not counted is covered by the next count, which takes in every day since the last one. If the month's last day was not counted, the report says so.
 - [ ] Hand the accountant any line in **First count & history**. The **Note** column says which entry to hand over.
 
-Every entry the drawer books can be undone only from the [Cash drawer](../counter/cash-drawer.md) page. See [For the bookkeeper](bookkeeper.md#cash-drawer-entries).
+Every entry the drawer books can be undone only from the [Cash drawer](../counter/cash-drawer.md) page. See [For the bookkeeper](bookkeeper-month-end.md#cash-drawer-entries).
 
 ## 4. Inventory and purchasing
 
@@ -53,7 +53,7 @@ Every entry the drawer books can be undone only from the [Cash drawer](../counte
 - [ ] Look for zero-cost guns. Run the Sales Report and check the cost flags. A gun that sold with no purchase price needs its cost filled in. See [Fix a mistake](../stock/corrections.md).
 - [ ] Run **Inventory Receipts** with Period set to Last Month. The Summary view gives category by receipt class; the Units view exports per-unit detail as CSV. Hand both to the accountant.
 - [ ] Book **Revaluation** rows as an inventory adjustment, not a purchase. They are cost corrections with a unit count of zero. Transfer and Custody rows stay hidden unless you tick their Include boxes.
-- [ ] Tell the tax preparer how firearm dispositions post. See [For the bookkeeper](bookkeeper.md#firearm-dispositions-and-stock-adjustment).
+- [ ] Tell the tax preparer how firearm dispositions post. See [For the bookkeeper](bookkeeper-month-end.md#firearm-dispositions-and-stock-adjustment).
 - [ ] Check what is owed to consignors. Run the General Ledger on the **Consignment Payable** account, or Accounts Payable with **Payable Account** set to it. Compare each consignor's balance with what has been paid out. See [Consignment](../stock/consignment.md).
 - [ ] On Inventory Receipts for the month, the **Seller not settled** card must read zero. A receipt named in the red line is a private seller still owed money, or paid on a cancelled receipt. A manager records or corrects the payment on the [Cash drawer](../counter/cash-drawer.md) page.
 
@@ -67,7 +67,7 @@ Private sellers are paid on Receive Goods, in the Trade-in dialog or on the Cash
 - [ ] Confirm no open task is outstanding on a Sales Invoice or a web order. Each one is an unbooked sale or an overstated shelf, and none may be carried into a closed month.
 - [ ] In a month with a return against a web delivery note, expect report cost to exceed ledger cost of goods sold by the returned amount. Reconcile from the ledger.
 
-Backfill a missing delivery note on the Sales Invoice's own date while the period is still open. Once the period is closed, post it on the correction date and say so in the delivery note's comment. Never both. See [For the bookkeeper](bookkeeper.md#web-accessory-stock-legs).
+Backfill a missing delivery note on the Sales Invoice's own date while the period is still open. Once the period is closed, post it on the correction date and say so in the delivery note's comment. Never both. See [For the bookkeeper](bookkeeper-month-end.md#web-accessory-stock-legs).
 
 ## 6. Tax
 
@@ -78,7 +78,7 @@ Backfill a missing delivery note on the Sales Invoice's own date while the perio
 - [ ] Marketplace sales. In the Sales Report's **Tax lines** view filtered to GunBroker, read the **Marketplace sales** card. If your state's return has a line for marketplace sales, this is the figure. Keep GunBroker's tax statement as the provider's proof of collection.
 - [ ] For order-by-order review, use the **Ship-to State** and **Marketplace Exempt** columns of the Tax lines view. The second separates "zero because the buyer is exempt" from "zero because that state has no tax".
 
-Whether an order counts as in-state is decided from the state on the store's own address. The worked example and the refund rules are on [For the bookkeeper](bookkeeper.md#sales-tax-and-shipping-tax).
+Whether an order counts as in-state is decided from the state on the store's own address. The worked example and the refund rules are on [For the bookkeeper](bookkeeper-month-end.md#sales-tax-and-shipping-tax).
 
 ## 7. Lock the period
 
@@ -91,7 +91,7 @@ When everything above is done, advance the closing date to the end of the month 
 
 ## 8. The GunBroker channel
 
-- [ ] Clear the GunBroker accounts against their statements and bills, by journal entry. There is no payable to age. The accounts are listed on [For the bookkeeper](bookkeeper.md#the-gunbroker-accounts).
+- [ ] Clear the GunBroker accounts against their statements and bills, by journal entry. There is no payable to age. The accounts are listed on [For the bookkeeper](bookkeeper-month-end.md#the-gunbroker-accounts).
 - [ ] Give the accountant the **GunBroker Cash Basis Adjustments** report with its preamble, if the return is filed on the cash basis.
 - [ ] Clear every alert from the daily GunBroker audit (eight kinds). See [What runs automatically](background-jobs.md) and [GunBroker orders](../orders/gunbroker-orders.md).
 
