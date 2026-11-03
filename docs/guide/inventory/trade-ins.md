@@ -100,7 +100,7 @@ The body names each draft, its serial and its seller, and states the three ways 
 
 > Bound-book entries are due by the close of the NEXT business day after taking possession (27 CFR 478.125(e)). For each draft below: complete the checkout, or submit the acquisition directly if the store keeps the gun, or delete the draft if the customer took it back.
 
-The reminder is sent at most twice a day. It goes to the addresses in FFL Settings under **Alert Recipients**, or to every System Manager when that field is empty.
+The reminder is sent at most twice a day. It goes to the addresses in FFL Settings under **Alert Recipients**, or to every System Manager when that field is empty. It runs whether or not FastBound is switched on, because the obligation is the store's, not the integration's.
 
 An abandoned cart is the usual cause. The customer changed their mind, the cashier moved on, and the draft stayed behind.
 

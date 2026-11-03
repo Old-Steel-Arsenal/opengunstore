@@ -85,6 +85,8 @@ These buttons sit in the page toolbar at the top of the register, to the left of
 | **LE Exempt** | California stores only: takes the 11% excise tax off a sale to a peace officer or their agency. See [below](#peace-officer-excise-exemption-california). |
 | **Customer Display** | Opens the customer-facing screen. |
 
+An extension your store has switched on can add its own buttons after these.
+
 To order something for a customer and take a deposit, use
 [Create Order](create-order.md).
 

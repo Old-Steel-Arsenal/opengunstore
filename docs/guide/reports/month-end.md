@@ -25,6 +25,8 @@ Every clearing account must reach zero or be explainable.
 
 The daily card charge check helps with Payroc Card Clearing. Every day the system reads the last week's card charges back from Payroc and emails an alert, **Payroc: … card charge(s) no longer captured at the gateway**, for any charge voided or refunded outside the POS. Each one also has a comment on its invoice. Every such charge should be resolved before you close. See [Taking payment](../selling/payments.md).
 
+The card payments ledger is the other check. It lists every Payroc payment and refund for a date range, counter and web alike, each matched to what the POS recorded, and flags anything that does not line up: a payment the POS never recorded, a different amount, or a charge voided or refunded in the Payroc portal. Cards keyed on the Virtual Terminal are labeled as such. It has no report screen. Ask for it through an MCP connector (the `payroc_transactions` tool), at most 31 days at a time. It needs **Accounts User**, **Accounts Manager** or **System Manager**. See [The MCP server](../../ai/mcp.md).
+
 GunBroker checks in transit are a bank-side item, not a clearing account. Checks and money orders go into the operating bank account named in GunBroker Settings. Your bank reconciliation will always carry a batch of deposits that have landed in the bank with nothing yet on the ledger. That is by design: the receipt posts on its invoice date, never back on the deposit date, and the money arrives before the gun is disposed. Tie the batch out against the sum of the **Banked Amount** column on item 3 of the Cash Basis Adjustments report. Do not use the sum of order totals, which differs on a short or over payment, and do not net refunds out of it.
 
 ## 3. Cash drawer

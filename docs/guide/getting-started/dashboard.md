@@ -143,7 +143,8 @@ come. Once part of an order has come in, the row shows a bar of units received.
 At the foot of the page, **All records** lists every list, report and setting
 your login can open, in groups: **Sales**, **Compliance**, **Purchasing**,
 **Inventory**, **Customers**, **Online** (while a web store or GunBroker is
-switched on) and **Setup** last.
+switched on), one group for each switched-on extension that adds links, and
+**Setup** last.
 Type part of a name in the **Filter…** box and the groups narrow as you type.
 
 Reports and lists that have no place in the sidebar live here, for example
@@ -176,7 +177,8 @@ Click a group name to open or close it.
 
 A row for an integration your store has switched off is hidden: **Web orders**
 without the web store, **GunBroker orders** without GunBroker, **Card payments**
-without the Payroc terminal. A group with nothing left in it is hidden too.
+without the Payroc terminal. A group with nothing left in it is hidden too. An
+extension that is switched on can add its own group, which sits above **Settings**.
 
 !!! note "Orders is the Pending Order queue"
     The sidebar calls the Pending Order page **Orders**. The guide calls it the

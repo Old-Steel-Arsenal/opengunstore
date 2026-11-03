@@ -167,7 +167,7 @@ Any per-gun web listing is delisted, because that product belonged to the old it
 
 Clicking it compares Manufacturer, Importer, Model, Caliber and Firearm Type against FastBound. If they match you get "✓ Already in sync with FastBound." If they do not, the **Reconcile with FastBound** dialog lists each differing field with a choice of **Use FastBound** or **Use POS**. Choosing **Use POS** pushes your value to the bound book.
 
-Full detail is on [FastBound](../compliance/fastbound.md).
+Full detail is on [FastBound](../compliance/fastbound.md). A record that should never be in the bound book at all is a manager task described there too, under [A record that does not belong in the bound book](../compliance/fastbound.md#a-record-that-does-not-belong-in-the-bound-book).
 
 ## Force Delete
 
