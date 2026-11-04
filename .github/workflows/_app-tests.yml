@@ -423,8 +423,19 @@ jobs:
       - name: Install system deps
         if: runner.environment == 'github-hosted'
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y wkhtmltopdf libcups2 libxrender1
+          # A slow mirror (35 MB at 60 kB/s) once held one shard here ~10 min while the others
+          # ran their tests. Each try is bounded; the second reconnects (often to another
+          # mirror node) after finishing any half-done dpkg run.
+          APT=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          for try in 1 2; do
+            if timeout 300 sudo apt-get "${APT[@]}" update -y \
+                && timeout 300 sudo apt-get "${APT[@]}" install -y wkhtmltopdf libcups2 libxrender1; then
+              break
+            fi
+            [ "$try" = 2 ] && exit 1
+            echo "::warning::apt-get failed or timed out (try $try); trying again"
+            sudo dpkg --configure -a || true
+          done
           # The hosted image carries the MySQL 8 client, not MariaDB's. scripts/ci/parallel_tests.py
           # falls back to its `mysql`/`mysqldump`, and mysqldump 8 asks the server for
           # information_schema.COLUMN_STATISTICS, which MariaDB lacks (the dump of the base site
