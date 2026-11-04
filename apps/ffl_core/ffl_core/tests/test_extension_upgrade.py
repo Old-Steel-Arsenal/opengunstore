@@ -33,7 +33,8 @@ from ffl_core.tests.test_extension_sideload import APP, EXT_HELLO, ScratchBench,
 
 URL = "https://github.com/acme/ext_uptest"
 BUILD_WHEEL = runpy.run_path(str(EXT_HELLO.parent / "make_ext_hello_upgrade.py"))["build_wheel"]
-GUIDE = EXT_HELLO.parents[3] / "docs" / "self-hosting.md"   # the Extensions section is the recipe under test
+GUIDE = EXT_HELLO.parents[3] / "docs" / "extensions-runbook.md"   # the operator runbook: the recipes under test
+SELF_HOSTING = GUIDE.with_name("self-hosting.md")   # what the messages point at (docs/self-hosting.md#…); its Extensions section links the runbook
 # The guide's decision fields: the records the table has no row for, pinned here and applied as written by guide_row
 LEGACY_RULE = ("If the entry's `upgrade` or the intent has `reused_rollback_point`, or the volume has `.previous/.<id>.replaced`: "
 	"they were left by a removed \"roll forward after a failure\" feature (an earlier test build). "
@@ -1615,12 +1616,12 @@ class GuideOptionalWorker(unittest.TestCase):
 
 
 class GuideAnchors(unittest.TestCase):
-	"""Every pointer into the guide names a heading that exists: the server's two constants, the panel's two, the
-	anchors the deploy files and scripts use, and the guide's own contents links. Headings are the ones GitHub
+	"""Every pointer into the self-hosting guide or the extensions runbook names a heading that exists: the server's
+	two constants, the panel's two, the anchors the deploy files and scripts use, and each page's own contents links. Headings are the ones GitHub
 	renders: outside fenced code blocks (a `# comment` in a recipe is not one), with its duplicate-slug rule."""
 
 	ROOT = GUIDE.parent.parent
-	# files that point into the guide with docs/self-hosting.md#<anchor>
+	# files that point into the guide with docs/self-hosting.md#<anchor> or docs/extensions-runbook.md#<anchor>
 	POINTER_SCAN = ("deploy", "scripts", "README.md", "CONTRIBUTING.md", "docs",
 		"apps/ffl_core/ffl_core/extensions", "apps/ffl_core/ffl_core/ffl_core/page/extensions")
 
@@ -1650,7 +1651,7 @@ class GuideAnchors(unittest.TestCase):
 
 	def test_the_constants_and_the_panel_constants_are_headings_of_the_guide(self):
 		from ffl_core.extensions import EXTENSIONS_DOC, ROLLBACK_DOC
-		headings = self.anchors(GUIDE.read_text(encoding="utf-8"))
+		headings = self.anchors(SELF_HOSTING.read_text(encoding="utf-8"))
 		panel = (self.ROOT / "apps/ffl_core/ffl_core/ffl_core/page/extensions/extensions.js").read_text(encoding="utf-8")
 		for doc in (EXTENSIONS_DOC, ROLLBACK_DOC):
 			path, _, anchor = doc.partition("#")
@@ -1659,8 +1660,9 @@ class GuideAnchors(unittest.TestCase):
 			self.assertIn(f"'{doc}'", panel, "the panel keeps the same pointer")
 
 	def test_every_pointer_in_the_repo_and_the_contents_links_hit_a_heading(self):
-		headings = self.anchors(GUIDE.read_text(encoding="utf-8"))
-		used = {}
+		pages = {"self-hosting.md": SELF_HOSTING, "extensions-runbook.md": GUIDE}
+		headings = {name: self.anchors(path.read_text(encoding="utf-8")) for name, path in pages.items()}
+		used = {name: {} for name in pages}
 		for entry in self.POINTER_SCAN:
 			base = self.ROOT / entry
 			for f in ([base] if base.is_file() else sorted(base.rglob("*"))):
@@ -1670,14 +1672,16 @@ class GuideAnchors(unittest.TestCase):
 					text = f.read_text(encoding="utf-8")
 				except (UnicodeDecodeError, OSError):
 					continue
-				for a in re.findall(r"self-hosting\.md#([\w-]+)", text):
-					used.setdefault(a, set()).add(str(f.relative_to(self.ROOT)))
-		guide = re.sub(r"(?ms)^(`{3,}|~{3,}).*?^\1", "", GUIDE.read_text(encoding="utf-8"))
-		for a in re.findall(r"\]\(#([\w-]+)\)", guide):
-			used.setdefault(a, set()).add("docs/self-hosting.md")
-		self.assertTrue({"reverse-proxy", "start-the-stack-and-create-the-site", "remote-mcp-connector-optional"} <= set(used),
+				for name, a in re.findall(r"(self-hosting\.md|extensions-runbook\.md)#([\w-]+)", text):
+					used[name].setdefault(a, set()).add(str(f.relative_to(self.ROOT)))
+		for name, path in pages.items():
+			page = re.sub(r"(?ms)^(`{3,}|~{3,}).*?^\1", "", path.read_text(encoding="utf-8"))
+			for a in re.findall(r"\]\(#([\w-]+)\)", page):
+				used[name].setdefault(a, set()).add(f"docs/{name}")
+		self.assertTrue({"reverse-proxy", "start-the-stack-and-create-the-site", "remote-mcp-connector-optional"} <= set(used["self-hosting.md"]),
 			"the deploy files point at the guide by anchor")
-		missing = {a: sorted(w) for a, w in used.items() if a not in headings}
+		self.assertIn("roll-back-an-upgrade", used["extensions-runbook.md"], "the guide's Extensions section links the runbook's recipe")
+		missing = {f"{name}#{a}": sorted(w) for name in pages for a, w in used[name].items() if a not in headings[name]}
 		self.assertEqual(missing, {})
 
 

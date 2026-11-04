@@ -297,12 +297,13 @@ def parse_item_id(body: Any) -> str:
 # looks at the header, which is why nothing written against it noticed.
 #
 # The Seller segment is therefore NOT necessarily this store's trading name: it
-# is the name the DevKey knows, and it changes with the key. It is read from
-# GunBroker Settings (``seller_name``) at call time. There is NO fallback to the
-# Company's name for production: a guess is refused by the marketplace with the
-# misleading DevKey 403 above, so a blank field is a configuration error that
-# names the field. The sandbox never looks at the header, so there a neutral
-# placeholder stands in for a blank field.
+# is the name the DevKey knows, and it changes with the key. So it lives beside
+# the key in site config (``gunbroker_seller_name``), not on the Settings form —
+# a store has nothing to choose there, only a way to break the connection.
+# There is NO fallback to the Company's name for production: a guess is refused
+# by the marketplace with the misleading DevKey 403 above, so a blank value is a
+# configuration error that names the key. The sandbox never looks at the
+# header, so there a neutral placeholder stands in for a blank value.
 USER_AGENT_TEMPLATE = "GunStorePOS/{seller}/1.0/POS"
 SANDBOX_SELLER = "Sandbox"
 
@@ -312,15 +313,18 @@ def build_user_agent(seller_name: str) -> str:
 	return USER_AGENT_TEMPLATE.format(seller=(seller_name or "").replace("/", " ").strip())
 
 
-def seller_name_from_settings(settings, sandbox: bool) -> str:
+SELLER_NAME_CONF = "gunbroker_seller_name"
+
+
+def registered_seller_name(sandbox: bool) -> str:
 	"""The Seller segment: the configured name; blank is an error outside the sandbox."""
-	name = (settings.get("seller_name") or "").strip()
+	name = str(frappe.conf.get(SELLER_NAME_CONF) or "").strip()
 	if name:
 		return name
 	if sandbox:
 		return SANDBOX_SELLER
 	raise GunBrokerConfigError(
-		"Set GunBroker Settings › Seller name to the name your DevKey is registered under.")
+		f"Set site config `{SELLER_NAME_CONF}` to the name your DevKey is registered under.")
 
 
 @dataclass(repr=False)
@@ -385,7 +389,7 @@ class GunBrokerConfig(RedactedRepr):
 			base_url=base_url,
 			sandbox=sandbox,
 			timeout=int(settings.request_timeout_seconds or 30),
-			seller_name=seller_name_from_settings(settings, sandbox and base_url == SANDBOX_BASE),
+			seller_name=registered_seller_name(sandbox and base_url == SANDBOX_BASE),
 		)
 
 

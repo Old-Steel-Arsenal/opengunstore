@@ -30,3 +30,4 @@ ffl_integrations.patches.mark_existing_distributor_invoices_received
 ffl_integrations.patches.create_local_catalog_tables
 # Every card charge from before charges named their processor was taken by Payroc.
 ffl_integrations.patches.backfill_card_processor
+ffl_integrations.patches.move_gunbroker_seller_name_to_site_config

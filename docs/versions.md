@@ -2,15 +2,13 @@
 
 > The upgrade-safety policy requires every dependency to be pinned to a specific version. This file records the versions currently used in production / staging / dev; update it on every upgrade.
 >
-> This repository starts from a cleaned snapshot; the product version restarts at 0.1.0 (see [Version line](#version-line)).
+> The product version line is described under [Version line](#version-line).
 
 ## Version line
 
-- **0.1.0 is the first release of this repository and continues the private 1.x line**, whose last release was 1.15.1: same features, same data. A store on 1.15.1 moves to 0.1.0 as an ordinary upgrade; a patch resets the What's New marker so the 0.1.0 note shows once. After 0.1.0, plain semver: the release job tags a version only when it is above every tag in this repository.
-- **The 1.x tags (v1.0.0-beta.1 … v1.15.1) live in a private archive repository**, not here. An emergency fix for a store still on 1.15.1 is v1.15.2, made in the archive.
-- **Deploy routing** (in the operator's deploy repository): a tag `v1.*` comes from the archive, any other tag from this repository. First-party extensions declare `requires_core` `>=0.1.0,<2` for the transition, which holds on both lines; once every store runs 0.x their ranges narrow to `<1`.
-- **Container images:** both lines push to the same image package, and `latest` follows whichever line released last. Deploys pin a version tag, never `latest`.
-- **Before this repository tags v1.0.0, the archive route must be retired.** From v1.6.0 on the archive's image tags are in the same package, so a public v1.x tag would collide with them (the release job refuses to move an existing version tag), and the deploy route would send any `v1.*` tag to the archive. The 1.0 release PR retires both.
+- 0.1.0 is the first release of this repository; it continues an earlier, privately developed line (last release 1.15.1) with the same features and data. After it, plain semver: the release job tags a version only when it is above every tag in this repository.
+- Extensions on the 0.x line declare `requires_core` as `>=<lowest 0.x they support>,<1` ([Manifest](extensions/manifest.md)).
+- Deploys pin a version tag, never `latest`.
 
 ## Core stack
 

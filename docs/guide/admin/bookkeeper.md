@@ -1,0 +1,17 @@
+# For the bookkeeper
+
+For the bookkeeper and the administrator, when you need to know what a counter, order, stock or compliance action books behind the screen.
+
+The staff pages describe what a clerk sees. These pages list the documents and ledger entries behind those actions, in three parts: [selling, cards and orders](bookkeeper-selling.md), [stock and corrections](bookkeeper-stock.md), and [cash drawer, reports and month-end](bookkeeper-month-end.md). Document type names here are the ERPNext names you see in the accounting screens.
+
+| Area | Topics |
+|---|---|
+| Selling and the register | [Register shifts and closings](bookkeeper-selling.md#register-shifts-and-closings), [Firearm sales post at once](bookkeeper-selling.md#firearm-sales-post-at-once), [Register permissions](bookkeeper-selling.md#register-permissions-the-system-adds), [Trade-ins](bookkeeper-selling.md#trade-ins-what-is-booked), [Memberships](bookkeeper-selling.md#membership-refunds-and-invoices) |
+| Cards | [Card payments on a counter order](bookkeeper-selling.md#card-payments-on-a-counter-order), [Card Charges on a register sale](bookkeeper-selling.md#card-charges-on-a-register-sale), [Card refunds and voids](bookkeeper-selling.md#card-refunds-and-voids), [Correcting a charge the daily check flags](bookkeeper-selling.md#correcting-a-charge-the-daily-check-flags) |
+| Orders | [What Create Order books](bookkeeper-selling.md#what-create-order-books), [Editing an order](bookkeeper-selling.md#editing-an-order-replaces-its-invoice), [Cancel Order](bookkeeper-selling.md#cancel-order), [Dispose and Mark Shipped](bookkeeper-selling.md#dispose-and-mark-shipped-on-a-counter-order), [Web orders](bookkeeper-selling.md#web-orders-what-dispose-books), [Web refunds](bookkeeper-selling.md#woocommerce-refunds-on-a-web-order), [GunBroker orders](bookkeeper-selling.md#gunbroker-payments-and-invoices) |
+| Distributors | [Distributor invoices](bookkeeper-stock.md#distributor-invoices-and-short-shipments) |
+| Receiving and stock | [What a receive books](bookkeeper-stock.md#what-a-receive-books), [Consignment](bookkeeper-stock.md#consignment-what-a-sale-books), [Inventory counts](bookkeeper-stock.md#inventory-count-adjustments), [Storage locations](bookkeeper-stock.md#storage-locations-never-post) |
+| Corrections | [Correct Cost](bookkeeper-stock.md#correct-cost-the-ledger), [Other correction tools](bookkeeper-stock.md#the-other-correction-tools), [Force Delete](bookkeeper-stock.md#force-delete-what-it-removes) |
+| Cash drawer | [What each drawer entry books](bookkeeper-month-end.md#what-each-drawer-entry-books), [Cash drawer entries](bookkeeper-month-end.md#cash-drawer-entries) |
+| Compliance records | [FastBound tools and stock](bookkeeper-stock.md#stock-movements-from-the-fastbound-tools), [Redo 4473, override and abandoned orders](bookkeeper-stock.md#redo-4473-the-override-and-abandoned-orders) |
+| Reports and month-end | [Sales Report: what it reads](bookkeeper-month-end.md#sales-report-what-it-reads), [Sales Report and the books](bookkeeper-month-end.md#sales-report-and-the-books), [Clearing accounts](bookkeeper-month-end.md#clearing-accounts), [GunBroker checks in transit](bookkeeper-month-end.md#gunbroker-checks-in-transit), [Firearm dispositions](bookkeeper-month-end.md#firearm-dispositions-and-stock-adjustment), [Web accessory stock legs](bookkeeper-month-end.md#web-accessory-stock-legs), [Sales tax](bookkeeper-month-end.md#sales-tax-and-shipping-tax), [The GunBroker accounts](bookkeeper-month-end.md#the-gunbroker-accounts) |

@@ -6,9 +6,10 @@ OpenGunstore is an open-source point of sale and back office for US firearms ret
 
 | If you are | Start here |
 |---|---|
-| Staff or a store manager | [User guide](guide/index.md): selling, inventory, compliance, channels, distributors, reports and settings, written for the counter. |
-| Installing it on a server | [Self-hosting](self-hosting.md): install, back up, restore, upgrade, and manage extensions. An AI coding agent can follow [Install with an AI agent](deploy-with-ai.md) instead. |
-| Changing it or writing an extension | [Developers](developers/index.md): the architecture, the dev stack, branching, extensions, and the MCP server for AI assistants. |
+| Staff or a store manager | [User guide](guide/index.md): selling, orders, stock, compliance, reports, settings and working with an AI assistant, written for the counter. |
+| Installing it on a server | [Self-hosting](self-hosting.md): install, back up, restore, upgrade; extensions on a server in the [Extensions runbook](extensions-runbook.md). An AI coding agent can follow [Install with an AI agent](deploy-with-ai.md) instead. |
+| Changing it | [Developers](developers/index.md): the architecture, the dev stack, contributing, testing, and the MCP server for AI assistants. |
+| Writing an extension | [Build an extension](extensions/README.md): quick start, manifest, hooks, rules, CI and release. |
 
 ## Reference
 

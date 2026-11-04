@@ -613,7 +613,9 @@ class TestTheCatalogStubSpellsTimestampsLikeTheService(unittest.TestCase):
 			self.assertIsNone(datetime.fromisoformat(bare).tzinfo)
 			drift = (self._site_now(site)
 				- remote_catalog.parse_service_ts(bare)).total_seconds()
-		# UTC-4 in August: the heartbeat reads four hours old the moment it is made.
-		self.assertAlmostEqual(drift, 4 * 3600, delta=60)
+		# The heartbeat reads as old as the site is behind UTC the moment it is made:
+		# 4h under EDT, 5h under EST, so take the offset in force now from the zone.
+		offset = ZoneInfo(site).utcoffset(datetime.now(UTC)).total_seconds()
+		self.assertAlmostEqual(drift, -offset, delta=60)
 		self.assertGreater(drift, tasks.FEED_STALE_SECONDS,
 			"this is what put a fresh feed past the staleness threshold")

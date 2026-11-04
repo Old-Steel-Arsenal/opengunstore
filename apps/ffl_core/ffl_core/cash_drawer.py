@@ -512,7 +512,7 @@ def refuse_drawer_je_cancel(doc, method=None) -> None:
 	with no books behind it and quietly change what a count relied on (10-03: an old seller payment switched from Cash
 	to Zelle in Desk); the refusal names the way that works (``_drawer_refusal``). Every other journal entry is left
 	alone, and so is a leftover. A correction recipe in bench console that must cancel one sets
-	``je.flags.cash_drawer_cancel = True`` (docs/cash-drawer.md)."""
+	``je.flags.cash_drawer_cancel = True`` before ``je.cancel()``, then fixes the Cash Drawer Entry's status by hand."""
 	if doc.flags.cash_drawer_cancel:
 		return
 	rec = drawer_record_of(doc.name, doc.get("ffl_cash_drawer_source"))
@@ -2027,7 +2027,8 @@ def pending_pos_rows(company: str, account: str | None = None, created_after=Non
 	here as a sale, so it is never counted twice.
 
 	``merged_into`` (Sales Invoice names) instead lists the POS invoices already merged into those invoices, each with
-	``merged_into``: the log shows a register's sales one by one, not as the night's merged total.
+	``merged_into`` and ``cash_at`` (when the drawer started counting it: the Take Payment stamp, else its creation): the
+	log shows a register's sales one by one, not as the night's merged total.
 	lazy: consolidated_invoice has no index; a year's log scans POS Invoice once -- add an index if it gets slow."""
 	account = account or cash_account(company)
 	default_cash = frappe.db.get_value("Company", company, "default_cash_account") or account
@@ -2038,8 +2039,9 @@ def pending_pos_rows(company: str, account: str | None = None, created_after=Non
 	taken = not merged_into and frappe.db.has_column("POS Invoice", "ffl_cash_taken_at")
 	when = "IF(i.docstatus = 0, i.ffl_cash_taken_at, i.creation)" if taken else "i.creation"
 	day = "IF(i.docstatus = 0, DATE(i.ffl_cash_taken_at), i.posting_date)" if taken else "i.posting_date"
+	cash_at = "IFNULL(i.ffl_cash_taken_at, i.creation)" if frappe.db.has_column("POS Invoice", "ffl_cash_taken_at") else "i.creation"
 	return frappe.db.sql(
-		"""SELECT {day} AS posting_date, {when} AS creation, 'POS Invoice' AS voucher_type, i.name AS voucher_no,
+		"""SELECT {day} AS posting_date, {when} AS creation, {cash_at} AS cash_at, 'POS Invoice' AS voucher_type, i.name AS voucher_no,
 			i.customer AS party, i.owner, i.consolidated_invoice AS merged_into,
 			IF(i.docstatus = 0, 'order_payment', IF(i.is_return, 'refund', 'sale_pos')) AS kind, NULL AS remark, NULL AS entry,
 			(IFNULL((SELECT SUM(p.amount) FROM `tabSales Invoice Payment` p WHERE p.parent = i.name
@@ -2050,7 +2052,7 @@ def pending_pos_rows(company: str, account: str | None = None, created_after=Non
 		WHERE i.company = %(c)s AND {status} AND {merged}
 			AND (%(after)s IS NULL OR {when} > %(after)s) AND (%(before)s IS NULL OR {when} <= %(before)s)
 		HAVING amount != 0 ORDER BY creation""".format(
-			day=day, when=when,
+			day=day, when=when, cash_at=cash_at,
 			status="(i.docstatus = 1 OR (i.docstatus = 0 AND i.ffl_cash_taken_at IS NOT NULL))" if taken else "i.docstatus = 1",
 			merged="i.consolidated_invoice IN %(into)s" if merged_into else "IFNULL(i.consolidated_invoice, '') = ''"),
 		{"a": account, "d": default_cash, "c": company, "after": created_after, "before": created_before,

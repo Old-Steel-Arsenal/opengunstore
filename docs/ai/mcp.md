@@ -144,14 +144,14 @@ this is the shape.
   and their prices; customers and dealers; documents of any type.
 - **The queues.** Pending counter orders, pending web orders, distributor
   orders.
-- **Reports.** The reports under [Reports](../guide/reports/index.md), plus an
+- **Reports.** The reports under [Reports](../guide/manager/reports.md), plus an
   accountant's pack: Sales Report, Inventory Receipts, general ledger rows,
   financial statements, sales-tax liability, aged receivables, and the card
   payments ledger (every Payroc payment and refund for a date range, matched to
   the POS). The ledger needs System Manager, Accounts Manager or Accounts User.
 - **Cash drawer.** Today's drawer, closing the day, deposits, cash from the
   bank, expenses, undo, the cash log and the weekly report. See
-  [The cash drawer](../guide/selling/cash-drawer.md).
+  [The cash drawer](../guide/counter/cash-drawer.md).
 - **Inventory.** Receiving, stock levels and adjustments, inventory counts, the
   store map and moving things between locations, promoting a catalog hit to a
   real item.
@@ -220,7 +220,7 @@ from starting, rather than running a writable server by mistake.
 
 Ask the assistant for something harmless and specific, such as the firearms in
 stock, and confirm the answer matches what the Firearms In Stock report shows on
-screen ([Reports](../guide/reports/index.md)). If the two disagree, stop and
+screen ([Reports](../guide/manager/reports.md)). If the two disagree, stop and
 find out why before trusting anything else it says. On the remote connector, the
 call also appears in the Connector Audit Log under your name.
 

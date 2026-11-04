@@ -65,4 +65,4 @@ sweep.
 
 **Permissions:** Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/pos_consolidate.py:242`</sub>
+<sub>`apps/ffl_core/ffl_core/api/pos_consolidate.py:246`</sub>
