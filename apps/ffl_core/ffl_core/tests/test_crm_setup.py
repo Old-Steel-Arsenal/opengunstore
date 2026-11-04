@@ -138,3 +138,12 @@ class TestStaffDefaultApp(FrappeTestCase):
 		dealer = frappe.get_doc({"doctype": "User", "email": "crm-new-dealer@example.com", "first_name": "Dealer",
 			"send_welcome_email": 0, "user_type": "Website User"}).insert(ignore_permissions=True)
 		self.assertFalse(dealer.default_app)
+
+	def test_an_account_given_desk_roles_later_opens_the_pos(self):
+		user = frappe.get_doc({"doctype": "User", "email": "crm-later-clerk@example.com", "first_name": "Later",
+			"send_welcome_email": 0}).insert(ignore_permissions=True)
+		self.assertEqual(user.user_type, "Website User")
+		self.assertFalse(user.default_app)
+		user.append("roles", {"role": "Sales User"})
+		user.save(ignore_permissions=True)
+		self.assertEqual((user.user_type, user.default_app), ("System User", "ffl_core"))

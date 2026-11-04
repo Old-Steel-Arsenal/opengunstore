@@ -37,8 +37,14 @@ def staff_default_app(doc, method=None):
 	``apps.get_default_path`` sends a System User with no default app to the ``/apps`` picker,
 	and that is where the welcome email's set-password link lands. A default app per staff user
 	keeps them on the POS. Not the System Settings default: that path also serves Website Users
-	(dealers), who must keep their own home page. Existing users are left alone, and a user may
-	still pick another default on the apps screen."""
-	if doc.is_new() and doc.user_type == "System User" and not doc.get("default_app") \
-			and doc.meta.has_field("default_app"):
-		doc.default_app = "ffl_core"
+	(dealers), who must keep their own home page. Set when an account becomes a System User: on
+	insert, or on the later save that gives desk roles to an account first saved without them (a
+	Website User then). Staff who already were System Users are left alone, and a user may still
+	pick another default on the apps screen."""
+	if doc.user_type != "System User" or doc.get("default_app") or not doc.meta.has_field("default_app"):
+		return
+	if not doc.is_new():
+		before = doc.get_doc_before_save()
+		if not before or before.user_type == "System User":
+			return
+	doc.default_app = "ffl_core"
