@@ -121,3 +121,20 @@ class TestLifecycle(CRMTestCase):
 			self.skipTest("Settings workspace not installed")
 		links = frappe.get_doc("Workspace", "Settings").links
 		self.assertTrue(any(l.type == "Link" and l.link_to == setup.SETTINGS for l in links))
+
+
+class TestStaffDefaultApp(FrappeTestCase):
+	def test_new_staff_open_the_pos_and_website_users_keep_theirs(self):
+		from frappe.apps import get_default_path
+
+		staff = frappe.get_doc({"doctype": "User", "email": "crm-new-clerk@example.com", "first_name": "New",
+			"send_welcome_email": 0, "roles": [{"role": "Sales User"}]}).insert(ignore_permissions=True)
+		self.assertEqual(staff.default_app, "ffl_core")
+		frappe.set_user(staff.name)
+		try:
+			self.assertNotEqual(get_default_path(), "/apps")
+		finally:
+			frappe.set_user("Administrator")
+		dealer = frappe.get_doc({"doctype": "User", "email": "crm-new-dealer@example.com", "first_name": "Dealer",
+			"send_welcome_email": 0, "user_type": "Website User"}).insert(ignore_permissions=True)
+		self.assertFalse(dealer.default_app)

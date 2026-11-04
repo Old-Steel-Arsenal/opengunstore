@@ -281,6 +281,8 @@ doc_events = {
 		"on_trash": "ffl_core.crm.product.on_trash",
 	},
 	"CRM Deal": {"validate": "ffl_core.crm.deal.price_lines"},
+	# A new staff account lands on the POS, not on the /apps picker CRM's own app brings (ffl_core.crm).
+	"User": {"validate": "ffl_core.crm.staff_default_app"},
 	"Quotation": {
 		"before_validate": "ffl_core.crm.quotation.default_sales_taxes",
 		"before_submit": "ffl_core.crm.quotation.refuse_submit",

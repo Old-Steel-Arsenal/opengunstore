@@ -44,6 +44,16 @@ class TestProductEdits(CRMTestCase):
 		self.assertEqual(frappe.db.get_value("CRM Product", doc.name, "standard_rate"), 23.99)
 		self.assertTrue(frappe.get_all("Version", filters={"ref_doctype": "Item", "docname": AMMO, "owner": MANAGER}))
 
+	def test_a_name_and_price_edit_leaves_the_form_saveable(self):
+		doc = _edit(AMMO, as_user=MANAGER, product_name="_T Ammo renamed", standard_rate=24.49)
+		self.assertEqual(str(doc.modified), str(frappe.db.get_value("CRM Product", doc.name, "modified")))
+		frappe.set_user(MANAGER)
+		try:
+			doc.description = "<p>again</p>"
+			doc.save()   # the same form, saved again: no TimestampMismatchError
+		finally:
+			frappe.set_user("Administrator")
+
 	def test_a_manager_without_item_rights_still_changes_a_price(self):
 		user("crm-pricer@example.com", "Sales Manager")
 		_edit(UNIFORM, as_user="crm-pricer@example.com", standard_rate=579)

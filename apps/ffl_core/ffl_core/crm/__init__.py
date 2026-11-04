@@ -28,3 +28,17 @@ def installed() -> bool:
 	``bench install-app crm`` (deploy/prod/auto_deploy.sh): every hook that touches a CRM table
 	or field stands down until then."""
 	return "crm" in frappe.get_installed_apps()
+
+
+def staff_default_app(doc, method=None):
+	"""User validate (after the controller sets ``user_type``): a new staff account opens the POS.
+
+	With Frappe CRM on the site, ``/crm`` is an app outside the desk, so Frappe's
+	``apps.get_default_path`` sends a System User with no default app to the ``/apps`` picker,
+	and that is where the welcome email's set-password link lands. A default app per staff user
+	keeps them on the POS. Not the System Settings default: that path also serves Website Users
+	(dealers), who must keep their own home page. Existing users are left alone, and a user may
+	still pick another default on the apps screen."""
+	if doc.is_new() and doc.user_type == "System User" and not doc.get("default_app") \
+			and doc.meta.has_field("default_app"):
+		doc.default_app = "ffl_core"

@@ -103,11 +103,11 @@ def on_update(doc, method=None):
 		item_doc.save()
 	if price:
 		pricing.set_regular_price(item, flt(doc.get("standard_rate")))
-	now = pricing.counter_list_price(item)
-	if flt(now, 2) != flt(frappe.db.get_value(PRODUCT, doc.name, "standard_rate"), 2):
-		# db_set moves modified on the record and on this doc alike: the form gets the new
-		# timestamp back, and an older copy elsewhere is refused instead of re-sending its price.
-		doc.db_set("standard_rate", now)
+	# Always, even when the price reads back unchanged: the Item save above re-syncs this product
+	# (db.set_value moves its modified), so the form must get the record's latest timestamp back or
+	# its next save is refused. db_set moves modified on the record and on this doc alike, and an
+	# older copy elsewhere is still refused instead of re-sending its price.
+	doc.db_set("standard_rate", pricing.counter_list_price(item))
 
 
 def before_rename(doc, method=None, olddn=None, newdn=None, merge=False):
