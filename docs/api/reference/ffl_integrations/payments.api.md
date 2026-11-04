@@ -24,7 +24,7 @@ reconciled instead of stranding it / letting a retry double-charge.
 
 **Permissions:** POS charge roles (_check_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:860`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:867`</sub>
 
 ## `cancel_sales_invoice_charge`
 
@@ -46,7 +46,7 @@ was charged, so it is recorded and booked, never stranded.
 
 **Permissions:** POS charge roles (_check_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1217`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1224`</sub>
 
 ## `card_tender_mode`
 
@@ -62,7 +62,7 @@ Credit Card row is a plain tender typed from a standalone terminal.
 
 **Returns:** {"integrated": bool}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:614`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:621`</sub>
 
 ## `charge_pos_invoice`
 
@@ -89,7 +89,7 @@ charge rather than double-charging.
 
 **Permissions:** POS charge roles (_check_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:632`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:639`</sub>
 
 ## `charge_sales_invoice`
 
@@ -118,7 +118,7 @@ one while an earlier approval on this invoice is unrecorded.
 
 **Permissions:** POS charge roles (_check_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1062`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1069`</sub>
 
 ## `confirm_out_of_band_refund`
 
@@ -146,7 +146,7 @@ evidence another rule force-collects clears itself).
 
 **Permissions:** Manager role (_check_manager).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:2332`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:2339`</sub>
 
 ## `list_terminals`
 
@@ -163,7 +163,7 @@ response's allowedTerminals).
 
 **Permissions:** Manager role.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1250`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1257`</sub>
 
 ## `poll_pos_charge`
 
@@ -186,7 +186,7 @@ approval, stamp the reference on the invoice.
 
 **Permissions:** POS charge roles (_check_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:810`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:817`</sub>
 
 ## `poll_sales_invoice_charge`
 
@@ -209,7 +209,7 @@ the new balance.
 
 **Permissions:** POS charge roles (_check_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1186`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1193`</sub>
 
 ## `refund_pos_invoice`
 
@@ -235,7 +235,7 @@ originals refund across rows within per-original-card caps.
 
 **Permissions:** Manager-gated refund roles (gate at entry).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1587`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1594`</sub>
 
 ## `unlock_refund_lock`
 
@@ -272,7 +272,7 @@ mirroring manager_override_4473's audit posture.
 
 **Permissions:** Manager gate (roles per the derived Auth line) + required reason — the reason must record what was verified in the processor's portal.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1970`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1977`</sub>
 
 ## `void_pos_invoice`
 
@@ -296,4 +296,4 @@ charge row's unique_reference when more than one live capture exists.
 
 **Permissions:** Refund/void roles (_check_refund_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1274`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1281`</sub>

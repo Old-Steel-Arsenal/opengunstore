@@ -191,6 +191,31 @@ class KeyedSalesInvoice(BuildOrderMixin, FrappeTestCase):
 		self.assertTrue(res["ok"] and res.get("already") and res["paid"])
 		self.assertEqual(frappe.db.count(api.TERMINAL_PAYMENT, {"sales_invoice": si}), 1)
 
+	def test_an_unsettled_sale_after_the_cancel_stops_the_next_charge(self, cc, _p, _r):
+		client = cc.from_settings.return_value
+		client.find_transaction.return_value = {"data": []}
+		si, _ = self._order()
+		out = api.charge_sales_invoice(si, keyed=1)
+		api.cancel_sales_invoice_charge(si, out["instruction_id"])
+		client.find_transaction.return_value = {"data": [{"type": "SALE", "orderId": si, "resultCode": "E"}]}
+		client.create_payment_instruction.return_value = {"paymentInstructionId": "PI-X", "status": "IN_PROGRESS"}
+		with self.assertRaises(frappe.ValidationError):
+			api.charge_sales_invoice(si)          # the device too: never a second charge
+		client.create_payment_instruction.assert_not_called()
+		self.assertEqual(frappe.db.get_value(api.TERMINAL_PAYMENT, {"sales_invoice": si}, "status"), "CANCELED")
+
+	def test_a_device_charge_records_a_late_keyed_approval_first(self, cc, _p, _r):
+		client = cc.from_settings.return_value
+		client.find_transaction.return_value = {"data": []}
+		si, outstanding = self._order()
+		out = api.charge_sales_invoice(si, keyed=1)
+		api.cancel_sales_invoice_charge(si, out["instruction_id"])
+		self._approve_at_payroc(client, si, outstanding)
+		with patch("ffl_integrations.payments.api.frappe.get_roles", return_value=["Sales User"]):
+			res = api.charge_sales_invoice(si)
+		self.assertTrue(res["ok"] and res.get("already") and res["paid"])
+		client.create_payment_instruction.assert_not_called()
+
 	def test_staff_cannot_resume_a_managers_keyed_charge(self, cc, _p, _r):
 		client = cc.from_settings.return_value
 		client.find_transaction.return_value = {"data": []}

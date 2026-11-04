@@ -603,10 +603,17 @@ def _reopen_late_keyed(rows, gateway, doctype: str) -> bool:
         p = gateway(r.processor)
         if not p.is_keyed_handle(r.instruction_id):
             continue                     # a device instruction: its cancel is final
-        if p.poll(r.instruction_id).status != PENDING:
+        res = p.poll(r.instruction_id)
+        if res.status in (APPROVED, DECLINED):
             frappe.db.set_value(doctype, r.name, "status", "IN_PROGRESS", update_modified=False)
             r.status = "IN_PROGRESS"
             reopened = True
+        elif res.status != PENDING:
+            # Payroc holds a sale for it that cannot be settled from here: charging the order
+            # again could take the money twice, and reopening would only bring the page back.
+            frappe.throw(_("{0} holds a keyed card sale for this order that cannot be recorded "
+                "automatically ({1}). Check it in the {0} portal before charging this order again."
+                ).format(p.label, res.message or r.instruction_id), title=_("Check the card first"))
     return reopened
 
 

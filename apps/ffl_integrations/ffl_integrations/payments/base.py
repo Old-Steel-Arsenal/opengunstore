@@ -197,7 +197,8 @@ class CardProcessor:
 		"""A handle for a keyed charge of ``amount`` on ``document`` (filed at the gateway under
 		``order_reference(document, attempt)``). Moves no money and calls no gateway: ``poll``
 		answers PENDING until the payment page has been submitted, then the outcome; ``cancel``
-		refuses (raises :class:`CardProcessorError`) once the gateway holds an answer."""
+		refuses with ``frappe.throw`` (a plain message, not a CardProcessorError) once the gateway
+		holds an answer."""
 		raise NotImplementedError
 
 	def is_keyed_handle(self, handle: str) -> bool:
