@@ -274,11 +274,12 @@ class PayrocProcessor(CardProcessor):
 	def is_keyed_handle(self, handle: str) -> bool:
 		return _keyed(handle) is not None
 
-	def keyed_page(self, handle: str, return_url: str) -> str:
+	def keyed_page(self, handle: str, return_url: str, billing: dict | None = None) -> str:
 		keyed = _keyed(handle)
 		if not keyed:
 			return ""
-		return self.client.payment_page_url(order_id=keyed[0], amount=keyed[1], return_url=return_url)
+		return self.client.payment_page_url(order_id=keyed[0], amount=keyed[1], return_url=return_url,
+			billing=billing)
 
 	def _poll_keyed(self, order_id: str) -> CardResult:
 		"""Nothing filed under the orderId yet = the page is still open (PENDING). Payroc holding

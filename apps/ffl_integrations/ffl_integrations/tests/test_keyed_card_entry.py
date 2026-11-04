@@ -55,6 +55,19 @@ class PaymentPageUrl(FrappeTestCase):
 			f"T100SINV-1-A242.5004-11-2026:15:07:09:000https://pos/x{secret}".encode()).hexdigest())
 		self.assertNotIn(secret, url)
 
+	def test_billing_prefills_the_page_outside_the_signature(self):
+		secret = frappe.generate_hash(length=16)
+		c = PayrocClient(_config(page_secret=secret), session=MagicMock())
+		at = datetime(2026, 11, 4, 15, 7, 9, tzinfo=timezone.utc)
+		plain = c.payment_page_url(order_id="S1", amount=1, return_url="https://pos/x", now=at)
+		url = c.payment_page_url(order_id="S1", amount=1, return_url="https://pos/x", now=at,
+			billing={"name": "Ann Lee", "address1": "1 Main St", "postcode": "75001", "country": "US"})
+		q = {k: v[0] for k, v in parse_qs(urlparse(url).query).items()}
+		self.assertEqual((q["CARDHOLDERNAME"], q["ADDRESS1"], q["POSTCODE"], q["COUNTRY"]),
+			("Ann Lee", "1 Main St", "75001", "US"))
+		self.assertNotIn("CITY", q)
+		self.assertEqual(q["HASH"], parse_qs(urlparse(plain).query)["HASH"][0])
+
 	def test_no_secret_no_page(self):
 		c = PayrocClient(_config(), session=MagicMock())
 		with self.assertRaises(PayrocConfigError):
@@ -76,7 +89,7 @@ class KeyedHandle(FrappeTestCase):
 		p._client.payment_page_url.return_value = PAGE
 		self.assertEqual(p.keyed_page(h, "https://pos/r"), PAGE)
 		self.assertEqual(p._client.payment_page_url.call_args.kwargs,
-			{"order_id": "SINV-9-A2", "amount": 30.0, "return_url": "https://pos/r"})
+			{"order_id": "SINV-9-A2", "amount": 30.0, "return_url": "https://pos/r", "billing": None})
 		self.assertEqual(p.keyed_page("PI-device-1", "https://pos/r"), "")
 
 	def test_poll_is_pending_until_payroc_files_the_sale(self):
@@ -147,6 +160,21 @@ class KeyedSalesInvoice(BuildOrderMixin, FrappeTestCase):
 		res = api.poll_sales_invoice_charge(si, out["instruction_id"])
 		self.assertTrue(res["ok"] and res["paid"] and res["payment_entry"])
 		self.assertEqual(frappe.db.get_value("Payment Entry", res["payment_entry"], "reference_no"), "RK1")
+
+	def test_the_page_starts_with_the_customers_address(self, cc, _p, _r):
+		client = cc.from_settings.return_value
+		client.payment_page_url.return_value = PAGE
+		si, _ = self._order()
+		cust = frappe.db.get_value("Sales Invoice", si, "customer")
+		addr = frappe.get_doc({"doctype": "Address", "address_title": "Keyed", "address_type": "Billing",
+			"address_line1": "12 Oak St", "city": "Dallas", "state": "TX", "pincode": "75201",
+			"country": "United States", "links": [{"link_doctype": "Customer", "link_name": cust}]}).insert()
+		frappe.db.set_value("Sales Invoice", si, "customer_address", addr.name)
+		api.charge_sales_invoice(si, keyed=1)
+		billing = client.payment_page_url.call_args.kwargs["billing"]
+		self.assertEqual((billing["address1"], billing["postcode"], billing["region"], billing["country"]),
+			("12 Oak St", "75201", "TX", "US"))
+		self.assertEqual(billing["name"], frappe.db.get_value("Sales Invoice", si, "customer_name"))
 
 	def test_cancel_with_nothing_filed_cancels(self, cc, _p, _r):
 		client = cc.from_settings.return_value

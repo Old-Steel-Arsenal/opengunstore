@@ -489,13 +489,17 @@ class PayrocClient:
     # -------------------------------------------------- hosted payment page (keyed entry)
 
     def payment_page_url(self, *, order_id: str, amount, return_url: str,
-            now: datetime | None = None) -> str:
+            billing: dict | None = None, now: datetime | None = None) -> str:
         """The gateway's hosted payment page for one sale on the default terminal: the operator
         types the card there, so the card number never reaches this server. Signed with the
         terminal's shared secret, the way the Payroc WooCommerce plugin signs it on the same
         terminal: MD5(TERMINALID + ORDERID + AMOUNT + DATETIME + RECEIPTPAGEURL + secret), no
         separators, no CURRENCY (single-currency terminal). The outcome is read back through
-        the Merchant API by orderId (find_transaction), never trusted from the redirect."""
+        the Merchant API by orderId (find_transaction), never trusted from the redirect.
+
+        ``billing`` prefills the cardholder name and address (the fields the WooCommerce plugin
+        sends: CARDHOLDERNAME, ADDRESS1/2, CITY, REGION, POSTCODE, COUNTRY). They are not part
+        of the signature, so the operator can still correct them on the page."""
         if float(amount) <= 0:
             raise PayrocError(f"amount must be > 0, got {amount}")
         term = self.config.default_terminal
@@ -508,10 +512,15 @@ class PayrocClient:
         amt = f"{round(float(amount), 2):.2f}"
         oid = str(order_id)[:24]
         page_hash = hashlib.md5(f"{term}{oid}{amt}{stamp}{return_url}{secret}".encode()).hexdigest()
-        return f"{self.config.base_url}/paymentpage?" + urlencode({
-            "TERMINALID": term, "ORDERID": oid,
+        params = {"TERMINALID": term, "ORDERID": oid,
             "CURRENCY": self.config.default_currency.upper(), "AMOUNT": amt,
-            "DATETIME": stamp, "RECEIPTPAGEURL": return_url, "HASH": page_hash})
+            "DATETIME": stamp, "RECEIPTPAGEURL": return_url, "HASH": page_hash}
+        for key, field in (("CARDHOLDERNAME", "name"), ("ADDRESS1", "address1"),
+                ("ADDRESS2", "address2"), ("CITY", "city"), ("REGION", "region"),
+                ("POSTCODE", "postcode"), ("COUNTRY", "country")):
+            if (billing or {}).get(field):
+                params[key] = str(billing[field])[:50]
+        return f"{self.config.base_url}/paymentpage?" + urlencode(params)
 
     # -------------------------------------------------- helpers
 

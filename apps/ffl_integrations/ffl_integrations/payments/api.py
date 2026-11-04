@@ -576,11 +576,30 @@ def _check_keyed(p, save) -> None:
             "Save this card."))
 
 
-def _keyed_url(p, handle: str) -> dict:
+def _keyed_billing(doctype: str, name: str) -> dict:
+    """The customer's billing name and address for the payment page to start filled in: the
+    invoice's address, else the customer's primary one. Empty fields are left out."""
+    inv = frappe.db.get_value(doctype, name, ["customer", "customer_name", "customer_address"],
+        as_dict=True) or frappe._dict()
+    addr_name = inv.customer_address or (frappe.db.get_value("Customer", inv.customer,
+        "customer_primary_address") if inv.customer else None)
+    a = frappe.db.get_value("Address", addr_name, ["address_line1", "address_line2", "city",
+        "state", "pincode", "country"], as_dict=True) if addr_name else None
+    a = a or frappe._dict()
+    out = {"name": inv.customer_name, "address1": a.address_line1, "address2": a.address_line2,
+        "city": a.city, "region": a.state, "postcode": a.pincode,
+        "country": (frappe.db.get_value("Country", a.country, "code") or "").upper() if a.country else ""}
+    return {k: str(v).strip() for k, v in out.items() if v and str(v).strip()}
+
+
+def _keyed_url(p, handle: str, doctype: str, name: str) -> dict:
     """{"keyed_url": the payment page} for a keyed handle (also when an in-flight one is
     resumed, so the screen can reopen the page), else {}. Resuming someone's keyed charge is
     still a manager's call: anyone else is told to leave it to one."""
-    url = p.keyed_page(handle, frappe.utils.get_url(KEYED_RETURN_PATH)) if handle else ""
+    if not (handle and p.is_keyed_handle(handle)):
+        return {}
+    url = p.keyed_page(handle, frappe.utils.get_url(KEYED_RETURN_PATH),
+        billing=_keyed_billing(doctype, name))
     if not url:
         return {}
     _check_manager(_("A manager is keying in a card for this order — a manager has to finish "
@@ -728,7 +747,7 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
         if _still_on_device(polled):
             return {"ok": True, "instruction_id": row.instruction_id,
                     "status": "IN_PROGRESS", "amount": flt(amount) or 0,
-                    **_keyed_url(owner, row.instruction_id)}
+                    **_keyed_url(owner, row.instruction_id, "POS Invoice", invoice_name)}
         _settle_instruction_row(owner, polled, invoice_name, row)
         # A captured settle just ran _commit_money_point — InnoDB released the
         # F6 parent-row lock with that commit, so the read-check-create below
@@ -744,7 +763,7 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
         if foreign:
             return {"ok": True, "instruction_id": foreign[0].instruction_id,
                     "status": "IN_PROGRESS", "amount": flt(amount) or 0,
-                    **_keyed_url(gateway(foreign[0].processor), foreign[0].instruction_id)}
+                    **_keyed_url(gateway(foreign[0].processor), foreign[0].instruction_id, "POS Invoice", invoice_name)}
 
     # Multi-card accounting: each instruction charges a SLICE of the card
     # tender; the sale is fully collected when the CHARGED rows sum to it.
@@ -801,7 +820,7 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
             pass
         raise
     return {"ok": True, "instruction_id": iid,
-            "status": started or "IN_PROGRESS", "amount": amt, **_keyed_url(active, iid)}
+            "status": started or "IN_PROGRESS", "amount": amt, **_keyed_url(active, iid, "POS Invoice", invoice_name)}
 
 
 def _charging_processor(rows, instruction_id: str) -> str:
@@ -1138,7 +1157,7 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
         if _still_on_device(polled):
             return {"ok": True, "instruction_id": row.instruction_id,
                     "status": "IN_PROGRESS", "amount": flt(row.amount),
-                    **_keyed_url(owner, row.instruction_id)}
+                    **_keyed_url(owner, row.instruction_id, "Sales Invoice", sales_invoice)}
         res = _settle_terminal_payment(owner, polled, row)
         if res.get("ok"):
             # Money already taken on the earlier attempt — hand it back settled
@@ -1154,7 +1173,7 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
         if foreign:
             return {"ok": True, "instruction_id": foreign[0].instruction_id,
                     "status": "IN_PROGRESS", "amount": flt(foreign[0].amount),
-                    **_keyed_url(gateway(foreign[0].processor), foreign[0].instruction_id)}
+                    **_keyed_url(gateway(foreign[0].processor), foreign[0].instruction_id, "Sales Invoice", sales_invoice)}
 
     amt = _charge_amount(sales_invoice, si.outstanding_amount, amount)
 
@@ -1186,7 +1205,7 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
             pass
         raise
     return {"ok": True, "instruction_id": iid,
-            "status": started or "IN_PROGRESS", "amount": amt, **_keyed_url(active, iid)}
+            "status": started or "IN_PROGRESS", "amount": amt, **_keyed_url(active, iid, "Sales Invoice", sales_invoice)}
 
 
 @frappe.whitelist()

@@ -206,9 +206,11 @@ class CardProcessor:
 		a late approval, so the core looks it up again before charging the document again)."""
 		return False
 
-	def keyed_page(self, handle: str, return_url: str) -> str:
+	def keyed_page(self, handle: str, return_url: str, billing: dict | None = None) -> str:
 		"""The gateway payment page URL for a keyed handle ("" for any other handle). The page
-		sends the operator's browser to ``return_url`` when done."""
+		sends the operator's browser to ``return_url`` when done. ``billing`` (optional: name,
+		address1, address2, city, region, postcode, country as ISO-2) starts the page's
+		cardholder fields filled in; the operator can still change them."""
 		return ""
 
 	# ------------------------------------------------------------ setup / health
