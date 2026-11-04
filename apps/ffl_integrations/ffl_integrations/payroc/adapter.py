@@ -86,6 +86,8 @@ def _order_id(doc_name: str, attempt: int) -> str:
 # step (poll, cancel, reopening the page) can be answered from the handle alone.
 _KEYED = "keyed:"
 # How long a cancel waits for a payment-page submit that was already on its way.
+# lazy: a fixed 3 s; an approval later than that is caught when the document is charged again
+# (payments.api._reopen_late_keyed), not by this wait.
 KEYED_CANCEL_GRACE_SECONDS = 3
 
 
@@ -269,6 +271,9 @@ class PayrocProcessor(CardProcessor):
 			frappe.throw(_("Amount must be > 0 (got {0}).").format(amount))
 		return f"{_KEYED}{_order_id(document, attempt)}:{flt(amount):.2f}"
 
+	def is_keyed_handle(self, handle: str) -> bool:
+		return _keyed(handle) is not None
+
 	def keyed_page(self, handle: str, return_url: str) -> str:
 		keyed = _keyed(handle)
 		if not keyed:
@@ -290,8 +295,11 @@ class PayrocProcessor(CardProcessor):
 		time.sleep(KEYED_CANCEL_GRACE_SECONDS)
 		res = self._poll_keyed(order_id)
 		if res.status != PENDING:
-			raise CardProcessorError(_("Payroc already holds an answer for {0} — it is being "
-				"recorded. Refresh and charge again only if it was not approved.").format(order_id))
+			# A plain frappe message (not a 500 + Error Log): nothing was written, the charge stays
+			# in flight, and charging the order again records Payroc's answer.
+			frappe.throw(_("Payroc already has an answer for this keyed card ({0}), so it was not "
+				"cancelled. Charge the order again: an approval is recorded instead of charging the "
+				"card twice.").format(order_id), title=_("Not cancelled"))
 		return CardResult(status=CANCELED, gateway_status="CANCELED", message=_("Keyed entry cancelled."))
 
 	# ------------------------------------------------------------ after the charge

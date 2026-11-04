@@ -103,7 +103,7 @@ class KeyedHandle(FrappeTestCase):
 		p._client.cancel_payment_instruction.assert_not_called()
 		p._client.find_transaction.return_value = {"data": [{"type": "SALE", "orderId": "SINV-9",
 			"resultCode": "D", "uniqueReference": "R0"}]}
-		with self.assertRaises(api.CardProcessorError):
+		with self.assertRaises(frappe.ValidationError):
 			p.cancel(h)
 
 
@@ -157,6 +157,49 @@ class KeyedSalesInvoice(BuildOrderMixin, FrappeTestCase):
 		self.assertEqual(frappe.db.get_value(api.TERMINAL_PAYMENT,
 			{"sales_invoice": si}, "status"), "CANCELED")
 
+	def _approve_at_payroc(self, client, si, amount, ref="RK2"):
+		client.find_transaction.return_value = {"data": [{"type": "SALE", "orderId": si,
+			"resultCode": "A", "uniqueReference": ref}]}
+		client.retrieve_payment.return_value = _approved_payment(ref, amount)
+
+	def test_cancel_refused_keeps_it_in_flight_and_the_next_charge_records_it(self, cc, _p, _r):
+		client = cc.from_settings.return_value
+		client.find_transaction.return_value = {"data": []}
+		si, outstanding = self._order()
+		out = api.charge_sales_invoice(si, keyed=1)
+		# The poll the cancel starts with still sees nothing; the approval lands during the wait.
+		client.find_transaction.side_effect = [{"data": []}, {"data": [{"type": "SALE",
+			"orderId": si, "resultCode": "A", "uniqueReference": "RK2"}]}]
+		client.retrieve_payment.return_value = _approved_payment("RK2", outstanding)
+		with self.assertRaises(frappe.ValidationError):
+			api.cancel_sales_invoice_charge(si, out["instruction_id"])
+		self.assertEqual(frappe.db.get_value(api.TERMINAL_PAYMENT, {"sales_invoice": si}, "status"),
+			"IN_PROGRESS")
+		client.find_transaction.side_effect = None
+		self._approve_at_payroc(client, si, outstanding)
+		res = api.charge_sales_invoice(si, keyed=1)
+		self.assertTrue(res["ok"] and res.get("already") and res["payment_entry"])
+
+	def test_an_approval_after_the_cancel_is_recorded_not_charged_again(self, cc, _p, _r):
+		client = cc.from_settings.return_value
+		client.find_transaction.return_value = {"data": []}
+		si, outstanding = self._order()
+		out = api.charge_sales_invoice(si, keyed=1)
+		self.assertEqual(api.cancel_sales_invoice_charge(si, out["instruction_id"])["status"], "CANCELED")
+		self._approve_at_payroc(client, si, outstanding)   # Payroc lists it only now
+		res = api.charge_sales_invoice(si, keyed=1)
+		self.assertTrue(res["ok"] and res.get("already") and res["paid"])
+		self.assertEqual(frappe.db.count(api.TERMINAL_PAYMENT, {"sales_invoice": si}), 1)
+
+	def test_staff_cannot_resume_a_managers_keyed_charge(self, cc, _p, _r):
+		client = cc.from_settings.return_value
+		client.find_transaction.return_value = {"data": []}
+		client.payment_page_url.return_value = PAGE
+		si, _ = self._order()
+		api.charge_sales_invoice(si, keyed=1)
+		with patch("ffl_integrations.payments.api.frappe.get_roles", return_value=["Sales User"]):
+			self.assertRaises(frappe.PermissionError, api.charge_sales_invoice, si)
+
 	def test_refused_for_staff_without_setup_and_with_save_card(self, cc, _p, _r):
 		si, _ = self._order()
 		with patch("ffl_integrations.payments.api.frappe.get_roles", return_value=["Sales User"]):
@@ -169,6 +212,7 @@ class KeyedSalesInvoice(BuildOrderMixin, FrappeTestCase):
 		self.assertFalse(frappe.db.exists(api.TERMINAL_PAYMENT, {"sales_invoice": si}))
 
 
+@patch.object(adapter, "KEYED_CANCEL_GRACE_SECONDS", 0)
 @patch("ffl_integrations.payments.api._integration_ready", return_value=True)
 @patch("ffl_integrations.payroc.adapter.PayrocClient")
 @patch("ffl_integrations.payments.api._check_perm")
@@ -192,3 +236,18 @@ class KeyedPosInvoice(FrappeTestCase):
 		self.assertTrue(res["ok"])
 		self.assertEqual(frappe.db.get_value("POS Invoice", inv,
 			["card_status", "card_unique_reference"]), ("CHARGED", "RKP"))
+
+	def test_an_approval_after_the_cancel_is_recorded_not_charged_again(self, _p, cc, _r):
+		client = cc.from_settings.return_value
+		client.find_transaction.return_value = {"data": []}
+		inv = _pos_draft_invoice(rate=100)
+		out = api.charge_pos_invoice(inv, amount=100, keyed=1)
+		self.assertEqual(api.cancel_pos_charge(inv, out["instruction_id"])["status"], "CANCELED")
+		client.find_transaction.return_value = {"data": [{"type": "SALE", "orderId": inv,
+			"resultCode": "A", "uniqueReference": "RKL"}]}
+		client.retrieve_payment.return_value = _approved_payment("RKL", 100)
+		# The next charge records the late approval; the card is fully paid, so no new charge.
+		with self.assertRaises(frappe.ValidationError):
+			api.charge_pos_invoice(inv, amount=100, keyed=1)
+		self.assertEqual(frappe.db.get_value("POS Invoice", inv,
+			["card_status", "card_unique_reference"]), ("CHARGED", "RKL"))

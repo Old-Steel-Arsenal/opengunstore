@@ -3092,7 +3092,7 @@ frappe.provide('frappe.ui.form');
 		const dollars = amount.toFixed(2);
 		const hint = keyedUrl
 			? `${__('Type the card on the {0} payment page.', [frappe.utils.escape_html(cardLabel())])}
-				<br><a href="#" class="ffl-keyed-open">${__('Open payment page')}</a>`
+				<br><button type="button" class="btn btn-primary btn-sm ffl-keyed-open" style="margin-top:10px">${__('Open payment page')}</button>`
 			: __('Customer should dip / tap card on terminal.');
 		const dlg = new frappe.ui.Dialog({
 			title: keyedUrl ? __('Waiting for the payment page') : __('Waiting for terminal'),
@@ -3134,6 +3134,19 @@ frappe.provide('frappe.ui.form');
 		const close = () => { try { if (win && !win.closed) win.close(); } catch (e) { /* gone */ } };
 		open();
 		return { open, close };
+	}
+
+	// What the screen says when it gives up on a charge (lost contact / timed out). A keyed
+	// charge's cancel can be refused (Payroc already answered), so it never claims "cancelled".
+	function gaveUpMessage(keyed, timedOut) {
+		if (keyed) {
+			return timedOut
+				? { title: __('Payment page not finished'), message: __('The payment page was closed. If the card was approved there, charging this order again records it instead of charging twice.') }
+				: { title: __('Lost contact'), message: __('Lost contact while waiting for the payment page. Charge this order again: an approval is recorded instead of charging twice.') };
+		}
+		return timedOut
+			? { title: __('Terminal timed out'), message: __('No response from the terminal. The charge was cancelled — please retry.') }
+			: { title: __('Terminal error'), message: __('Lost contact while waiting for the terminal. The charge was cancelled — please retry.') };
 	}
 
 	function hideDialog(dlg) {
@@ -3486,10 +3499,7 @@ frappe.provide('frappe.ui.form');
 					// and letting the rejection escape submit_invoice unhandled.
 					if (!cancelled) {
 						await giveUp();
-						frappe.msgprint({
-							title: __('Terminal error'), indicator: 'red',
-							message: __('Lost contact while waiting for the terminal. The charge was cancelled — please retry.'),
-						});
+						frappe.msgprint(Object.assign({ indicator: 'red' }, gaveUpMessage(!!keyedUrl, false)));
 					}
 					return { skip: false, ok: false };
 				}
@@ -3537,10 +3547,7 @@ frappe.provide('frappe.ui.form');
 		// Timed out without a response (and not cancelled) → cancel to avoid a hang.
 		if (!cancelled) {
 			await giveUp();
-			frappe.msgprint({
-				title: __('Terminal timed out'), indicator: 'orange',
-				message: __('No response from the terminal. The charge was cancelled — please retry.'),
-			});
+			frappe.msgprint(Object.assign({ indicator: 'orange' }, gaveUpMessage(!!keyedUrl, true)));
 		}
 		return { skip: false, ok: false };
 	}
@@ -3680,8 +3687,7 @@ frappe.provide('frappe.ui.form');
 				} catch (err) {
 					if (!cancelled) {
 						await cancelIt();
-						frappe.msgprint({ title: __('Terminal error'), indicator: 'red',
-							message: __('Lost contact while waiting for the terminal. The charge was cancelled — please retry.') });
+						frappe.msgprint(Object.assign({ indicator: 'red' }, gaveUpMessage(!!keyedUrl, false)));
 					}
 					return { skip: false, ok: false };
 				}
@@ -3708,8 +3714,7 @@ frappe.provide('frappe.ui.form');
 		}
 		if (!cancelled) {
 			await cancelIt();
-			frappe.msgprint({ title: __('Terminal timed out'), indicator: 'orange',
-				message: __('No response from the terminal. The charge was cancelled — please retry.') });
+			frappe.msgprint(Object.assign({ indicator: 'orange' }, gaveUpMessage(!!keyedUrl, true)));
 		}
 		return { skip: false, ok: false };
 	};

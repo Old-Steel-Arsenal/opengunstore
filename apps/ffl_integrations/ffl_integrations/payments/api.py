@@ -578,9 +578,36 @@ def _check_keyed(p, save) -> None:
 
 def _keyed_url(p, handle: str) -> dict:
     """{"keyed_url": the payment page} for a keyed handle (also when an in-flight one is
-    resumed, so the screen can reopen the page), else {}."""
+    resumed, so the screen can reopen the page), else {}. Resuming someone's keyed charge is
+    still a manager's call: anyone else is told to leave it to one."""
     url = p.keyed_page(handle, frappe.utils.get_url(KEYED_RETURN_PATH)) if handle else ""
-    return {"keyed_url": url} if url else {}
+    if not url:
+        return {}
+    _check_manager(_("A manager is keying in a card for this order — a manager has to finish "
+        "or cancel it before another card is charged."))
+    return {"keyed_url": url}
+
+
+def _reopen_late_keyed(rows, gateway, doctype: str) -> bool:
+    """A keyed charge cancelled while the payment page was still submitting can be approved at
+    Payroc after the cancel gave up waiting. Before any new attempt on the document, each of its
+    cancelled keyed charges is looked up once more; one Payroc now holds an answer for goes back
+    IN_PROGRESS, so the in-flight path below records it instead of charging the card again.
+    Returns whether any row was reopened."""
+    # lazy: only re-checked when the document is charged again — a cancelled keyed charge on an
+    # order nobody charges again is not swept; add it to the Payroc reconcile if that shows up.
+    reopened = False
+    for r in rows:
+        if r.status != "CANCELED" or not r.instruction_id:
+            continue
+        p = gateway(r.processor)
+        if not p.is_keyed_handle(r.instruction_id):
+            continue                     # a device instruction: its cancel is final
+        if p.poll(r.instruction_id).status != PENDING:
+            frappe.db.set_value(doctype, r.name, "status", "IN_PROGRESS", update_modified=False)
+            r.status = "IN_PROGRESS"
+            reopened = True
+    return reopened
 
 
 @frappe.whitelist()
@@ -684,6 +711,8 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
 
     # Idempotency: never a SECOND live instruction. Settle any in-flight row
     # first; if the terminal still holds it, hand the id back for polling.
+    if _reopen_late_keyed(rows, gateway, "Card Charge"):
+        _refresh_charge_stamps(invoice_name)
     in_flight = [r for r in rows if r.status == "IN_PROGRESS"]
     if in_flight:
         row = in_flight[0]
@@ -1087,7 +1116,9 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
     gateway = _gateways()
     active = gateway(None)
 
-    in_flight = [r for r in _terminal_payments(sales_invoice) if r.status == "IN_PROGRESS"]
+    past = _terminal_payments(sales_invoice)
+    _reopen_late_keyed(past, gateway, TERMINAL_PAYMENT)
+    in_flight = [r for r in past if r.status == "IN_PROGRESS"]
     if in_flight:
         row = in_flight[0]
         if row.saved_card:

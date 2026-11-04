@@ -200,6 +200,11 @@ class CardProcessor:
 		refuses (raises :class:`CardProcessorError`) once the gateway holds an answer."""
 		raise NotImplementedError
 
+	def is_keyed_handle(self, handle: str) -> bool:
+		"""Whether ``handle`` came from :meth:`start_keyed_charge` (its cancel may be overtaken by
+		a late approval, so the core looks it up again before charging the document again)."""
+		return False
+
 	def keyed_page(self, handle: str, return_url: str) -> str:
 		"""The gateway payment page URL for a keyed handle ("" for any other handle). The page
 		sends the operator's browser to ``return_url`` when done."""
