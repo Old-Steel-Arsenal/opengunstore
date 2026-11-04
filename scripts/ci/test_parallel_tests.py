@@ -70,6 +70,65 @@ class Planning(unittest.TestCase):
 		self.assertEqual(groups, [["only"]])
 
 
+class Shards(unittest.TestCase):
+	"""`parallel_tests.py plan`: the shards a CI run splits the suite into."""
+
+	def apps(self, root, counts):
+		for module, n in counts.items():
+			app, *rest = module.split(".")
+			path = Path(root, app, app, *rest).with_suffix(".py")
+			path.parent.mkdir(parents=True, exist_ok=True)
+			path.write_text("".join(f"def test_{i}(): pass\n" for i in range(n)))
+
+	def plan(self, root, *args):
+		import contextlib
+		import io
+		import json
+		from unittest import mock
+		out = io.StringIO()
+		with mock.patch.dict(os.environ, {"GITHUB_OUTPUT": ""}), contextlib.redirect_stdout(out):
+			self.assertEqual(pt.plan_main(["--apps-dir", root, "--apps", "a b", *args]), 0)
+		line = [x for x in out.getvalue().splitlines() if x.startswith("legs=")]
+		return json.loads(line[0][len("legs="):])
+
+	def test_every_module_runs_in_exactly_one_shard_and_other_legs_once(self):
+		counts = {f"a.tests.test_m{i}": i + 1 for i in range(10)}
+		counts.update({"b.tests.test_x": 4, "b.doctype.thing.test_thing": 2})
+		with tempfile.TemporaryDirectory() as root:
+			self.apps(root, counts)
+			legs = self.plan(root, "--shards", "3", "--legs", '[{"suite":"core"},{"suite":"extensions"}]')
+		core = [leg for leg in legs if leg["suite"] == "core"]
+		self.assertEqual([leg["shard"] for leg in core], [1, 2, 3])
+		self.assertEqual({leg["shards"] for leg in core}, {3})
+		names = [m for leg in core for m in leg["modules"].split()]
+		self.assertEqual(sorted(names), sorted(counts))          # complete, no duplicates
+		self.assertTrue(all(leg["modules"] for leg in core))
+		self.assertEqual([leg for leg in legs if leg["suite"] != "core"], [{"suite": "extensions"}])
+
+	def test_the_split_follows_timings_and_a_modules_subset(self):
+		counts = {"a.tests.test_slow": 1, "a.tests.test_fast": 1, "b.tests.test_mid": 1, "b.tests.test_out": 9}
+		with tempfile.TemporaryDirectory() as root:
+			self.apps(root, counts)
+			timings = Path(root, "t.json")
+			timings.write_text('{"a.tests.test_slow": 100, "a.tests.test_fast": 1, "b.tests.test_mid": 60}')
+			legs = self.plan(root, "--shards", "2", "--timings", str(timings),
+				"--modules", "a.tests.test_slow a.tests.test_fast b.tests.test_mid")
+		self.assertEqual([leg["modules"] for leg in legs], ["a.tests.test_slow", "a.tests.test_fast b.tests.test_mid"])
+
+	def test_more_shards_than_modules_gives_fewer_shards_never_an_empty_one(self):
+		with tempfile.TemporaryDirectory() as root:
+			self.apps(root, {"a.tests.test_one": 1, "b.tests.test_two": 1})
+			legs = self.plan(root, "--shards", "5", "--timings", str(Path(root, "missing.json")))
+		self.assertEqual([(leg["shard"], leg["shards"], leg["modules"]) for leg in legs],
+			[(1, 2, "a.tests.test_one"), (2, 2, "b.tests.test_two")])
+
+	def test_a_shard_with_no_modules_is_refused(self):
+		with self.assertRaises(SystemExit):
+			pt.shard_legs([{"suite": "core"}], [["m"], []])
+		with self.assertRaises(SystemExit):
+			pt.shard_legs([{"suite": "core"}], [])
+
+
 class Totals(unittest.TestCase):
 	def worker(self, run=10, failures=None, errors=None, crash=None):
 		return {"tests_run": run, "failure_counts": failures or {}, "error_counts": errors or {}, "crash": crash}

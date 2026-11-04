@@ -3,7 +3,7 @@ name: App tests (reusable)
 # Reusable test workflow — the custom-app test suite on a real bench
 # (MariaDB + Redis services), plus the first-party extensions when asked. Called by:
 #   - release-image.yml  → gates build + deploy (CD waits for green tests)
-#   - ci.yml             → daily upgrade-regression
+#   - ci.yml             → nightly fresh-site run and upgrade regression
 #   - the maintainers' deployment repository (another repository, by `uses: …@main`) → the
 #     first-party extensions only, against a release or a develop commit of this one: it passes
 #     `repository`, `only_extensions`, `extension_list` and the two secrets below.
@@ -18,9 +18,19 @@ on:
         # >1 splits the modules across that many cloned sites of this bench and
         # runs them at once (scripts/ci/parallel_tests.py): balanced by the last
         # run's per-module time, a failed module re-run once alone (pass = FLAKY,
-        # reported, not fatal). 1 = the plain serial `bench run-tests` loop,
-        # which the 2-core GitHub-hosted daily run keeps.
-        description: "Parallel test workers (1 = serial)"
+        # reported, not fatal). 1 = the plain serial `bench run-tests` loop.
+        # A GitHub-hosted runner caps it to its cores (4).
+        description: "Parallel test workers per job (1 = serial)"
+        type: number
+        default: 1
+      shards:
+        # >1 splits our suites across that many jobs, each on a runner, bench and site of its own
+        # (the job names end in "shard k/N"). The `plan` job splits the modules once, by the same
+        # balancing the workers use (scripts/ci/parallel_tests.py plan), so the shards are disjoint
+        # and together run every module; each shard then splits its list across its `workers`.
+        # Only our suites are sharded: the extensions leg stays one job. 1 = one job, as before.
+        # The workflow's result (a caller's `needs:`) fails when any shard fails.
+        description: "Jobs to split our suites across (1 = one job)"
         type: number
         default: 1
       runner:
@@ -142,7 +152,8 @@ jobs:
     runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: 5
     outputs:
-      suites: ${{ steps.gate.outputs.suites }}
+      # The legs of the test matrix: [{"suite": "core"}, {"suite": "extensions"}] or one of them.
+      legs: ${{ steps.gate.outputs.legs }}
     steps:
       - name: Is EXT_REPOS_TOKEN available?
         id: gate
@@ -152,9 +163,9 @@ jobs:
         run: |
           if [ -n "$EXT_REPOS_TOKEN" ]; then
             if [ "$ONLY" = "true" ]; then
-              echo 'suites=["extensions"]' >> "$GITHUB_OUTPUT"
+              echo 'legs=[{"suite":"extensions"}]' >> "$GITHUB_OUTPUT"
             else
-              echo 'suites=["core","extensions"]' >> "$GITHUB_OUTPUT"
+              echo 'legs=[{"suite":"core"},{"suite":"extensions"}]' >> "$GITHUB_OUTPUT"
             fi
             exit 0
           fi
@@ -167,14 +178,69 @@ jobs:
             echo '> [!WARNING]'
             echo "> **First-party extensions were not tested:** \`EXT_REPOS_TOKEN\` is not available to this run (Dependabot, a fork, or the secret is not set). This does not fail the run."
           } >> "$GITHUB_STEP_SUMMARY"
-          echo 'suites=["core"]' >> "$GITHUB_OUTPUT"
+          echo 'legs=[{"suite":"core"}]' >> "$GITHUB_OUTPUT"
+
+  # With shards > 1: split our modules into that many lists ONCE, here, and give each shard its
+  # list through the matrix. Each shard computing its own slice could read other timings (a
+  # self-hosted box's file changes as other jobs finish) and drop or repeat modules.
+  plan:
+    name: Plan test shards
+    needs: ext-gate
+    if: ${{ !cancelled() && inputs.shards > 1 && !inputs.only_extensions && contains(fromJSON('["success","skipped"]'), needs.ext-gate.result) }}
+    runs-on: ${{ fromJSON(inputs.runner) }}
+    timeout-minutes: 5
+    outputs:
+      legs: ${{ steps.plan.outputs.legs }}
+    steps:
+      - name: Compute timings slug
+        env:
+          APPS: ${{ inputs.apps }}
+          SUFFIX: ${{ inputs.upgrade_from != '' && '-upgrade' || '' }}
+        run: echo "TIMINGS_SLUG=${APPS// /-}${SUFFIX}" >> "$GITHUB_ENV"
+
+      # Its own folder: on a self-hosted runner the workspace (and the bench in it) outlives the
+      # job; the test job's checkout (gunstore/) is not touched from here.
+      - name: Checkout monorepo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: gunstore-plan
+          repository: ${{ inputs.repository || github.repository }}
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.CHECKOUT_TOKEN || github.token }}
+
+      # The shards' last measured per-module seconds (saved by "Save test timings" below).
+      # Self-hosted runners keep the file under $HOME instead.
+      - name: Restore test timings (hosted)
+        if: runner.environment == 'github-hosted'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/gunstore-ci/test-timings-${{ env.TIMINGS_SLUG }}.json
+          key: test-timings-${{ env.TIMINGS_SLUG }}-${{ github.run_id }}-plan
+          restore-keys: test-timings-${{ env.TIMINGS_SLUG }}-
+
+      - name: Split the modules across the shards
+        id: plan
+        env:
+          APPS: ${{ inputs.apps }}
+          MODULES: ${{ inputs.modules }}
+          SHARDS: ${{ inputs.shards }}
+          LEGS: ${{ needs.ext-gate.outputs.legs || '[{"suite":"core"}]' }}
+        run: |
+          set -euo pipefail
+          python3 gunstore-plan/scripts/ci/parallel_tests.py plan --apps-dir gunstore-plan/apps \
+            --apps "$APPS" --modules "$MODULES" --shards "$SHARDS" --legs "$LEGS" \
+            --timings "$HOME/.cache/gunstore-ci/test-timings-${TIMINGS_SLUG}.json"
+          rm -rf gunstore-plan
 
   custom-app-tests:
-    name: Custom app tests (ERPNext ${{ matrix.erpnext_branch }})${{ matrix.suite == 'extensions' && ' — first-party extensions' || '' }}
-    needs: ext-gate
-    # ext-gate is skipped when the caller wants no extensions; a skipped need would skip this
-    # job too, unless a status function appears here.
-    if: ${{ !cancelled() && contains(fromJSON('["success","skipped"]'), needs.ext-gate.result) }}
+    name: Custom app tests (ERPNext ${{ matrix.erpnext_branch }})${{ matrix.leg.suite == 'extensions' && ' — first-party extensions' || '' }}${{ matrix.leg.shards && format(' — shard {0}/{1}', matrix.leg.shard, matrix.leg.shards) || '' }}
+    needs: [ext-gate, plan]
+    # ext-gate is skipped when the caller wants no extensions, plan when it wants one shard; a
+    # skipped need would skip this job too, unless a status function appears here. A plan that
+    # was asked for (shards > 1) must have succeeded: without it the core leg would run unsharded.
+    if: >-
+      ${{ !cancelled() && contains(fromJSON('["success","skipped"]'), needs.ext-gate.result)
+          && (needs.plan.result == 'success' || (needs.plan.result == 'skipped' && (inputs.shards <= 1 || inputs.only_extensions))) }}
     runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: ${{ inputs.timeout_minutes }}
     # No job-level concurrency group anymore: MariaDB/Redis host ports are
@@ -186,12 +252,13 @@ jobs:
       fail-fast: false
       matrix:
         erpnext_branch: [version-16]
-        # core: our three apps' suites. extensions (only with inputs.extensions): the
-        # first-party extensions, in parallel on their own runner + site — same bench,
-        # same site setup; the steps below say which leg they belong to. Two legs need
-        # two free test-labeled runners; with only one free they
+        # leg.suite core: our three apps' suites (with shards > 1, one leg per shard, carrying
+        # shard, shards and its modules from the plan job). leg.suite extensions (only with
+        # inputs.extensions): the first-party extensions, in parallel on their own runner +
+        # site — same bench, same site setup; the steps below say which leg they belong to.
+        # Two legs need two free test-labeled runners; with only one free they
         # queue and run back to back — no slower than the old single job.
-        suite: ${{ fromJSON(needs.ext-gate.outputs.suites || '["core"]') }}
+        leg: ${{ fromJSON(needs.plan.outputs.legs || needs.ext-gate.outputs.legs || '[{"suite":"core"}]') }}
     services:
       # Container ports map to RANDOM host ports (no fixed 3306/6379) — the
       # resolved values are read from job.services.*.ports below and written
@@ -227,12 +294,17 @@ jobs:
       # with the same apps (fresh + upgrade), and upload-artifact refuses a
       # second artifact of the same name in one run — the later job's logs
       # would be lost on exactly the night both fail. It also keeps the
-      # upgraded site's timings apart from the fresh site's.
+      # upgraded site's timings apart from the fresh site's (TIMINGS_SLUG, shared
+      # by every shard: they all record into one history). The leg and the shard
+      # go into APPS_SLUG, the artifact's name, for the same reason.
       - name: Compute apps slug
         env:
           APPS: ${{ inputs.apps }}
-          SUFFIX: ${{ inputs.upgrade_from != '' && '-upgrade' || '' }}${{ matrix.suite == 'extensions' && '-extensions' || '' }}
-        run: echo "APPS_SLUG=${APPS// /-}${SUFFIX}" >> "$GITHUB_ENV"
+          SUFFIX: ${{ inputs.upgrade_from != '' && '-upgrade' || '' }}
+          LEG: ${{ matrix.leg.suite == 'extensions' && '-extensions' || '' }}${{ matrix.leg.shard && format('-shard{0}', matrix.leg.shard) || '' }}
+        run: |
+          echo "TIMINGS_SLUG=${APPS// /-}${SUFFIX}" >> "$GITHUB_ENV"
+          echo "APPS_SLUG=${APPS// /-}${SUFFIX}${LEG}" >> "$GITHUB_ENV"
 
       - name: Checkout monorepo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -257,7 +329,7 @@ jobs:
       # the clones' .git/config.
       - name: Fetch first-party extensions
         id: extensions
-        if: ${{ (inputs.extensions || inputs.only_extensions) && matrix.suite == 'extensions' }}
+        if: ${{ (inputs.extensions || inputs.only_extensions) && matrix.leg.suite == 'extensions' }}
         env:
           EXT_REPOS_TOKEN: ${{ secrets.EXT_REPOS_TOKEN }}
           EXT_LIST: ${{ inputs.extension_list }}
@@ -331,8 +403,9 @@ jobs:
       - name: JS unit tests
         # Glob, not the bare directory — node's --test dir resolution is
         # version-finicky; the glob form runs the same files everywhere. Only
-        # the shard that carries ffl_core runs them (they are ffl_core files).
-        if: matrix.suite == 'core' && contains(inputs.apps, 'ffl_core')
+        # the job that carries ffl_core runs them (they are ffl_core files), and of the
+        # shards only the first.
+        if: matrix.leg.suite == 'core' && contains(inputs.apps, 'ffl_core') && (!matrix.leg.shard || matrix.leg.shard == 1)
         run: node --test 'gunstore/apps/ffl_core/ffl_core/tests/js/*.test.js'
 
       - name: Install bench
@@ -661,7 +734,7 @@ jobs:
           bench --site ci.localhost execute "ffl_core.setup.test_bootstrap.run"
 
       - name: Seed the old site with the old release's tests
-        if: ${{ inputs.upgrade_from != '' && inputs.seed_with_old_tests && matrix.suite == 'core' }}
+        if: ${{ inputs.upgrade_from != '' && inputs.seed_with_old_tests && matrix.leg.suite == 'core' }}
         working-directory: frappe-bench
         run: |
           for app in ffl_core ffl_integrations ffl_woo_sync; do
@@ -697,7 +770,7 @@ jobs:
       # the new names after it. Runs the script from the commit under test against the old site;
       # it seeds nothing (and verify checks nothing) once the base already has the new shape.
       - name: Seed card charges in the old shape
-        if: ${{ inputs.upgrade_from != '' && matrix.suite == 'core' }}
+        if: ${{ inputs.upgrade_from != '' && matrix.leg.suite == 'core' }}
         working-directory: frappe-bench/sites
         run: ../env/bin/python "$GITHUB_WORKSPACE/gunstore/scripts/ci/card_upgrade_check.py" seed ci.localhost
 
@@ -722,19 +795,39 @@ jobs:
           bench --site ci.localhost execute "ffl_core.setup.test_bootstrap.run"
 
       - name: Verify the seeded card charges came through the migrate
-        if: ${{ inputs.upgrade_from != '' && matrix.suite == 'core' }}
+        if: ${{ inputs.upgrade_from != '' && matrix.leg.suite == 'core' }}
         working-directory: frappe-bench/sites
         run: ../env/bin/python "$GITHUB_WORKSPACE/gunstore/scripts/ci/card_upgrade_check.py" verify ci.localhost
 
+      # GitHub-hosted: the runner's $HOME starts empty, so the last measured per-module seconds
+      # come from the Actions cache (the newest saved by any shard of any run this ref can
+      # read: its own, its base branch's, the default branch's). Self-hosted keeps the file
+      # under $HOME. Only the balance depends on it, never which modules run.
+      - name: Restore test timings (hosted)
+        if: matrix.leg.suite == 'core' && runner.environment == 'github-hosted'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/gunstore-ci/test-timings-${{ env.TIMINGS_SLUG }}.json
+          key: test-timings-${{ env.TIMINGS_SLUG }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.leg.shard || 0 }}
+          restore-keys: test-timings-${{ env.TIMINGS_SLUG }}-
+
       - name: Run tests
-        if: matrix.suite == 'core'
+        id: run-tests
+        if: matrix.leg.suite == 'core'
         working-directory: frappe-bench
         env:
           APPS: ${{ inputs.apps }}
           WORKERS: ${{ inputs.workers }}
-          MODULES: ${{ inputs.modules }}
+          # A shard runs the list the plan job gave it (never empty); unsharded, the caller's.
+          MODULES: ${{ matrix.leg.modules || inputs.modules }}
+          SHARD: ${{ matrix.leg.shard || '' }}
           RUNNER_ENV: ${{ runner.environment }}
         run: |
+          # An empty list means every module: a shard that lost its list must not run them all.
+          if [ -n "$SHARD" ] && [ -z "$MODULES" ]; then
+            echo "::error::shard $SHARD got no modules from the plan job"
+            exit 1
+          fi
           # lazy: a hosted standard runner has 4 vCPU (the callers' worker counts are sized for
           # a self-hosted runner); more workers than cores only slow every site down.
           # Upgrade: a larger-runner label, billed.
@@ -748,7 +841,7 @@ jobs:
             python3 "$GITHUB_WORKSPACE/gunstore/scripts/ci/parallel_tests.py" \
               --bench . --apps "$APPS" --workers "$WORKERS" \
               --base-site ci.localhost --db-root-password root \
-              --timings "$HOME/.cache/gunstore-ci/test-timings-${APPS_SLUG}.json" \
+              --timings "$HOME/.cache/gunstore-ci/test-timings-${TIMINGS_SLUG}.json" \
               --modules "$MODULES"
           else
             for app in $APPS; do
@@ -756,8 +849,20 @@ jobs:
             done
           fi
 
+      # parallel_tests.py writes the timings it read plus this job's measurements, pass or fail,
+      # so every saved file carries the whole history; the next run restores the newest one.
+      # lazy: one small file per shard per run until the cache evicts it, and a shard's file
+      # has only its own modules freshly measured (the others one run older); merging the
+      # shards' files in the plan job would make every one fresh.
+      - name: Save test timings (hosted)
+        if: ${{ !cancelled() && runner.environment == 'github-hosted' && contains(fromJSON('["success","failure"]'), steps.run-tests.outcome) && (inputs.workers > 1 || inputs.modules != '' || matrix.leg.shard) }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/gunstore-ci/test-timings-${{ env.TIMINGS_SLUG }}.json
+          key: test-timings-${{ env.TIMINGS_SLUG }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.leg.shard || 0 }}
+
       - name: First-party extensions — install, tests, lint, docs
-        if: ${{ matrix.suite == 'extensions' && steps.extensions.outputs.ids != '' }}
+        if: ${{ matrix.leg.suite == 'extensions' && steps.extensions.outputs.ids != '' }}
         env:
           IDS: ${{ steps.extensions.outputs.ids }}
         # ext_test.sh exit 3 = tests, lint and docstrings passed; the docs' only problem is what THIS core's
@@ -791,7 +896,7 @@ jobs:
       # A self-hosted workspace (bench, venv, checkouts) outlives the job: take the
       # extensions back out, so the next run on this runner starts from our apps.
       - name: Unwire first-party extensions
-        if: ${{ always() && matrix.suite == 'extensions' }}
+        if: ${{ always() && matrix.leg.suite == 'extensions' }}
         env:
           IDS: ${{ steps.extensions.outputs.ids }}
         run: |
