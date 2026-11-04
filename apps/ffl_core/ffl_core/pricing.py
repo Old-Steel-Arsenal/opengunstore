@@ -5,8 +5,9 @@ pricing rule of its own: every number comes from the counter's rules, so a quote
 never disagree.
 
 * :func:`counter_list_price` — an Item's list price today, the one
-  ``price_approval.list_rate`` gives a line without a serial (the selling Item Price of the
-  default price list, or a uniform-priced gun model's price). A gun priced one by one has no
+  ``price_approval.list_rate`` gives a line without a serial: the selling Item Price of the
+  default price list, except a uniform-priced firearm model in stock, priced from its cheapest
+  priced gun. A gun priced one by one has no
   Item-level price: 0.0.
 * :func:`counter_price_for` — a quote line's price: a gun priced one by one from its own serial
   (``firearm.serial_price_now``), or the cheapest one in stock while no serial is picked
@@ -15,7 +16,7 @@ never disagree.
   per-gun model, a sale running today, a drop-ship listing, the transfer fee), or None.
 * :func:`set_regular_price` — a price approver changes the regular price: ``Item.standard_rate``
   through an Item save (validate, the website / GunBroker pushes and the Version trail all run)
-  and the selling Item Price with it (:func:`sync_selling_item_price`, the rule Receive Goods
+  and the selling Item Price with it (:func:`_sync_selling_item_price`, the rule Receive Goods
   uses). ``item_hooks.sync_standard_selling_price`` never overwrites an existing Item Price on an
   Item that is not uniform-priced, so the save alone would leave the register on the old price.
 """
@@ -23,7 +24,7 @@ from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.utils import flt, nowdate
+from frappe.utils import flt, fmt_money, nowdate
 
 from ffl_core.roles import PRICE_APPROVER_ROLES
 
@@ -71,12 +72,21 @@ def counter_price_for(item_code: str, serial_no: str | None = None) -> float:
 
 	Args:
 	    item_code: The Item.
-	    serial_no: The gun picked for the line, if any. Must be a serial of *item_code*.
+	    serial_no: The gun picked for the line, if any. Must be an in-stock (Active) serial of
+	        *item_code*; anything else raises ``frappe.ValidationError``.
 
 	Returns:
 	    For a gun priced one by one: that gun's price, or the cheapest priced one in stock while
 	    no gun is picked (0.0 when none is). For anything else: :func:`counter_list_price`.
 	"""
+	if serial_no:
+		sn = frappe.db.get_value("Serial No", serial_no, ["item_code", "status"], as_dict=True)
+		if not sn or sn.item_code != item_code:
+			frappe.throw(_("Serial number {0} is not a gun of {1}. Pick one of its own serial numbers.").format(
+				frappe.bold(serial_no), frappe.bold(item_code)), title=_("Wrong gun"))
+		if sn.status != "Active":
+			frappe.throw(_("Gun {0} is no longer in stock. Pick another one or leave the gun blank.").format(
+				frappe.bold(serial_no)), title=_("Gun not in stock"))
 	item = _item(item_code)
 	if not item or not _per_gun(item):
 		return counter_list_price(item_code)
@@ -84,9 +94,6 @@ def counter_price_for(item_code: str, serial_no: str | None = None) -> float:
 
 	if not serial_no:
 		return flt(lowest_counter_price(item_code))
-	if frappe.db.get_value("Serial No", serial_no, "item_code") != item_code:
-		frappe.throw(_("Serial number {0} is not a gun of {1}. Pick one of its own serial numbers.").format(
-			frappe.bold(serial_no), frappe.bold(item_code)), title=_("Wrong gun"))
 	return flt(serial_price_now(serial_no))
 
 
@@ -126,8 +133,9 @@ def price_readonly_reason(item_code: str) -> str | None:
 def set_regular_price(item_code: str, price: float) -> None:
 	"""Change an Item's regular price, as a price approver.
 
-	Saves the Item (its validate, the website / GunBroker pushes and the Version trail run) and
-	makes the selling Item Price the register charges match.
+	Saves the Item (its validate, the website / GunBroker pushes and the Version trail run),
+	makes the selling Item Price the register charges match, and notes the register price's
+	change (old and new) on the Item's timeline.
 
 	Args:
 	    item_code: The Item.
@@ -146,6 +154,7 @@ def set_regular_price(item_code: str, price: float) -> None:
 	price = flt(price, doc.precision("standard_rate"))
 	if price <= 0:
 		frappe.throw(_("Enter a price above zero."), title=_("Price can't be changed here"))
+	was = flt(counter_list_price(item_code), doc.precision("standard_rate"))
 	if flt(doc.standard_rate, doc.precision("standard_rate")) != price:
 		doc.standard_rate = price
 		# The gate is the approver role above, not the Item DocPerms (a Sales Manager has no
@@ -153,10 +162,16 @@ def set_regular_price(item_code: str, price: float) -> None:
 		# trail, so it is asked for even where Frappe skips versions by default (tests).
 		doc.flags.ignore_permissions = True
 		doc.save(ignore_version=False)
-	sync_selling_item_price(item_code, price)
+	_sync_selling_item_price(item_code, price)
+	if was != price:
+		# The Version above shows standard_rate only, and none at all when only the register's
+		# Item Price moved: this note is the trail of the price staff actually charge.
+		doc.add_comment("Info", _("Register price changed from {0} to {1}.").format(
+			fmt_money(was, currency=frappe.defaults.get_global_default("currency")),
+			fmt_money(price, currency=frappe.defaults.get_global_default("currency"))))
 
 
-def sync_selling_item_price(item_code: str, price: float) -> None:
+def _sync_selling_item_price(item_code: str, price: float) -> None:
 	"""Make the default list's selling Item Price what the register charges for *price* today:
 	on a uniform-priced Item an active sale undercuts it (the serial picker's overlay), so writing
 	the raw regular price mid-sale would show full price until the daily re-sync. Creates the Item

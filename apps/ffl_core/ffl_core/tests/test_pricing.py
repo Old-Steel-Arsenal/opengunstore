@@ -58,6 +58,11 @@ def _number(shown) -> float:
 	return flt(re.sub(r"[^0-9.\-]", "", str(shown)))
 
 
+def _price_notes(item_code: str, owner: str) -> list[str]:
+	return frappe.get_all("Comment", filters={"reference_doctype": "Item", "reference_name": item_code,
+		"comment_type": "Info", "owner": owner}, pluck="content")
+
+
 def _woo_pushes(enqueue) -> list[str]:
 	return [c.kwargs.get("item_code") for c in enqueue.call_args_list
 		if c.args and c.args[0] == "ffl_woo_sync.woocommerce.tasks.push_item_task"]
@@ -112,10 +117,19 @@ class TestPricing(FrappeTestCase):
 	def test_a_per_gun_line_is_priced_from_its_own_gun(self):
 		serial = frappe.get_doc({"doctype": "Serial No", "serial_no": "_T-PRICING-SN-1", "item_code": PER_GUN,
 			"sell_price": 799}).insert(ignore_permissions=True)
+		frappe.db.set_value("Serial No", serial.name, "status", "Active")
 		self.assertEqual(pricing.counter_price_for(PER_GUN, serial.name), 799)
+		# A gun that left the store (sold, delivered) is never quoted.
+		frappe.db.set_value("Serial No", serial.name, "status", "Delivered")
+		with self.assertRaises(frappe.ValidationError):
+			pricing.counter_price_for(PER_GUN, serial.name)
 		# A serial that is not one of this model's guns is refused, never priced as one.
 		with self.assertRaises(frappe.ValidationError):
 			pricing.counter_price_for(PER_GUN, "_T-NO-SUCH-SN")
+		# ...on any Item: a uniform model does not take another model's gun either.
+		frappe.db.set_value("Serial No", serial.name, "status", "Active")
+		with self.assertRaises(frappe.ValidationError):
+			pricing.counter_price_for(UNIFORM, serial.name)
 
 	def test_unknown_item(self):
 		self.assertEqual(pricing.counter_list_price("_T-PRICING-NONE"), 0.0)
@@ -157,6 +171,22 @@ class TestPricing(FrappeTestCase):
 		changed = [c for v in versions for c in json.loads(v).get("changed", []) if c[0] == "standard_rate"]
 		self.assertEqual([[_number(c[1]), _number(c[2])] for c in changed], [[22.49, 23.99]])
 		self.assertTrue(frappe.get_all("Version", filters={"ref_doctype": "Item", "docname": AMMO, "owner": MANAGER}))
+		# The register's own price (24.99, not standard_rate's 22.49) is on the trail, by the manager.
+		notes = _price_notes(AMMO, MANAGER)
+		self.assertEqual(len(notes), 1)
+		self.assertIn("24.99", notes[0])
+		self.assertIn("23.99", notes[0])
+
+	def test_a_register_only_change_still_leaves_a_trail(self):
+		# standard_rate is already 22.49; only the register's Item Price (24.99) moves: no Item save.
+		frappe.set_user(MANAGER)
+		pricing.set_regular_price(AMMO, 22.49)
+		frappe.set_user("Administrator")
+		self.assertEqual(_item_price(AMMO), 22.49)
+		notes = _price_notes(AMMO, MANAGER)
+		self.assertEqual(len(notes), 1)
+		self.assertIn("24.99", notes[0])
+		self.assertIn("22.49", notes[0])
 
 	def test_a_uniform_model_takes_the_new_price_everywhere(self):
 		frappe.set_user(MANAGER)
@@ -168,6 +198,7 @@ class TestPricing(FrappeTestCase):
 		frappe.set_user(MANAGER)
 		pricing.set_regular_price(UNIFORM, 589)
 		self.assertFalse(frappe.get_all("Version", filters={"ref_doctype": "Item", "docname": UNIFORM, "owner": MANAGER}))
+		self.assertFalse(_price_notes(UNIFORM, MANAGER))
 		self.assertEqual(_item_price(UNIFORM), 589)
 
 	def test_the_price_must_be_above_zero(self):

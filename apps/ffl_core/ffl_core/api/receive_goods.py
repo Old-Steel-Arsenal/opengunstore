@@ -1121,13 +1121,13 @@ def _set_item_selling_price(item_code: str, price: float) -> None:
 	Price is authoritative at POS. Targeted writes (no full Item.save) so unrelated
 	Item on_update hooks don't fire as a side effect of a price change. The Item
 	Price follows the rule ``pricing.set_regular_price`` shares
-	(:func:`ffl_core.pricing.sync_selling_item_price`: the sale overlay on a
+	(:func:`ffl_core.pricing._sync_selling_item_price`: the sale overlay on a
 	uniform-priced item; 0 = un-priced, never creates or zeroes an Item Price)."""
-	from ffl_core.pricing import sync_selling_item_price
+	from ffl_core.pricing import _sync_selling_item_price
 
 	if float(frappe.db.get_value("Item", item_code, "standard_rate") or 0) != price:
 		frappe.db.set_value("Item", item_code, "standard_rate", price, update_modified=False)
-	sync_selling_item_price(item_code, price)
+	_sync_selling_item_price(item_code, price)
 
 
 def _rsr_dealer_price(item_code: str) -> float:
