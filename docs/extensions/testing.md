@@ -56,7 +56,7 @@ Other commands:
 
 ## CI in your own repository
 
-The workflow below builds a bench on the Frappe, ERPNext and HRMS tags an OpenGunstore release pins (`deploy/prod/frappe-refs.env`), installs the three core apps on a fresh site the way the core's CI does, and runs the same `scripts/ci/ext_test.sh` on your repository. It needs no secrets: the core repository is public. Set `EXT_ID` and `CORE_REF`.
+The workflow below builds a bench on the Frappe, ERPNext, HRMS and Frappe CRM tags an OpenGunstore release pins (`deploy/prod/frappe-refs.env`), installs the three core apps on a fresh site the way the core's CI does (from 0.6.4 the core requires Frappe CRM, so a workflow without the `crm` lines fails to create the site), and runs the same `scripts/ci/ext_test.sh` on your repository. It needs no secrets: the core repository is public. Set `EXT_ID` and `CORE_REF`.
 
 ```yaml
 # .github/workflows/opengunstore.yml
@@ -117,12 +117,13 @@ jobs:
           FRAPPE_REDIS_QUEUE: redis://127.0.0.1:6379
         run: |
           set -euo pipefail
-          . core/deploy/prod/frappe-refs.env            # FRAPPE_REF, ERPNEXT_REF, HRMS_REF
+          . core/deploy/prod/frappe-refs.env            # FRAPPE_REF, ERPNEXT_REF, HRMS_REF, CRM_REF
           bench init --skip-redis-config-generation --no-backups \
             --python "$PYTHON_BIN" --frappe-branch "$FRAPPE_REF" frappe-bench
           cd frappe-bench
           bench get-app --branch "$ERPNEXT_REF" erpnext https://github.com/frappe/erpnext.git
           bench get-app --branch "$HRMS_REF" hrms https://github.com/frappe/hrms.git
+          bench get-app --skip-assets --branch "$CRM_REF" crm https://github.com/frappe/crm.git
           bench set-config -g db_host 127.0.0.1
           bench set-config -g -p db_port 3306
           for key in redis_cache redis_queue redis_socketio; do
@@ -132,14 +133,14 @@ jobs:
             ln -sfn "$GITHUB_WORKSPACE/core/apps/$app" "apps/$app"
             ./env/bin/pip install -q -e "apps/$app"
           done
-          printf '%s\n' frappe erpnext hrms ffl_core ffl_integrations ffl_woo_sync > sites/apps.txt
+          printf '%s\n' frappe erpnext hrms crm ffl_core ffl_integrations ffl_woo_sync > sites/apps.txt
 
       - name: Create the test site
         working-directory: frappe-bench
         run: |
           set -euo pipefail
           bench new-site ci.localhost --mariadb-root-password root --admin-password admin \
-            --no-mariadb-socket --install-app erpnext --install-app hrms \
+            --no-mariadb-socket --install-app erpnext --install-app hrms --install-app crm \
             --install-app ffl_core --install-app ffl_integrations --install-app ffl_woo_sync
           bench --site ci.localhost set-config allow_tests true
           bench --site ci.localhost execute ffl_core.setup.test_bootstrap.run

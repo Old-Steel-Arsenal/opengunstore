@@ -17,6 +17,7 @@
 | ERPNext | `v16.51.1` (`deploy/prod/frappe-refs.env` is the single source: the image build and the CI bench reuse it; the Dockerfile ARG defaults are pinned in line by the `scripts/ci` tests) | https://github.com/frappe/erpnext | Rolls with v16 stable; the daily `ci.yml` runs a regression against the version-16 head |
 | Frappe Framework | `v16.52.0` (`FRAPPE_REF`, same as above) | https://github.com/frappe/frappe | Same as above |
 | Frappe HR (hrms) | `v16.52.0` (`HRMS_REF`, same as above) | https://github.com/frappe/hrms | Same as above. Baked into the image and installed on the CI site; a store's site gets it only with `bench --site <site> install-app hrms` (attendance, shifts, leave) |
+| Frappe CRM (crm) | `v16.0.1` (`CRM_REF`, same as above) | https://github.com/frappe/crm | Same as above. Baked into the image with its front end built, and installed on every site: ffl_core requires it (`ffl_core/crm/`). A site made before 0.6.4 gets it on its first deploy (`deploy/prod/auto_deploy.sh` installs it before the migrate) |
 | ~~POS Awesome~~ | **Removed** | Upstream stopped updating in 2024-02; no longer used | - |
 | **POS UI** | ERPNext built-in `/app/point-of-sale` | Moves with ERPNext | No extra upgrade risk |
 | frappe_docker | main (upgrade by re-cloning) | https://github.com/frappe/frappe_docker | Follows main |
