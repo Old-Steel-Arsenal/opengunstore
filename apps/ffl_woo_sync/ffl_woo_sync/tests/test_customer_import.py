@@ -26,8 +26,8 @@ def _account(email, first="", last="", billing=None, role="customer"):
 
 def _store(orders=(), accounts=()):
 	wc = MagicMock()
-	wc.list_orders.side_effect = lambda **kw: list(orders) if kw.get("page") == 1 else []
-	wc.get.side_effect = lambda path, params=None: list(accounts) if params.get("page") == 1 else []
+	rows = {"orders": list(orders), "customers": list(accounts)}
+	wc.get.side_effect = lambda path, params=None: rows[path] if params.get("page") == 1 else []
 	return wc
 
 
@@ -116,7 +116,8 @@ class TestCustomerImport(FrappeTestCase):
 		self.assertTrue(self._customer("sub@shop.test"))
 		self.assertIsNone(self._customer("boss@shop.test"))
 		# The customers list is asked for every role.
-		self.assertEqual(store.get.call_args.kwargs["params"]["role"], "all")
+		customers_call = [c for c in store.get.call_args_list if c.args[0] == "customers"][0]
+		self.assertEqual(customers_call.kwargs["params"]["role"], "all")
 
 	def test_an_address_on_a_customers_contact_is_known(self):
 		customer = _retail("Contact Only", None)
@@ -170,8 +171,13 @@ class TestCustomerImport(FrappeTestCase):
 		self.assertIsNone(self._customer("maybe@shop.test"))
 
 	def test_a_non_list_answer_stops_the_import(self):
-		store = _store()
-		store.get.side_effect = lambda path, params=None: {"code": "rest_forbidden"}
-		with self.assertRaises(frappe.ValidationError):
-			self._run(store)
+		# From either list: a broken orders endpoint must not pass for a store with no buyers.
+		for broken in ("orders", "customers"):
+			store = _store(accounts=[_account("kept.out@shop.test", "Kept", "Out")])
+			ok = store.get.side_effect
+			store.get.side_effect = lambda path, params=None, b=broken, ok=ok: (
+				{"code": "rest_forbidden"} if path == b else ok(path, params))
+			with self.assertRaises(frappe.ValidationError, msg=broken):
+				self._run(store)
+		self.assertIsNone(self._customer("kept.out@shop.test"))
 

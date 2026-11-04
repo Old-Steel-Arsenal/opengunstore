@@ -62,7 +62,10 @@ def collect_people(wc) -> dict[str, dict]:
 		row["name"] = row["name"] or (name or "").strip()
 		row["phone"] = row["phone"] or (phone or "").strip()
 
-	for o in _pages(lambda p: wc.list_orders(status="any", per_page=PER_PAGE, page=p)):
+	# The raw list, not list_orders (which turns a bad answer into an empty page): a broken orders
+	# endpoint must stop the run, not pass for a store with no buyers.
+	for o in _pages(lambda p: wc.get("orders", params={"per_page": PER_PAGE, "page": p, "status": "any",
+			"orderby": "date", "order": "desc"})):
 		if o.get("status") not in BUYER_STATUSES:
 			continue
 		b = o.get("billing") or {}
