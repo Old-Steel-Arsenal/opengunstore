@@ -14,6 +14,7 @@
   "default_terminal",
   "device_serial_number",
   "saved_card_terminal",
+  "payment_page_secret",
   "sandbox_mode",
   "tab_status",
   "section_status",
@@ -89,6 +90,12 @@
    "label": "Saved-Card Terminal Number"
   },
   {
+   "description": "The Gateway Terminal Number's shared secret for Payroc's hosted payment page. Set it to let managers key in a card number on that page (card not present); leave blank to keep keyed entry off.",
+   "fieldname": "payment_page_secret",
+   "fieldtype": "Password",
+   "label": "Payment Page Secret"
+  },
+  {
    "default": "0",
    "description": "Test charges only; uncheck for production.",
    "fieldname": "sandbox_mode",
@@ -156,7 +163,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-30 12:30:00",
+ "modified": "2026-11-04 12:00:00",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "Payroc Settings",

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import copy as _copy
 import re as _re
+import time
 
 import frappe
 import requests
@@ -79,6 +80,21 @@ def _order_id(doc_name: str, attempt: int) -> str:
 		return name[:PAYROC_ORDER_ID_MAX]
 	suffix = f"-A{int(attempt)}"
 	return name[:PAYROC_ORDER_ID_MAX - len(suffix)] + suffix
+
+
+# A keyed charge has no device instruction: its handle is "keyed:<orderId>:<amount>", so every
+# step (poll, cancel, reopening the page) can be answered from the handle alone.
+_KEYED = "keyed:"
+# How long a cancel waits for a payment-page submit that was already on its way.
+KEYED_CANCEL_GRACE_SECONDS = 3
+
+
+def _keyed(handle: str) -> tuple[str, float] | None:
+	"""(orderId, amount) of a keyed handle, else None."""
+	if not str(handle or "").startswith(_KEYED):
+		return None
+	order_id, _sep, amount = str(handle)[len(_KEYED):].rpartition(":")
+	return (order_id, flt(amount)) if order_id else None
 
 
 def _txn(payment: dict) -> dict:
@@ -191,7 +207,11 @@ class PayrocProcessor(CardProcessor):
 
 	def poll(self, handle: str) -> CardResult:
 		"""IN_PROGRESS → PENDING; CANCELED / FAILURE → CANCELED (gateway_status keeps which);
-		COMPLETED → follow the HATEOAS link to the Payment and read transactionResult."""
+		COMPLETED → follow the HATEOAS link to the Payment and read transactionResult.
+		A keyed handle is looked up by its orderId instead (:meth:`_poll_keyed`)."""
+		keyed = _keyed(handle)
+		if keyed:
+			return self._poll_keyed(keyed[0])
 		inst = self.client.poll_payment_instruction(handle) or {}
 		st = inst.get("status") or "IN_PROGRESS"
 		if st == "IN_PROGRESS":
@@ -230,8 +250,49 @@ class PayrocProcessor(CardProcessor):
 			card_expiry=str(acct.get("expiryDate") or "") if approved else "")
 
 	def cancel(self, handle: str) -> CardResult:
+		keyed = _keyed(handle)
+		if keyed:
+			return self._cancel_keyed(keyed[0])
 		resp = self.client.cancel_payment_instruction(handle)
 		return CardResult(status=CANCELED, gateway_status="CANCELED", raw=resp)
+
+	# ------------------------------------------------------------ keyed entry (hosted page)
+
+	def supports_keyed_entry(self) -> bool:
+		try:
+			return bool(self.client.config.page_secret and self.client.config.default_terminal)
+		except PayrocError:
+			return False
+
+	def start_keyed_charge(self, *, document, attempt, amount):
+		if flt(amount) <= 0:
+			frappe.throw(_("Amount must be > 0 (got {0}).").format(amount))
+		return f"{_KEYED}{_order_id(document, attempt)}:{flt(amount):.2f}"
+
+	def keyed_page(self, handle: str, return_url: str) -> str:
+		keyed = _keyed(handle)
+		if not keyed:
+			return ""
+		return self.client.payment_page_url(order_id=keyed[0], amount=keyed[1], return_url=return_url)
+
+	def _poll_keyed(self, order_id: str) -> CardResult:
+		"""Nothing filed under the orderId yet = the page is still open (PENDING). Payroc holding
+		a sale it cannot settle from here stays UNKNOWN (in flight) — never "not charged"."""
+		res = self.find_stored_charge(order_id)
+		if res.status == UNKNOWN and res.gateway_status != "FOUND":
+			return CardResult(status=PENDING, message=res.message, raw=res.raw)
+		return res
+
+	def _cancel_keyed(self, order_id: str) -> CardResult:
+		"""There is nothing to cancel at the gateway: the page is simply abandoned (the screen
+		closes it first). A submit that was already on its way is waited for once, and a sale
+		Payroc then holds refuses the cancel, so the charge stays in flight and is recorded."""
+		time.sleep(KEYED_CANCEL_GRACE_SECONDS)
+		res = self._poll_keyed(order_id)
+		if res.status != PENDING:
+			raise CardProcessorError(_("Payroc already holds an answer for {0} — it is being "
+				"recorded. Refresh and charge again only if it was not approved.").format(order_id))
+		return CardResult(status=CANCELED, gateway_status="CANCELED", message=_("Keyed entry cancelled."))
 
 	# ------------------------------------------------------------ after the charge
 

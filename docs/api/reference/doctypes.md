@@ -1271,6 +1271,7 @@ app: `ffl_integrations` · module: FFL Integrations · single · roles: System M
 | `default_terminal` | Data | Gateway Terminal Number |  |  |
 | `device_serial_number` | Data | Device Serial Number |  |  |
 | `saved_card_terminal` | Data | Saved-Card Terminal Number |  |  |
+| `payment_page_secret` | Password | Payment Page Secret |  |  |
 | `sandbox_mode` | Check | Sandbox Mode |  |  |
 | `last_token_refreshed_at` | Datetime | Last Token Refreshed At |  |  |
 | `last_charge_at` | Datetime | Last Charge At |  |  |

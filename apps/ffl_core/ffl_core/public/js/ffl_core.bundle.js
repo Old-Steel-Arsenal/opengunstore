@@ -3068,6 +3068,7 @@ frappe.provide('frappe.ui.form');
 
 (function setupCardPosHook() {
 	const POLL_TIMEOUT_MS = 120000;   // overall wait for the terminal
+	const KEYED_TIMEOUT_MS = 600000;  // keyed entry: a card read out over the phone takes longer
 
 	// The card tender name, card processor label and on/off switch all come from
 	// ffl.switches (defined above in this bundle). Read lazily — boot may not be
@@ -3085,10 +3086,16 @@ frappe.provide('frappe.ui.form');
 			.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
 	}
 
-	function showWaitingDialog(amount, onCancel) {
+	// keyedUrl: a keyed charge — the card is typed on the processor's payment page (a pop-up),
+	// and the dialog offers to reopen it (a blocked or closed pop-up).
+	function showWaitingDialog(amount, onCancel, keyedUrl, onReopen) {
 		const dollars = amount.toFixed(2);
+		const hint = keyedUrl
+			? `${__('Type the card on the {0} payment page.', [frappe.utils.escape_html(cardLabel())])}
+				<br><a href="#" class="ffl-keyed-open">${__('Open payment page')}</a>`
+			: __('Customer should dip / tap card on terminal.');
 		const dlg = new frappe.ui.Dialog({
-			title: __('Waiting for terminal'),
+			title: keyedUrl ? __('Waiting for the payment page') : __('Waiting for terminal'),
 			fields: [{
 				fieldname: 'msg', fieldtype: 'HTML',
 				options: `
@@ -3097,7 +3104,7 @@ frappe.provide('frappe.ui.form');
 							border:4px solid var(--gray-300);border-top-color:var(--green-600);border-radius:50%;
 							animation: card-spin 0.9s linear infinite;"></div>
 						<p style="font-size:20px;font-weight:600;margin:0 0 6px;">$${dollars}</p>
-						<p style="margin:0;color:var(--text-muted);">${__('Customer should dip / tap card on terminal.')}</p>
+						<p style="margin:0;color:var(--text-muted);">${hint}</p>
 					</div>
 					<style>@keyframes card-spin { to { transform: rotate(360deg); } }</style>
 				`,
@@ -3111,7 +3118,22 @@ frappe.provide('frappe.ui.form');
 		dlg.$wrapper.find('.modal-header .close').hide();
 		dlg.$wrapper.attr('data-keyboard', 'false');
 		dlg.$wrapper.off('click.bs.modal');
+		dlg.$wrapper.find('.ffl-keyed-open').on('click', (e) => { e.preventDefault(); if (onReopen) onReopen(); });
 		return dlg;
+	}
+
+	// Keyed entry's pop-up: opened on start (and from the waiting dialog), closed before any
+	// cancel so the page cannot be submitted after the charge was given up.
+	function keyedWindow(url) {
+		let win = null;
+		const open = () => {
+			if (!url) return;
+			win = window.open(url, 'ffl_keyed_card', 'width=560,height=820');
+			if (win) win.focus();
+		};
+		const close = () => { try { if (win && !win.closed) win.close(); } catch (e) { /* gone */ } };
+		open();
+		return { open, close };
 	}
 
 	function hideDialog(dlg) {
@@ -3160,6 +3182,7 @@ frappe.provide('frappe.ui.form');
 						[format_currency(remaining)]) },
 					// Card on file: only when the server offered it for this customer.
 					...(saveOffer ? [window.ffl.cardOnFile.field()] : []),
+					...(window.ffl.keyedCard.available() ? [window.ffl.keyedCard.field()] : []),
 				],
 				primary_action_label: __('Charge'),
 				primary_action(values) {
@@ -3172,7 +3195,8 @@ frappe.provide('frappe.ui.form');
 					}
 					settled = true;
 					dlg.hide();
-					resolve({ amount: amt, save_card: saveOffer && values.save_card ? 1 : 0 });
+					const keyed = values.keyed ? 1 : 0;
+					resolve({ amount: amt, keyed, save_card: !keyed && saveOffer && values.save_card ? 1 : 0 });
 				},
 			});
 			dlg.$wrapper.on('hidden.bs.modal', () => { if (!settled) resolve(null); });
@@ -3397,17 +3421,19 @@ frappe.provide('frappe.ui.form');
 			if (!req) return { skip: false, ok: false };   // cashier backed out
 			if (req.save_card && !(await window.ffl.cardOnFile.ensureSigned(frm.doc.customer, saveOffer,
 				frm.doc.customer_name))) continue;     // not signed: back to the card dialog
-			const res = await runSingleCharge(frm, req.amount, req.save_card);
+			const res = await runSingleCharge(frm, req.amount, req.save_card, req.keyed);
 			if (res.skip || !res.ok) return res;
 		}
 	}
 
 	// One card: create the instruction for `amount` and poll it to a terminal
 	// state — the single-charge era flow, parameterized by amount.
-	async function runSingleCharge(frm, amount, saveCard) {
+	async function runSingleCharge(frm, amount, saveCard, keyed) {
 
-		// 1. Create the device payment instruction (returns fast with an id).
+		// 1. Create the device payment instruction (returns fast with an id) — or, keyed, the
+		// payment page to open (also when an in-flight keyed charge is resumed).
 		let instructionId = '';
+		let keyedUrl = '';
 		try {
 			const c = await frappe.call({
 				method: 'ffl_integrations.payments.api.charge_pos_invoice',
@@ -3416,12 +3442,14 @@ frappe.provide('frappe.ui.form');
 					description: `${frm.doc.name} — ${frm.doc.customer_name || frm.doc.customer || ''}`,
 					// Sent only when ticked: the request is byte-for-byte the old one otherwise.
 					...(saveCard ? { save_card: 1 } : {}),
+					...(keyed ? { keyed: 1 } : {}),
 				},
 			});
 			const created = (c && c.message) || {};
 			// Integration not configured (go-live gate) — plain tender, no gateway.
 			if (created.skip) return { skip: true };
 			instructionId = created.instruction_id || '';
+			keyedUrl = created.keyed_url || '';
 		} catch (err) {
 			if (!(err && err._server_messages)) {
 				frappe.msgprint({
@@ -3435,12 +3463,14 @@ frappe.provide('frappe.ui.form');
 
 		// 2. Poll loop (overall timeout). Cancel sets the flag + cancels the instruction.
 		let cancelled = false;
+		const page = keyedWindow(keyedUrl);
+		const giveUp = async () => { page.close(); await cancelInstruction(frm, instructionId); };
 		const dlg = showWaitingDialog(amount, async () => {
 			cancelled = true;
 			hideDialog(dlg);   // free the UI now, don't wait out the in-flight poll
-			await cancelInstruction(frm, instructionId);
-		});
-		const deadline = Date.now() + POLL_TIMEOUT_MS;
+			await giveUp();
+		}, keyedUrl, page.open);
+		const deadline = Date.now() + (keyedUrl ? KEYED_TIMEOUT_MS : POLL_TIMEOUT_MS);
 		try {
 			while (Date.now() < deadline && !cancelled) {
 				let p;
@@ -3455,7 +3485,7 @@ frappe.provide('frappe.ui.form');
 					// reconciles a raced approval) rather than leaving it stranded
 					// and letting the rejection escape submit_invoice unhandled.
 					if (!cancelled) {
-						await cancelInstruction(frm, instructionId);
+						await giveUp();
 						frappe.msgprint({
 							title: __('Terminal error'), indicator: 'red',
 							message: __('Lost contact while waiting for the terminal. The charge was cancelled — please retry.'),
@@ -3472,10 +3502,11 @@ frappe.provide('frappe.ui.form');
 					// Pace the loop — the terminal takes seconds to prompt/read; a
 					// zero-delay re-poll hammers the gateway (each poll is a full
 					// auth + GET round-trip) and risks rate-limiting mid-auth.
-					await new Promise((r) => setTimeout(r, 1500));
+					await new Promise((r) => setTimeout(r, keyedUrl ? 3000 : 1500));
 					continue;
 				}
 				dlg.hide();
+				page.close();
 				if (m.ok) {
 					// Backend stamped card_unique_reference — reload so
 					// savesubmit doesn't write the stale doc back.
@@ -3505,7 +3536,7 @@ frappe.provide('frappe.ui.form');
 		}
 		// Timed out without a response (and not cancelled) → cancel to avoid a hang.
 		if (!cancelled) {
-			await cancelInstruction(frm, instructionId);
+			await giveUp();
 			frappe.msgprint({
 				title: __('Terminal timed out'), indicator: 'orange',
 				message: __('No response from the terminal. The charge was cancelled — please retry.'),
@@ -3591,10 +3622,26 @@ frappe.provide('frappe.ui.form');
 		},
 	};
 
+	// Keyed entry: offered to managers when the processor's payment page is set up (boot
+	// ffl_card_processor.keyed); the server refuses everyone else (payments.api._check_keyed).
+	window.ffl.keyedCard = {
+		available() {
+			const p = frappe.boot && frappe.boot.ffl_card_processor;
+			return !!(p && Number(p.enabled) && Number(p.keyed))
+				&& (frappe.user.has_role('Sales Manager') || frappe.user.has_role('System Manager'));
+		},
+		field() {
+			return { fieldtype: 'Check', fieldname: 'keyed', label: __('Key in card number (no terminal)'),
+				description: __('For a card that will not read or a phone order: type it on the {0} payment page. Card-not-present rates apply.',
+					[cardLabel()]) };
+		},
+	};
+
 	window.ffl.terminalCharge = async function ({ amount, start, poll, cancel }) {
 		const call = (spec, extra) => frappe.call({
 			method: spec.method, args: Object.assign({}, spec.args, extra || {}) });
 		let instructionId = '';
+		let keyedUrl = '';
 		let created = {};
 		try {
 			const c = await call(start);
@@ -3604,6 +3651,7 @@ frappe.provide('frappe.ui.form');
 			// server settled it instead of charging again.
 			if (created.already) return Object.assign({ skip: false }, created);
 			instructionId = created.instruction_id || '';
+			keyedUrl = created.keyed_url || '';
 		} catch (err) {
 			if (!(err && err._server_messages)) {
 				frappe.msgprint({ title: __('Terminal error'), indicator: 'red',
@@ -3612,7 +3660,9 @@ frappe.provide('frappe.ui.form');
 			return { skip: false, ok: false };
 		}
 		if (!instructionId) return { skip: false, ok: false };
+		const page = keyedWindow(keyedUrl);
 		const cancelIt = async () => {
+			page.close();
 			try { await call(cancel, { instruction_id: instructionId }); } catch (e) { /* best-effort */ }
 		};
 		let cancelled = false;
@@ -3620,8 +3670,8 @@ frappe.provide('frappe.ui.form');
 			cancelled = true;
 			hideDialog(dlg);
 			await cancelIt();
-		});
-		const deadline = Date.now() + POLL_TIMEOUT_MS;
+		}, keyedUrl, page.open);
+		const deadline = Date.now() + (keyedUrl ? KEYED_TIMEOUT_MS : POLL_TIMEOUT_MS);
 		try {
 			while (Date.now() < deadline && !cancelled) {
 				let p;
@@ -3638,10 +3688,11 @@ frappe.provide('frappe.ui.form');
 				const m = (p && p.message) || {};
 				if (cancelled) return { skip: false, ok: false };
 				if (m.status === 'IN_PROGRESS') {
-					await new Promise((r) => setTimeout(r, 1500));
+					await new Promise((r) => setTimeout(r, keyedUrl ? 3000 : 1500));
 					continue;
 				}
 				hideDialog(dlg);
+				page.close();
 				if (m.ok) {
 					frappe.show_alert({ indicator: 'green',
 						message: __('Approved · auth {0}', [m.approval_code || m.unique_reference || 'OK']) });
@@ -3665,9 +3716,10 @@ frappe.provide('frappe.ui.form');
 
 	// Terminal charge against a Sales Invoice (counter order, membership dues).
 	// Callers handle skip / ok / decline themselves.
-	window.ffl.chargeSalesInvoice = (si, amount, { saveCard } = {}) => window.ffl.terminalCharge({
+	window.ffl.chargeSalesInvoice = (si, amount, { saveCard, keyed } = {}) => window.ffl.terminalCharge({
 		amount,
-		start: { method: 'ffl_integrations.payments.api.charge_sales_invoice', args: { sales_invoice: si, amount, ...(saveCard ? { save_card: 1 } : {}) } },
+		start: { method: 'ffl_integrations.payments.api.charge_sales_invoice', args: { sales_invoice: si, amount,
+			...(saveCard ? { save_card: 1 } : {}), ...(keyed ? { keyed: 1 } : {}) } },
 		poll: { method: 'ffl_integrations.payments.api.poll_sales_invoice_charge', args: { sales_invoice: si } },
 		cancel: { method: 'ffl_integrations.payments.api.cancel_sales_invoice_charge', args: { sales_invoice: si } },
 	});

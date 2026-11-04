@@ -558,6 +558,31 @@ def _still_on_device(res) -> bool:
     return res.status in (PENDING, UNKNOWN)
 
 
+# Keyed entry: the card number is typed on the processor's hosted payment page (card not
+# present) — never on this server. The charge is started, polled, cancelled and booked exactly
+# like a terminal charge; only its handle differs (base.CardProcessor.start_keyed_charge).
+KEYED_RETURN_PATH = "/card-payment-done"
+
+
+def _check_keyed(p, save) -> None:
+    """Keyed entry is a manager's call (card-not-present rates, no chip liability shift) and
+    needs a processor that has its payment page configured."""
+    _check_manager(_("Keying in a card number requires manager permission (Sales Manager)."))
+    if not p.supports_keyed_entry():
+        frappe.throw(_("Keyed card entry is not set up — add the Payment Page Secret in {0} "
+            "Settings.").format(p.label))
+    if save:
+        frappe.throw(_("A keyed card cannot be saved for later charges — charge it without "
+            "Save this card."))
+
+
+def _keyed_url(p, handle: str) -> dict:
+    """{"keyed_url": the payment page} for a keyed handle (also when an in-flight one is
+    resumed, so the screen can reopen the page), else {}."""
+    url = p.keyed_page(handle, frappe.utils.get_url(KEYED_RETURN_PATH)) if handle else ""
+    return {"keyed_url": url} if url else {}
+
+
 @frappe.whitelist()
 def card_tender_mode() -> dict:
     """Whether a Credit Card tender must go through the counter terminal.
@@ -578,7 +603,7 @@ def card_tender_mode() -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
-        amount=None, description: str | None = None, save_card=0) -> dict:
+        amount=None, description: str | None = None, save_card=0, keyed=0) -> dict:
     """Start a card charge on the card processor's terminal for a POS invoice.
 
     Starts the charge on the active processor's card device; the frontend then
@@ -594,17 +619,21 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
         save_card: 1 to keep the card for later charges (card on file): refused
             unless saving is switched on, the processor can keep cards and the
             invoice customer has signed the card-on-file authorization.
+        keyed: 1 to key the card number in on the processor's payment page instead
+            of the terminal (managers only; not with save_card).
 
     Returns:
-        {ok, instruction_id, status, amount} — or {"skip": True} when no card
-        processor is switched on and configured. The poll that settles an
-        approval then adds card_saved / save_message.
+        {ok, instruction_id, status, amount} — plus keyed_url (the payment page to
+        open) for a keyed charge — or {"skip": True} when no card processor is
+        switched on and configured. The poll that settles an approval then adds
+        card_saved / save_message.
 
     Permissions:
         POS charge roles (_check_perm).
     """
     _check_perm()
-    if not _integration_ready(require_device=True):
+    keyed = cint(keyed)
+    if not _integration_ready(require_device=not keyed):
         # Go-live gate: unconfigured integration is inert — the frontend
         # submits normally and the card row records as plain tender.
         return {"skip": True}
@@ -617,6 +646,8 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
     # here, before any gateway call — the dialog's checkbox is not the gate.
     save = _saved_cards().save_request(frappe.db.get_value("POS Invoice", invoice_name,
         "customer"), _processor(None)) if cint(save_card) else None
+    if keyed:
+        _check_keyed(_processor(None), save)
     # Concurrency: two tills / a double-click must serialize on this invoice —
     # everything below is read-check-insert and is only safe under the parent
     # row lock (r1 F6). Released with the request's transaction — or EARLIER,
@@ -660,7 +691,8 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
         polled = owner.poll(row.instruction_id)
         if _still_on_device(polled):
             return {"ok": True, "instruction_id": row.instruction_id,
-                    "status": "IN_PROGRESS", "amount": flt(amount) or 0}
+                    "status": "IN_PROGRESS", "amount": flt(amount) or 0,
+                    **_keyed_url(owner, row.instruction_id)}
         _settle_instruction_row(owner, polled, invoice_name, row)
         # A captured settle just ran _commit_money_point — InnoDB released the
         # F6 parent-row lock with that commit, so the read-check-create below
@@ -675,7 +707,8 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
         foreign = [r for r in rows if r.status == "IN_PROGRESS"]
         if foreign:
             return {"ok": True, "instruction_id": foreign[0].instruction_id,
-                    "status": "IN_PROGRESS", "amount": flt(amount) or 0}
+                    "status": "IN_PROGRESS", "amount": flt(amount) or 0,
+                    **_keyed_url(gateway(foreign[0].processor), foreign[0].instruction_id)}
 
     # Multi-card accounting: each instruction charges a SLICE of the card
     # tender; the sale is fully collected when the CHARGED rows sum to it.
@@ -701,11 +734,15 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
     # portal + Manual Card Settlement beats minting a fresh id and charging a
     # customer who may have already paid.
     attempt = int(inv.get("card_attempt") or 0) + 1
-    iid, started = active.start_charge(document=invoice_name, attempt=attempt, amount=amt,
-        terminal=terminal, operator=frappe.session.user,
-        description=description or f"POS Invoice {invoice_name}",
-        # Passed only when asked for: a processor without card on file never sees the argument.
-        **({"save_card": save} if save else {}))
+    if keyed:
+        iid, started = active.start_keyed_charge(document=invoice_name, attempt=attempt,
+            amount=amt), "IN_PROGRESS"
+    else:
+        iid, started = active.start_charge(document=invoice_name, attempt=attempt, amount=amt,
+            terminal=terminal, operator=frappe.session.user,
+            description=description or f"POS Invoice {invoice_name}",
+            # Passed only when asked for: a processor without card on file never sees the argument.
+            **({"save_card": save} if save else {}))
     try:
         _append_charge_row(invoice_name, instruction_id=iid, attempt=attempt,
             processor=active.code, save=save)
@@ -728,7 +765,7 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
             pass
         raise
     return {"ok": True, "instruction_id": iid,
-            "status": started or "IN_PROGRESS", "amount": amt}
+            "status": started or "IN_PROGRESS", "amount": amt, **_keyed_url(active, iid)}
 
 
 def _charging_processor(rows, instruction_id: str) -> str:
@@ -994,7 +1031,7 @@ def _charge_amount(sales_invoice: str, outstanding_amount, amount) -> float:
 
 @frappe.whitelist(methods=["POST"])
 def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None = None,
-        save_card=0) -> dict:
+        save_card=0, keyed=0) -> dict:
     """Start a card charge on the card processor's terminal against a counter Sales Invoice.
 
     The counter's card tender for an on-account order (Create Order right
@@ -1012,18 +1049,22 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
         save_card: 1 to keep the card for later charges (card on file): refused
             unless saving is switched on, the processor can keep cards and the
             invoice customer has signed the card-on-file authorization.
+        keyed: 1 to key the card number in on the processor's payment page instead
+            of the terminal (managers only; not with save_card).
 
     Returns:
-        {ok, instruction_id, status, amount} — {"skip": True} when no card
-        processor is switched on and configured; an earlier approval found
-        unrecorded comes back settled with already=True. The poll that settles
+        {ok, instruction_id, status, amount} — plus keyed_url (the payment page to
+        open) for a keyed charge — {"skip": True} when no card processor is
+        switched on and configured; an earlier approval found unrecorded comes
+        back settled with already=True. The poll that settles
         an approval then adds card_saved / save_message.
 
     Permissions:
         POS charge roles (_check_perm).
     """
     _check_perm()
-    if not _integration_ready(require_device=True):
+    keyed = cint(keyed)
+    if not _integration_ready(require_device=not keyed):
         return {"skip": True}
     sales_invoice = (sales_invoice or "").strip()
     if not sales_invoice or not frappe.db.exists("Sales Invoice", sales_invoice):
@@ -1041,6 +1082,8 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
     save = _saved_cards().save_request(frappe.db.get_value("Sales Invoice", sales_invoice,
         "customer"), _processor(None), usage=_invoice_card_usage(sales_invoice)) \
         if cint(save_card) else None
+    if keyed:
+        _check_keyed(_processor(None), save)
     gateway = _gateways()
     active = gateway(None)
 
@@ -1056,7 +1099,8 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
         polled = owner.poll(row.instruction_id)
         if _still_on_device(polled):
             return {"ok": True, "instruction_id": row.instruction_id,
-                    "status": "IN_PROGRESS", "amount": flt(row.amount)}
+                    "status": "IN_PROGRESS", "amount": flt(row.amount),
+                    **_keyed_url(owner, row.instruction_id)}
         res = _settle_terminal_payment(owner, polled, row)
         if res.get("ok"):
             # Money already taken on the earlier attempt — hand it back settled
@@ -1071,17 +1115,22 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
         foreign = [r for r in _terminal_payments(sales_invoice) if r.status == "IN_PROGRESS"]
         if foreign:
             return {"ok": True, "instruction_id": foreign[0].instruction_id,
-                    "status": "IN_PROGRESS", "amount": flt(foreign[0].amount)}
+                    "status": "IN_PROGRESS", "amount": flt(foreign[0].amount),
+                    **_keyed_url(gateway(foreign[0].processor), foreign[0].instruction_id)}
 
     amt = _charge_amount(sales_invoice, si.outstanding_amount, amount)
 
     # Same per-attempt numbering as the POS path — a counter order can take a
     # second card too (each attempt is one Card Terminal Payment row).
     attempt = len(_terminal_payments(sales_invoice)) + 1
-    iid, started = active.start_charge(document=sales_invoice, attempt=attempt, amount=amt,
-        terminal=terminal, operator=frappe.session.user,
-        description=f"{sales_invoice} — {si.customer_name or ''}".strip(" —"),
-        **({"save_card": save} if save else {}))
+    if keyed:
+        iid, started = active.start_keyed_charge(document=sales_invoice, attempt=attempt,
+            amount=amt), "IN_PROGRESS"
+    else:
+        iid, started = active.start_charge(document=sales_invoice, attempt=attempt, amount=amt,
+            terminal=terminal, operator=frappe.session.user,
+            description=f"{sales_invoice} — {si.customer_name or ''}".strip(" —"),
+            **({"save_card": save} if save else {}))
     try:
         rec = frappe.get_doc({"doctype": TERMINAL_PAYMENT, "sales_invoice": sales_invoice,
             "amount": amt, "status": "IN_PROGRESS", "instruction_id": iid,
@@ -1099,7 +1148,7 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
             pass
         raise
     return {"ok": True, "instruction_id": iid,
-            "status": started or "IN_PROGRESS", "amount": amt}
+            "status": started or "IN_PROGRESS", "amount": amt, **_keyed_url(active, iid)}
 
 
 @frappe.whitelist()

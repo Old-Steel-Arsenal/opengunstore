@@ -223,7 +223,7 @@ class PayrocSwitchedOff(SettingsSandbox, FrappeTestCase):
 
 		boot = frappe._dict()
 		extend_bootinfo(boot)
-		self.assertEqual(boot.ffl_card_processor, {"code": "", "label": "", "enabled": 0})
+		self.assertEqual(boot.ffl_card_processor, {"code": "", "label": "", "enabled": 0, "keyed": 0})
 		self.assertEqual(boot.card_mop, "Credit Card")
 
 

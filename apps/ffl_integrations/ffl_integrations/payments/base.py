@@ -185,6 +185,26 @@ class CardProcessor:
 		card the gateway no longer holds counts as removed."""
 		raise NotImplementedError
 
+	# ------------------------------------------------------------ keyed entry (optional)
+
+	def supports_keyed_entry(self) -> bool:
+		"""True when a card number can be typed on the gateway's own payment page (card not
+		present). The card number never reaches this server: the operator types it on a page
+		the gateway serves, and the charge is then looked up like any other."""
+		return False
+
+	def start_keyed_charge(self, *, document: str, attempt: int, amount: float) -> str:
+		"""A handle for a keyed charge of ``amount`` on ``document`` (filed at the gateway under
+		``order_reference(document, attempt)``). Moves no money and calls no gateway: ``poll``
+		answers PENDING until the payment page has been submitted, then the outcome; ``cancel``
+		refuses (raises :class:`CardProcessorError`) once the gateway holds an answer."""
+		raise NotImplementedError
+
+	def keyed_page(self, handle: str, return_url: str) -> str:
+		"""The gateway payment page URL for a keyed handle ("" for any other handle). The page
+		sends the operator's browser to ``return_url`` when done."""
+		return ""
+
 	# ------------------------------------------------------------ setup / health
 
 	def list_terminals(self) -> dict:
