@@ -169,12 +169,16 @@ jobs:
     outputs:
       hit: ${{ steps.done.outputs.hit }}
       tag: ${{ steps.done.outputs.tag }}
+    # Every step may fail without failing the job: a failure here only means "no reuse", and the
+    # full build + tests that follow decide the run (all-checks-pass counts a failed job).
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        continue-on-error: true
         with:
           sparse-checkout: scripts
 
       - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        continue-on-error: true
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -182,6 +186,7 @@ jobs:
 
       - name: Is there a tested image of this tree?
         id: look
+        continue-on-error: true
         env:
           IMG: ${{ env.REGISTRY }}/${{ env.IMAGE }}
         run: |
@@ -193,6 +198,7 @@ jobs:
       - name: Tag it main-<sha7>
         id: done
         if: steps.look.outputs.digest != ''
+        continue-on-error: true
         env:
           IMG: ${{ env.REGISTRY }}/${{ env.IMAGE }}
           DIGEST: ${{ steps.look.outputs.digest }}
@@ -427,7 +433,8 @@ jobs:
   # tested-<tree>, for the push to main that merging it makes (reuse-image). By the digest this
   # run pushed, so it is this run's own smoke-tested image. Only here are tested-* tags written
   # (a dispatch may not use the prefix). all-checks-pass waits for it, so a release PR is green
-  # only once the stamp is there; a failure here is a registry problem: re-run it.
+  # only once the stamp step has run; a registry error there is only a warning (the main push
+  # then builds and tests in full).
   # lazy: candidate-*/tested-* tags are never deleted (one pair per release PR push, sharing
   # the frappe/ERPNext layers); prune old ones with a scheduled package-version cleanup if the
   # package grows.
@@ -446,14 +453,20 @@ jobs:
     permissions:
       contents: read
       packages: write
+    # The stamp only saves the main push a build: a registry error here must not turn a fully
+    # tested release PR red. Its steps may fail; the warning says the main push will build again.
     steps:
       - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        id: login
+        continue-on-error: true
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Tag the image tested-<tree>
+        id: stamp
+        continue-on-error: true
         env:
           IMG: ${{ env.REGISTRY }}/${{ env.IMAGE }}
           TREE: ${{ needs.build.outputs.tree }}
@@ -463,6 +476,10 @@ jobs:
           [[ "$TREE" =~ ^[0-9a-f]{40}$ && "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::bad tree '$TREE' or digest '$DIGEST'"; exit 1; }
           docker buildx imagetools create -t "${IMG}:tested-${TREE}" "${IMG}@${DIGEST}"
           echo "${IMG}:tested-${TREE} -> $(docker buildx imagetools inspect "${IMG}:tested-${TREE}" --format '{{json .Manifest.Digest}}')"
+
+      - name: Stamp failed
+        if: steps.login.outcome == 'failure' || steps.stamp.outcome == 'failure'
+        run: echo "::warning::could not mark the image tested-<tree>; the push to main will build and test in full"
 
   # The demo is deployed from the deploy repo: hand it every develop build.
   demo-dispatch:

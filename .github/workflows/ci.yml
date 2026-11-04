@@ -43,8 +43,8 @@ jobs:
       use_cache: true
       runner: ${{ (!inputs.hosted && vars.CI_RUNS_ON_TEST) || '"ubuntu-latest"' }}
       workers: 8
-      # Hosted: 3 shards (each seeds, migrates and tests a site of its own). Self-hosted: one job.
-      shards: ${{ (!inputs.hosted && vars.CI_RUNS_ON_TEST) && 1 || 3 }}
+      # One job: every shard would first seed its site with the old release's whole suite, serially
+      # (the longest part), so sharding would repeat that, not split it.
       ref: develop
       upgrade_from: main
       seed_with_old_tests: true
