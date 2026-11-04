@@ -23248,11 +23248,11 @@
           "ffl_woo_sync"
         ],
         "summary": "Make a Customer for every online buyer and registered store account the POS does not have.",
-        "description": "**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/customer_import.py:72`",
+        "description": "**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/customer_import.py:118`",
         "operationId": "ffl_woo_sync.woocommerce.customer_import.import_customers",
         "responses": {
           "200": {
-            "description": "dict: {\"dry_run\", \"emails\" (distinct addresses found), \"existing\" (already a Customer), \"invalid\" (not an email address), \"created\" (or would be), \"errors\": [{email, error}], \"sample\": [{email, name}] of the first new ones}.",
+            "description": "dict: {\"dry_run\", \"emails\" (distinct addresses found), \"existing\" (already a Customer), \"invalid\" (not an email address), \"created\" (or would be), \"phone_dropped\" (created without the store's phone, which the POS rejected), \"errors\": [{email, error}], \"sample\": [{email, name}] of the first new ones}.",
             "content": {
               "application/json": {
                 "schema": {
@@ -23277,7 +23277,7 @@
                 "type": "object",
                 "properties": {
                   "dry_run": {
-                    "description": "1 (default) reads the store and reports what would be created, creating nothing.",
+                    "description": "Anything but an explicit 0 / false / no (the default is 1) reads the store and reports what would be created, creating nothing.",
                     "default": 1
                   }
                 }

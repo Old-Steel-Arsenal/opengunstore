@@ -19,9 +19,9 @@ def _order(email, first="Pat", last="Buyer", phone="", status="completed"):
 		"billing": {"email": email, "first_name": first, "last_name": last, "phone": phone}}
 
 
-def _account(email, first="", last="", billing=None):
+def _account(email, first="", last="", billing=None, role="customer"):
 	return {"id": abs(hash(email)) % 10**6, "email": email, "first_name": first, "last_name": last,
-		"billing": billing or {}}
+		"billing": billing or {}, "role": role}
 
 
 def _store(orders=(), accounts=()):
@@ -29,6 +29,12 @@ def _store(orders=(), accounts=()):
 	wc.list_orders.side_effect = lambda **kw: list(orders) if kw.get("page") == 1 else []
 	wc.get.side_effect = lambda path, params=None: list(accounts) if params.get("page") == 1 else []
 	return wc
+
+
+def _retail(name, email):
+	doc = new_retail_customer(name, email=email)
+	doc.flags.ignore_permissions = True
+	return doc.insert()
 
 
 class TestCustomerImport(FrappeTestCase):
@@ -100,3 +106,72 @@ class TestCustomerImport(FrappeTestCase):
 		frappe.set_user(user)
 		with self.assertRaises(frappe.PermissionError):
 			self._run(_store())
+
+	def test_every_account_role_but_staff(self):
+		store = _store(accounts=[_account("sub@shop.test", "Sub", "Scriber", role="subscriber"),
+			_account("boss@shop.test", "Shop", "Boss", role="administrator"),
+			_account("mgr@shop.test", "Shop", "Manager", role="shop_manager")])
+		out = self._run(store)
+		self.assertEqual(out["created"], 1)
+		self.assertTrue(self._customer("sub@shop.test"))
+		self.assertIsNone(self._customer("boss@shop.test"))
+		# The customers list is asked for every role.
+		self.assertEqual(store.get.call_args.kwargs["params"]["role"], "all")
+
+	def test_an_address_on_a_customers_contact_is_known(self):
+		customer = _retail("Contact Only", None)
+		frappe.get_doc({"doctype": "Contact", "first_name": "Contact", "email_ids": [{"email_id": "contact.only@shop.test",
+			"is_primary": 1}], "links": [{"link_doctype": "Customer", "link_name": customer.name}]}).insert(
+			ignore_permissions=True)
+		out = self._run(_store(accounts=[_account("contact.only@shop.test", "Web", "Account")]))
+		self.assertEqual((out["created"], out["existing"]), (0, 1))
+
+	def test_a_dealers_alias_does_not_keep_out_a_retail_buyer(self):
+		dealer = _retail("_T Import Dealer", "dealer@shop.test")
+		frappe.db.set_value("Customer", dealer.name, "is_ffl_dealer", 1)
+		dealer.reload()
+		dealer.append("customer_aliases", {"alias_type": "Email", "value": "merged.buyer@shop.test"})
+		dealer.flags.ignore_permissions = True
+		dealer.save()
+		# The address really is the dealer's alias (what the order sync would see).
+		from ffl_core.customer_profile import find_customer_by_email
+
+		hit = find_customer_by_email("merged.buyer@shop.test")
+		self.assertEqual((hit.name, hit.get("via_alias")), (dealer.name, 1))
+		out = self._run(_store(orders=[_order("merged.buyer@shop.test", "Merged", "Buyer")]))
+		self.assertEqual(out["created"], 1)
+		self.assertEqual(self._customer("merged.buyer@shop.test").customer_name, "Merged Buyer")
+
+	def test_a_phone_the_pos_rejects_is_dropped_not_the_person(self):
+		out = self._run(_store(orders=[_order("badphone@shop.test", "Bad", "Phone", phone="call me maybe!")]))
+		self.assertEqual((out["created"], out["phone_dropped"], out["errors"]), (1, 1, []))
+		self.assertTrue(self._customer("badphone@shop.test"))
+
+	def test_one_failing_row_leaves_the_others(self):
+		real = customer_import.new_retail_customer
+
+		def flaky(name, **kw):
+			if kw.get("email") == "broken@shop.test":
+				raise frappe.ValidationError("broken row")
+			return real(name, **kw)
+
+		with patch.object(customer_import, "new_retail_customer", side_effect=flaky):
+			out = self._run(_store(accounts=[_account("broken@shop.test", "Bro", "Ken"),
+				_account("fine@shop.test", "Fi", "Ne")]))
+		self.assertEqual(out["created"], 1)
+		self.assertEqual([e["email"] for e in out["errors"]], ["broken@shop.test"])
+		self.assertTrue(self._customer("fine@shop.test"))
+		self.assertIsNone(self._customer("broken@shop.test"))
+
+	def test_only_an_explicit_no_runs_for_real(self):
+		for value in ("true", "1", "yes", None, 1, True):
+			out = self._run(_store(accounts=[_account("maybe@shop.test", "May", "Be")]), dry_run=value)
+			self.assertTrue(out["dry_run"], value)
+		self.assertIsNone(self._customer("maybe@shop.test"))
+
+	def test_a_non_list_answer_stops_the_import(self):
+		store = _store()
+		store.get.side_effect = lambda path, params=None: {"code": "rest_forbidden"}
+		with self.assertRaises(frappe.ValidationError):
+			self._run(store)
+

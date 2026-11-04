@@ -14,8 +14,8 @@ Make a Customer for every online buyer and registered store account the POS does
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
-| `dry_run` | — | no | `1` | 1 (default) reads the store and reports what would be created, creating nothing. |
+| `dry_run` | — | no | `1` | Anything but an explicit 0 / false / no (the default is 1) reads the store and reports what would be created, creating nothing. |
 
-**Returns:** dict: {"dry_run", "emails" (distinct addresses found), "existing" (already a Customer), "invalid" (not an email address), "created" (or would be), "errors": [{email, error}], "sample": [{email, name}] of the first new ones}.
+**Returns:** dict: {"dry_run", "emails" (distinct addresses found), "existing" (already a Customer), "invalid" (not an email address), "created" (or would be), "phone_dropped" (created without the store's phone, which the POS rejected), "errors": [{email, error}], "sample": [{email, name}] of the first new ones}.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/customer_import.py:72`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/customer_import.py:118`</sub>
