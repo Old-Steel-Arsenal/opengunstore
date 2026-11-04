@@ -23248,7 +23248,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Make a Customer for every online buyer and registered store account the POS does not have.",
-        "description": "**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/customer_import.py:118`",
+        "description": "**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/customer_import.py:121`",
         "operationId": "ffl_woo_sync.woocommerce.customer_import.import_customers",
         "responses": {
           "200": {
