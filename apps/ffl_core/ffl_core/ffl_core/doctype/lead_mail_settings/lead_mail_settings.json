@@ -1,0 +1,55 @@
+{
+ "actions": [],
+ "creation": "2026-11-04 12:00:00.000000",
+ "description": "Which incoming staff mail never becomes a CRM lead. Turn leads on per mailbox in its Email Account.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "blocked_sender_domains",
+  "column_domains",
+  "own_domains"
+ ],
+ "fields": [
+  {
+   "fieldname": "blocked_sender_domains",
+   "fieldtype": "Small Text",
+   "label": "Blocked sender domains",
+   "description": "One domain per line. Mail from these never becomes a lead."
+  },
+  {
+   "fieldname": "column_domains",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "own_domains",
+   "fieldtype": "Small Text",
+   "label": "Our own domains",
+   "description": "One domain per line: the store's own mail, which never becomes a lead."
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-11-04 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FFL Core",
+ "name": "Lead Mail Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Sales Manager",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

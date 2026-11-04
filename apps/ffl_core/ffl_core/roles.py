@@ -54,6 +54,10 @@ CUSTOMER_MANAGER_ROLES = ("Sales Manager", "System Manager")
 # Who may approve a price a counter clerk lowers (price_approval.py), and whose own lowered
 # prices need no one else's approval.
 PRICE_APPROVER_ROLES = ("Sales Manager", "System Manager")
+
+# Frappe CRM's own roles (its pages are granted to Sales User / Sales Manager): the CRM endpoints (api/crm.py).
+CRM_ROLES = ("Sales User", "Sales Manager", "System Manager")
+
 # Who may ask whether a sale needs that approval, and ask for it: everyone who saves a sale —
 # the counter, and the bookkeeper on a Sales Invoice form. Each document's own permission still applies.
 PRICE_CHECK_ROLES = COUNTER_ROLES + ("Accounts User", "Accounts Manager")

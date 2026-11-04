@@ -12,7 +12,7 @@ Run these once, in order, from the repository root:
 |---|---|---|
 | 1 | `make dev-up` | MariaDB, two Redis containers and a `frappe/bench` container are running. |
 | 2 | `make dev-bench-init` | `frappe-bench/` holds Frappe and ERPNext on the `version-16` branch head (`FRAPPE_BRANCH`). |
-| 3 | `make dev-site-create` | Site `dev.localhost` with ERPNext and HRMS; `allow_tests` set. Administrator password `admin`. |
+| 3 | `make dev-site-create` | Site `dev.localhost` with ERPNext, HRMS and Frappe CRM; `allow_tests` set. Administrator password `admin`. |
 | 4 | `make dev-install-our-apps` | `ffl_core`, `ffl_integrations`, `ffl_woo_sync` linked into the bench and installed on the site. |
 | 5 | `make dev-serve` | `bench start` in the foreground. |
 

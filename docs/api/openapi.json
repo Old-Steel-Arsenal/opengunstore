@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenGunstore API",
-    "version": "0.6.3",
+    "version": "0.6.4",
     "description": "RPC API of the OpenGunstore custom apps (Frappe/ERPNext v16): ffl_core, ffl_integrations, ffl_woo_sync.\n\nAll endpoints are Frappe *whitelisted methods* invoked as `/api/method/<dotted.path>`. Unless an endpoint declares explicit HTTP verbs, it is documented here as POST (Frappe also accepts GET for read-only calls; always POST mutations). Arguments may be sent as JSON body, form data, or query string — JSON body is recommended.\n\nEvery operation carries an **Auth (derived from code)** line statically resolved from the role gate the function actually executes; the prose Permissions note adds semantics the machine can't infer.\n\nStandard CRUD on DocTypes is served by Frappe's REST layer (`/api/resource/<DocType>`) — see docs/api/frappe-rest.md; the custom DocTypes are modelled under components.schemas and listed in reference/doctypes.md."
   },
   "servers": [
@@ -1818,6 +1818,20 @@
         "required": [
           "image"
         ]
+      },
+      "Lead_Mail_Settings": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Lead%20Mail%20Settings — see docs/api/frappe-rest.md.",
+        "properties": {
+          "blocked_sender_domains": {
+            "type": "string",
+            "description": "Blocked sender domains"
+          },
+          "own_domains": {
+            "type": "string",
+            "description": "Our own domains"
+          }
+        }
       },
       "MCP_Settings": {
         "type": "object",
@@ -7355,6 +7369,54 @@
                 },
                 "required": [
                   "sales_invoice"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.api.crm.open_deal": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "The contact's open deal, made when they have none, to write to them from CRM.",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:13`",
+        "operationId": "ffl_core.api.crm.open_deal",
+        "responses": {
+          "200": {
+            "description": "str: The CRM Deal's name (open it at /crm/deals/<name>#emails). Refused for a contact without an email address.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "contact": {
+                    "type": "string",
+                    "description": "The Contact's name."
+                  }
+                },
+                "required": [
+                  "contact"
                 ]
               }
             }
@@ -23234,6 +23296,51 @@
                   "dry_run": {
                     "description": "1 builds every payload and reports what WOULD be sent, without sending (still reads the store's attribute ids).",
                     "default": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_woo_sync.woocommerce.customer_import.import_customers": {
+      "post": {
+        "tags": [
+          "ffl_woo_sync"
+        ],
+        "summary": "Make a Customer for every online buyer and registered store account the POS does not have.",
+        "description": "**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/customer_import.py:121`",
+        "operationId": "ffl_woo_sync.woocommerce.customer_import.import_customers",
+        "responses": {
+          "200": {
+            "description": "dict: {\"dry_run\", \"emails\" (distinct addresses found), \"existing\" (already a Customer), \"invalid\" (not an email address), \"created\" (or would be), \"phone_dropped\" (created without the store's phone, which the POS rejected), \"errors\": [{email, error}], \"sample\": [{email, name}] of the first new ones}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dry_run": {
+                    "description": "Anything but an explicit 0 / false / no (the default is 1) reads the store and reports what would be created, creating nothing.",
+                    "default": 1
                   }
                 }
               }

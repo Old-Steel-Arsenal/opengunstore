@@ -519,6 +519,17 @@ app: `ffl_core` · module: FFL Core · child table
 | `sort_order` | Int | Order |  |  |
 | `caption` | Data | Caption |  |  |
 
+## Lead Mail Settings
+
+app: `ffl_core` · module: FFL Core · single · roles: Sales Manager, System Manager
+
+Which incoming staff mail never becomes a CRM lead. Turn leads on per mailbox in its Email Account.
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `blocked_sender_domains` | Small Text | Blocked sender domains |  |  |
+| `own_domains` | Small Text | Our own domains |  |  |
+
 ## MCP Settings
 
 app: `ffl_core` · module: FFL Core · single · roles: System Manager

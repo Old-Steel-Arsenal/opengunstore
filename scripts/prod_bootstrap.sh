@@ -36,7 +36,8 @@ else
     --install-app erpnext
 fi
 
-for app in ffl_core ffl_integrations ffl_woo_sync; do
+# crm (Frappe CRM) first: ffl_core requires it (installing ffl_core would pull it in as well).
+for app in crm ffl_core ffl_integrations ffl_woo_sync; do
   echo "Installing $app ..."
   "$UP" exec -T backend bench --site "$SITE" install-app "$app"
 done

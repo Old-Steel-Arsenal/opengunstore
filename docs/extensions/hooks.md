@@ -46,7 +46,12 @@ Boot: `frappe.boot.gunshop_extensions[id] = {enabled, version, title}` for every
 
 ### The stable surface
 
-Besides the hooks on this page, an extension may call: `ffl_core.extensions.*`, `ffl_core.roles.*`, `ffl_core.workspace_shortcuts.ensure_shortcut` / `remove_shortcut`, `ffl_core.setup.sidebar.mirror_gun_shop_sidebar`, `ffl_core.utils.single_flag`, `ffl_core.agreements.require_agreement`, the endpoints in the [API reference](../api/index.html), `ffl_integrations.distributor.base.DistributorProvider`, `ffl_integrations.distributor.freight.estimate_orders`, and `ffl_integrations.payments.base` (`CardProcessor`, `CardResult`, `CardProcessorError`). Everything else is internal.
+Besides the hooks on this page, an extension may call: `ffl_core.extensions.*`, `ffl_core.roles.*`, `ffl_core.workspace_shortcuts.ensure_shortcut` / `remove_shortcut`, `ffl_core.setup.sidebar.mirror_gun_shop_sidebar`, `ffl_core.utils.single_flag`, `ffl_core.agreements.require_agreement`, the endpoints in the [API reference](../api/index.html), `ffl_integrations.distributor.base.DistributorProvider`, `ffl_integrations.distributor.freight.estimate_orders`, `ffl_integrations.payments.base` (`CardProcessor`, `CardResult`, `CardProcessorError`), and the `ffl_core.pricing` functions below. Everything else is internal.
+
+- `counter_list_price(item_code) -> float`: the Item-level list price the register charges today: the selling Item Price of the default price list, except a uniform-priced firearm model in stock, priced from its cheapest priced gun; 0.0 for a gun priced one by one.
+- `counter_price_for(item_code, serial_no=None) -> float`: a quote line's price: a gun priced one by one from that serial (refused unless it is an in-stock serial of the Item), or the cheapest one in stock without a serial; anything else `counter_list_price`.
+- `price_readonly_reason(item_code) -> str | None`: why the regular price cannot be changed outside the POS (a gun priced one by one, a sale running today, a drop-ship listing, the transfer fee), translated for staff; None when it can.
+- `set_regular_price(item_code, price) -> None`: a price approver (`roles.PRICE_APPROVER_ROLES`) sets the regular price; saves the Item (validate, website pushes, the Version trail) and the selling Item Price, and notes the old and new register price on the Item. Raises `PermissionError` for anyone else and `ValidationError` while `price_readonly_reason` answers or when the price is not above 0.
 
 ## Named hooks
 
