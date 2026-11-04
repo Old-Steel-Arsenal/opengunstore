@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
-# Production image for OpenGunstore: frappe + erpnext + hrms + our 3 apps
+# Production image for OpenGunstore: frappe + erpnext + hrms + crm + our 3 apps
 # (ffl_core, ffl_integrations, ffl_woo_sync). hrms (Frappe HR) is only fetched
-# and built here; a store's site gets it with `bench install-app hrms`.
+# and built here; a store's site gets it with `bench install-app hrms`. crm
+# (Frappe CRM) is required by ffl_core and installed on every site.
 #
 # Built in CI (.github/workflows/release-image.yml) and pushed to GHCR; the
 # server only pulls it. Mirrors frappe_docker's layered build, but our
@@ -22,6 +23,7 @@ ARG FRAPPE_BRANCH=version-16
 ARG FRAPPE_PATH=https://github.com/frappe/frappe
 ARG ERPNEXT_REMOTE=https://github.com/frappe/erpnext
 ARG HRMS_REMOTE=https://github.com/frappe/hrms
+ARG CRM_REMOTE=https://github.com/frappe/crm
 # Pinned app refs: frozen to fixed release tags so every build is reproducible and
 # deploys can't silently pull a newer version-16 with upstream regressions (e.g.
 # the v16.24.0 print.js `letter_head_for` bug that broke printing). Bump these
@@ -52,6 +54,12 @@ ARG HRMS_REF=v16.52.0
 RUN cd /home/frappe/frappe-bench && \
   bench get-app --branch=${HRMS_REF} hrms ${HRMS_REMOTE}
 
+# Same for crm (Frappe CRM, a Vue front end of its own: get-app installs its node modules and builds
+# it; the `bench build` below rebuilds it with everything else).
+ARG CRM_REF=v16.0.1
+RUN cd /home/frappe/frappe-bench && \
+  bench get-app --branch=${CRM_REF} crm ${CRM_REMOTE}
+
 # Our three apps, straight from this monorepo's build context.
 COPY --chown=frappe:frappe apps/ffl_core         /home/frappe/frappe-bench/apps/ffl_core
 COPY --chown=frappe:frappe apps/ffl_integrations /home/frappe/frappe-bench/apps/ffl_integrations
@@ -63,8 +71,13 @@ RUN cd /home/frappe/frappe-bench && \
   { [ -z "$(tail -c1 sites/apps.txt)" ] || echo >> sites/apps.txt; } && \
   printf 'ffl_core\nffl_integrations\nffl_woo_sync\n' >> sites/apps.txt && \
   bench build && \
+  test -f apps/crm/crm/www/crm.html && \
   echo "{}" > sites/common_site_config.json && \
-  find apps -mindepth 1 -path "*/.git" -prune -exec rm -rf {} +
+  find apps -mindepth 1 -path "*/.git" -prune -exec rm -rf {} + && \
+  rm -rf apps/crm/node_modules apps/crm/frontend/node_modules
+# ^ The CRM front end is built (www/crm.html: the /crm page, written by that build); its ~550 MB of node modules are
+#   only needed to rebuild it, which a running container never does (ext-replay builds extensions
+#   only, `bench build --app <id>`).
 
 # ---- backend: lean runtime (also serves frontend/websocket/workers) ----
 FROM frappe/base:${FRAPPE_BRANCH} AS backend

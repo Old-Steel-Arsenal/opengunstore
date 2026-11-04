@@ -93,10 +93,11 @@ dev-bench-clone: ## Worktree only: clone the main checkout's frappe-bench (APFS 
 	@$(MAKE) --no-print-directory dev-site-create
 	@$(MAKE) --no-print-directory dev-install-our-apps
 
-dev-site-create: ## Create the dev site and install ERPNext + HRMS; always (re-)applies allow_tests
+dev-site-create: ## Create the dev site and install ERPNext + HRMS + Frappe CRM; always (re-)applies allow_tests
 	$(COMPOSE) exec -T frappe bash -lc '\
 		cd /workspace/frappe-bench && \
 		{ [ -d apps/hrms ] || bench get-app --branch $(FRAPPE_BRANCH) hrms https://github.com/frappe/hrms.git; } && \
+		{ [ -d apps/crm ] || bench get-app --branch $(FRAPPE_BRANCH) crm https://github.com/frappe/crm.git; } && \
 		if bench --site $(SITE_NAME) doctor >/dev/null 2>&1; then \
 			echo "*** Site $(SITE_NAME) already exists — NOT recreated; drop it with: make dev-site-drop CONFIRM=yes"; \
 		else \
@@ -108,6 +109,7 @@ dev-site-create: ## Create the dev site and install ERPNext + HRMS; always (re-)
 				--force; \
 		fi && \
 		bench --site $(SITE_NAME) install-app hrms && \
+		bench --site $(SITE_NAME) install-app crm && \
 		bench --site $(SITE_NAME) set-config allow_tests true && \
 		echo "allow_tests set on $(SITE_NAME) (make test refuses to run without it)" \
 	'
@@ -206,6 +208,7 @@ ext-smoke: ## Extension-layer smoke test against an image: make ext-smoke IMAGE=
 	deploy/prod/tests/test_ext_agent.sh
 	deploy/prod/tests/test_mcp_deploy.sh
 	deploy/prod/tests/test_prune_images.sh
+	deploy/prod/tests/test_install_new_apps.sh
 
 .PHONY: ext-lint ext-new ext-test
 
@@ -256,16 +259,16 @@ api-docs-serve: ## Serve the Redoc API browser at http://localhost:8033
 	@echo "API docs at http://localhost:8033 (Ctrl-C to stop)"
 	@cd docs/api && python3 -m http.server 8033
 
-dev-upgrade: ## Move this checkout's bench to the latest Frappe + ERPNext + HRMS $(FRAPPE_BRANCH) and migrate (no tests)
+dev-upgrade: ## Move this checkout's bench to the latest Frappe + ERPNext + HRMS + CRM $(FRAPPE_BRANCH) and migrate (no tests)
 	$(COMPOSE) exec -T frappe bash -lc '\
 		set -e; cd /workspace/frappe-bench && \
-		for app in frappe erpnext hrms; do \
+		for app in frappe erpnext hrms crm; do \
 			(cd apps/$$app && git fetch -q && git checkout -q $(FRAPPE_BRANCH) && git pull -q && \
 				echo "$$app: $$(git describe --tags --always)"); \
 		done && \
-		./env/bin/pip install -q -e apps/frappe -e apps/erpnext -e apps/hrms && \
+		./env/bin/pip install -q -e apps/frappe -e apps/erpnext -e apps/hrms -e apps/crm && \
 		bench --site $(SITE_NAME) migrate && \
-		bench version | grep -E "^(frappe|erpnext|hrms) " \
+		bench version | grep -E "^(frappe|erpnext|hrms|crm) " \
 	'
 
 ci-upgrade-test: ## Simulate a Frappe + ERPNext stable upgrade and re-run tests (run in CI)

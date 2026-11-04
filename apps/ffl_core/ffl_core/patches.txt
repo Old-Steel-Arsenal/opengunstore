@@ -89,3 +89,5 @@ ffl_core.patches.add_membership_settings_workspace_entry
 ffl_core.patches.seed_price_approval_off
 # Each firearm sold agreements: the gun of every copy made before one copy could cover several goes on its Firearms table.
 ffl_core.patches.backfill_agreement_firearms
+# Frappe CRM on the POS: the Lead Mail Settings link (which incoming mail never becomes a lead) in the Settings workspace.
+ffl_core.patches.add_lead_mail_settings_workspace_entry
