@@ -411,10 +411,12 @@ jobs:
             FRAPPE_REF="$BRANCH"
             ERPNEXT_REF="$BRANCH"
             HRMS_REF="$BRANCH"
+            CRM_REF="$BRANCH"
           fi
           echo "frappe_target=${FRAPPE_REF}" >> "$GITHUB_OUTPUT"
           echo "erpnext_target=${ERPNEXT_REF}" >> "$GITHUB_OUTPUT"
           echo "hrms_target=${HRMS_REF}" >> "$GITHUB_OUTPUT"
+          echo "crm_target=${CRM_REF}" >> "$GITHUB_OUTPUT"
           if [ -n "$UPGRADE_FROM" ] && [ "$USE_CACHE" = "true" ] && [ -f gunstore-old/deploy/prod/frappe-refs.env ]; then
             # shellcheck source=/dev/null
             . gunstore-old/deploy/prod/frappe-refs.env
@@ -422,7 +424,10 @@ jobs:
           echo "frappe=${FRAPPE_REF}" >> "$GITHUB_OUTPUT"
           echo "erpnext=${ERPNEXT_REF}" >> "$GITHUB_OUTPUT"
           echo "hrms=${HRMS_REF}" >> "$GITHUB_OUTPUT"
-          echo "bench refs: frappe ${FRAPPE_REF}, erpnext ${ERPNEXT_REF}, hrms ${HRMS_REF}"
+          # An old release without CRM_REF keeps the one sourced above: CRM is new with it, so the
+          # bench carries the release under test's CRM from the start (and the upgrade installs it).
+          echo "crm=${CRM_REF}" >> "$GITHUB_OUTPUT"
+          echo "bench refs: frappe ${FRAPPE_REF}, erpnext ${ERPNEXT_REF}, hrms ${HRMS_REF}, crm ${CRM_REF}"
 
       - name: Restore bench cache
         id: bench-cache
@@ -430,7 +435,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: frappe-bench
-          key: bench-v3-${{ runner.os }}-${{ env.ImageOS }}-py${{ steps.setup-python.outputs.python-version }}-frappe-${{ steps.refs.outputs.frappe }}-erpnext-${{ steps.refs.outputs.erpnext }}-hrms-${{ steps.refs.outputs.hrms }}
+          key: bench-v3-${{ runner.os }}-${{ env.ImageOS }}-py${{ steps.setup-python.outputs.python-version }}-frappe-${{ steps.refs.outputs.frappe }}-erpnext-${{ steps.refs.outputs.erpnext }}-hrms-${{ steps.refs.outputs.hrms }}-crm-${{ steps.refs.outputs.crm }}
 
       # Self-hosted: the runner workspace survives runs, so last run's bench is
       # already on local disk — no network cache transfer at all. Reuse it only
@@ -461,14 +466,15 @@ jobs:
           WANT_FRAPPE: ${{ steps.refs.outputs.frappe }}
           WANT_ERPNEXT: ${{ steps.refs.outputs.erpnext }}
           WANT_HRMS: ${{ steps.refs.outputs.hrms }}
+          WANT_CRM: ${{ steps.refs.outputs.crm }}
         run: |
           have=$(./frappe-bench/env/bin/python -c \
-            'import frappe, erpnext, hrms; print(f"v{frappe.__version__} v{erpnext.__version__} v{hrms.__version__}")' \
+            'import frappe, erpnext, hrms, crm; print(f"v{frappe.__version__} v{erpnext.__version__} v{hrms.__version__} v{crm.__version__}")' \
             2>/dev/null || true)
-          if [ "$have" = "${WANT_FRAPPE} ${WANT_ERPNEXT} ${WANT_HRMS}" ]; then
+          if [ "$have" = "${WANT_FRAPPE} ${WANT_ERPNEXT} ${WANT_HRMS} ${WANT_CRM}" ]; then
             echo "reuse=true" >> "$GITHUB_OUTPUT"
           else
-            echo "rebuilding the bench: has '${have:-none}', want '${WANT_FRAPPE} ${WANT_ERPNEXT} ${WANT_HRMS}'"
+            echo "rebuilding the bench: has '${have:-none}', want '${WANT_FRAPPE} ${WANT_ERPNEXT} ${WANT_HRMS} ${WANT_CRM}'"
             rm -rf frappe-bench
             echo "reuse=false" >> "$GITHUB_OUTPUT"
           fi
@@ -519,7 +525,17 @@ jobs:
           FRAPPE_REDIS_QUEUE: redis://127.0.0.1:${{ job.services.redis.ports['6379'] }}
         run: bench get-app --branch ${{ steps.refs.outputs.hrms }} hrms https://github.com/frappe/hrms.git
 
-      # Persist the freshly-built bench (frappe+erpnext+hrms+venv) for next time —
+      # Required by ffl_core (ffl_core.crm) and installed on every site. --skip-assets: the tests never
+      # load CRM's own front end (the image build checks it is built).
+      - name: Get CRM
+        if: ${{ !inputs.use_cache || (steps.bench-cache.outputs.cache-hit != 'true' && steps.local-bench.outputs.reuse != 'true') }}
+        working-directory: frappe-bench
+        env:
+          FRAPPE_REDIS_CACHE: redis://127.0.0.1:${{ job.services.redis.ports['6379'] }}
+          FRAPPE_REDIS_QUEUE: redis://127.0.0.1:${{ job.services.redis.ports['6379'] }}
+        run: bench get-app --skip-assets --branch ${{ steps.refs.outputs.crm }} crm https://github.com/frappe/crm.git
+
+      # Persist the freshly-built bench (frappe+erpnext+hrms+crm+venv) for next time —
       # only on a cache miss, captured here BEFORE our apps + site are added.
       # GitHub-hosted only: on self-hosted the bench persists on disk by itself.
       - name: Save bench cache
@@ -565,7 +581,7 @@ jobs:
           # newline-terminated). The default file ships *without* a trailing
           # newline; merging via `cat | printf` ate the boundary and produced
           # "erpnextffl_core" → ModuleNotFoundError. Just declare the truth.
-          printf '%s\n' frappe erpnext hrms ffl_core ffl_integrations ffl_woo_sync > sites/apps.txt
+          printf '%s\n' frappe erpnext hrms crm ffl_core ffl_integrations ffl_woo_sync > sites/apps.txt
           echo "--- apps.txt ---"
           cat sites/apps.txt
 
@@ -585,6 +601,9 @@ jobs:
             --install-app ffl_woo_sync \
             --no-mariadb-socket \
             --force
+          # crm comes with ffl_core (its required_apps) — on an upgrade run the OLD release's ffl_core
+          # decides, so a site from before Frappe CRM is built without it, as a store's was.
+          bench --site ci.localhost list-apps
           bench --site ci.localhost set-config allow_tests true
           # Run ERPNext's setup wizard programmatically. Without this, none of
           # the standard masters (Fiscal Year, Stock Entry Type, Warehouse
@@ -634,6 +653,8 @@ jobs:
             bench --site ci.localhost restore "$TPL" --mariadb-root-password root
             bench --site ci.localhost set-config allow_tests true
           fi
+          # crm comes with ffl_core (its required_apps), not from the template: an upgrade run's old
+          # release may predate Frappe CRM, and its site must not have it.
           for app in ffl_core ffl_integrations ffl_woo_sync; do
             bench --site ci.localhost install-app "$app"
           done
@@ -649,26 +670,27 @@ jobs:
           done
 
       - name: Move the bench to the refs under test
-        if: ${{ inputs.upgrade_from != '' && (steps.refs.outputs.frappe != steps.refs.outputs.frappe_target || steps.refs.outputs.erpnext != steps.refs.outputs.erpnext_target || steps.refs.outputs.hrms != steps.refs.outputs.hrms_target) }}
+        if: ${{ inputs.upgrade_from != '' && (steps.refs.outputs.frappe != steps.refs.outputs.frappe_target || steps.refs.outputs.erpnext != steps.refs.outputs.erpnext_target || steps.refs.outputs.hrms != steps.refs.outputs.hrms_target || steps.refs.outputs.crm != steps.refs.outputs.crm_target) }}
         working-directory: frappe-bench
         env:
           FRAPPE_REF: ${{ steps.refs.outputs.frappe_target }}
           ERPNEXT_REF: ${{ steps.refs.outputs.erpnext_target }}
           HRMS_REF: ${{ steps.refs.outputs.hrms_target }}
+          CRM_REF: ${{ steps.refs.outputs.crm_target }}
         run: |
           set -euo pipefail
-          for app in frappe erpnext hrms; do
-            case "$app" in frappe) ref="$FRAPPE_REF" ;; erpnext) ref="$ERPNEXT_REF" ;; hrms) ref="$HRMS_REF" ;; esac
+          for app in frappe erpnext hrms crm; do
+            case "$app" in frappe) ref="$FRAPPE_REF" ;; erpnext) ref="$ERPNEXT_REF" ;; hrms) ref="$HRMS_REF" ;; crm) ref="$CRM_REF" ;; esac
             # by URL, not remote name: a reused bench's clones need not share one
             git -C "apps/$app" fetch --quiet --depth 1 "https://github.com/frappe/$app.git" "$ref"
             # --force: the build's yarn install rewrites tracked lockfiles (erpnext banking/yarn.lock)
             git -C "apps/$app" checkout --quiet --force FETCH_HEAD
           done
-          ./env/bin/pip install --quiet -e apps/frappe -e apps/erpnext -e apps/hrms
+          ./env/bin/pip install --quiet -e apps/frappe -e apps/erpnext -e apps/hrms -e apps/crm
           # and the front end, so nothing of the old release is left in this bench
           bench setup requirements --node
           bench build
-          ./env/bin/python -c 'import frappe, erpnext, hrms; print(f"bench moved to frappe {frappe.__version__}, erpnext {erpnext.__version__}, hrms {hrms.__version__}")'
+          ./env/bin/python -c 'import frappe, erpnext, hrms, crm; print(f"bench moved to frappe {frappe.__version__}, erpnext {erpnext.__version__}, hrms {hrms.__version__}, crm {crm.__version__}")'
 
       # The card-charge storage rename (ffl_integrations rename_payroc_storage_to_card) moves live
       # money facts: card rows written in the OLD shape before the migrate must all read back under
@@ -688,7 +710,12 @@ jobs:
             ln -sfn "$GITHUB_WORKSPACE/gunstore/apps/$app" "apps/$app"
             ./env/bin/pip install -e "apps/$app"
           done
-          printf '%s\n' frappe erpnext hrms ffl_core ffl_integrations ffl_woo_sync > sites/apps.txt
+          printf '%s\n' frappe erpnext hrms crm ffl_core ffl_integrations ffl_woo_sync > sites/apps.txt
+          # A site from before Frappe CRM gets it here, before the migrate, as deploy/prod/auto_deploy.sh
+          # does it on a store's site (ffl_core requires it from the release that brought ffl_core.crm).
+          if ! bench --site ci.localhost list-apps | grep -qw crm; then
+            bench --site ci.localhost install-app crm
+          fi
           echo "::group::bench migrate ($(git -C "$GITHUB_WORKSPACE/gunstore-old" rev-parse --short HEAD) → $(git -C "$GITHUB_WORKSPACE/gunstore" rev-parse --short HEAD))"
           bench --site ci.localhost migrate
           echo "::endgroup::"

@@ -31,7 +31,7 @@ Open it from **Settings**, the last row of the sidebar.
 | Card | Links |
 |---|---|
 | **FFL & Compliance** | FFL Settings, MCP Settings, ATF FFL Record |
-| **POS & Sales** | ShipStation Settings, Cash Drawer Settings, Membership Settings, POS Profile, Mode of Payment, Selling Settings |
+| **POS & Sales** | ShipStation Settings, Cash Drawer Settings, Membership Settings, Lead Mail Settings, POS Profile, Mode of Payment, Selling Settings |
 | **Catalog Reference** | Item Group, Brand, Caliber, Warehouse, Stock Settings |
 
 Several of these are also under **Setup** in **All records** on the [Dashboard](../start/dashboard.md).
@@ -61,6 +61,7 @@ Below them, the **Card on file** card turns on [saving a card to charge later](.
 | ShipStation Settings | **POS & Sales** card | Shipping labels, ship-from address, parcel defaults |
 | Cash Drawer Settings | **POS & Sales** card | The drawer's limits (below) |
 | Membership Settings | **POS & Sales** card | Automatic renewal charges and the yearly reminder. See [Memberships](../counter/memberships.md) |
+| Lead Mail Settings | **POS & Sales** card | Mail domains that never become a CRM lead: other businesses you block, and the store's own |
 | POS Profile | **POS & Sales** card | Each register's warehouse, price list and payment methods |
 | Mode of Payment | **POS & Sales** card | The tender types and the account each posts to |
 | Selling Settings | **POS & Sales** card | Store-wide selling defaults, such as customer naming |

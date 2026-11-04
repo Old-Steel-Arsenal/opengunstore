@@ -39,7 +39,8 @@ role_home_page = {
 # which is why that field must stay empty on every role. See ffl_core/__init__.py.
 get_website_user_home_page = "ffl_core.get_website_user_home_page"
 
-required_apps = ["erpnext"]
+# Frappe CRM (app `crm`) runs unmodified on every site, wired to the register by ffl_core.crm.
+required_apps = ["erpnext", "crm"]
 
 # Each entry surfaces as a tile in the app launcher (top-left brand-logo
 # dropdown on every Desk page) AND in the desk landing tile selector.
@@ -250,7 +251,9 @@ doc_events = {
 		"validate": "ffl_core.atf_link.sync_party_atf_link",
 	},
 	"Item": {
-		"before_save": "ffl_core.firearm.auto_set_is_firearm",
+		# Before CRM's own Item hooks read it: they skip this save (ffl_core.crm.item).
+		"before_insert": "ffl_core.crm.item.skip_crm_sync",
+		"before_save": ["ffl_core.firearm.auto_set_is_firearm", "ffl_core.crm.item.skip_crm_sync"],
 		# Runs ahead of ERPNext's validate_barcode so a 13-digit GTIN entered in
 		# the single UPC field is re-typed to EAN before core rejects it as an
 		# invalid UPC.
@@ -264,8 +267,28 @@ doc_events = {
 		],
 		# Keep the POS-facing Item Price honest: create-if-missing from
 		# standard_rate; uniform-priced firearms hard-sync (card = picker price).
-		"on_update": "ffl_core.item_hooks.sync_standard_selling_price",
+		# Then its CRM Product, priced from that Item Price (ffl_core.crm.item).
+		"on_update": ["ffl_core.item_hooks.sync_standard_selling_price", "ffl_core.crm.item.sync_product"],
 	},
+	# Frappe CRM (ffl_core.crm): a CRM edit to a POS product reaches the Item, a price only through a
+	# manager; deal lines priced from the register; a quote takes the store's tax and is never
+	# submitted; staff mail lands on the customer's deal or becomes a lead.
+	"CRM Product": {
+		"before_insert": "ffl_core.crm.product.before_insert",
+		"validate": "ffl_core.crm.product.validate",
+		"on_update": "ffl_core.crm.product.on_update",
+		"before_rename": "ffl_core.crm.product.before_rename",
+		"on_trash": "ffl_core.crm.product.on_trash",
+	},
+	"CRM Deal": {"validate": "ffl_core.crm.deal.price_lines"},
+	# A new staff account lands on the POS, not on the /apps picker CRM's own app brings (ffl_core.crm).
+	"User": {"validate": "ffl_core.crm.staff_default_app"},
+	"Quotation": {
+		"before_validate": "ffl_core.crm.quotation.default_sales_taxes",
+		"before_submit": "ffl_core.crm.quotation.refuse_submit",
+	},
+	"Email Account": {"validate": "ffl_core.crm.mail.take_over_lead_flag"},
+	"Communication": {"after_insert": "ffl_core.crm.mail.on_incoming"},
 	"Serial No": {
 		# Inherit a firearm's manufacturer (never importer — that's per-gun only,
 		# 2026-08-20) from its model Item when the serial doesn't set its own, so
@@ -820,6 +843,8 @@ after_install = [
 	"ffl_core.price_approval.ensure_default",
 	# Cash drawer: the two POS Closing Entry fields (accounts wait for a company, at after_migrate).
 	"ffl_core.setup.cash_drawer.ensure_fields_only",
+	# Frappe CRM wired to the POS: custom fields, ERPNext CRM Settings, the product backfill (ffl_core.crm.setup).
+	"ffl_core.crm.setup.after_install",
 ]
 before_migrate = [
 	# Extension upgrades: any migrate that runs an upgrade's new code (a deploy's
@@ -897,6 +922,8 @@ after_migrate = [
 	"ffl_core.setup.cash_drawer.ensure",
 	# Manager approval for lowered prices: the record + token fields (setup/price_approval).
 	"ffl_core.setup.price_approval.ensure",
+	# Frappe CRM wired to the POS (ffl_core.crm.setup); does nothing while CRM is not on the site.
+	"ffl_core.crm.setup.ensure",
 ]
 
 # Uninstallation
@@ -911,7 +938,12 @@ after_migrate = [
 # Name of the app being installed is passed as an argument
 
 # before_app_install = "ffl_core.utils.before_app_install"
-after_app_install = ["ffl_core.extensions.registry.on_app_change", "ffl_core.setup.gunshop_sidebar.on_app_change"]
+after_app_install = [
+	"ffl_core.extensions.registry.on_app_change",
+	"ffl_core.setup.gunshop_sidebar.on_app_change",
+	# `bench install-app crm` on a site that already runs the POS (the deploy that brings CRM).
+	"ffl_core.crm.setup.after_app_install",
+]
 
 # The Gun Shop home page's "Needs attention" cards are standard Number Cards shipped as files
 # (ffl_core/number_card/); Frappe walks that folder only for doctypes an app names here.
@@ -1025,6 +1057,9 @@ scheduler_events = {
 		"ffl_core.extensions.updates.check",
 		# Signed agreements past their expiry date → Expired (agreements.py).
 		"ffl_core.agreements.expire_agreements",
+		# CRM Product prices back to the register's: prices also change where no Item hook runs
+		# (Receive Goods, the daily sale refresh, the drop-ship sync) (ffl_core.crm.item).
+		"ffl_core.crm.item.refresh_product_prices",
 	],
 }
 

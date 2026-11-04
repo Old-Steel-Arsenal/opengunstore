@@ -1819,6 +1819,20 @@
           "image"
         ]
       },
+      "Lead_Mail_Settings": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Lead%20Mail%20Settings — see docs/api/frappe-rest.md.",
+        "properties": {
+          "blocked_sender_domains": {
+            "type": "string",
+            "description": "Blocked sender domains"
+          },
+          "own_domains": {
+            "type": "string",
+            "description": "Our own domains"
+          }
+        }
+      },
       "MCP_Settings": {
         "type": "object",
         "description": "Custom DocType (ffl_core); CRUD via /api/resource/MCP%20Settings — see docs/api/frappe-rest.md.",
@@ -7355,6 +7369,54 @@
                 },
                 "required": [
                   "sales_invoice"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.api.crm.open_deal": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "The contact's open deal, made when they have none, to write to them from CRM.",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:13`",
+        "operationId": "ffl_core.api.crm.open_deal",
+        "responses": {
+          "200": {
+            "description": "str: The CRM Deal's name (open it at /crm/deals/<name>#emails). Refused for a contact without an email address.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "contact": {
+                    "type": "string",
+                    "description": "The Contact's name."
+                  }
+                },
+                "required": [
+                  "contact"
                 ]
               }
             }

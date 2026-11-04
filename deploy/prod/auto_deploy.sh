@@ -79,12 +79,22 @@ sleep 4
 # auto_deploy historically only migrated, but an app freshly baked into the image
 # (e.g. ffl_woo_sync) still needs a one-time install-app on the live site for its
 # doctypes/custom-fields/hooks to load. Idempotent: skipped when already installed.
-for app in ffl_woo_sync; do
-	if ! "$UP" exec -T backend bench --site "$SITE" list-apps 2>/dev/null | grep -qw "$app"; then
-		echo "==> installing new app on site: $app"
-		"$UP" exec -T backend bench --site "$SITE" install-app "$app"
-	fi
-done
+# crm (Frappe CRM) first: ffl_core requires it from the release that brought ffl_core.crm, and
+# a site made before that has none; until it is installed that code stands down
+# (ffl_core.crm.installed). The migrate below then wires it to the POS (ffl_core.crm.setup).
+# A failed install stops the deploy here (set -e), before migrate.
+NEW_APPS="crm ffl_woo_sync"
+install_new_apps() {
+	local app installed
+	installed="$("$UP" exec -T backend bench --site "$SITE" list-apps 2>/dev/null)" || installed=""
+	for app in $NEW_APPS; do
+		if ! grep -qw "$app" <<<"$installed"; then
+			echo "==> installing new app on site: $app"
+			"$UP" exec -T backend bench --site "$SITE" install-app "$app"
+		fi
+	done
+}
+install_new_apps
 
 # Site config guard, re-asserted on every deploy.
 # host_name is what frappe.utils.get_url() builds absolute URLs from — receipt
