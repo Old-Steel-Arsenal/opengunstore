@@ -1119,36 +1119,15 @@ def _set_item_selling_price(item_code: str, price: float) -> None:
 	"""Stamp `price` onto Item.standard_rate AND the selling Item Price on the
 	default price list, creating OR updating the price so the Receive Goods Sell
 	Price is authoritative at POS. Targeted writes (no full Item.save) so unrelated
-	Item on_update hooks don't fire as a side effect of a price change."""
+	Item on_update hooks don't fire as a side effect of a price change. The Item
+	Price follows the rule ``pricing.set_regular_price`` shares
+	(:func:`ffl_core.pricing.sync_selling_item_price`: the sale overlay on a
+	uniform-priced item; 0 = un-priced, never creates or zeroes an Item Price)."""
+	from ffl_core.pricing import sync_selling_item_price
+
 	if float(frappe.db.get_value("Item", item_code, "standard_rate") or 0) != price:
 		frappe.db.set_value("Item", item_code, "standard_rate", price, update_modified=False)
-	if price <= 0:
-		return  # 0 = un-priced by convention; never create or zero an Item Price
-	from ffl_core.item_hooks import _default_selling_price_list
-	price_list = _default_selling_price_list()
-	if not price_list:
-		return
-	# The Item Price is what the register charges TODAY: on a uniform-priced
-	# item an ACTIVE sale window undercuts the regular price (same overlay the
-	# serial picker applies), so stamping the raw regular here mid-sale would
-	# flip the POS card back to full price until the daily re-sync.
-	charge = price
-	meta = frappe.db.get_value(
-		"Item", item_code,
-		["uniform_sell_price", "sale_price", "sale_from", "sale_to"], as_dict=True)
-	if meta and meta.uniform_sell_price:
-		from ffl_core.firearm import apply_sale
-		charge = float(apply_sale(
-			price, meta.sale_price, meta.sale_from, meta.sale_to) or price)
-	existing = frappe.db.get_value(
-		"Item Price", {"item_code": item_code, "price_list": price_list, "selling": 1}, "name")
-	if existing:
-		frappe.db.set_value("Item Price", existing, "price_list_rate", charge)
-	else:
-		frappe.get_doc({
-			"doctype": "Item Price", "item_code": item_code, "price_list": price_list,
-			"selling": 1, "price_list_rate": charge,
-		}).insert(ignore_permissions=True)
+	sync_selling_item_price(item_code, price)
 
 
 def _rsr_dealer_price(item_code: str) -> float:
