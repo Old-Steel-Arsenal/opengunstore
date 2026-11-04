@@ -24,7 +24,7 @@ reconciled instead of stranding it / letting a retry double-charge.
 
 **Permissions:** POS charge roles (_check_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:794`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:886`</sub>
 
 ## `cancel_sales_invoice_charge`
 
@@ -46,7 +46,7 @@ was charged, so it is recorded and booked, never stranded.
 
 **Permissions:** POS charge roles (_check_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1137`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1243`</sub>
 
 ## `card_tender_mode`
 
@@ -62,7 +62,7 @@ Credit Card row is a plain tender typed from a standalone terminal.
 
 **Returns:** {"integrated": bool}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:562`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:640`</sub>
 
 ## `charge_pos_invoice`
 
@@ -83,12 +83,13 @@ charge rather than double-charging.
 | `amount` | — | no | `None` | Optional charge amount; defaults to the card-tender target. |
 | `description` | string \| null | no | `None` | Optional statement descriptor. |
 | `save_card` | — | no | `0` | 1 to keep the card for later charges (card on file): refused unless saving is switched on, the processor can keep cards and the invoice customer has signed the card-on-file authorization. |
+| `keyed` | — | no | `0` | 1 to key the card number in on the processor's payment page instead of the terminal (managers only; not with save_card). |
 
-**Returns:** {ok, instruction_id, status, amount} — or {"skip": True} when no card processor is switched on and configured. The poll that settles an approval then adds card_saved / save_message.
+**Returns:** {ok, instruction_id, status, amount} — plus keyed_url (the payment page to open) for a keyed charge — or {"skip": True} when no card processor is switched on and configured. The poll that settles an approval then adds card_saved / save_message.
 
 **Permissions:** POS charge roles (_check_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:580`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:658`</sub>
 
 ## `charge_sales_invoice`
 
@@ -111,12 +112,13 @@ one while an earlier approval on this invoice is unrecorded.
 | `amount` | — | no | `None` | Charge amount, at most the outstanding balance (blank = the whole balance; less = a deposit). |
 | `terminal` | string \| null | no | `None` | Optional terminal id; defaults to the configured one. |
 | `save_card` | — | no | `0` | 1 to keep the card for later charges (card on file): refused unless saving is switched on, the processor can keep cards and the invoice customer has signed the card-on-file authorization. |
+| `keyed` | — | no | `0` | 1 to key the card number in on the processor's payment page instead of the terminal (managers only; not with save_card). |
 
-**Returns:** {ok, instruction_id, status, amount} — {"skip": True} when no card processor is switched on and configured; an earlier approval found unrecorded comes back settled with already=True. The poll that settles an approval then adds card_saved / save_message.
+**Returns:** {ok, instruction_id, status, amount} — plus keyed_url (the payment page to open) for a keyed charge — {"skip": True} when no card processor is switched on and configured; an earlier approval found unrecorded comes back settled with already=True. The poll that settles an approval then adds card_saved / save_message.
 
 **Permissions:** POS charge roles (_check_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:996`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1088`</sub>
 
 ## `confirm_out_of_band_refund`
 
@@ -144,7 +146,7 @@ evidence another rule force-collects clears itself).
 
 **Permissions:** Manager role (_check_manager).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:2252`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:2358`</sub>
 
 ## `list_terminals`
 
@@ -161,7 +163,7 @@ response's allowedTerminals).
 
 **Permissions:** Manager role.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1170`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1276`</sub>
 
 ## `poll_pos_charge`
 
@@ -184,7 +186,7 @@ approval, stamp the reference on the invoice.
 
 **Permissions:** POS charge roles (_check_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:744`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:836`</sub>
 
 ## `poll_sales_invoice_charge`
 
@@ -207,7 +209,7 @@ the new balance.
 
 **Permissions:** POS charge roles (_check_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1106`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1212`</sub>
 
 ## `refund_pos_invoice`
 
@@ -233,7 +235,7 @@ originals refund across rows within per-original-card caps.
 
 **Permissions:** Manager-gated refund roles (gate at entry).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1507`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1613`</sub>
 
 ## `unlock_refund_lock`
 
@@ -270,7 +272,7 @@ mirroring manager_override_4473's audit posture.
 
 **Permissions:** Manager gate (roles per the derived Auth line) + required reason — the reason must record what was verified in the processor's portal.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1890`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1996`</sub>
 
 ## `void_pos_invoice`
 
@@ -294,4 +296,4 @@ charge row's unique_reference when more than one live capture exists.
 
 **Permissions:** Refund/void roles (_check_refund_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1194`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1300`</sub>

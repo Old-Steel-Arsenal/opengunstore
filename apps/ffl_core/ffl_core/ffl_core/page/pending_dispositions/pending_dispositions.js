@@ -1214,7 +1214,12 @@ class PendingDispositionsApp {
 					description: __('Outstanding: {0}', [format_currency(row.outstanding_amount)]),
 				},
 				...(saveOffer ? [Object.assign(cof.field(), {
-					depends_on: "eval:doc.mode=='Credit Card' && !doc.charged_outside" })] : []),
+					depends_on: "eval:doc.mode=='Credit Card' && !doc.charged_outside && !doc.keyed" })] : []),
+				// Keyed entry (managers, payment page set up): the card number is typed on the
+				// card processor's payment page instead of the terminal.
+				...(window.ffl && window.ffl.keyedCard && window.ffl.keyedCard.available()
+					? [Object.assign(window.ffl.keyedCard.field(), {
+						depends_on: "eval:doc.mode=='Credit Card' && !doc.charged_outside" })] : []),
 				{
 					// The day the money arrived, not the day it was typed in — a
 					// payment logged late books on its real date. The server owns
@@ -1235,13 +1240,14 @@ class PendingDispositionsApp {
 				const card = frappe.boot && frappe.boot.ffl_card_processor;
 				if (v.mode === cardMop && Number(card && card.enabled)
 						&& !v.charged_outside && window.ffl && window.ffl.chargeSalesInvoice) {
-					const saveCard = saveOffer && v.save_card ? 1 : 0;
+					const keyed = v.keyed ? 1 : 0;
+					const saveCard = !keyed && saveOffer && v.save_card ? 1 : 0;
 					d.hide();
 					if (saveCard && !(await cof.ensureSigned(row.customer, saveOffer, row.customer_name))) {
 						d.show();   // not signed: back to the dialog
 						return;
 					}
-					const res = await window.ffl.chargeSalesInvoice(row.sales_invoice, flt(v.amount), { saveCard });
+					const res = await window.ffl.chargeSalesInvoice(row.sales_invoice, flt(v.amount), { saveCard, keyed });
 					if (res && res.skip) {
 						frappe.msgprint({ title: __('Terminal not configured'), indicator: 'orange',
 							message: __('The {0} device is not set up on this store. Take the card on the Virtual Terminal or your standalone terminal first, then tick "Already charged on Virtual Terminal" and enter its approval code.', [(card && card.label) || __('card processor')]) });

@@ -227,7 +227,7 @@ class OneProcessorAtATime(_Seam):
         boot = frappe._dict()
         with card_hooks(PAYROC, FAKE):
             extend_bootinfo(boot)
-        self.assertEqual(boot.ffl_card_processor, {"code": "fakepay", "label": "FakePay", "enabled": 1})
+        self.assertEqual(boot.ffl_card_processor, {"code": "fakepay", "label": "FakePay", "enabled": 1, "keyed": 0})
         self.assertEqual(boot.card_mop, "Credit Card")
 
 
