@@ -609,3 +609,71 @@ class TestSendCrmMailNow(TeamMailCase):
 			mail.send_queued_crm_mail(queue)   # the flush got there first, or the job runs twice
 			mail.send_queued_crm_mail("no such row")
 			self.assertEqual(session.return_value.sendmail.call_count, 1, "a Sent row is not sent again")
+
+
+class TestContactNamedFromMail(TeamMailCase):
+	"""The Contact Frappe makes from a mail takes the display name the lead has, so Convert to Deal keeps it."""
+
+	def setUp(self):
+		super().setUp()
+		frappe.db.set_value("Email Account", INFO, "create_contact", 1, update_modified=False)
+
+	def _contact(self, email: str) -> dict:
+		(name,) = mail._contacts_of(email)
+		return frappe.db.get_value("Contact", name, ["name", "first_name", "last_name", "full_name"], as_dict=True)
+
+	def _mail_from(self, display: str, address: str) -> str:
+		"""Team mail from someone new through a real pull; returns the lead."""
+		_pull(INFO, (raw := _raw(f"{display} <{address}>" if display else address, SALES), 90))
+		(comm,) = _stored(raw)
+		self.assertEqual(comm.reference_doctype, "CRM Lead")
+		return comm.reference_name
+
+	def test_an_auto_made_contact_takes_the_display_name_and_survives_convert_to_deal(self):
+		from crm.fcrm.doctype.crm_lead.crm_lead import convert_to_deal
+
+		lead = self._mail_from("Jane Q Public", "jqp99@example.org")
+		contact = self._contact("jqp99@example.org")
+		self.assertEqual((contact.first_name, contact.last_name, contact.full_name), ("Jane", "Q Public", "Jane Q Public"))
+		self.assertEqual(contact.name, "Jqp99", "the document keeps the name Frappe gave it")
+		with patch.object(frappe.db, "commit"):
+			deal = convert_to_deal(lead=lead)
+		self.assertEqual(tuple(frappe.db.get_value("CRM Lead", lead, ["first_name", "last_name"])), ("Jane", "Q Public"))
+		deal_contact = frappe.get_doc("CRM Deal", deal).contacts[0].contact
+		self.assertEqual(deal_contact, "Jqp99")
+		self.assertEqual(frappe.db.get_value("Contact", deal_contact, "full_name"), "Jane Q Public")
+
+	def test_a_hand_named_contact_is_left_alone(self):
+		frappe.get_doc({"doctype": "Contact", "first_name": "Robert", "last_name": "Smith",
+			"email_ids": [{"email_id": "hand55@example.org", "is_primary": 1}]}).insert(ignore_permissions=True)
+		self._mail_from("Bob S", "hand55@example.org")
+		self.assertEqual(tuple(self._contact("hand55@example.org")[k] for k in ("first_name", "last_name")), ("Robert", "Smith"))
+
+	def test_no_display_name_leaves_the_contact(self):
+		self._mail_from("", "nodisp@example.org")   # Frappe fills the display name with the address
+		self.assertEqual(self._contact("nodisp@example.org").first_name, "Nodisp")
+		mail._new_lead("nodisp@example.org", "nodisp@example.org")   # a display name that is the address
+		self.assertEqual(self._contact("nodisp@example.org").first_name, "Nodisp")
+
+	def test_a_contact_linked_to_anything_is_left_alone(self):
+		customer = frappe.get_doc({"doctype": "Customer", "customer_name": "_T Team Linked", "customer_type": "Individual"}
+			).insert(ignore_permissions=True).name
+		for address, link in (("linked1@example.org", ("Customer", customer)),
+				("linked2@example.org", ("Company", frappe.db.get_value("Company", {}, "name")))):
+			frappe.get_doc({"doctype": "Contact", "first_name": frappe.unscrub(address.split("@")[0]),
+				"email_ids": [{"email_id": address, "is_primary": 1}],
+				"links": [{"link_doctype": link[0], "link_name": link[1]}]}).insert(ignore_permissions=True)
+			mail._new_lead(address, "Jane Public")
+			self.assertEqual(self._contact(address).first_name, frappe.unscrub(address.split("@")[0]), address)
+		# an auto-looking Contact someone gave a last name
+		frappe.get_doc({"doctype": "Contact", "first_name": "Lastname3", "last_name": "Given",
+			"email_ids": [{"email_id": "lastname3@example.org", "is_primary": 1}]}).insert(ignore_permissions=True)
+		mail._new_lead("lastname3@example.org", "Jane Public")
+		self.assertEqual(self._contact("lastname3@example.org").first_name, "Lastname3")
+
+	def test_a_failure_does_not_stop_the_lead(self):
+		errors = frappe.db.count("Error Log")
+		with patch.object(mail, "_contacts_of", side_effect=RuntimeError("boom")):
+			lead = mail._new_lead("fail1@example.org", "Jane Public")
+		self.assertTrue(frappe.db.exists("CRM Lead", lead))
+		self.assertEqual(frappe.db.count("Error Log"), errors + 1)

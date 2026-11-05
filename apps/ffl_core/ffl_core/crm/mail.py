@@ -58,6 +58,7 @@ stays, so anyone can take over later by changing the owner in CRM.
 Pulling: Frappe pulls every Email Account every 10 minutes, which staff mailboxes keep; a team mailbox
 is also queued for a pull every minute (:func:`pull_team_mailboxes`), so customer mail arrives within about a minute.
 Mail sent on a CRM Lead or Deal leaves within seconds, not at Frappe's next flush (:func:`send_crm_mail_now`).
+A new lead's display name also goes to the sender's Contact when Frappe made that Contact from the mail (:func:`_name_auto_contact`), so converting the lead to a deal keeps the name.
 """
 from __future__ import annotations
 
@@ -129,10 +130,14 @@ def take_over_lead_flag(doc, method=None):
 		doc.create_lead_from_incoming_email = 0
 
 
+def _contacts_of(email: str) -> set[str]:
+	contacts = set(frappe.get_all("Contact Email", filters={"email_id": email, "parenttype": "Contact"}, pluck="parent"))
+	return contacts | set(frappe.get_all("Contact", filters={"email_id": email}, pluck="name"))
+
+
 def _customer_contact(email: str) -> str | None:
 	"""The (oldest) Contact with this email address that is linked to a Customer."""
-	contacts = set(frappe.get_all("Contact Email", filters={"email_id": email, "parenttype": "Contact"}, pluck="parent"))
-	contacts |= set(frappe.get_all("Contact", filters={"email_id": email}, pluck="name"))
+	contacts = _contacts_of(email)
 	if not contacts:
 		return None
 	found = frappe.get_all("Dynamic Link", filters={"parenttype": "Contact", "parent": ["in", list(contacts)],
@@ -232,18 +237,49 @@ def decide(doc) -> tuple | None:
 	return (SKIP, "direct mail from someone new")
 
 
+def _split_name(full_name: str | None) -> tuple[str, str]:
+	"""A display name as (first name, last name): the first word, then the rest."""
+	parts = (full_name or "").split()
+	return (parts[0], " ".join(parts[1:])) if parts else ("", "")
+
+
 def _new_lead(email: str, full_name: str | None) -> str:
 	lead = frappe.new_doc(LEAD)
 	lead.email = email
-	parts = (full_name or "").split()
-	lead.first_name = parts[0] if parts else email.split("@", 1)[0]
-	lead.last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
+	first, last = _split_name(full_name)
+	named = bool(first) and (full_name or "").strip().lower() != email
+	lead.first_name = first or email.split("@", 1)[0]
+	lead.last_name = last
 	if frappe.db.exists("CRM Lead Source", "Email"):
 		lead.source = "Email"
 	# No owner: a pool lead waits for its first reply, a round robin one for CRM's Assignment Rule.
 	# The mail pull runs as the system, not as a CRM user; CRM's own lead creation inserts the same way.
 	lead.insert(ignore_permissions=True)
+	if named:
+		_name_auto_contact(email, first, last)
 	return lead.name
+
+
+def _name_auto_contact(email: str, first: str, last: str) -> None:
+	"""The sender's Contact that Frappe made from the mail (``get_contacts``, named after the address
+	as "Xuanji86") takes the display name the lead has, so converting the lead to a deal (CRM copies
+	the Contact's name onto the lead) keeps it. Only a Contact still as Frappe made it: its first name
+	is the address's local part, no last name, linked to nothing (no Customer, no deal). Only the name
+	fields change, never the document's name. Never stops the lead: a failure is logged."""
+	frappe.db.savepoint("ffl_crm_contact")
+	try:
+		auto = frappe.unscrub(email.split("@", 1)[0])
+		for name in sorted(_contacts_of(email)):
+			contact = frappe.db.get_value("Contact", name, ["first_name", "last_name"], as_dict=True)
+			if not contact or contact.first_name != auto or contact.last_name \
+					or frappe.db.exists("Dynamic Link", {"parenttype": "Contact", "parent": name}):
+				continue
+			frappe.db.set_value("Contact", name, {"first_name": first, "last_name": last,
+				"full_name": f"{first} {last}".strip()}, update_modified=False)
+			frappe.clear_document_cache("Contact", name)
+	except Exception:
+		frappe.db.rollback(save_point="ffl_crm_contact")
+		frappe.log_error(title=f"[{TITLE}] Contact not named from the mail: {email}", message=frappe.get_traceback())
 
 
 def _link(doc, doctype: str, name: str) -> None:
