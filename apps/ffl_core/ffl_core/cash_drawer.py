@@ -2001,7 +2001,17 @@ def log_rows(company: str, account: str, from_date, to_date) -> tuple[float, lis
 		WHERE i.company = %s AND i.docstatus = 1 AND DATE(i.ffl_cash_taken_at) <= %s
 			AND si.docstatus = 1 AND si.posting_date > %s""",
 		(company, to_date, add_days(to_date, _LOG_MERGE_DAYS))) if frappe.db.has_column("POS Invoice", "ffl_cash_taken_at") else []
-	for p in [*(pending_pos_rows(company, account, merged_into=late) if late else ()), *pending_pos_rows(company, account)]:
+	late_parts: dict[str, list] = {}
+	for p in pending_pos_rows(company, account, merged_into=late) if late else ():
+		late_parts.setdefault(p.merged_into, []).append(p)
+	if late_parts:  # like the ledger path: a merge whose parts do not add up to its cash line stays one line on its date
+		cash_line = dict(frappe.db.sql(
+			"""SELECT voucher_no, SUM(debit - credit) FROM `tabGL Entry` WHERE company = %s AND account = %s
+			AND is_cancelled = 0 AND voucher_type = 'Sales Invoice' AND voucher_no IN %s GROUP BY voucher_no""",
+			(company, account, tuple(late_parts))))
+		late_parts = {k: v for k, v in late_parts.items()
+			if abs(sum(flt(p.amount) for p in v) - flt(cash_line.get(k))) < 0.005}
+	for p in [*(p for v in late_parts.values() for p in v), *pending_pos_rows(company, account)]:
 		day = getdate(p.posting_date)
 		if day < from_date:
 			opening += flt(p.amount)
