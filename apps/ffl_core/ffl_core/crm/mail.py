@@ -23,7 +23,9 @@ For each received mail of an in-scope account, in order (:func:`decide`):
    team mail on a lead or deal (new or existing, a thread reply included) shares it with every staff
    user, silently (:func:`share_with_team`), and so does a deal converted from a shared lead
    (:func:`share_converted_deal`): Frappe CRM lets a Sales User read only records they own or hold a
-   ToDo on. Direct mail does not: its lead or deal stays with its owner and Sales Managers;
+   ToDo on. Direct mail does not: its lead or deal stays with its owner and Sales Managers, until the
+   customer answers a staff reply: that answer goes to the staff mailbox's Reply-To, the team address,
+   so it is team mail and shares the record (by design: whoever answers next can take it over);
    direct mail from someone new: skipped (a staff member's own mail never enters the POS).
 
 "Skipped" means never stored: the Communication ``before_insert`` raises Frappe's own

@@ -121,7 +121,7 @@ These settings decide which mail from the store's mailboxes goes into CRM. Each 
 
 Every lead and deal that gets team mail shows to everyone with Sales User or Sales Manager, without a notice or an email to anyone. A deal converted from such a lead shows to them too. Whoever answers a new lead first from CRM becomes its owner. To take one over, change its owner in CRM.
 
-A lead or deal that only got mail sent to one staff member shows to its owner and to Sales Managers.
+A lead or deal that only got mail sent to one staff member shows to its owner and to Sales Managers. Once the customer answers a reply sent from CRM, their answer goes to the Reply-To team address, and from then on the lead or deal shows to everyone too.
 
 Save these settings again after you add a staff member. They see existing team leads once the next team mail reaches each one. Removing someone who leaves from a **Mailbox** address is done on their user record.
 
