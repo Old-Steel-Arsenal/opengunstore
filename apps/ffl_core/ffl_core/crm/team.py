@@ -28,6 +28,7 @@ robin address, and removing a User Emails row from someone who leaves (rows are 
 from __future__ import annotations
 
 import frappe
+from frappe import _
 
 from ffl_core.crm import TITLE
 
@@ -77,6 +78,25 @@ def _staff_mailboxes() -> list[str]:
 	skip = collectors()
 	return [n for n in frappe.get_all("Email Account", filters={AUTO_LEAD: 1}, pluck="name", order_by="name asc")
 		if n not in skip]
+
+
+def full_sync(account) -> bool:
+	"""Whether the account pulls with IMAP, all mail. CRM mail rules leave mail out (``crm.mail``), and
+	only this pull keeps a left-out mail where it is: POP3 deletes each mail it fetches from the server,
+	and IMAP "UNSEEN" marks it read and never fetches one already read in the mailbox."""
+	return bool(account.get("use_imap")) and account.get("email_sync_option") == "ALL"
+
+
+FULL_SYNC_NEEDED = "{0} must use IMAP and sync all mail (not only unread) to bring mail into CRM: other mail it leaves out would be marked read, or deleted from the mail server."
+
+
+def require_full_sync(doc, method=None):
+	"""Email Account validate: an incoming mailbox CRM mail rules apply to (its CRM switch on, or a
+	collector of a team address) must pull with IMAP, all mail (:func:`full_sync`)."""
+	if not doc.get("enable_incoming") or not doc.meta.has_field(AUTO_LEAD):
+		return
+	if (doc.get(AUTO_LEAD) or doc.name in collectors()) and not full_sync(doc):
+		frappe.throw(_(FULL_SYNC_NEEDED).format(frappe.bold(doc.name)), title=_("Sync all mail"))
 
 
 # Reply-To -----------------------------------------------------------------------------------------

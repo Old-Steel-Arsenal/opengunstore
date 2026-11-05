@@ -11,7 +11,7 @@ from frappe.utils import validate_email_address
 class LeadMailSettings(Document):
 	def validate(self):
 		from ffl_core.crm.mail import domain_lines
-		from ffl_core.crm.team import MAILBOX
+		from ffl_core.crm.team import FULL_SYNC_NEEDED, MAILBOX, full_sync
 
 		# One clean domain per line (lowercase, no "@", no blanks or repeats).
 		for field in ("blocked_sender_domains", "own_domains"):
@@ -27,6 +27,11 @@ class LeadMailSettings(Document):
 			seen.add(row.address)
 			if row.address_type == MAILBOX and not row.collector:
 				frappe.throw(_("Row {0}: a mailbox needs the Email Account that collects it.").format(row.idx))
+			if row.collector:
+				account = frappe.db.get_value("Email Account", row.collector,
+					["enable_incoming", "use_imap", "email_sync_option"], as_dict=True)
+				if account and account.enable_incoming and not full_sync(account):
+					frappe.throw(_(FULL_SYNC_NEEDED).format(frappe.bold(row.collector)), title=_("Sync all mail"))
 		self.primary_team_address = (self.primary_team_address or "").strip().lower()
 		if self.primary_team_address and self.primary_team_address not in seen:
 			frappe.throw(_("The Reply-To address must be one of the team addresses."))

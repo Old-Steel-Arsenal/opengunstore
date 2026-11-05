@@ -280,7 +280,11 @@ doc_events = {
 		"before_rename": "ffl_core.crm.product.before_rename",
 		"on_trash": "ffl_core.crm.product.on_trash",
 	},
-	"CRM Deal": {"validate": "ffl_core.crm.deal.price_lines"},
+	"CRM Deal": {
+		"validate": "ffl_core.crm.deal.price_lines",
+		# A deal converted from a lead the team shares stays shared (ffl_core.crm.mail).
+		"after_insert": "ffl_core.crm.mail.share_converted_deal",
+	},
 	# A new staff account lands on the POS, not on the /apps picker CRM's own app brings (ffl_core.crm).
 	"User": {"validate": "ffl_core.crm.staff_default_app"},
 	"Quotation": {
@@ -288,7 +292,8 @@ doc_events = {
 		"before_submit": "ffl_core.crm.quotation.refuse_submit",
 	},
 	# CRM's lead switch becomes ours; a staff mailbox answers with the team's Reply-To (ffl_core.crm.team).
-	"Email Account": {"validate": ["ffl_core.crm.mail.take_over_lead_flag", "ffl_core.crm.team.reply_to_on_validate"]},
+	"Email Account": {"validate": ["ffl_core.crm.mail.take_over_lead_flag", "ffl_core.crm.team.reply_to_on_validate",
+		"ffl_core.crm.team.require_full_sync"]},
 	# Pulled mail: the copy CRM keeps and where it goes; the first reply owns the lead (ffl_core.crm.mail).
 	"Communication": {
 		"before_insert": "ffl_core.crm.mail.skip_unwanted",

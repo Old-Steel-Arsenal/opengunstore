@@ -21,8 +21,9 @@ For each received mail of an in-scope account, in order (:func:`decide`):
    team mail from someone new: a new CRM Lead with no owner (a round robin address leaves the owner to
    CRM's Assignment Rule);
    team mail on a lead or deal (new or existing, a thread reply included) shares it with every staff
-   user, silently (:func:`share_with_team`): Frappe CRM lets a Sales User read only records they own
-   or hold a ToDo on. Direct mail does not: its lead or deal stays with its owner and Sales Managers;
+   user, silently (:func:`share_with_team`), and so does a deal converted from a shared lead
+   (:func:`share_converted_deal`): Frappe CRM lets a Sales User read only records they own or hold a
+   ToDo on. Direct mail does not: its lead or deal stays with its owner and Sales Managers;
    direct mail from someone new: skipped (a staff member's own mail never enters the POS).
 
 "Skipped" means never stored: the Communication ``before_insert`` raises Frappe's own
@@ -64,6 +65,8 @@ SKIP = "skip"
 OWNER_FIELD = {"CRM Lead": "lead_owner", "CRM Deal": "deal_owner"}
 # The one Communication per Email Account that records the highest skipped uid (see module doc).
 MARKER_ID = "ffl-crm-skipped-mail-marker"
+# The description of the Closed ToDo that shares a record with the team (share_with_team).
+SHARED_NOTE = "Team mail: shared with the team (CRM mail rules)"
 MARKER_SUBJECT = "Skipped mail marker (CRM mail rules): the highest mail uid this account left out"
 _SAVEPOINT = "ffl_crm_mail"
 # Machine mail. Communication keeps no headers (Auto-Submitted, List-Unsubscribe), so the
@@ -321,10 +324,14 @@ def _assign_quietly(doctype: str, name: str, user: str) -> None:
 	both skip a self-assignment, so nobody is notified or emailed."""
 	from frappe.desk.form.assign_to import _add as assign
 
+	args = {"assign_to": [user], "doctype": doctype, "name": name, "assigned_by": user}
 	prev = frappe.session.user
+	if prev == user:   # the sender's own request: switching would reset its session
+		assign(args, ignore_permissions=True)
+		return
 	frappe.set_user(user)
 	try:
-		assign({"assign_to": [user], "doctype": doctype, "name": name, "assigned_by": user}, ignore_permissions=True)
+		assign(args, ignore_permissions=True)
 	finally:
 		frappe.set_user(prev)
 
@@ -347,8 +354,25 @@ def share_with_team(doctype: str, name: str) -> list[str]:
 	for user in missing:
 		frappe.get_doc({"doctype": "ToDo", "status": "Closed", "allocated_to": user, "assigned_by": "Administrator",
 			"reference_type": doctype, "reference_name": name, "date": nowdate(),
-			"description": "Team mail: shared with the team (CRM mail rules)"}).db_insert()
+			"description": SHARED_NOTE}).db_insert()
 	return missing
+
+
+def share_converted_deal(doc, method=None):
+	"""CRM Deal after_insert: a deal made from a lead the team shares is shared too. CRM's conversion
+	copies only the lead's open assignees, and moves the lead's mail onto the deal. Never fails the
+	conversion: a failure is rolled back and logged."""
+	if not doc.get("lead") or not installed():
+		return
+	if not frappe.db.exists("ToDo", {"reference_type": LEAD, "reference_name": doc.lead, "status": "Closed",
+			"description": SHARED_NOTE}):
+		return
+	frappe.db.savepoint("ffl_crm_share")
+	try:
+		share_with_team("CRM Deal", doc.name)
+	except Exception:
+		frappe.db.rollback(save_point="ffl_crm_share")
+		frappe.log_error(title=f"[{TITLE}] Converted deal not shared: {doc.name}", message=frappe.get_traceback())
 
 
 def _crm_staff(user: str | None) -> bool:

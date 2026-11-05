@@ -127,8 +127,8 @@ class TeamMailCase(CRMTestCase):
 	def setUp(self):
 		super().setUp()
 		_account(STAFF_A, auto=1, imap_all=1)
-		_account(STAFF_B, auto=1)
-		_account(INFO)
+		_account(STAFF_B, auto=1, imap_all=1)
+		_account(INFO, imap_all=1)
 		_account(JOBS)
 		_settings(blocked_sender_domains="spam.example.net", own_domains="example.com",
 			team_addresses=[{"address": "ffltm-info@example.com", "address_type": team.MAILBOX, "collector": INFO},
@@ -291,6 +291,20 @@ class TestTeamVisibility(TeamMailCase):
 		self.assertGreater(_notices(), self.notices)
 
 
+	def test_a_deal_converted_from_a_team_lead_stays_shared(self):
+		from crm.fcrm.doctype.crm_lead.crm_lead import convert_to_deal
+
+		_pull(INFO, (raw := _raw("Convert Me <convert.me@example.org>", SALES), 75))
+		lead = _stored(raw)[0].reference_name
+		deal = convert_to_deal(lead=lead)
+		self.assertTrue(_can_read(CLERK, "CRM Deal", deal))
+		self.assertEqual(_notices(), self.notices)
+		# A deal from a lead that is not shared is not shared either.
+		private = mail._new_lead("private.convert@example.org", "Private Convert")
+		frappe.db.set_value("CRM Lead", private, "lead_owner", MANAGER)
+		self.assertFalse(_can_read(CLERK, "CRM Deal", convert_to_deal(lead=private)))
+
+
 class TestOwnerOnReply(TeamMailCase):
 	def _send(self, doctype: str, name: str, as_user: str) -> None:
 		from frappe.core.doctype.communication.email import make
@@ -333,6 +347,18 @@ class TestOwnerOnReply(TeamMailCase):
 		self.assertTrue(frappe.has_permission("CRM Lead", "read", doc=lead, user=MANAGER))
 		frappe.db.set_value("CRM Lead", lead, "lead_owner", CLERK)
 		self.assertTrue(frappe.has_permission("CRM Lead", "read", doc=lead, user=CLERK))
+
+	def test_a_reply_in_the_senders_own_request_keeps_its_session(self):
+		lead = mail._new_lead("session@example.org", "Session")
+		frappe.set_user(CLERK)
+		try:
+			frappe.session.data["ffl_probe"] = 1
+			mail._assign_quietly("CRM Lead", lead, CLERK)
+			self.assertEqual((frappe.session.user, frappe.session.data.get("ffl_probe")), (CLERK, 1))
+		finally:
+			frappe.set_user("Administrator")
+		self.assertEqual(_assignees("CRM Lead", lead), [CLERK])
+		self.assertEqual(_notices(), self.notices)
 
 	def test_the_first_reply_owns_a_deal_and_the_system_never_does(self):
 		deal = frappe.get_doc("CRM Deal", frappe.db.get_value("Communication", {"name": _deal_comm()}, "reference_name"))
@@ -386,6 +412,23 @@ class TestSetup(TeamMailCase):
 		self.assertFalse(frappe.db.exists("User Email", {"email_account": STAFF_A, "parent": CLERK}),
 			"a group address has no mailbox to answer from")
 		self.assertEqual(team.sync_user_emails(), [], "idempotent")
+
+	def test_crm_mailboxes_must_sync_all_mail(self):
+		for account, auto in ((STAFF_B, 1), (INFO, 0)):   # a staff mailbox, a collector
+			for use_imap, option in ((0, "UNSEEN"), (1, "UNSEEN")):   # POP3, IMAP unread only
+				doc = frappe.get_doc("Email Account", account)
+				doc.update({mail.AUTO_LEAD: auto, "use_imap": use_imap, "email_sync_option": option})
+				with self.assertRaises(frappe.ValidationError, msg=f"{account} {use_imap} {option}"):
+					team.require_full_sync(doc)
+		doc = frappe.get_doc("Email Account", STAFF_B)
+		team.require_full_sync(doc)   # IMAP, all mail
+		doc.update({"enable_incoming": 0, "use_imap": 0})
+		team.require_full_sync(doc)   # not pulling: nothing to lose
+		jobs = frappe.get_doc("Email Account", JOBS)
+		team.require_full_sync(jobs)   # outside CRM: any sync
+		frappe.db.set_value("Email Account", INFO, "email_sync_option", "UNSEEN", update_modified=False)
+		with self.assertRaises(frappe.ValidationError):
+			_settings(primary_team_address=SALES)
 
 	def test_settings_keep_team_addresses_clean(self):
 		_settings(team_addresses=[{"address": " Parts@Example.com ", "address_type": team.GROUP}],
