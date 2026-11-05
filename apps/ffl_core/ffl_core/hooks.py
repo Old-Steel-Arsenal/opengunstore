@@ -294,6 +294,8 @@ doc_events = {
 	# CRM's lead switch becomes ours; a staff mailbox answers with the team's Reply-To (ffl_core.crm.team).
 	"Email Account": {"validate": ["ffl_core.crm.mail.take_over_lead_flag", "ffl_core.crm.team.reply_to_on_validate",
 		"ffl_core.crm.team.require_full_sync"]},
+	# Mail sent on a CRM Lead or Deal leaves within seconds, not at the next flush (ffl_core.crm.mail).
+	"Email Queue": {"after_insert": "ffl_core.crm.mail.send_crm_mail_now"},
 	# Pulled mail: the copy CRM keeps and where it goes; the first reply owns the lead (ffl_core.crm.mail).
 	"Communication": {
 		"before_insert": "ffl_core.crm.mail.skip_unwanted",

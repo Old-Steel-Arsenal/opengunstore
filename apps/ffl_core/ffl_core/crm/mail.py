@@ -57,6 +57,7 @@ stays, so anyone can take over later by changing the owner in CRM.
 
 Pulling: Frappe pulls every Email Account every 10 minutes, which staff mailboxes keep; a team mailbox
 is also queued for a pull every minute (:func:`pull_team_mailboxes`), so customer mail arrives within about a minute.
+Mail sent on a CRM Lead or Deal leaves within seconds, not at Frappe's next flush (:func:`send_crm_mail_now`).
 """
 from __future__ import annotations
 
@@ -70,7 +71,7 @@ from frappe.core.utils import html_to_plain_text
 from frappe.email.doctype.email_account.email_account import pull_from_email_account
 from frappe.email.receive import SentEmailInInboxError
 from frappe.integrations.doctype.connected_app.connected_app import has_token
-from frappe.utils import cint, now, nowdate, parse_addr, split_emails
+from frappe.utils import cint, get_datetime, now, now_datetime, nowdate, parse_addr, split_emails
 from frappe.utils.background_jobs import enqueue, get_jobs
 from frappe.utils.synchronization import filelock
 
@@ -548,3 +549,32 @@ def pull_team_mailboxes():
 		job_name = f"pull_from_email_account|{account.name}"
 		if job_name not in queued:
 			enqueue(pull_from_email_account, "short", event="all", job_name=job_name, email_account=account.name)
+
+
+def send_crm_mail_now(doc, method=None):
+	"""Email Queue after_insert: mail sent on a CRM Lead or Deal is sent by a short job right after the
+	request commits, not at Frappe's next flush (every few minutes). Scheduled mail (``send_after``)
+	and every other mail keep Frappe's batching. Never fails the send: if the job cannot be queued,
+	the row stays Not Sent and the flush sends it."""
+	try:
+		if not installed() or not doc.get("communication") or doc.get("send_after"):
+			return
+		comm = frappe.db.get_value("Communication", doc.communication, ["sent_or_received", "reference_doctype"], as_dict=True)
+		if not comm or comm.sent_or_received != "Sent" or comm.reference_doctype not in OWNER_FIELD:
+			return
+		enqueue(send_queued_crm_mail, "short", enqueue_after_commit=True, job_id=f"send_crm_mail|{doc.name}",
+			deduplicate=True, name=doc.name)
+	except Exception:
+		frappe.log_error(title=f"[{TITLE}] CRM mail not queued for sending: {doc.get('name')}", message=frappe.get_traceback())
+
+
+def send_queued_crm_mail(name: str) -> None:
+	"""The job of :func:`send_crm_mail_now`: sends the Email Queue row as Frappe's flush does (the row
+	locked, then ``send()``, which keeps the status and the retries). A row that is gone, already sent,
+	being sent by the flush, or scheduled for later is left alone."""
+	if not frappe.db.exists("Email Queue", name):
+		return
+	queue = frappe.get_doc("Email Queue", name, for_update=True)   # a flush racing this waits, then sees "Sending"
+	if queue.send_after and get_datetime(queue.send_after) > now_datetime():
+		return
+	queue.send()

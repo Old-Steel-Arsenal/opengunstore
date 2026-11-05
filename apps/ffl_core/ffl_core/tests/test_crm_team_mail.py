@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from email.message import EmailMessage
 from email.utils import format_datetime
-from unittest.mock import patch
+from unittest.mock import PropertyMock, patch
 
 import frappe
 from frappe.email.doctype.email_account.email_account import EmailAccount, get_max_email_uid
@@ -545,3 +545,67 @@ class TestPullTeamMailboxes(TeamMailCase):
 		from ffl_core.tests.test_crm_setup import _hooks_py
 
 		self.assertIn("ffl_core.crm.mail.pull_team_mailboxes", _hooks_py()["scheduler_events"]["cron"]["* * * * *"])
+
+
+class TestSendCrmMailNow(TeamMailCase):
+	"""A mail sent on a CRM Lead / Deal is sent by a short job right after commit, not at the flush."""
+
+	def setUp(self):
+		super().setUp()
+		frappe.db.set_value("Email Account", STAFF_A, {"enable_outgoing": 1, "smtp_server": "smtp.example.com", "smtp_port": 587,
+			"use_tls": 1, "login_id": ADDRESS[STAFF_A], "default_outgoing": 0, "always_use_account_email_id_as_sender": 1},
+			update_modified=False)
+		self.lead = mail._new_lead("jane@example.org", "Jane")
+		self.enqueue = patch.object(mail, "enqueue").start()
+		self.addCleanup(patch.stopall)
+
+	def _send(self, doctype: str | None = "CRM Lead", name: str | None = None, **kwargs) -> str:
+		"""A mail sent from the CRM form, through Frappe's own make(); returns the Communication."""
+		from frappe.core.doctype.communication.email import make
+
+		return make(doctype=doctype, name=name or self.lead, content="Yes, it is.", subject="Re: stock",
+			sender=ADDRESS[STAFF_A], recipients="jane@example.org", send_email=True, **kwargs)["name"]
+
+	def _queue_of(self, communication: str) -> str:
+		return frappe.db.get_value("Email Queue", {"communication": communication}, "name")
+
+	def test_crm_mail_is_queued_for_sending_after_commit(self):
+		queue = self._queue_of(self._send())
+		self.assertTrue(queue)
+		self.enqueue.assert_called_once_with(mail.send_queued_crm_mail, "short", enqueue_after_commit=True,
+			job_id=f"send_crm_mail|{queue}", deduplicate=True, name=queue)
+		self.assertEqual(frappe.db.get_value("Email Queue", queue, "status"), "Not Sent", "sent by the job, not here")
+
+	def test_other_mail_keeps_the_flush(self):
+		# Not on a CRM record, a scheduled mail, a received mail, and a row with no Communication.
+		self._send("User", CLERK)
+		self._send(send_after=frappe.utils.add_to_date(now_datetime(), days=1))
+		self.enqueue.assert_not_called()
+		comm = frappe.get_doc({"doctype": "Communication", "communication_type": "Communication", "sent_or_received": "Received",
+			"subject": "In", "content": "In", "sender": "jane@example.org", "reference_doctype": "CRM Lead",
+			"reference_name": self.lead}).insert(ignore_permissions=True).name
+		for communication in (comm, None):
+			frappe.get_doc({"doctype": "Email Queue", "sender": ADDRESS[STAFF_A], "message": "x", "communication": communication,
+				"recipients": [{"recipient": "jane@example.org"}]}).insert(ignore_permissions=True)
+		self.enqueue.assert_not_called()
+
+	def test_a_queue_failure_does_not_break_the_send(self):
+		self.enqueue.side_effect = RuntimeError("redis is down")
+		errors = frappe.db.count("Error Log")
+		queue = self._queue_of(self._send())
+		self.assertEqual(frappe.db.get_value("Email Queue", queue, "status"), "Not Sent", "the flush will send it")
+		self.assertEqual(frappe.db.count("Error Log"), errors + 1)
+
+	def test_the_job_sends_a_not_sent_row_and_leaves_a_sent_one(self):
+		queue = self._queue_of(self._send())
+		frappe.flags.testing_email = True   # Frappe skips the SMTP send in tests unless this is set
+		self.addCleanup(frappe.flags.pop, "testing_email", None)
+		# send() commits when it takes the row ("Sending"); not in the test transaction.
+		with patch.object(frappe.db, "commit"), patch("frappe.email.smtp.SMTPServer.session", new_callable=PropertyMock) as session:
+			session.return_value.has_extn.return_value = False
+			mail.send_queued_crm_mail(queue)
+			self.assertEqual(frappe.db.get_value("Email Queue", queue, "status"), "Sent")
+			self.assertEqual(session.return_value.sendmail.call_count, 1)
+			mail.send_queued_crm_mail(queue)   # the flush got there first, or the job runs twice
+			mail.send_queued_crm_mail("no such row")
+			self.assertEqual(session.return_value.sendmail.call_count, 1, "a Sent row is not sent again")
