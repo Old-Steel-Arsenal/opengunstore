@@ -1994,7 +1994,14 @@ def log_rows(company: str, account: str, from_date, to_date) -> tuple[float, lis
 					rows.append(p)
 		elif getdate(r.posting_date) <= to_date:
 			rows.append(r)
-	for p in pending_pos_rows(company, account):
+	# Sales dated in or before the window whose merge posts after the lookahead: cash taken on an open order that
+	# waited for its 4473 longer than that. The ledger read above never reaches their merged line.
+	late = frappe.db.sql_list(
+		"""SELECT DISTINCT si.name FROM `tabPOS Invoice` i JOIN `tabSales Invoice` si ON si.name = i.consolidated_invoice
+		WHERE i.company = %s AND i.docstatus = 1 AND DATE(i.ffl_cash_taken_at) <= %s
+			AND si.docstatus = 1 AND si.posting_date > %s""",
+		(company, to_date, add_days(to_date, _LOG_MERGE_DAYS))) if frappe.db.has_column("POS Invoice", "ffl_cash_taken_at") else []
+	for p in [*(pending_pos_rows(company, account, merged_into=late) if late else ()), *pending_pos_rows(company, account)]:
 		day = getdate(p.posting_date)
 		if day < from_date:
 			opening += flt(p.amount)

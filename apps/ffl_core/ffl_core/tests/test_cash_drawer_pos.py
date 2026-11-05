@@ -292,6 +292,14 @@ class ShiftCases:
 		self.assertNotIn(inv.name, [r.voucher_no for r in today_rows])
 		self.assertIn((inv.name, 300), [(r.voucher_no, r.amount) for r in earlier])
 		self.assertEqual(opening, flt(earlier_opening + sum(flt(r.amount) for r in earlier), 2))
+		# A 4473 that took longer than the log's merge lookahead: still on the stamp day, and in the openings after it.
+		taken = getdate(add_days(nowdate(), -(cd._LOG_MERGE_DAYS + 3)))
+		frappe.db.set_value("POS Invoice", inv.name, "ffl_cash_taken_at", f"{taken} 12:00:00")
+		first_opening, first = cd.log_rows(self.company, self.cash, taken, taken)
+		self.assertIn((inv.name, 300), [(r.voucher_no, r.amount) for r in first])
+		between, rest = cd.log_rows(self.company, self.cash, add_days(taken, 1), add_days(taken, 2))
+		self.assertEqual(between, flt(first_opening + sum(flt(r.amount) for r in first), 2))
+		self.assertNotIn(inv.name, [r.voucher_no for r in rest])
 
 	def test_a_closing_made_on_the_pos_screen_is_per_shift_and_not_a_count(self):
 		"""One shift at a time: the Cash row is that shift's own cash (ERPNext's figure), opening 0, never the whole drawer."""
