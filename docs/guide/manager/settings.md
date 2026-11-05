@@ -99,7 +99,9 @@ Staff sign in with their own account, and the assistant can do only what their r
 
 These settings decide which mail from the store's mailboxes goes into CRM. Each mail goes in once, on the customer's deal or lead, even when several mailboxes got it.
 
-**Team addresses** lists the shared addresses customers write to, such as sales@ or info@. Mail to one of them from someone new becomes a lead. Mail to a staff member's own address goes in only when it comes from a customer or a known lead. Their other mail stays out of the POS. An extension can check mail from someone new first (the AI extension does, when its setting is on): only mail it takes for a customer inquiry becomes a lead. The rest stays in the mail log without a lead, with a note saying why, so a wrong guess can still be found: open that mail in the Communication list and click **Make lead**. System Manager only.
+**Team addresses** lists the shared addresses customers write to, such as sales@ or info@. Mail to one of them from someone new becomes a lead. Mail to a staff member's own address goes in only when it comes from a customer or a known lead. Their other mail stays out of the POS. System Manager only.
+
+An extension can check mail from someone new first (the AI extension does, when its setting is on). Only mail it takes for a customer inquiry becomes a lead. The rest stays in the mail log with a note saying why. To fix a wrong guess, open that mail in the Communication list and click **Make lead**.
 
 | Column | What it does |
 |---|---|
