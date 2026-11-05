@@ -20,6 +20,9 @@ For each received mail of an in-scope account, in order (:func:`decide`):
    from an existing CRM Lead: on that lead;
    team mail from someone new: a new CRM Lead with no owner (a round robin address leaves the owner to
    CRM's Assignment Rule);
+   team mail on a lead or deal (new or existing, a thread reply included) shares it with every staff
+   user, silently (:func:`share_with_team`): Frappe CRM lets a Sales User read only records they own
+   or hold a ToDo on. Direct mail does not: its lead or deal stays with its owner and Sales Managers;
    direct mail from someone new: skipped (a staff member's own mail never enters the POS).
 
 "Skipped" means never stored: the Communication ``before_insert`` raises Frappe's own
@@ -38,7 +41,8 @@ rules after insert, a "skip" leaving it unlinked.
 
 Owner (:func:`claim_on_reply`): the first mail a Sales User or Sales Manager sends on a CRM Lead or
 Deal without an owner makes them its owner, the way CRM's own assignment does (an assignment, which
-CRM mirrors onto the owner field). Taking over later is changing the owner in CRM.
+CRM mirrors onto the owner field), made as the sender so no notice goes out. Everyone's assignment
+stays, so anyone can take over later by changing the owner in CRM.
 """
 from __future__ import annotations
 
@@ -47,7 +51,7 @@ from functools import partial
 
 import frappe
 from frappe.email.receive import SentEmailInInboxError
-from frappe.utils import cint, now, parse_addr, split_emails
+from frappe.utils import cint, now, nowdate, parse_addr, split_emails
 
 from ffl_core.crm import TITLE, installed, team
 from ffl_core.crm.deals import open_deal_for
@@ -171,8 +175,9 @@ def _team_row(doc, account: str):
 
 
 def decide(doc) -> tuple | None:
-	"""What to do with a received mail: None (not ours to touch), ("skip", reason), ("keep",) as Frappe
-	linked it, ("deal", contact, owner) or ("lead", existing lead or None, team row or None)."""
+	"""What to do with a received mail: None (not ours to touch), ("skip", reason), ("keep", row) as
+	Frappe linked it, ("deal", contact, owner, row) or ("lead", existing lead or None, row); *row* is
+	the team address it counts for, None for direct mail."""
 	if doc.get("communication_type") != "Communication" or doc.get("sent_or_received") != "Received":
 		return None
 	account = doc.get("email_account")
@@ -184,14 +189,14 @@ def decide(doc) -> tuple | None:
 	if collected:
 		return (SKIP, "collected by another account")
 	if doc.get("reference_doctype"):
-		return ("keep",)
+		return ("keep", row)
 	name, email = parse_addr(doc.get("sender") or "")
 	email = (email or "").strip().lower()
 	if "@" not in email:
 		return (SKIP, "no sender address")
 	contact = _customer_contact(email)
 	if contact:
-		return ("deal", contact, None if row else _mailbox_user(account))
+		return ("deal", contact, None if row else _mailbox_user(account), row)
 	if _skipped(email):
 		return (SKIP, "blocked sender")
 	lead = frappe.db.get_value(LEAD, {"email": email}, "name")
@@ -224,18 +229,31 @@ def route(doc, decision=None) -> tuple[str, str] | None:
 	"""Where an incoming mail goes: (doctype, name) it was linked to, or None."""
 	if decision is None:
 		decision = decide(doc)
-	if not decision or decision[0] not in ("deal", "lead"):
+	if not decision or decision[0] not in ("keep", "deal", "lead"):
 		return None
-	if decision[0] == "deal":
-		deal = open_deal_for(decision[1], owner=decision[2])
-		_link(doc, "CRM Deal", deal)
-		return ("CRM Deal", deal)
-	lead = decision[1]
-	if not lead:
-		name, email = parse_addr(doc.get("sender") or "")
-		lead = _new_lead(email.strip().lower(), doc.get("sender_full_name") or name)
-	_link(doc, LEAD, lead)
-	return (LEAD, lead)
+	if decision[0] == "keep":
+		target = (doc.reference_doctype, doc.reference_name)
+		row = decision[1]
+	elif decision[0] == "deal":
+		target = ("CRM Deal", open_deal_for(decision[1], owner=decision[2]))
+		row = decision[3]
+		_link(doc, *target)
+	else:
+		lead, row = decision[1], decision[2]
+		if not lead:
+			name, email = parse_addr(doc.get("sender") or "")
+			lead = _new_lead(email.strip().lower(), doc.get("sender_full_name") or name)
+		target = (LEAD, lead)
+		_link(doc, *target)
+	if row and target[0] in OWNER_FIELD:
+		frappe.db.savepoint("ffl_crm_share")
+		try:
+			share_with_team(*target)
+		except Exception:   # the mail stays where it went; the next team mail tries again
+			frappe.db.rollback(save_point="ffl_crm_share")
+			frappe.log_error(title=f"[{TITLE}] Team mail not shared: {target[0]} {target[1]}",
+				message=frappe.get_traceback())
+	return target if decision[0] != "keep" else None
 
 
 def skip_unwanted(doc, method=None):
@@ -298,6 +316,41 @@ def on_incoming(doc, method=None):
 		frappe.log_error(title=f"[{TITLE}] Incoming mail not routed: {doc.name}", message=frappe.get_traceback())
 
 
+def _assign_quietly(doctype: str, name: str, user: str) -> None:
+	"""A CRM assignment of *user* to the record, made as *user*: Frappe's assignment notice and CRM's
+	both skip a self-assignment, so nobody is notified or emailed."""
+	from frappe.desk.form.assign_to import _add as assign
+
+	prev = frappe.session.user
+	frappe.set_user(user)
+	try:
+		assign({"assign_to": [user], "doctype": doctype, "name": name, "assigned_by": user}, ignore_permissions=True)
+	finally:
+		frappe.set_user(prev)
+
+
+def share_with_team(doctype: str, name: str) -> list[str]:
+	"""Team mail on a CRM Lead / Deal: every staff user (Sales User / Sales Manager) can read it.
+
+	Frappe CRM lets a Sales User read a lead or deal they own or hold a ToDo on that is not Cancelled
+	(``crm.permissions.org_hierarchy``). Each staff user gets one *Closed* ToDo on the record, written
+	as a row (no hooks): an Open one would also make Frappe email every later inbound mail on the
+	record to them (``Communication.mail_cc`` copies open assignees), list them as assignees, post an
+	"assigned" line per person on the timeline, notify them, and make the last one the owner (CRM's
+	ToDo hook). The owner and the record's own assignment stay as they were. Returns the users added.
+
+	lazy: re-checked on every team mail, so a user hired later gets an existing team lead on its next
+	team mail, not before; upgrade path: a backfill over open team leads on User insert."""
+	have = set(frappe.get_all("ToDo", filters={"reference_type": doctype, "reference_name": name,
+		"status": ["!=", "Cancelled"]}, pluck="allocated_to"))
+	missing = [u for u in team.staff_users() if u not in have]
+	for user in missing:
+		frappe.get_doc({"doctype": "ToDo", "status": "Closed", "allocated_to": user, "assigned_by": "Administrator",
+			"reference_type": doctype, "reference_name": name, "date": nowdate(),
+			"description": "Team mail: shared with the team (CRM mail rules)"}).db_insert()
+	return missing
+
+
 def _crm_staff(user: str | None) -> bool:
 	if not user or user in ("Administrator", "Guest") or not frappe.db.get_value("User", user, "enabled"):
 		return False
@@ -316,12 +369,10 @@ def claim_on_reply(doc, method=None):
 		return
 	frappe.db.savepoint(_SAVEPOINT)
 	try:
-		from frappe.desk.form.assign_to import _add as assign
-
 		if not frappe.db.exists("ToDo", {"reference_type": doctype, "reference_name": name,
 				"allocated_to": doc.owner, "status": "Open"}):
 			# CRM's ToDo after_insert makes the assignee the owner, as when a manager assigns in CRM.
-			assign({"assign_to": [doc.owner], "doctype": doctype, "name": name}, ignore_permissions=True)
+			_assign_quietly(doctype, name, doc.owner)
 		if not frappe.db.get_value(doctype, name, field):
 			frappe.db.set_value(doctype, name, field, doc.owner, update_modified=False)
 	except Exception:

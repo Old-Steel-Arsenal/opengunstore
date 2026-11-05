@@ -94,6 +94,28 @@ def _stored(raw: bytes) -> list[dict]:
 		fields=["name", "email_account", "reference_doctype", "reference_name"])
 
 
+def _assignees(doctype: str, name: str) -> list[str]:
+	"""Who is assigned the record (one row each; a repeat would show twice)."""
+	return sorted(frappe.get_all("ToDo", filters={"reference_type": doctype, "reference_name": name,
+		"status": ["!=", "Cancelled"]}, pluck="allocated_to"))
+
+
+def _can_read(user: str, doctype: str, name: str) -> bool:
+	"""CRM's own permission rule, both ways it applies: the record itself and the list."""
+	doc = frappe.has_permission(doctype, "read", doc=name, user=user)
+	frappe.set_user(user)
+	try:
+		listed = bool(frappe.get_list(doctype, filters={"name": name}, pluck="name"))
+	finally:
+		frappe.set_user("Administrator")
+	return doc and listed
+
+
+def _notices() -> int:
+	"""Assignment notices of both kinds: Frappe's (bell and email) and CRM's own."""
+	return frappe.db.count("Notification Log", {"type": "Assignment"}) + frappe.db.count("CRM Notification")
+
+
 def _customer_contact(email: str) -> str:
 	customer = frappe.get_doc({"doctype": "Customer", "customer_name": f"_T Team Buyer {email}",
 		"customer_type": "Individual"}).insert(ignore_permissions=True)
@@ -113,6 +135,8 @@ class TeamMailCase(CRMTestCase):
 				{"address": SALES, "address_type": team.GROUP, "collector": INFO}],
 			primary_team_address=SALES)
 		self.errors = frappe.db.count("Error Log")
+		self.notices = _notices()
+		self.queued = frappe.db.count("Email Queue")
 		self.unhandled = frappe.db.count("Unhandled Email")
 
 	def tearDown(self):
@@ -178,8 +202,19 @@ class TestIncoming(TeamMailCase):
 		lead = frappe.get_doc("CRM Lead", kept.reference_name)
 		self.assertEqual((lead.email, lead.first_name, lead.last_name), ("jane@example.org", "Jane", "Q Public"))
 		self.assertFalse(lead.lead_owner)
-		self.assertFalse(frappe.get_all("ToDo", filters={"reference_type": "CRM Lead", "reference_name": lead.name,
+		# Shared with the whole team, without notifying anyone, and once: a second mail adds nothing.
+		self.assertEqual(_assignees("CRM Lead", lead.name), sorted(team.staff_users()))
+		self.assertIn(CLERK, team.staff_users())
+		self.assertTrue(_can_read(CLERK, "CRM Lead", lead.name))
+		_pull(INFO, (_raw("jane@example.org", SALES), 12))
+		self.assertEqual(_assignees("CRM Lead", lead.name), sorted(team.staff_users()), "no duplicate")
+		self.assertFalse(frappe.db.get_value("CRM Lead", lead.name, "lead_owner"))
+		self.assertEqual(_notices(), self.notices)
+		# Nobody is an open assignee: Frappe mails later inbound mail to open assignees only.
+		self.assertFalse(frappe.db.get_value("CRM Lead", lead.name, "_assign"))
+		self.assertFalse(frappe.db.exists("ToDo", {"reference_type": "CRM Lead", "reference_name": lead.name,
 			"status": "Open"}))
+		self.assertEqual(frappe.db.count("Email Queue"), self.queued)
 		# A collector's mail is team mail even when no team address shows (a Bcc).
 		bcc = _raw("bcc.buyer@example.org", "someone.else@example.org")
 		_pull(INFO, (bcc, 11))
@@ -224,6 +259,38 @@ class TestIncoming(TeamMailCase):
 		self.assertEqual(len(_stored(raw)), 1, "kept, unlinked, as before the rules")
 
 
+class TestTeamVisibility(TeamMailCase):
+	def test_a_customers_team_mail_shares_their_deal_and_keeps_its_owner(self):
+		_customer_contact("team.buyer@example.org")
+		_pull(STAFF_A, (_raw("team.buyer@example.org", "ffltm-staff-a@example.com"), 70))
+		deal = frappe.get_all("Communication", filters={"sender": "team.buyer@example.org"}, pluck="reference_name")[0]
+		self.assertFalse(_can_read(CLERK, "CRM Deal", deal), "direct mail: not shared")
+		frappe.db.set_value("CRM Deal", deal, "deal_owner", MANAGER)
+		_pull(INFO, (raw := _raw("team.buyer@example.org", SALES), 71))
+		self.assertEqual(_stored(raw)[0].reference_name, deal, "the same open deal")
+		self.assertTrue(_can_read(CLERK, "CRM Deal", deal))
+		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "deal_owner"), MANAGER)
+		self.assertEqual(_notices(), self.notices)
+
+	def test_a_colleagues_direct_mail_lead_stays_theirs(self):
+		colleague = user("crm-clerk-2@example.com", "Sales User")
+		lead = mail._new_lead("their.lead@example.org", "Their Lead")
+		frappe.db.set_value("CRM Lead", lead, "lead_owner", colleague)
+		_pull(STAFF_A, (raw := _raw("their.lead@example.org", "ffltm-staff-a@example.com"), 72))
+		self.assertEqual(_stored(raw)[0].reference_name, lead)
+		self.assertFalse(_can_read(CLERK, "CRM Lead", lead))
+		self.assertTrue(_can_read(colleague, "CRM Lead", lead))
+		self.assertEqual(_assignees("CRM Lead", lead), [])
+
+	def test_the_notice_count_sees_an_ordinary_assignment(self):
+		# Control for the "nobody is notified" checks: an assignment made by someone else is noticed.
+		from frappe.desk.form.assign_to import _add
+
+		lead = mail._new_lead("control@example.org", "Control")
+		_add({"assign_to": [CLERK], "doctype": "CRM Lead", "name": lead}, ignore_permissions=True)
+		self.assertGreater(_notices(), self.notices)
+
+
 class TestOwnerOnReply(TeamMailCase):
 	def _send(self, doctype: str, name: str, as_user: str) -> None:
 		from frappe.core.doctype.communication.email import make
@@ -246,10 +313,21 @@ class TestOwnerOnReply(TeamMailCase):
 		self._send("CRM Lead", lead, other)
 		self.assertEqual(frappe.db.get_value("CRM Lead", lead, "lead_owner"), MANAGER, "an owner is never replaced")
 
+	def test_the_first_reply_on_a_team_lead_owns_it_and_everyone_keeps_it(self):
+		_pull(INFO, (raw := _raw("jane@example.org", SALES), 80))
+		lead = _stored(raw)[0].reference_name
+		self._send("CRM Lead", lead, CLERK)
+		self.assertEqual(frappe.db.get_value("CRM Lead", lead, "lead_owner"), CLERK)
+		self.assertEqual(sorted(set(_assignees("CRM Lead", lead))), sorted(team.staff_users()))
+		self.assertEqual(frappe.get_all("ToDo", filters={"reference_type": "CRM Lead", "reference_name": lead,
+			"status": "Open"}, pluck="allocated_to"), [CLERK], "the owner is the one open assignee")
+		self.assertTrue(_can_read(MANAGER, "CRM Lead", lead))
+		self.assertEqual(_notices(), self.notices)
+
 	def test_a_sales_user_sees_only_their_own_leads(self):
 		# Frappe CRM's own rule (crm.permissions.org_hierarchy): a Sales User reads only leads they own
-		# or are assigned, so the pool of owner-less leads is worked by Sales Managers. This test fails
-		# when CRM changes that rule; the guide's "who answers team mail" then needs another look.
+		# or hold a ToDo on, which is why team mail is shared (crm.mail.share_with_team). This test
+		# fails when CRM changes that rule; the sharing then needs another look.
 		lead = mail._new_lead("pool@example.org", "Pool")
 		self.assertFalse(frappe.has_permission("CRM Lead", "read", doc=lead, user=CLERK))
 		self.assertTrue(frappe.has_permission("CRM Lead", "read", doc=lead, user=MANAGER))

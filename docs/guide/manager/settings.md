@@ -119,9 +119,11 @@ These settings decide which mail from the store's mailboxes goes into CRM. Each 
 3. Fill in **Team addresses** and **Reply-To for staff mail**, then click **Save**. Every staff mailbox gets the Reply-To, and everyone with Sales User or Sales Manager can answer as each **Mailbox** address.
 4. Each staff member opens their own **My Settings** and clicks **Connect my mailbox**, then signs in to their own mail account.
 
-Whoever answers a new lead first from CRM becomes its owner. To take one over, change its owner in CRM. Owner-less leads show only to Sales Managers, so give the people who work new team mail the Sales Manager role.
+Every lead and deal that gets team mail shows to everyone with Sales User or Sales Manager, without a notice or an email to anyone. Whoever answers a new lead first from CRM becomes its owner. To take one over, change its owner in CRM.
 
-Save these settings again after you add a staff member. Removing someone who leaves from a **Mailbox** address is done on their user record.
+A lead or deal that only got mail sent to one staff member shows to its owner and to Sales Managers.
+
+Save these settings again after you add a staff member. They see existing team leads once the next team mail reaches each one. Removing someone who leaves from a **Mailbox** address is done on their user record.
 
 ## Extension settings
 

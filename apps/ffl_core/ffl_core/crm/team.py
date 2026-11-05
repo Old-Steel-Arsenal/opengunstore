@@ -116,7 +116,7 @@ def sync_reply_to() -> list[str]:
 
 # User Emails --------------------------------------------------------------------------------------
 
-def _staff_users() -> list[str]:
+def staff_users() -> list[str]:
 	users = set(frappe.get_all("Has Role", filters={"parenttype": "User", "role": ["in", list(STAFF_ROLES)]},
 		pluck="parent"))
 	users -= {"Administrator", "Guest"}
@@ -139,7 +139,7 @@ def sync_user_emails() -> list[tuple[str, str]]:
 	if not accounts:
 		return []
 	added = []
-	users = _staff_users()
+	users = staff_users()
 	for account in dict.fromkeys(accounts):
 		info = frappe.db.get_value("Email Account", account,
 			["email_id", "awaiting_password", "enable_outgoing", "auth_method"], as_dict=True)
