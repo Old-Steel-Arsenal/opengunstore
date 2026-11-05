@@ -171,7 +171,8 @@ const GB = 'ffl_integrations.gunbroker.fulfillment.list_pending_gb_orders';
 
 // -------------------------------------------------------------------- driver
 const source = fs.readFileSync(process.argv[2], 'utf8');
-const sandbox = { frappe, $, __, format_currency, window: {}, console };
+const flt = (v) => Number(v || 0);
+const sandbox = { frappe, $, __, format_currency, flt, window: {}, console };
 sandbox.window.ffl = null;
 vm.createContext(sandbox);
 vm.runInContext(source, sandbox, { filename: 'pending_dispositions.js' });
@@ -231,9 +232,9 @@ check('a GunBroker card renders no undefined', () => {
 		`GunBroker card rendered "undefined": ${cards[0].slice(0, 400)}`);
 });
 
-check('a GunBroker card offers Mark Payment Received, not Record Payment', () => {
+check('a GunBroker card offers its own Record Payment, not the counter one', () => {
 	const { cards } = render({ gb: [gbRow] });
-	assert(/btn-gb-paid/.test(cards[0]), 'Mark Payment Received missing');
+	assert(/btn-gb-paid">Record Payment</.test(cards[0]), 'GunBroker Record Payment missing');
 	assert(!/btn-pay"/.test(cards[0]), 'counter Record Payment rendered on a GunBroker row');
 });
 
@@ -266,7 +267,7 @@ check('a paid GunBroker card offers Ship before Dispose, like a counter order', 
 check('an unpaid GunBroker card renders Ship disabled', () => {
 	const unpaid = Object.assign({}, gbRow, { stage: 'blocked', channel_stage: 'awaiting_payment', paid: false });
 	const { cards } = render({ gb: [unpaid] });
-	assert(/btn-ship" disabled/.test(cards[0]), 'Ship live before Mark Payment Received');
+	assert(/btn-ship" disabled/.test(cards[0]), 'Ship live before Record Payment');
 });
 
 check('a GunBroker card with a unit still to name renders Ship disabled', () => {
@@ -451,23 +452,71 @@ check('Dispose routes to the right backend for each source', () => {
 	});
 });
 
-check('Mark Payment Received sends what the operator typed', () => {
+check('GunBroker Record Payment offers the counter methods without Cash', () => {
+	dialogs.length = 0;
+	app._recordPayment(gbRow);
+	const d = dialogs[dialogs.length - 1];
+	const mode = d.opts.fields.find((f) => f.fieldname === 'mode');
+	const options = mode.options.split('\n');
+	assert(!options.includes('Cash'), `Cash offered on a GunBroker order: ${mode.options}`);
+	['Credit Card', 'Zelle', 'ACH', 'Check/Money Order'].forEach((m) => {
+		assert(options.includes(m), `${m} missing from ${mode.options}`);
+	});
+	assert(!options.includes('GunBroker Card'), 'GunBroker Card offered with checkout off');
+	assert(mode.default === 'Check/Money Order', `default was ${mode.default}`);
+	const withCheckout = Object.assign({}, gbRow, { card_checkout_on_gb: true });
+	app._recordPayment(withCheckout);
+	const mode2 = dialogs[dialogs.length - 1].opts.fields.find((f) => f.fieldname === 'mode');
+	assert(mode2.options.split('\n').includes('GunBroker Card'), 'GunBroker Card missing with checkout on');
+});
+
+check('GunBroker Record Payment sends what the operator typed', () => {
 	dialogs.length = 0;
 	calls.length = 0;
-	app._markGbPaymentReceived(gbRow);
+	app._recordPayment(gbRow);
 	const d = dialogs[dialogs.length - 1];
 	const fieldNames = d.opts.fields.map((f) => f.fieldname);
-	['mode_of_payment', 'reference_no', 'amount', 'received_on'].forEach((f) => {
+	['mode', 'transaction_number', 'amount', 'received_on'].forEach((f) => {
 		assert(fieldNames.includes(f), `dialog is missing ${f}`);
 	});
-	d.opts.primary_action({ mode_of_payment: 'GunBroker Check',
-		reference_no: '9001', amount: 1200, received_on: '2026-08-26' });
+	d.opts.primary_action({ mode: 'Zelle', transaction_number: 'ZL-77', amount: 1200,
+		received_on: '2026-08-25' });
 	const call = calls[calls.length - 1];
 	assert(call.method === 'ffl_integrations.gunbroker.fulfillment.mark_payment_received',
 		`wrong method ${call.method}`);
 	assert(call.args.gunbroker_order === 'GB-ORD-00001', 'order not passed');
-	assert(call.args.reference_no === '9001', 'cheque number not passed');
-	assert(call.args.received_on === '2026-08-26', 'deposit date not passed');
+	assert(call.args.mode_of_payment === 'Zelle', 'method not passed');
+	assert(call.args.reference_no === 'ZL-77', 'reference not passed');
+	assert(call.args.received_on === '2026-08-25', 'received date not passed');
+});
+
+check('GunBroker Record Payment keys a card through charge_gb_order', () => {
+	dialogs.length = 0;
+	calls.length = 0;
+	let spec = null;
+	sandbox.window.ffl = {
+		switches: { cardMop: () => 'Credit Card' },
+		keyedCard: { available: () => true,
+			field: () => ({ fieldtype: 'Check', fieldname: 'keyed', label: 'Key in' }) },
+		terminalCharge: async (s) => { spec = s; return { ok: true }; },
+	};
+	try {
+		app._recordPayment(gbRow);
+		const d = dialogs[dialogs.length - 1];
+		assert(d.opts.fields.some((f) => f.fieldname === 'keyed'), 'no keyed box for a manager');
+		// terminalCharge is called before primary_action's first await, so spec is set here.
+		d.opts.primary_action({ mode: 'Credit Card', keyed: 1, amount: 1200 });
+		assert(spec && spec.start.method === 'ffl_integrations.payments.api.charge_gb_order',
+			`keyed charge went to ${spec && spec.start.method}`);
+		assert(spec.start.args.gunbroker_order === 'GB-ORD-00001' && spec.start.args.amount === 1200,
+			JSON.stringify(spec.start.args));
+		assert(spec.poll.method === 'ffl_integrations.payments.api.poll_gb_order_charge', 'poll method');
+		assert(spec.cancel.method === 'ffl_integrations.payments.api.cancel_gb_order_charge', 'cancel method');
+		assert(!calls.some((c) => c.method.endsWith('mark_payment_received')),
+			'a keyed charge also typed a payment record');
+	} finally {
+		sandbox.window.ffl = null;
+	}
 });
 
 check('an unknown source still renders as a counter row rather than throwing', () => {

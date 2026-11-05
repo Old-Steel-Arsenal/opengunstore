@@ -14,6 +14,12 @@ from frappe.model.document import Document
 
 
 class CardTerminalPayment(Document):
+	def validate(self):
+		# A charge belongs to a counter invoice, or to a GunBroker order that has
+		# no invoice yet (its invoice is filled in when the order is invoiced).
+		if not (self.sales_invoice or self.gunbroker_order):
+			frappe.throw(_("A card payment needs its Sales Invoice or GunBroker Order."))
+
 	def on_trash(self):
 		# A charged card is a money fact; the record is the only in-system tie to
 		# the gateway reference. Declined/cancelled attempts may go.

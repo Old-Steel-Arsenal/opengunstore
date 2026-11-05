@@ -2602,6 +2602,10 @@
             "type": "string",
             "description": "Sales Invoice (Link: Sales Invoice)"
           },
+          "gunbroker_order": {
+            "type": "string",
+            "description": "GunBroker Order (Link: GunBroker Order)"
+          },
           "amount": {
             "type": "number",
             "description": "Amount"
@@ -2682,10 +2686,7 @@
             "type": "string",
             "description": "Saved Card (Link: Saved Card)"
           }
-        },
-        "required": [
-          "sales_invoice"
-        ]
+        }
       },
       "Data_Service_Settings": {
         "type": "object",
@@ -3819,6 +3820,7 @@
               "Gateway (Immediate Checkout)",
               "Check or Money Order",
               "Gateway (GB-set)",
+              "Paid to Store",
               "Unknown"
             ],
             "description": "Payment Source"
@@ -19766,7 +19768,7 @@
           "ffl_integrations"
         ],
         "summary": "Name the gun that fills one unit of a model-level GunBroker order.",
-        "description": "Reserves the gun for the order (the claim becomes a hold), tells the other\nstorefronts it is gone, and records who assigned it and when. Naming a\ndifferent gun for a unit that already has one swaps them: the old gun is\nreleased only if this order holds it. An empty ``serial_no`` unassigns the\nunit, which makes it an open claim again. Calling it again with the gun the\nunit already has changes nothing.\n\nRefused: a gun of another model (a model pooled under this one must be filed\nunder it first), a customer's consignment or transfer gun, one in custody,\none the order already holds for another unit, one that is not free (held by a\ncounter order or another channel, out on consignment, possibly already sold on\nGunBroker), and, on a Type 03 collector order, a gun not old enough to be a\ncurio or relic. Nothing is changed on a refusal.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:935`",
+        "description": "Reserves the gun for the order (the claim becomes a hold), tells the other\nstorefronts it is gone, and records who assigned it and when. Naming a\ndifferent gun for a unit that already has one swaps them: the old gun is\nreleased only if this order holds it. An empty ``serial_no`` unassigns the\nunit, which makes it an open claim again. Calling it again with the gun the\nunit already has changes nothing.\n\nRefused: a gun of another model (a model pooled under this one must be filed\nunder it first), a customer's consignment or transfer gun, one in custody,\none the order already holds for another unit, one that is not free (held by a\ncounter order or another channel, out on consignment, possibly already sold on\nGunBroker), and, on a Type 03 collector order, a gun not old enough to be a\ncurio or relic. Nothing is changed on a refusal.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1013`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.assign_gb_unit_serial",
         "responses": {
           "200": {
@@ -19824,7 +19826,7 @@
           "ffl_integrations"
         ],
         "summary": "Repair the deposit date (and cheque number) recorded on a GunBroker order.",
-        "description": "For the row that cannot otherwise be fixed. The four payment fields are\nread-only on the form — they are a record of what was banked, not something\nto retype — and the document refuses to save when a mode is recorded with no\ndeposit date. A row in that state (a direct database write, an import, a\nhalf-finished edit) is reported by the daily audit and then cannot be\ncorrected through the Desk at all: the field will not accept typing and\nopening the form and saving throws.\n\nDeliberately narrow: the date and the reference number, nothing else. The\namount, the mode and whether the order is paid are what was banked — those\nare mark_payment_received's, and once a receipt is posted they are an\naccounting correction rather than an edit.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:642`",
+        "description": "For the row that cannot otherwise be fixed. The four payment fields are\nread-only on the form — they are a record of what was banked, not something\nto retype — and the document refuses to save when a mode is recorded with no\ndeposit date. A row in that state (a direct database write, an import, a\nhalf-finished edit) is reported by the daily audit and then cannot be\ncorrected through the Desk at all: the field will not accept typing and\nopening the form and saving throws.\n\nDeliberately narrow: the date and the reference number, nothing else. The\namount, the mode and whether the order is paid are what was banked — those\nare mark_payment_received's, and once a receipt is posted they are an\naccounting correction rather than an edit.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:720`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.correct_payment_details",
         "responses": {
           "200": {
@@ -19884,7 +19886,7 @@
           "ffl_integrations"
         ],
         "summary": "Book the bound-book exit for a paid GunBroker order (the Dispose action).",
-        "description": "One submitted \"FFL Transfer\" disposition per regulated gun, each of which\nissues its own stock-out and queues its own FastBound push. Idempotent on\n{serial, gunbroker_order}. An ANTIQUE on the order gets no disposition —\nit is GCA-exempt, so it is issued straight out of stock instead\n(``_retire_antique_units``). Whether a dealer is involved at all is\n``needs_dealer``: an order that is all antiques and names no licence ships\nto the buyer, and that decision is written to ``ships_direct`` for the\ninvoice and the card to read. A serialized unit that is neither a\nregulated firearm nor an antique is refused outright. The revenue invoice\nis raised at the end and a failure there does not roll back the\ndispositions — create_gb_invoice_now retries.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1117`",
+        "description": "One submitted \"FFL Transfer\" disposition per regulated gun, each of which\nissues its own stock-out and queues its own FastBound push. Idempotent on\n{serial, gunbroker_order}. An ANTIQUE on the order gets no disposition —\nit is GCA-exempt, so it is issued straight out of stock instead\n(``_retire_antique_units``). Whether a dealer is involved at all is\n``needs_dealer``: an order that is all antiques and names no licence ships\nto the buyer, and that decision is written to ``ships_direct`` for the\ninvoice and the card to read. A serialized unit that is neither a\nregulated firearm nor an antique is refused outright. The revenue invoice\nis raised at the end and a failure there does not roll back the\ndispositions — create_gb_invoice_now retries.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1195`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.dispose_gb_order",
         "responses": {
           "200": {
@@ -19938,7 +19940,7 @@
           "ffl_integrations"
         ],
         "summary": "The loose-stock lines of a GunBroker order and where in the store each can be",
-        "description": "taken from, for the \"where did these come from?\" step of Dispose.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1093`",
+        "description": "taken from, for the \"where did these come from?\" step of Dispose.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1171`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.get_dispose_stock_lines",
         "responses": {
           "200": {
@@ -20016,7 +20018,7 @@
           "ffl_integrations"
         ],
         "summary": "Mark one unit of a model-level order as refunded on GunBroker.",
-        "description": "For an oversold order: the buyer paid for N, only N-1 guns exist, and the\nbuyer is refunded for the missing one on GunBroker's side. A unit marked\nrefunded stops counting as a claim, gets no gun, no bound-book entry and no\ninvoice line; the seller fee is still accrued on the whole GunBroker line,\nbecause GunBroker does not reduce it for a refund. The invoice then no longer\nagrees with what GunBroker charged and stays in Draft for a person to check\nthe refund against the statement.\n\nMarking a unit that already has a gun releases the gun (if this order holds\nit). ``refunded=0`` undoes the mark.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1044`",
+        "description": "For an oversold order: the buyer paid for N, only N-1 guns exist, and the\nbuyer is refunded for the missing one on GunBroker's side. A unit marked\nrefunded stops counting as a claim, gets no gun, no bound-book entry and no\ninvoice line; the seller fee is still accrued on the whole GunBroker line,\nbecause GunBroker does not reduce it for a refund. The invoice then no longer\nagrees with what GunBroker charged and stays in Draft for a person to check\nthe refund against the statement.\n\nMarking a unit that already has a gun releases the gun (if this order holds\nit). ``refunded=0`` undoes the mark.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1122`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.mark_gb_unit_refunded",
         "responses": {
           "200": {
@@ -20074,7 +20076,7 @@
           "ffl_integrations"
         ],
         "summary": "Record that a GunBroker buyer's payment has been banked.",
-        "description": "This is the fact the Dispose gate opens on, and it is deliberately not\nGunBroker's own \"payment received\" flag: that flag is a click on their\nwebsite, and a gun must not leave the building on the strength of it.\n\nNo Payment Entry is created here. GunBroker orders are paid before they are\ninvoiced, and the invoice does not exist until the guns are disposed — so\nthere is nothing to book the receipt against yet. The values recorded here\nare replayed onto a Payment Entry the moment the invoice is raised.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:457`",
+        "description": "This is the fact the Dispose gate opens on, and it is deliberately not\nGunBroker's own \"payment received\" flag: that flag is a click on their\nwebsite, and a gun must not leave the building on the strength of it.\n\nNo Payment Entry is created here. GunBroker orders are paid before they are\ninvoiced, and the invoice does not exist until the guns are disposed — so\nthere is nothing to book the receipt against yet. The values recorded here\nare replayed onto a Payment Entry the moment the invoice is raised, against\nthe account of the Mode of Payment recorded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:460`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.mark_payment_received",
         "responses": {
           "200": {
@@ -20108,7 +20110,7 @@
                   },
                   "mode_of_payment": {
                     "type": "string",
-                    "description": "\"GunBroker Check\" or \"GunBroker Card\". Card is refused while the account has no payment gateway connected."
+                    "description": "\"GunBroker Check\" (also accepted as \"Check/Money Order\"), \"GunBroker Card\" (GunBroker's own checkout; refused while no gateway is connected), or a tender the store took directly: \"Credit Card\" (charged on the Virtual Terminal), \"Zelle\" or \"ACH\". Cash is refused: the receipt is dated the day the invoice is raised, so cash would sit in the drawer with nothing on the books for it."
                   },
                   "amount": {
                     "type": "number",
@@ -20119,7 +20121,7 @@
                       "string",
                       "null"
                     ],
-                    "description": "Cheque or money-order number. Required for a cheque — without it the deposit cannot be traced on a bank statement."
+                    "description": "Cheque / money-order number, Zelle or ACH confirmation, or card approval code. Required for every mode but GunBroker Card — without it the deposit cannot be traced on a bank statement."
                   },
                   "received_on": {
                     "type": [
@@ -20151,7 +20153,7 @@
           "ffl_integrations"
         ],
         "summary": "Push a paid GunBroker order to ShipStation (the Pending Order Ship action).",
-        "description": "Same as a counter or web order: Ship does not wait for Dispose. Before\nDispose there is no invoice, so the shipment is built off the order itself\nand its id is kept on the order; revenue copies it onto the invoice when\nDispose raises one, which is where the tracking write-back reads it. After\nDispose this is the invoice's own push_shipment.\n\nThe gates are Dispose's (paid, FFL received, every unit named, no\nunresolved line) plus a valid destination, so nothing reaches ShipStation\nthat Dispose would then refuse. A C&R licence is only verified in the\nDispose dialog, so a C&R order not yet verified must Dispose first.\nTracking still goes back to GunBroker only after Dispose.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1659`",
+        "description": "Same as a counter or web order: Ship does not wait for Dispose. Before\nDispose there is no invoice, so the shipment is built off the order itself\nand its id is kept on the order; revenue copies it onto the invoice when\nDispose raises one, which is where the tracking write-back reads it. After\nDispose this is the invoice's own push_shipment.\n\nThe gates are Dispose's (paid, FFL received, every unit named, no\nunresolved line) plus a valid destination, so nothing reaches ShipStation\nthat Dispose would then refuse. A C&R licence is only verified in the\nDispose dialog, so a C&R order not yet verified must Dispose first.\nTracking still goes back to GunBroker only after Dispose.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1737`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.push_gb_shipment",
         "responses": {
           "200": {
@@ -20199,7 +20201,7 @@
           "ffl_integrations"
         ],
         "summary": "Write this order's tracking number back to GunBroker now.",
-        "description": "The scheduled poll does this on its own every ten minutes; this is for the\noperator who has just bought the label and wants the buyer to see it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1635`",
+        "description": "The scheduled poll does this on its own every ten minutes; this is for the\noperator who has just bought the label and wants the buyer to see it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1713`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.push_tracking_now",
         "responses": {
           "200": {
@@ -20492,13 +20494,66 @@
         "security": []
       }
     },
+    "/api/method/ffl_integrations.payments.api.cancel_gb_order_charge": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Cancel an in-flight keyed card charge on a GunBroker order (race-safe).",
+        "description": "A cancel that races an approval records the approval instead.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1446`",
+        "operationId": "ffl_integrations.payments.api.cancel_gb_order_charge",
+        "responses": {
+          "200": {
+            "description": "{ok: True, status: \"CANCELED\"} — or the settled approval with reconciled=True.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "gunbroker_order": {
+                    "type": "string",
+                    "description": "The GunBroker Order being charged."
+                  },
+                  "instruction_id": {
+                    "type": "string",
+                    "description": "The handle to cancel."
+                  }
+                },
+                "required": [
+                  "gunbroker_order",
+                  "instruction_id"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_integrations.payments.api.cancel_pos_charge": {
       "post": {
         "tags": [
           "ffl_integrations"
         ],
         "summary": "Cancel an in-flight card charge (race-safe).",
-        "description": "If the cancel RACES an approval (card just captured), the capture is\nreconciled instead of stranding it / letting a retry double-charge.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:886`",
+        "description": "If the cancel RACES an approval (card just captured), the capture is\nreconciled instead of stranding it / letting a retry double-charge.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:889`",
         "operationId": "ffl_integrations.payments.api.cancel_pos_charge",
         "responses": {
           "200": {
@@ -20551,7 +20606,7 @@
           "ffl_integrations"
         ],
         "summary": "Cancel an in-flight terminal charge on a Sales Invoice (race-safe).",
-        "description": "A cancel that races an approval settles the approval instead — the card\nwas charged, so it is recorded and booked, never stranded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1243`",
+        "description": "A cancel that races an approval settles the approval instead — the card\nwas charged, so it is recorded and booked, never stranded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1254`",
         "operationId": "ffl_integrations.payments.api.cancel_sales_invoice_charge",
         "responses": {
           "200": {
@@ -20604,7 +20659,7 @@
           "ffl_integrations"
         ],
         "summary": "Whether a Credit Card tender must go through the counter terminal.",
-        "description": "Read-only. With a card processor switched on, configured and holding a\ndevice, a card is charged on the terminal (charge_pos_invoice); otherwise a\nCredit Card row is a plain tender typed from a standalone terminal.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:640`",
+        "description": "Read-only. With a card processor switched on, configured and holding a\ndevice, a card is charged on the terminal (charge_pos_invoice); otherwise a\nCredit Card row is a plain tender typed from a standalone terminal.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:643`",
         "operationId": "ffl_integrations.payments.api.card_tender_mode",
         "responses": {
           "200": {
@@ -20628,13 +20683,64 @@
         }
       }
     },
+    "/api/method/ffl_integrations.payments.api.charge_gb_order": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Start a keyed card charge (the processor's payment page) for a GunBroker order.",
+        "description": "Pending Order → Record Payment on a GunBroker order that has not been paid. The\nfrontend polls it with poll_gb_order_charge(); the approval is recorded as the\norder's payment, which opens Dispose. Reuses an in-flight charge rather than\ncharging twice.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm); keying a card in needs a manager.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1339`",
+        "operationId": "ffl_integrations.payments.api.charge_gb_order",
+        "responses": {
+          "200": {
+            "description": "{ok, instruction_id, status, amount, keyed_url}; {\"skip\": True} when no card processor is switched on and configured; an earlier approval found unrecorded comes back settled with already=True.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "gunbroker_order": {
+                    "type": "string",
+                    "description": "GunBroker Order awaiting payment."
+                  },
+                  "amount": {
+                    "description": "Charge amount, at most the order total (blank = the order total)."
+                  }
+                },
+                "required": [
+                  "gunbroker_order"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_integrations.payments.api.charge_pos_invoice": {
       "post": {
         "tags": [
           "ffl_integrations"
         ],
         "summary": "Start a card charge on the card processor's terminal for a POS invoice.",
-        "description": "Starts the charge on the active processor's card device; the frontend then\npolls poll_pos_charge() until the terminal returns. Reuses an in-flight\ncharge rather than double-charging.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:658`",
+        "description": "Starts the charge on the active processor's card device; the frontend then\npolls poll_pos_charge() until the terminal returns. Reuses an in-flight\ncharge rather than double-charging.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:661`",
         "operationId": "ffl_integrations.payments.api.charge_pos_invoice",
         "responses": {
           "200": {
@@ -20707,7 +20813,7 @@
           "ffl_integrations"
         ],
         "summary": "Start a card charge on the card processor's terminal against a counter Sales Invoice.",
-        "description": "The counter's card tender for an on-account order (Create Order right\nafter the order books; Pending Order → Record Payment for a balance).\nStarts a charge on the active processor's card device; the frontend polls it with\npoll_sales_invoice_charge(); the approval books a Payment Entry. Reuses\nan in-flight instruction rather than double-charging, and never starts\none while an earlier approval on this invoice is unrecorded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1088`",
+        "description": "The counter's card tender for an on-account order (Create Order right\nafter the order books; Pending Order → Record Payment for a balance).\nStarts a charge on the active processor's card device; the frontend polls it with\npoll_sales_invoice_charge(); the approval books a Payment Entry. Reuses\nan in-flight instruction rather than double-charging, and never starts\none while an earlier approval on this invoice is unrecorded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1099`",
         "operationId": "ffl_integrations.payments.api.charge_sales_invoice",
         "responses": {
           "200": {
@@ -20773,7 +20879,7 @@
           "ffl_integrations"
         ],
         "summary": "Record that a gateway-charged sale's refund was issued in the card processor's portal.",
-        "description": "The manager-level exit for the switched-off refund guard. Deliberately its\nown field plus a timeline entry — never the tender row's ``reference_no``,\nwhich the standalone-terminal flow collects for a different purpose and\nwhich therefore cannot double as this guard's evidence (a guard whose\nevidence another rule force-collects clears itself).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role (_check_manager).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:2358`",
+        "description": "The manager-level exit for the switched-off refund guard. Deliberately its\nown field plus a timeline entry — never the tender row's ``reference_no``,\nwhich the standalone-terminal flow collects for a different purpose and\nwhich therefore cannot double as this guard's evidence (a guard whose\nevidence another rule force-collects clears itself).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role (_check_manager).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:2572`",
         "operationId": "ffl_integrations.payments.api.confirm_out_of_band_refund",
         "responses": {
           "200": {
@@ -20831,7 +20937,7 @@
           "ffl_integrations"
         ],
         "summary": "List the terminals the active card processor's credentials may use (connectivity smoke test).",
-        "description": "A zero-risk connectivity + pairing check (Payroc: the authenticate\nresponse's allowedTerminals).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1276`",
+        "description": "A zero-risk connectivity + pairing check (Payroc: the authenticate\nresponse's allowedTerminals).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1490`",
         "operationId": "ffl_integrations.payments.api.list_terminals",
         "responses": {
           "200": {
@@ -20855,13 +20961,66 @@
         }
       }
     },
+    "/api/method/ffl_integrations.payments.api.poll_gb_order_charge": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Poll a keyed card charge started by charge_gb_order once.",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1421`",
+        "operationId": "ffl_integrations.payments.api.poll_gb_order_charge",
+        "responses": {
+          "200": {
+            "description": "{ok: True, unique_reference, approval_code, amount, paid} on approval (the payment is recorded on the order); {ok: False, status: \"IN_PROGRESS\"} while pending; {ok: False, status, error} on decline / cancel.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "gunbroker_order": {
+                    "type": "string",
+                    "description": "The GunBroker Order being charged."
+                  },
+                  "instruction_id": {
+                    "type": "string",
+                    "description": "The handle returned by charge_gb_order."
+                  }
+                },
+                "required": [
+                  "gunbroker_order",
+                  "instruction_id"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_integrations.payments.api.poll_pos_charge": {
       "post": {
         "tags": [
           "ffl_integrations"
         ],
         "summary": "Poll a card charge once, on the processor that started it.",
-        "description": "In progress → {ok: False} (frontend loops). Finished → verify full\napproval, stamp the reference on the invoice.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:836`",
+        "description": "In progress → {ok: False} (frontend loops). Finished → verify full\napproval, stamp the reference on the invoice.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:839`",
         "operationId": "ffl_integrations.payments.api.poll_pos_charge",
         "responses": {
           "200": {
@@ -20917,7 +21076,7 @@
           "ffl_integrations"
         ],
         "summary": "Poll a terminal charge started by charge_sales_invoice once.",
-        "description": "IN_PROGRESS → {ok: False} (frontend loops). On approval the record goes\nCHARGED and a Payment Entry books against the invoice; the answer carries\nthe new balance.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1212`",
+        "description": "IN_PROGRESS → {ok: False} (frontend loops). On approval the record goes\nCHARGED and a Payment Entry books against the invoice; the answer carries\nthe new balance.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1223`",
         "operationId": "ffl_integrations.payments.api.poll_sales_invoice_charge",
         "responses": {
           "200": {
@@ -20970,7 +21129,7 @@
           "ffl_integrations"
         ],
         "summary": "Refund a POS return's card portion to the original card(s).",
-        "description": "Referenced refund of the Credit Card portion of a POS RETURN invoice,\nsent to the processor that took each original charge. Firearm returns\nare blocked (bound-book reversal is a separate project). Multi-card\noriginals refund across rows within per-original-card caps.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager-gated refund roles (gate at entry).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1613`",
+        "description": "Referenced refund of the Credit Card portion of a POS RETURN invoice,\nsent to the processor that took each original charge. Firearm returns\nare blocked (bound-book reversal is a separate project). Multi-card\noriginals refund across rows within per-original-card caps.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager-gated refund roles (gate at entry).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1827`",
         "operationId": "ffl_integrations.payments.api.refund_pos_invoice",
         "responses": {
           "200": {
@@ -21025,7 +21184,7 @@
           "ffl_integrations"
         ],
         "summary": "Manager unlock for a return whose automatic card refund armed the",
-        "description": "UNKNOWN-OUTCOME re-refund lock (the amplifier: the\nlock had no product-side unlock, so a locked return died in bench\nconsole).\n\nONLY ``UNKNOWN-OUTCOME`` unlocks — zero slices booked, so a full-amount\nretry is exactly the original entitlement. A ``PARTIAL:*`` sentinel is\nthe ONE record of how much this return already pushed back; clearing it\nre-arms a full-amount retry that the per-ORIGINAL-card caps cannot bound\n(an original with headroom would refund the booked slices again).\nIts residue goes to back-office manual processing.\nA real refund reference means the refund COMPLETED and never unlocks.\n\nThe unlock is an attestation, not a reconciliation: the gateway may\nactually have refunded (rows still show headroom), so the manager must\nverify in the processor's portal FIRST — the reason is required and the whole\naction lands in the document timeline (who/when/why/previous lock),\nmirroring manager_override_4473's audit posture.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager gate (roles per the derived Auth line) + required reason — the reason must record what was verified in the processor's portal.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1996`",
+        "description": "UNKNOWN-OUTCOME re-refund lock (the amplifier: the\nlock had no product-side unlock, so a locked return died in bench\nconsole).\n\nONLY ``UNKNOWN-OUTCOME`` unlocks — zero slices booked, so a full-amount\nretry is exactly the original entitlement. A ``PARTIAL:*`` sentinel is\nthe ONE record of how much this return already pushed back; clearing it\nre-arms a full-amount retry that the per-ORIGINAL-card caps cannot bound\n(an original with headroom would refund the booked slices again).\nIts residue goes to back-office manual processing.\nA real refund reference means the refund COMPLETED and never unlocks.\n\nThe unlock is an attestation, not a reconciliation: the gateway may\nactually have refunded (rows still show headroom), so the manager must\nverify in the processor's portal FIRST — the reason is required and the whole\naction lands in the document timeline (who/when/why/previous lock),\nmirroring manager_override_4473's audit posture.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager gate (roles per the derived Auth line) + required reason — the reason must record what was verified in the processor's portal.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:2210`",
         "operationId": "ffl_integrations.payments.api.unlock_refund_lock",
         "responses": {
           "200": {
@@ -21078,7 +21237,7 @@
           "ffl_integrations"
         ],
         "summary": "Reverse an unsettled card charge (back-office; per-card on multi-card).",
-        "description": "Books the gateway reversal on the processor that took the charge (Payroc\nhas no /void: it reverses). Multi-card invoices void PER CARD: pass the\ncharge row's unique_reference when more than one live capture exists.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Refund/void roles (_check_refund_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1300`",
+        "description": "Books the gateway reversal on the processor that took the charge (Payroc\nhas no /void: it reverses). Multi-card invoices void PER CARD: pass the\ncharge row's unique_reference when more than one live capture exists.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Refund/void roles (_check_refund_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1514`",
         "operationId": "ffl_integrations.payments.api.void_pos_invoice",
         "responses": {
           "200": {

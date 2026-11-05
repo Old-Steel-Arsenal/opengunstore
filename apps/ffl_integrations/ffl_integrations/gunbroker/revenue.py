@@ -1068,6 +1068,12 @@ def _ensure_paid(si, order) -> None:
 	frappe.db.set_value(ORDER_DOCTYPE, order.name, "payment_entry", name,
 		update_modified=False)
 	order.payment_entry = name
+	# A card the store charged for this order before it had an invoice: tie the charge
+	# to the invoice and its receipt, so void / refund / reconcile find it.
+	from ffl_integrations.payments.api import link_gb_card_charges
+	from ffl_integrations.payments.setup import MODE_OF_PAYMENT_NAME
+	if mode == MODE_OF_PAYMENT_NAME:
+		link_gb_card_charges(order.name, si.name, name)
 
 	overpaid = flt(banked - allocated, 2)
 	if overpaid >= 0.01:

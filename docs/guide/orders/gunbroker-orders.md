@@ -16,7 +16,7 @@ The buyer is matched to an existing customer by GunBroker account, then by email
 
 1. **Wait for payment.** The buyer sends a certified check or money order. No card gateway is connected, so card payment is refused.
 2. **Bank it and wait for the funds to clear.** Do not ship on receipt of a check. Forged certified checks are the common fraud against GunBroker sellers.
-3. Click Mark Payment Received and record the banked payment. See [Record a GunBroker payment](ship-or-hand-over.md#record-a-gunbroker-payment).
+3. Click Record Payment and record the payment. See [Record a GunBroker payment](ship-or-hand-over.md#record-a-gunbroker-payment).
 4. **Wait for the receiving dealer's license.** The system verifies it through eZ Check. Dispose stays disabled with "Verify the FFL first." while the license is expired or unverified.
 5. Click Ship to send the order to ShipStation, and buy the label there. This works before or after Dispose once payment is in, the license is verified and every unit has a gun. A Type 03 collector order must be disposed first.
 6. Click Dispose on the day you pack the gun. See [Book the guns out](ship-or-hand-over.md#book-the-guns-out-dispose). A collector buyer gets the [C&R block](web-orders.md#a-collector-cr-type-03-buyer).
@@ -28,7 +28,7 @@ What happens at Dispose:
 - The goods leave stock.
 - Tracking goes back to GunBroker once the gun is disposed and the label is bought.
 
-GunBroker's own payment flag is a click on their website. It is recorded, but it does not open Dispose. **Mark Payment Received** records what reached the bank.
+GunBroker's own payment flag is a click on their website. It is recorded, but it does not open Dispose. **Record Payment** records what reached the bank.
 
 GunBroker cards have no **Edit** and no **Cancel Order**, because a GunBroker sale cannot be undone from the seller's side. Cancellations and refunds start on GunBroker. See [Returns and cancellations](#returns-and-cancellations).
 
@@ -83,7 +83,7 @@ A daily audit emails one message per kind of problem. The last two rows come fro
 | You see | Fix |
 |---|---|
 | Verify the FFL first. | Wait for or verify the receiving dealer's license. See [Verify an FFL](../compliance/ffl-verification.md). |
-| Awaiting payment | Bank the payment, then **Mark Payment Received**. |
+| Awaiting payment | Bank the payment, then **Record Payment**. |
 | Dispose says the invoice did not post | Click **Create Invoice** on the card. See [Troubleshooting](../help/troubleshooting.md). |
 | The counter refuses a gun GunBroker reports as sold | The online buyer paid first. Offer the customer something else. |
 | The order keeps appearing in the morning alert | Fill in **Refund Handled At** once the refund is settled. |

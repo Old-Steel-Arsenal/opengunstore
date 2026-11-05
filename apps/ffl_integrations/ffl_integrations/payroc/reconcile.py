@@ -80,11 +80,15 @@ def _captured_charges(since, until=None) -> list[frappe._dict]:
 			filters={"status": ("in", ["CHARGED", "REFUNDED"]), "creation": created,
 				"unique_reference": ("is", "set")},
 			fields=["unique_reference as ref", "amount", "refunded_amount", "sales_invoice as name",
-				"processor"]):
+				"gunbroker_order", "processor"]):
 		if (r.pop("processor", None) or LEGACY_PROCESSOR) != PROCESSOR:
 			continue
+		gb = r.pop("gunbroker_order", None)
+		# A card charged for a GunBroker order before its invoice exists is filed under the order.
+		doctype = "Sales Invoice" if r.name or not gb else "GunBroker Order"
+		r.name = r.name or gb
 		out.setdefault(r.ref, frappe._dict(r, refunded_amount=flt(r.refunded_amount),
-			doctype="Sales Invoice", draft=False))
+			doctype=doctype, draft=False))
 	# A counter order refunded through Cancel Order books a Pay PE ("Refund for
 	# cancelled <SI>") — attributable only when the SI took ONE card capture.
 	# lazy: an Edit (update_order) moves the order to a new SI, so a later

@@ -579,8 +579,11 @@ def _check_keyed(p, save) -> None:
 def _keyed_billing(doctype: str, name: str) -> dict:
     """The customer's billing name and address for the payment page to start filled in: the
     invoice's address, else the customer's primary one. Empty fields are left out."""
-    inv = frappe.db.get_value(doctype, name, ["customer", "customer_name", "customer_address"],
-        as_dict=True) or frappe._dict()
+    # A GunBroker order carries no billing address (its ship-to is the dealer): the
+    # customer's primary address is the one to start from.
+    fields = ["customer", "customer_name"] + (["customer_address"]
+        if frappe.get_meta(doctype).has_field("customer_address") else [])
+    inv = frappe.db.get_value(doctype, name, fields, as_dict=True) or frappe._dict()
     addr_name = inv.customer_address or (frappe.db.get_value("Customer", inv.customer,
         "customer_primary_address") if inv.customer else None)
     a = frappe.db.get_value("Address", addr_name, ["address_line1", "address_line2", "city",
@@ -949,7 +952,7 @@ def cancel_pos_charge(invoice_name: str, instruction_id: str) -> dict:
 # can retry or settle another way — never money without an invoice.
 # --------------------------------------------------------------------------
 TERMINAL_PAYMENT = "Card Terminal Payment"
-_TP_FIELDS = ["name", "sales_invoice", "amount", "status", "instruction_id",
+_TP_FIELDS = ["name", "sales_invoice", "gunbroker_order", "amount", "status", "instruction_id",
     "unique_reference", "approval_code", "card_summary", "payment_entry", "processor",
     "save_card", "save_reference", "save_usage", "saved_card"]
 
@@ -1015,6 +1018,14 @@ def _settle_terminal_payment(p, res, row) -> dict:
     }, update_modified=False)
     p.note_charge()
     _commit_money_point()
+    if row.get("gunbroker_order") and not row.sales_invoice:
+        # A GunBroker order has no invoice yet: the charge is recorded as the order's payment,
+        # and its Payment Entry is laid down when the invoice is raised (gunbroker.revenue).
+        _record_gb_card_payment(row.name, row.gunbroker_order, authorized, ref or approval,
+            processor_label=p.label)
+        return {"ok": True, "status": "COMPLETED", "unique_reference": ref,
+                "approval_code": approval, "amount": authorized, "payment_entry": None,
+                "outstanding": 0, "paid": True}
     # Card on file: after the capture is durable and before the booking, so a booking failure
     # (which throws) cannot lose the card; saving itself never raises.
     saved = _saved_cards().record_from_charge(p, res, row_doctype=TERMINAL_PAYMENT, row=row,
@@ -1270,6 +1281,209 @@ def cancel_sales_invoice_charge(sales_invoice: str, instruction_id: str) -> dict
         frappe.db.set_value(TERMINAL_PAYMENT, row.name, {
             "status": "CANCELED", "response": _resp_json(resp)}, update_modified=False)
     return {"ok": True, "status": "CANCELED"}
+
+
+# --------------------------------------------------------------------------
+# Keyed card for a GunBroker order (Pending Order → Record Payment). A GunBroker
+# order is paid before it has an invoice — the invoice is raised when the guns are
+# disposed — so the charge is a Card Terminal Payment on the ORDER, and its approval
+# is recorded as the order's payment (fulfillment.record_gb_payment, mode = the
+# card tender, reference = the gateway's). The Payment Entry, to the card tender's
+# clearing account, is booked when the invoice is raised (gunbroker.revenue), which
+# also fills the invoice in on this record so void / refund / reconcile find it.
+# Keyed only: a GunBroker order is never picked up at the counter, so there is no
+# card present to put on the terminal.
+# --------------------------------------------------------------------------
+GB_ORDER = "GunBroker Order"
+
+
+def _gb_charges(gunbroker_order: str) -> list:
+    return frappe.get_all(TERMINAL_PAYMENT, filters={"gunbroker_order": gunbroker_order},
+        fields=_TP_FIELDS, order_by="creation asc")
+
+
+def _gb_charge_row(gunbroker_order: str, instruction_id: str):
+    row = frappe.db.get_value(TERMINAL_PAYMENT,
+        {"gunbroker_order": gunbroker_order, "instruction_id": instruction_id},
+        _TP_FIELDS, as_dict=True)
+    if not row:
+        frappe.throw(_("{0} has no card payment for instruction {1} — refresh and retry."
+            ).format(gunbroker_order, instruction_id))
+    return row
+
+
+def _record_gb_card_payment(row_name: str, gunbroker_order: str, amount: float,
+        reference: str, processor_label: str | None = None) -> None:
+    """The record half of a captured card on a GunBroker order. Same durability rule as
+    _book_terminal_payment: the gateway already holds the money."""
+    from ffl_integrations.gunbroker.fulfillment import record_gb_payment
+
+    def write():
+        order = frappe.get_doc(GB_ORDER, gunbroker_order)
+        record_gb_payment(order, MODE_OF_PAYMENT_NAME, amount,
+            reference_no=reference or row_name, received_on=frappe.utils.nowdate())
+
+    _persist_money_fact(write, action="gb-card-payment", invoice=gunbroker_order,
+        facts={"unique_reference": reference, "amount": amount, "record": row_name},
+        fact_label=_("The card was charged"), processor_label=processor_label)
+
+
+def _lock_gb_order(gunbroker_order: str):
+    frappe.db.get_value(GB_ORDER, gunbroker_order, "name", for_update=True)
+    return frappe.db.get_value(GB_ORDER, gunbroker_order,
+        ["order_status", "order_total", "payment_mode_used", "customer_name", "gb_order_id"],
+        as_dict=True)
+
+
+@frappe.whitelist(methods=["POST"])
+def charge_gb_order(gunbroker_order: str, amount=None) -> dict:
+    """Start a keyed card charge (the processor's payment page) for a GunBroker order.
+
+    Pending Order → Record Payment on a GunBroker order that has not been paid. The
+    frontend polls it with poll_gb_order_charge(); the approval is recorded as the
+    order's payment, which opens Dispose. Reuses an in-flight charge rather than
+    charging twice.
+
+    Args:
+        gunbroker_order: GunBroker Order awaiting payment.
+        amount: Charge amount, at most the order total (blank = the order total).
+
+    Returns:
+        {ok, instruction_id, status, amount, keyed_url}; {"skip": True} when no card
+        processor is switched on and configured; an earlier approval found unrecorded
+        comes back settled with already=True.
+
+    Permissions:
+        POS charge roles (_check_perm); keying a card in needs a manager.
+    """
+    _check_perm()
+    if not _integration_ready(require_device=False):
+        return {"skip": True}
+    gunbroker_order = (gunbroker_order or "").strip()
+    if not gunbroker_order or not frappe.db.exists(GB_ORDER, gunbroker_order):
+        frappe.throw(_("GunBroker Order {0} not found.").format(gunbroker_order))
+    _check_keyed(_processor(None), None)
+    order = _lock_gb_order(gunbroker_order)
+    gateway = _gateways()
+    active = gateway(None)
+
+    past = _gb_charges(gunbroker_order)
+    _reopen_late_keyed(past, gateway, TERMINAL_PAYMENT)
+    in_flight = [r for r in past if r.status == "IN_PROGRESS"]
+    if in_flight:
+        row = in_flight[0]
+        owner = gateway(row.processor)
+        polled = owner.poll(row.instruction_id)
+        if _still_on_device(polled):
+            return {"ok": True, "instruction_id": row.instruction_id,
+                    "status": "IN_PROGRESS", "amount": flt(row.amount),
+                    **_keyed_url(owner, row.instruction_id, GB_ORDER, gunbroker_order)}
+        res = _settle_terminal_payment(owner, polled, row)
+        if res.get("ok"):
+            res["already"] = True
+            return res
+        order = _lock_gb_order(gunbroker_order)
+
+    if (order.payment_mode_used or "").strip():
+        frappe.throw(_("GunBroker order {0} is already recorded as paid ({1}).").format(
+            order.gb_order_id, order.payment_mode_used))
+    if (order.order_status or "") != "Pending Fulfillment":
+        frappe.throw(_("GunBroker order {0} is {1} — there is nothing to charge.").format(
+            order.gb_order_id, order.order_status or "—"))
+    total = flt(order.order_total, 2)
+    amt = flt(amount) if amount not in (None, "") else total
+    if amt <= 0:
+        frappe.throw(_("Amount must be > 0 (got {0}).").format(amt))
+    if flt(amt, 2) > total + 0.01:
+        frappe.throw(_("Payment {0} exceeds the order total {1}.").format(
+            frappe.format_value(amt, {"fieldtype": "Currency"}),
+            frappe.format_value(total, {"fieldtype": "Currency"})))
+
+    # Checked before the card is taken: once Payroc holds the money a refusal to record it
+    # is a money fact with nowhere to land.
+    from ffl_integrations.gunbroker.fulfillment import _require_a_usable_mode_of_payment
+    _require_a_usable_mode_of_payment(MODE_OF_PAYMENT_NAME)
+
+    attempt = len(_gb_charges(gunbroker_order)) + 1
+    iid = active.start_keyed_charge(document=gunbroker_order, attempt=attempt, amount=amt)
+    rec = frappe.get_doc({"doctype": TERMINAL_PAYMENT, "gunbroker_order": gunbroker_order,
+        "amount": amt, "status": "IN_PROGRESS", "instruction_id": iid,
+        "processor": active.code})
+    rec.flags.ignore_permissions = True
+    # Nothing is live at the gateway until the page is submitted, so a failed insert
+    # leaves nothing to cancel.
+    rec.insert()
+    return {"ok": True, "instruction_id": iid, "status": "IN_PROGRESS", "amount": amt,
+            **_keyed_url(active, iid, GB_ORDER, gunbroker_order)}
+
+
+@frappe.whitelist()
+def poll_gb_order_charge(gunbroker_order: str, instruction_id: str) -> dict:
+    """Poll a keyed card charge started by charge_gb_order once.
+
+    Args:
+        gunbroker_order: The GunBroker Order being charged.
+        instruction_id: The handle returned by charge_gb_order.
+
+    Returns:
+        {ok: True, unique_reference, approval_code, amount, paid} on approval (the
+        payment is recorded on the order); {ok: False, status: "IN_PROGRESS"} while
+        pending; {ok: False, status, error} on decline / cancel.
+
+    Permissions:
+        POS charge roles (_check_perm).
+    """
+    _check_perm()
+    row = _gb_charge_row(gunbroker_order, instruction_id)
+    p = _gateways()(row.processor or LEGACY_PROCESSOR)
+    polled = p.poll(instruction_id)
+    if _still_on_device(polled):
+        return {"ok": False, "status": "IN_PROGRESS"}
+    return _settle_terminal_payment(p, polled, row)
+
+
+@frappe.whitelist(methods=["POST"])
+def cancel_gb_order_charge(gunbroker_order: str, instruction_id: str) -> dict:
+    """Cancel an in-flight keyed card charge on a GunBroker order (race-safe).
+
+    A cancel that races an approval records the approval instead.
+
+    Args:
+        gunbroker_order: The GunBroker Order being charged.
+        instruction_id: The handle to cancel.
+
+    Returns:
+        {ok: True, status: "CANCELED"} — or the settled approval with reconciled=True.
+
+    Permissions:
+        POS charge roles (_check_perm).
+    """
+    _check_perm()
+    row = _gb_charge_row(gunbroker_order, instruction_id)
+    p = _gateways()(row.processor or LEGACY_PROCESSOR)
+    polled = p.poll(instruction_id)
+    if polled.status in (APPROVED, DECLINED):
+        res = _settle_terminal_payment(p, polled, row)
+        res["reconciled"] = True
+        return res
+    resp = p.cancel(instruction_id).raw
+    if row.status == "IN_PROGRESS":
+        frappe.db.set_value(TERMINAL_PAYMENT, row.name, {
+            "status": "CANCELED", "response": _resp_json(resp)}, update_modified=False)
+    return {"ok": True, "status": "CANCELED"}
+
+
+# lazy: a card charged for a GunBroker order that is cancelled before it is invoiced has no
+# invoice to refund against here — it is refunded in the processor's portal (the reconcile
+# lists it under the order). Add an order-level refund if that turns up in practice.
+def link_gb_card_charges(gunbroker_order: str, sales_invoice: str, payment_entry: str) -> None:
+    """Called once a GunBroker order's receipt is booked: the card charged for it now has
+    an invoice and a Payment Entry, so void / refund / reconcile treat it like any
+    counter-invoice card charge."""
+    for name in frappe.get_all(TERMINAL_PAYMENT, filters={"gunbroker_order": gunbroker_order,
+            "status": ("in", ["CHARGED", "REFUNDED"])}, pluck="name"):
+        frappe.db.set_value(TERMINAL_PAYMENT, name, {"sales_invoice": sales_invoice,
+            "payment_entry": payment_entry}, update_modified=False)
 
 
 @frappe.whitelist()

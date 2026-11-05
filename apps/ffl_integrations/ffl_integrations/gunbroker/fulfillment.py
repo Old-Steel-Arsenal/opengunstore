@@ -284,6 +284,9 @@ def _pending_row(order, *, ss_enabled: bool, limit_days: int = 7, today=None,
 		"sync_error": order.sync_error or "",
 		"sync_fail_count": cint(order.sync_fail_count),
 		"last_payment_mode": order.payment_mode_used or "",
+		# GunBroker's own card checkout: offered in Record Payment only while a gateway
+		# is connected to the account (mark_payment_received refuses it otherwise).
+		"card_checkout_on_gb": _card_checkout_enabled(),
 		"ship_pushed": shipstation_pushed(*_shipment(order, invoice)),
 		# The tracking number is written back by the poll, from the label the
 		# store bought. There is no honest manual equivalent, so the button that
@@ -467,14 +470,20 @@ def mark_payment_received(gunbroker_order: str, mode_of_payment: str,
 	No Payment Entry is created here. GunBroker orders are paid before they are
 	invoiced, and the invoice does not exist until the guns are disposed — so
 	there is nothing to book the receipt against yet. The values recorded here
-	are replayed onto a Payment Entry the moment the invoice is raised.
+	are replayed onto a Payment Entry the moment the invoice is raised, against
+	the account of the Mode of Payment recorded.
 
 	Args:
 	    gunbroker_order: GunBroker Order name.
-	    mode_of_payment: "GunBroker Check" or "GunBroker Card". Card is refused
-	        while the account has no payment gateway connected.
+	    mode_of_payment: "GunBroker Check" (also accepted as "Check/Money
+	        Order"), "GunBroker Card" (GunBroker's own checkout; refused while
+	        no gateway is connected), or a tender the store took directly:
+	        "Credit Card" (charged on the Virtual Terminal), "Zelle" or "ACH".
+	        Cash is refused: the receipt is dated the day the invoice is raised,
+	        so cash would sit in the drawer with nothing on the books for it.
 	    amount: What was actually banked, which is not always what was owed.
-	    reference_no: Cheque or money-order number. Required for a cheque —
+	    reference_no: Cheque / money-order number, Zelle or ACH confirmation,
+	        or card approval code. Required for every mode but GunBroker Card —
 	        without it the deposit cannot be traced on a bank statement.
 	    received_on: The day it went INTO the bank, not the day it arrived in
 	        the post. Defaults to today.
@@ -489,11 +498,58 @@ def mark_payment_received(gunbroker_order: str, mode_of_payment: str,
 	"""
 	frappe.only_for(_ROLES)
 	order = frappe.get_doc(ORDER_DOCTYPE, gunbroker_order)
+	charged = _card_charge_on_record(order.name)
+	if charged:
+		# The card money is in the processor's account under this order: typing
+		# a different payment over it would drop that money off the books.
+		frappe.throw(_(
+			"A card payment of {0} was already charged for this order (reference "
+			"{1}). That is the payment on record. Refund it with the card "
+			"processor first if a different payment should replace it."
+		).format(frappe.format_value(flt(charged.amount), {"fieldtype": "Currency"}),
+			charged.unique_reference or charged.approval_code or charged.name),
+			title=_("Card Already Charged"))
+	return record_gb_payment(order, mode_of_payment, amount,
+		reference_no=reference_no, received_on=received_on,
+		replace_posted_receipt=replace_posted_receipt)
+
+
+def store_tender_modes() -> tuple[str, ...]:
+	"""Tenders the store takes directly that a GunBroker order may be paid by.
+
+	Booked to the store's own Mode of Payment accounts, exactly like a counter
+	order's Record Payment. Cash is not one of them (see mark_payment_received)."""
+	from ffl_integrations.payments.setup import MODE_OF_PAYMENT_NAME
+
+	return (MODE_OF_PAYMENT_NAME, "Zelle", "ACH")
+
+
+def record_gb_payment(order, mode_of_payment: str, amount: float,
+		reference_no: str | None = None, received_on: str | None = None,
+		replace_posted_receipt: int = 0) -> dict:
+	"""mark_payment_received without the permission check and the card guard.
+
+	Also the booking half of a card charged for a GunBroker order through the
+	card processor (ffl_integrations.payments.api.charge_gb_order): the charge
+	is on record by then, so the guard that refuses to type over it must not
+	refuse the charge itself."""
 	_refuse_to_overwrite_a_posted_receipt(order, replace_posted_receipt)
 	mode = (mode_of_payment or "").strip()
-	if mode not in (MODE_CHECK, MODE_CARD):
-		frappe.throw(_("{0} is not a GunBroker payment method. Use {1} or {2}.")
-			.format(mode or "—", MODE_CHECK, MODE_CARD))
+	if mode == "Check/Money Order":
+		# The Record Payment picker's name for it. A GunBroker cheque keeps its own
+		# mode, and with it the deposit account named in GunBroker Settings.
+		mode = MODE_CHECK
+	if mode == "Cash":
+		frappe.throw(_(
+			"GunBroker orders cannot be paid in cash. The receipt is booked the "
+			"day the invoice is raised, which is when the order is disposed — "
+			"cash taken earlier would be in the drawer with nothing on the books "
+			"for it. Take it by card, Zelle, ACH or check."
+		), title=_("No Cash on GunBroker Orders"))
+	allowed = (MODE_CHECK, MODE_CARD) + store_tender_modes()
+	if mode not in allowed:
+		frappe.throw(_("{0} is not a payment method for a GunBroker order. Use one of: {1}.")
+			.format(mode or "—", ", ".join(allowed)))
 	if mode == MODE_CARD and not _card_checkout_enabled():
 		frappe.throw(_(
 			"This phase does not take card payments on GunBroker: no payment "
@@ -509,6 +565,11 @@ def mark_payment_received(gunbroker_order: str, mode_of_payment: str,
 		frappe.throw(_(
 			"Enter the cheque or money-order number. It is the only thing that "
 			"ties this order to a line on the bank statement."))
+	if mode in store_tender_modes() and not reference_no:
+		frappe.throw(_(
+			"Enter the {0} reference (confirmation number or card approval code). "
+			"It is the only thing that ties this order to the deposit."
+		).format(mode))
 	_require_a_usable_mode_of_payment(mode)
 
 	# Defaulted, never left blank. The cash-basis schedule selects on
@@ -528,8 +589,7 @@ def mark_payment_received(gunbroker_order: str, mode_of_payment: str,
 	order.payment_received = 1
 	if not order.payment_received_at:
 		order.payment_received_at = now_datetime()
-	order.payment_source = gb_orders.SOURCE_CHECK if mode == MODE_CHECK \
-		else gb_orders.SOURCE_GATEWAY_CHECKOUT
+	order.payment_source = gb_orders.payment_source_for_mode(mode)
 	order.flags.ignore_permissions = True
 	order.save()
 
@@ -538,6 +598,16 @@ def mark_payment_received(gunbroker_order: str, mode_of_payment: str,
 	_flag_payment_received(order)
 	return {"ok": True, "mode_of_payment": mode, "amount": amount,
 		"received_on": str(received), "difference": difference}
+
+
+def _card_charge_on_record(gunbroker_order: str):
+	"""The card charge taken for this order through the card processor, if any."""
+	if not frappe.db.has_column("Card Terminal Payment", "gunbroker_order"):
+		return None
+	rows = frappe.get_all("Card Terminal Payment",
+		filters={"gunbroker_order": gunbroker_order, "status": "CHARGED"},
+		fields=["name", "amount", "unique_reference", "approval_code"], limit=1)
+	return rows[0] if rows else None
 
 
 def _require_a_usable_mode_of_payment(mode: str) -> None:
@@ -564,10 +634,18 @@ def _require_a_usable_mode_of_payment(mode: str) -> None:
 
 	company = _default_company()
 	account = (_mode_of_payment_account(mode, company) or "").strip()
-	configured = (frappe.db.get_single_value(
+	# A store tender books to the store's own account for it; only the two
+	# GunBroker modes are pointed at accounts named in GunBroker Settings.
+	configured = "" if mode not in (MODE_CHECK, MODE_CARD) else (frappe.db.get_single_value(
 		"GunBroker Settings",
 		"check_deposit_account" if mode == MODE_CHECK else "card_clearing_account"
 	) or "").strip()
+	if not account and mode not in (MODE_CHECK, MODE_CARD):
+		frappe.throw(_(
+			"{0} has no account against it for {1}, so no receipt could be "
+			"posted for this payment. Add the account on the {0} Mode of Payment "
+			"first."
+		).format(mode, company), title=_("Payment Method Not Set Up"))
 	if not account:
 		frappe.throw(_(
 			"{0} has no account against it for {1}, so no receipt could be "
@@ -1261,7 +1339,7 @@ def _require_ready_to_dispose(order) -> None:
 		frappe.throw(_(
 			"No payment has been recorded for {0} in POS. GunBroker's own "
 			"'payment received' flag is a click on their website; it is not "
-			"evidence the money reached us. Use Mark Payment Received first — "
+			"evidence the money reached us. Use Record Payment first — "
 			"that is also what puts the receipt on the ledger when the invoice "
 			"is raised."
 		).format(order.name), title=_("Payment Not Recorded"))
