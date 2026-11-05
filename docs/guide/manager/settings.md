@@ -61,7 +61,7 @@ Below them, the **Card on file** card turns on [saving a card to charge later](.
 | ShipStation Settings | **POS & Sales** card | Shipping labels, ship-from address, parcel defaults |
 | Cash Drawer Settings | **POS & Sales** card | The drawer's limits (below) |
 | Membership Settings | **POS & Sales** card | Automatic renewal charges and the yearly reminder. See [Memberships](../counter/memberships.md) |
-| Lead Mail Settings | **POS & Sales** card | Mail domains that never become a CRM lead: other businesses you block, and the store's own |
+| Lead Mail Settings | **POS & Sales** card | Which customer mail goes into CRM: the store's team addresses, and the domains that never become a lead. See [Lead Mail Settings](#lead-mail-settings) below |
 | POS Profile | **POS & Sales** card | Each register's warehouse, price list and payment methods |
 | Mode of Payment | **POS & Sales** card | The tender types and the account each posts to |
 | Selling Settings | **POS & Sales** card | Store-wide selling defaults, such as customer naming |
@@ -94,6 +94,36 @@ Staff sign in with their own account, and the assistant can do only what their r
 | **Accounts a cash expense can go to** | | The expense accounts offered |
 
 **Cash tracking started** is read-only. System Manager only. See [Cash drawer](../counter/cash-drawer.md).
+
+## Lead Mail Settings
+
+These settings decide which mail from the store's mailboxes goes into CRM. Each mail goes in once, on the customer's deal or lead, even when several mailboxes got it.
+
+**Team addresses** lists the shared addresses customers write to, such as sales@ or info@. Mail to one of them from someone new becomes a lead. Mail to a staff member's own address goes in only when it comes from a customer or a known lead. Their other mail stays out of the POS. System Manager only.
+
+| Column | What it does |
+|---|---|
+| **Address** | The shared address |
+| **Type** | **Mailbox** for a real mailbox the store signs in to. **Group** for a group or alias that hands its mail to members |
+| **Collected by** | The Email Account that brings the address's mail in. Staff mailboxes then leave that mail alone. A mailbox needs one |
+| **New leads** | **Pool**: a new lead has no owner until someone answers it. **Round robin**: CRM's own assignment rule on leads picks the owner |
+
+**Reply-To for staff mail** is one of the team addresses. Mail staff send from their own mailbox asks the customer to reply there, so the conversation stays with the team. Mail answered from a **Mailbox** address goes out from that address.
+
+**Blocked sender domains** and **Our own domains** take one domain per line. Mail from them never becomes a lead.
+
+### Setting up the mailboxes
+
+1. Ask your administrator to add an Email Account for each staff mailbox and each **Mailbox** address. Each one must use IMAP and sync all mail, not only unread mail, or the POS refuses to save it. POP3 would delete personal mail from the mail server, and syncing unread mail marks every message read.
+2. On each staff mailbox's Email Account, tick **Sync business mail to CRM**.
+3. Fill in **Team addresses** and **Reply-To for staff mail**, then click **Save**. Every staff mailbox gets the Reply-To, and everyone with Sales User or Sales Manager can answer as each **Mailbox** address.
+4. Each staff member opens their own **My Settings** and clicks **Connect my mailbox**, then signs in to their own mail account.
+
+Every lead and deal that gets team mail shows to everyone with Sales User or Sales Manager, without a notice or an email to anyone. A deal converted from such a lead shows to them too. Whoever answers a new lead first from CRM becomes its owner. To take one over, change its owner in CRM.
+
+A lead or deal that only got mail sent to one staff member shows to its owner and to Sales Managers. Once the customer answers a reply sent from CRM, their answer goes to the Reply-To team address, and from then on the lead or deal shows to everyone too.
+
+Save these settings again after you add a staff member. They see existing team leads once the next team mail reaches each one. Removing someone who leaves from a **Mailbox** address is done on their user record.
 
 ## Extension settings
 

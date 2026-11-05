@@ -72,6 +72,26 @@ class TestCRMContract(CRMTestCase):
 		self.assertIn("create_lead_from_incoming_email", inspect.getsource(create_lead_from_incoming_email))
 
 
+	def test_frappe_mail_pull_internals_the_skip_relies_on(self):
+		# crm.mail refuses a mail by raising SentEmailInInboxError from Communication before_insert
+		# during the pull, and remembers its uid after the pull's rollback (see crm.mail).
+		from frappe.database.database import Database
+		from frappe.email.doctype.email_account.email_account import EmailAccount, get_max_email_uid
+		from frappe.email.receive import InboundMail
+
+		receive = inspect.getsource(EmailAccount.receive)
+		handler = receive.split("except SentEmailInInboxError:", 1)[1].split("except", 1)[0]
+		self.assertIn("frappe.db.rollback()", handler)
+		self.assertNotIn("log_error", handler)
+		self.assertIn("flags.in_receive = True", inspect.getsource(InboundMail._build_communication_doc))
+		self.assertIn("after_rollback.run()", inspect.getsource(Database.rollback))
+		max_uid = inspect.getsource(get_max_email_uid)
+		self.assertIn('"email_account": email_account', max_uid)
+		self.assertNotIn("communication_type", max_uid, "the marker is an Automated Message")
+		self.assertTrue({"add_reply_to_header", "reply_to_addresses", "connected_user", "connected_app",
+			"email_sync_option"} <= _fields("Email Account"))
+
+
 class TestCRMSettingsWrite(FrappeTestCase):
 	def test_setup_never_grants_item_rights_to_the_counter(self):
 		frappe.set_user("Administrator")

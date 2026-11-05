@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenGunstore API",
-    "version": "0.6.4",
+    "version": "0.6.5",
     "description": "RPC API of the OpenGunstore custom apps (Frappe/ERPNext v16): ffl_core, ffl_integrations, ffl_woo_sync.\n\nAll endpoints are Frappe *whitelisted methods* invoked as `/api/method/<dotted.path>`. Unless an endpoint declares explicit HTTP verbs, it is documented here as POST (Frappe also accepts GET for read-only calls; always POST mutations). Arguments may be sent as JSON body, form data, or query string — JSON body is recommended.\n\nEvery operation carries an **Auth (derived from code)** line statically resolved from the role gate the function actually executes; the prose Permissions note adds semantics the machine can't infer.\n\nStandard CRUD on DocTypes is served by Frappe's REST layer (`/api/resource/<DocType>`) — see docs/api/frappe-rest.md; the custom DocTypes are modelled under components.schemas and listed in reference/doctypes.md."
   },
   "servers": [
@@ -1823,6 +1823,17 @@
         "type": "object",
         "description": "Custom DocType (ffl_core); CRUD via /api/resource/Lead%20Mail%20Settings — see docs/api/frappe-rest.md.",
         "properties": {
+          "team_addresses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Team_Mail_Address"
+            },
+            "description": "Team addresses"
+          },
+          "primary_team_address": {
+            "type": "string",
+            "description": "Reply-To for staff mail"
+          },
           "blocked_sender_domains": {
             "type": "string",
             "description": "Blocked sender domains"
@@ -2508,6 +2519,40 @@
           "zone_name",
           "kind",
           "company"
+        ]
+      },
+      "Team_Mail_Address": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Team%20Mail%20Address — see docs/api/frappe-rest.md.",
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "Address"
+          },
+          "address_type": {
+            "type": "string",
+            "enum": [
+              "Group",
+              "Mailbox"
+            ],
+            "description": "Type"
+          },
+          "collector": {
+            "type": "string",
+            "description": "Collected by (Link: Email Account)"
+          },
+          "assignment": {
+            "type": "string",
+            "enum": [
+              "Pool",
+              "Round robin"
+            ],
+            "description": "New leads"
+          }
+        },
+        "required": [
+          "address",
+          "address_type"
         ]
       },
       "Card_Charge": {
@@ -6369,7 +6414,7 @@
           "ffl_core"
         ],
         "summary": "Take back a \"paid outside the system\" mark: the purchase is listed and its seller payment can be recorded again.",
-        "description": "The mark is cleared on every receipt of the amendment line that carries it (an amendment answers to its cancelled\noriginal's mark), so clearing it on the amendment really clears it.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:377`",
+        "description": "The mark is cleared on every receipt of the amendment line that carries it (an amendment answers to its cancelled\noriginal's mark), so clearing it on the amendment really clears it.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:373`",
         "operationId": "ffl_core.api.cash_drawer.clear_paid_outside",
         "responses": {
           "200": {
@@ -6417,7 +6462,7 @@
           "ffl_core"
         ],
         "summary": "Count the drawer and close the day.",
-        "description": "Closes the open POS shifts, books any difference from the books and carries the count forward as tomorrow's opening.\nA company's very first count sets the books to the physical drawer (against the bank) instead of booking a difference;\na later count first books any correction made since to the days before the first count (a true-up, also against\nthe bank), since that money was never in the drawer.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:184`",
+        "description": "Closes the open POS shifts, books any difference from the books and carries the count forward as tomorrow's opening.\nA company's very first count sets the books to the physical drawer (against the bank) instead of booking a difference;\na later count first books any correction made since to the days before the first count (a true-up, also against\nthe bank), since that money was never in the drawer.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:180`",
         "operationId": "ffl_core.api.cash_drawer.close_day",
         "responses": {
           "200": {
@@ -6479,7 +6524,7 @@
           "ffl_core"
         ],
         "summary": "Every cash movement in a date range, oldest first, with the drawer's running balance.",
-        "description": "Sales, refunds, seller payments, deposits, cash from the bank, expenses, count differences and the\nfirst count, plus register sales not posted yet. The balance starts from the books' cash before\n``from_date``.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:260`",
+        "description": "Sales, refunds, seller payments, deposits, cash from the bank, expenses, count differences and the\nfirst count, plus register sales not posted yet. The balance starts from the books' cash before\n``from_date``.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:256`",
         "operationId": "ffl_core.api.cash_drawer.get_log",
         "responses": {
           "200": {
@@ -6589,7 +6634,7 @@
           "ffl_core"
         ],
         "summary": "Mark a Receive Goods purchase as paid to its private seller outside the system (a hand journal entry, a check",
-        "description": "booked in QuickBooks).\n\nBooks nothing. The receipt leaves the list of purchases with no seller payment, and no seller payment can be\nrecorded for it until the mark is cleared. Refused for a receipt paid in the system.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:358`",
+        "description": "booked in QuickBooks).\n\nBooks nothing. The receipt leaves the list of purchases with no seller payment, and no seller payment can be\nrecorded for it until the mark is cleared. Refused for a receipt paid in the system.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:354`",
         "operationId": "ffl_core.api.cash_drawer.mark_paid_outside",
         "responses": {
           "200": {
@@ -6642,7 +6687,7 @@
           "ffl_core"
         ],
         "summary": "What closing the day with this count would do, without recording anything.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:168`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:164`",
         "operationId": "ffl_core.api.cash_drawer.preview_close",
         "responses": {
           "200": {
@@ -6694,7 +6739,7 @@
           "ffl_core"
         ],
         "summary": "Record cash taken to the bank: Dr Operating Bank / Cr Cash.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:208`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:204`",
         "operationId": "ffl_core.api.cash_drawer.record_deposit",
         "responses": {
           "200": {
@@ -6753,7 +6798,7 @@
           "ffl_core"
         ],
         "summary": "Record a small expense paid in cash: Dr the expense account / Cr Cash.",
-        "description": "Needs a memo (a receipt photo is optional), stays under the cash-expense limit and goes only to an allowed expense account.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:224`",
+        "description": "Needs a memo (a receipt photo is optional), stays under the cash-expense limit and goes only to an allowed expense account.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:220`",
         "operationId": "ffl_core.api.cash_drawer.record_expense",
         "responses": {
           "200": {
@@ -6822,7 +6867,7 @@
           "ffl_core"
         ],
         "summary": "Record cash taken out of the bank and put in the drawer: Dr Cash / Cr Operating Bank.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:244`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:240`",
         "operationId": "ffl_core.api.cash_drawer.record_from_bank",
         "responses": {
           "200": {
@@ -6881,7 +6926,7 @@
           "ffl_core"
         ],
         "summary": "Record how the private seller of a Receive Goods purchase was paid: change the method, record it again after an",
-        "description": "undo, or record the first payment of a receipt that never had one.\n\nBooks Dr Stock Received But Not Billed / Cr Cash (or the bank) for what the receipt owes the seller, replacing the\npayment recorded, if any. Refused once a count was taken after that payment, for a receipt received before cash\ntracking started (the accountant's), for one marked as paid outside the system, when the receipt owes nothing\nnow, and when the same goods are still paid on a cancelled receipt of this seller (a new receipt typed for goods\nalready paid: undo that payment, or amend the cancelled receipt, instead); a refusal leaves the payment recorded\nas it was.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:394`",
+        "description": "undo, or record the first payment of a receipt that never had one.\n\nBooks Dr Stock Received But Not Billed / Cr Cash (or the bank) for what the receipt owes the seller, replacing the\npayment recorded, if any. Refused once a count was taken after that payment, for a receipt received before cash\ntracking started (the accountant's), for one marked as paid outside the system, when the receipt owes nothing\nnow, and when the same goods are still paid on a cancelled receipt of this seller (a new receipt typed for goods\nalready paid: undo that payment, or amend the cancelled receipt, instead); a refusal leaves the payment recorded\nas it was.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:390`",
         "operationId": "ffl_core.api.cash_drawer.record_goods_payout",
         "responses": {
           "200": {
@@ -6941,7 +6986,7 @@
           "ffl_core"
         ],
         "summary": "Change the method of a gun's own seller payment (made the old way, before a pay-now buy became a receipt paid with",
-        "description": "it), or book one that was undone again.\n\nBooks Dr Stock Adjustment / Cr Cash (or the bank) at the net last paid. A first payment is refused: a seller is paid\nwith the gun's receipt (record_goods_payout). Changing a recorded payment is for a System Manager.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:339`",
+        "description": "it), or book one that was undone again.\n\nBooks Dr Stock Adjustment / Cr Cash (or the bank) at the net last paid. A first payment is refused: a seller is paid\nwith the gun's receipt (record_goods_payout). Changing a recorded payment is for a System Manager.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:335`",
         "operationId": "ffl_core.api.cash_drawer.record_payout",
         "responses": {
           "200": {
@@ -6994,7 +7039,7 @@
           "ffl_core"
         ],
         "summary": "Undo the latest count of the drawer: its difference (or first-count) entry is cancelled.",
-        "description": "The day reads as not counted again; the POS shifts it closed stay closed.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:323`",
+        "description": "The day reads as not counted again; the POS shifts it closed stay closed.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:319`",
         "operationId": "ffl_core.api.cash_drawer.undo_close",
         "responses": {
           "200": {
@@ -7042,7 +7087,7 @@
           "ffl_core"
         ],
         "summary": "Undo a cash entry (deposit, cash from the bank, expense or seller payment): its Journal Entry is cancelled.",
-        "description": "A seller payment for a Receive Goods receipt is undone like the others (the money is back where it came from); a\ntrade-in ticket's payout is taken back by cancelling the ticket.\n\nRefused once a count was taken after the entry.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:301`",
+        "description": "A seller payment for a Receive Goods receipt is undone like the others (the money is back where it came from); a\ntrade-in ticket's payout is taken back by cancelling the ticket.\n\nRefused once a count was taken after the entry.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/cash_drawer.py:297`",
         "operationId": "ffl_core.api.cash_drawer.undo_entry",
         "responses": {
           "200": {
@@ -7382,13 +7427,68 @@
         }
       }
     },
+    "/api/method/ffl_core.api.crm.connect_my_mailbox": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Start connecting your own mailbox to the POS: the address of the provider's sign-in page.",
+        "description": "For a staff member whose mailbox an administrator set up as an OAuth Email Account with them as\nits connected user; they sign in to their own mail account, not the administrator. Frappe's own\nAuthorize button needs read access to the Connected App, which staff do not have.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:37`",
+        "operationId": "ffl_core.api.crm.connect_my_mailbox",
+        "responses": {
+          "200": {
+            "description": "str: The sign-in address to open. Refused for an Email Account whose connected user is someone else, or that does not sign in with OAuth.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email_account": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The Email Account to connect. Optional when you have only one."
+                  },
+                  "success_uri": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Where to land after signing in (a path on this site). Default: CRM."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.api.crm.open_deal": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "The contact's open deal, made when they have none, to write to them from CRM.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:13`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:15`",
         "operationId": "ffl_core.api.crm.open_deal",
         "responses": {
           "200": {
