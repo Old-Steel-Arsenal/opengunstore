@@ -38,6 +38,9 @@ class _FulfillmentCase(FrappeTestCase):
 
 		frappe.get_system_settings("time_zone")
 		get_number_format()
+		# mark_payment_received reads the card charges on the order (Card Terminal
+		# Payment): its meta loads through the same patched db.get_value.
+		frappe.get_meta("Card Terminal Payment")
 		self._patch_object(fulfillment, "notify_admins",
 			side_effect=lambda s, m, **kw: self.alerts.append(kw["dedup_key"]))
 		self._patch("frappe.msgprint",
@@ -401,7 +404,7 @@ class TestDisposeGate(_FulfillmentCase):
 		order = self._order(payment_mode_used="", payment_received=1)
 		with self.assertRaises(Exception) as caught:
 			fulfillment._require_ready_to_dispose(order)
-		self.assertIn("Mark Payment Received", str(caught.exception))
+		self.assertIn("Record Payment", str(caught.exception))
 
 	def test_recording_the_payment_in_pos_opens_it(self):
 		order = self._order(payment_mode_used="GunBroker Check")

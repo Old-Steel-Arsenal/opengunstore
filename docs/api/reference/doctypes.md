@@ -796,7 +796,8 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sal
 
 | field | type | label | reqd | options |
 |---|---|---|---|---|
-| `sales_invoice` | Link | Sales Invoice | ✓ | Sales Invoice |
+| `sales_invoice` | Link | Sales Invoice |  | Sales Invoice |
+| `gunbroker_order` | Link | GunBroker Order |  | GunBroker Order |
 | `amount` | Currency | Amount |  |  |
 | `status` | Select | Status |  | IN_PROGRESS, CHARGED, DECLINED, CANCELED, VOIDED, REFUNDED |
 | `card_summary` | Data | Card |  |  |
@@ -1104,7 +1105,7 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sal
 | `payment_received` | Check | Payment Received (GunBroker flag) |  |  |
 | `payment_received_at` | Datetime | Payment Received At (GunBroker) |  |  |
 | `payment_methods` | Data | Payment Methods Offered |  |  |
-| `payment_source` | Select | Payment Source |  | , Gateway (Immediate Checkout), Check or Money Order, Gateway (GB-set), Unknown |
+| `payment_source` | Select | Payment Source |  | , Gateway (Immediate Checkout), Check or Money Order, Gateway (GB-set), Paid to Store, Unknown |
 | `payment_mode_used` | Data | Mode of Payment Recorded |  |  |
 | `payment_reference_no` | Data | Payment Reference / Cheque No |  |  |
 | `payment_amount` | Currency | Amount Received |  |  |

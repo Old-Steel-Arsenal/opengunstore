@@ -34,7 +34,7 @@
 //   • GunBroker orders — sales made on GunBroker (ffl_integrations.gunbroker).
 //     Unlike a web order the store buys this label itself, and unlike a counter
 //     order the money arrives as a cheque somebody has to record before the gun
-//     may ship: "Mark Payment Received" is what opens Dispose. Nothing here may
+//     may ship: Record Payment is what opens Dispose. Nothing here may
 //     be edited or cancelled — a GunBroker sale cannot be unwound from the
 //     seller's side, so those buttons are not offered rather than offered and
 //     refused. Once paid, Ship works as on a counter order, before or after
@@ -539,7 +539,7 @@ class PendingDispositionsApp {
 			const pickupBlock = isPickup && !pickupInvoice ? (row.pickup_block || '') : '';
 			// A model-level unit with no gun yet: Dispose would ship one short.
 			const openUnits = can.assignSerial ? pdOpenUnits(row.assign_units) : 0;
-			// GunBroker: nothing disposes before Mark Payment Received (the server's
+			// GunBroker: nothing disposes before Record Payment (the server's
 			// _require_ready_to_dispose refuses it, same stage as shipDisabled below).
 			const disposeDisabled = row.ffl_expired || blockShipUnpaid || awaiting || openUnits > 0
 				|| (isGb && row.channel_stage === 'awaiting_payment');
@@ -584,7 +584,7 @@ class PendingDispositionsApp {
 			const needsGbInvoice = isGb && row.disposed && !row.sales_invoice_posted;
 			const canShip = can.ship && row.shipstation_enabled && !row.ship_pushed && !noAddress
 				&& !needsGbInvoice;
-			// GunBroker: nothing ships before Mark Payment Received.
+			// GunBroker: nothing ships before Record Payment.
 			const shipDisabled = row.ffl_expired || blockShipUnpaid || awaitingGoods
 				|| openUnits > 0 || serialErrors.length > 0
 				|| (isGb && row.channel_stage === 'awaiting_payment');
@@ -758,7 +758,7 @@ class PendingDispositionsApp {
 					<div class="actions">
 						${canRelease ? `<button class="btn btn-primary btn-sm btn-release">${__('Place order')}</button>` : ''}
 						${(can.recordPayment && !paid) ? `<button class="btn btn-default btn-sm btn-pay">${__('Record Payment')}</button>` : ''}
-						${can.markPaymentReceived && row.channel_stage === 'awaiting_payment' ? `<button class="btn btn-primary btn-sm btn-gb-paid">${__('Mark Payment Received')}</button>` : ''}
+						${can.markPaymentReceived && row.channel_stage === 'awaiting_payment' ? `<button class="btn btn-primary btn-sm btn-gb-paid">${__('Record Payment')}</button>` : ''}
 						${showDispose ? `<button class="btn btn-primary btn-sm btn-dispose" ${disposeDisabled ? 'disabled' : ''}>${__('Dispose')}</button>` : ''}
 						${isPickup && !pickupInvoice ? `<button class="btn btn-primary btn-sm btn-pickup" ${pickupBlock ? 'disabled' : ''}>${__('Pickup')}</button>` : ''}
 						${pickupInvoice ? `<a class="btn btn-default btn-sm" href="/app/pos-invoice/${encodeURIComponent(pickupInvoice)}">${__('Open counter order')}</a>` : ''}
@@ -784,7 +784,7 @@ class PendingDispositionsApp {
 			$card.find('.btn-ship').on('click', () => this._confirmShip(row));
 			$card.find('.btn-mark-shipped').on('click', () => this._markShippedManually(row));
 			$card.find('.btn-pay').on('click', () => this._recordPayment(row));
-			$card.find('.btn-gb-paid').on('click', () => this._markGbPaymentReceived(row));
+			$card.find('.btn-gb-paid').on('click', () => this._recordPayment(row));
 			$card.find('.btn-gb-invoice').on('click', () => this._createGbInvoice(row));
 			$card.find('.btn-edit-order').on('click', () => frappe.set_route('create-order', 'edit', row.sales_invoice));
 			$card.find('.btn-cancel-order').on('click', () => this._confirmCancel(row));
@@ -1135,39 +1135,80 @@ class PendingDispositionsApp {
 		});
 	}
 
-	_markGbPaymentReceived(row) {
+	// Record Payment on a GunBroker order: the same picker as a counter order, minus
+	// Cash (the receipt is booked the day the invoice is raised, so cash would sit in the
+	// drawer with nothing on the books). A check keeps its GunBroker mode and deposit
+	// account; Credit Card / Zelle / ACH book to the store's own accounts. A manager can
+	// key the card in on the card processor's payment page — the order has no invoice
+	// yet, so the charge is recorded on the order (payments.api.charge_gb_order).
+	_recordGbPayment(row) {
+		const cardMop = (window.ffl && window.ffl.switches) ? window.ffl.switches.cardMop() : 'Credit Card';
+		const card = JSON.stringify(cardMop);
+		const keyedOk = !!(window.ffl && window.ffl.keyedCard && window.ffl.keyedCard.available());
+		const keyedNow = `(doc.mode==${card} && doc.keyed)`;
+		const modes = [cardMop, 'Zelle', 'ACH', 'Check/Money Order']
+			.concat(row.card_checkout_on_gb ? ['GunBroker Card'] : []);
 		const d = new frappe.ui.Dialog({
-			title: __('Mark Payment Received — GunBroker #{0}', [row.gb_order_id]),
+			title: __('Record Payment — GunBroker #{0}', [row.gb_order_id]),
 			fields: [
 				{
-					fieldtype: 'Select', fieldname: 'mode_of_payment',
-					label: __('Payment Method'),
-					options: 'GunBroker Check\nGunBroker Card',
-					default: 'GunBroker Check', reqd: 1,
-					description: __('Card is refused while no payment gateway is connected to the GunBroker account.'),
+					fieldtype: 'Select', fieldname: 'mode', label: __('Payment Method'),
+					options: modes.join('\n'), default: 'Check/Money Order', reqd: 1,
+					description: __('GunBroker orders are not paid in cash.'),
+					// A Zelle number must not ride along as a cheque number (or an approval code).
+					onchange: () => { if (d.get_value('transaction_number')) d.set_value('transaction_number', ''); },
+				},
+				...(keyedOk ? [Object.assign(window.ffl.keyedCard.field(), {
+					depends_on: `eval:doc.mode==${card}` })] : []),
+				{
+					fieldtype: 'Data', fieldname: 'transaction_number',
+					label: __('Transaction Number / Approval Code'),
+					depends_on: `eval:doc.mode!='GunBroker Card' && !${keyedNow}`,
+					mandatory_depends_on: `eval:doc.mode!='GunBroker Card' && !${keyedNow}`,
+					description: __('The check or money-order number, the Zelle / ACH confirmation, or the card approval code from the Virtual Terminal; never the card number.'),
 				},
 				{
-					fieldtype: 'Data', fieldname: 'reference_no',
-					label: __('Cheque / Money Order Number'),
-					mandatory_depends_on: "eval:doc.mode_of_payment=='GunBroker Check'",
-					description: __('The only thing that ties this order to a line on the bank statement.'),
-				},
-				{
-					fieldtype: 'Currency', fieldname: 'amount', label: __('Amount Banked'),
+					fieldtype: 'Currency', fieldname: 'amount', label: __('Amount'),
 					default: row.order_total, reqd: 1,
 					description: __('Order total: {0}', [format_currency(row.order_total, row.currency)]),
 				},
 				{
-					fieldtype: 'Date', fieldname: 'received_on', label: __('Deposited On'),
-					default: frappe.datetime.get_today(), reqd: 1,
+					fieldtype: 'Date', fieldname: 'received_on', label: __('Payment received on'),
+					default: frappe.datetime.get_today(),
+					depends_on: `eval:!${keyedNow}`, mandatory_depends_on: `eval:!${keyedNow}`,
 					description: __('The day it went INTO the bank, not the day it arrived in the post.'),
 				},
 			],
-			primary_action_label: __('Record'),
-			primary_action: (values) => {
+			primary_action_label: __('Record Payment'),
+			primary_action: async (v) => {
+				if (v.mode === cardMop && v.keyed) {
+					d.hide();
+					const order = { gunbroker_order: row.gunbroker_order };
+					const res = await window.ffl.terminalCharge({
+						amount: flt(v.amount),
+						start: { method: 'ffl_integrations.payments.api.charge_gb_order',
+							args: Object.assign({ amount: flt(v.amount) }, order) },
+						poll: { method: 'ffl_integrations.payments.api.poll_gb_order_charge', args: order },
+						cancel: { method: 'ffl_integrations.payments.api.cancel_gb_order_charge', args: order },
+					});
+					if (res && res.skip) {
+						frappe.msgprint({ title: __('Card processor not set up'), indicator: 'orange',
+							message: __('Take the card on the Virtual Terminal, then record it here with its approval code.') });
+						d.show();
+						return;
+					}
+					if (res && res.ok) {
+						frappe.show_alert({ message: __('Card approved — this order can now be disposed.'),
+							indicator: 'green' }, 7);
+					}
+					this._load();
+					return;
+				}
 				frappe.call({
 					method: 'ffl_integrations.gunbroker.fulfillment.mark_payment_received',
-					args: { gunbroker_order: row.gunbroker_order, ...values },
+					args: { gunbroker_order: row.gunbroker_order, mode_of_payment: v.mode,
+						amount: v.amount, reference_no: v.transaction_number || '',
+						received_on: v.received_on || '' },
 					freeze: true, freeze_message: __('Recording…'),
 					// No error branch: a server throw skips this callback and the
 					// dialog stays open with what the operator typed still in it.
@@ -1188,6 +1229,9 @@ class PendingDispositionsApp {
 	}
 
 	async _recordPayment(row) {
+		// A GunBroker order has no invoice until it is disposed: its payment is recorded
+		// on the order (and booked when the invoice is raised).
+		if (row.source === 'gunbroker') return this._recordGbPayment(row);
 		// Card on file: "Save this card" only when the server offers it for this customer
 		// (no round trip when the store has it off).
 		const cof = window.ffl && window.ffl.cardOnFile;

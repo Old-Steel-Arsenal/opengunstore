@@ -107,7 +107,7 @@ Each card shows only the buttons that row is allowed, and the next step for its 
 | **Ship** | [Send the parcel to ShipStation for a label](ship-or-hand-over.md#ship-with-shipstation) |
 | **Mark Shipped (no ShipStation)** / **Mark Picked Up** | [Close the shipping without ShipStation](ship-or-hand-over.md#mark-an-order-shipped-without-shipstation) |
 | **Record Payment** | [Collect money on a counter order](ship-or-hand-over.md#collect-a-payment-record-payment) |
-| **Mark Payment Received** | [Record a banked GunBroker payment](ship-or-hand-over.md#record-a-gunbroker-payment) |
+| **Record Payment** (GunBroker) | [Record a GunBroker payment](ship-or-hand-over.md#record-a-gunbroker-payment) |
 | **Pickup** / **Open counter order** | [Hand a gun over at the counter](ship-or-hand-over.md#hand-a-gun-over-at-the-counter-pickup) |
 | **Place order** | [Send draft distributor orders](ship-or-hand-over.md#place-the-distributor-order) |
 | **Fulfill from local stock** | [Serve a line from the shelf](ship-or-hand-over.md#serve-a-line-from-the-shelf) |
