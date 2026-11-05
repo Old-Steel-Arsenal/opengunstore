@@ -567,7 +567,7 @@ def claim_on_reply(doc, method=None):
 def pull_team_mailboxes():
 	"""Cron, every minute: queue a pull of each team mailbox (collector), the way Frappe's own
 	``pull()`` does for every Email Account every 10 minutes. The same job name keeps a pull still
-	queued or running from being queued twice."""
+	queued or running from being queued twice; an account that failed to connect is left to Frappe's pull."""
 	if not installed():
 		return
 	names = team.collectors()
@@ -583,8 +583,13 @@ def pull_team_mailboxes():
 				and not has_token(account.connected_app, account.connected_user):
 			continue   # nothing to sign in with yet, as in Frappe's pull()
 		job_name = f"pull_from_email_account|{account.name}"
-		if job_name not in queued:
-			enqueue(pull_from_email_account, "short", event="all", job_name=job_name, email_account=account.name)
+		if job_name in queued:
+			continue
+		# Frappe disables an account after 5 failed connects within 2 hours (cleared by a good connect):
+		# every minute that is minutes of outage, so a failing account is left to Frappe's 10-minute pull.
+		if frappe.get_doc("Email Account", account.name).get_failed_attempts_count():
+			continue
+		enqueue(pull_from_email_account, "short", event="all", job_name=job_name, email_account=account.name)
 
 
 def send_crm_mail_now(doc, method=None):

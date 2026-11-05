@@ -524,6 +524,16 @@ class TestPullTeamMailboxes(TeamMailCase):
 		mail.pull_team_mailboxes()
 		self.enqueue.assert_called_once()
 
+	def test_an_account_that_failed_to_connect_is_left_to_frappes_own_pull(self):
+		account = frappe.get_doc("Email Account", INFO)
+		self.addCleanup(account.set_failed_attempts_count, 0)
+		account.set_failed_attempts_count(2)
+		mail.pull_team_mailboxes()
+		self.enqueue.assert_not_called()
+		account.set_failed_attempts_count(0)   # what a good connect does
+		mail.pull_team_mailboxes()
+		self.enqueue.assert_called_once()
+
 	def test_a_job_already_queued_is_not_queued_twice(self):
 		self.queued_jobs.append(self._job(INFO))
 		mail.pull_team_mailboxes()
