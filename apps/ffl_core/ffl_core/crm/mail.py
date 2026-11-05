@@ -28,6 +28,13 @@ For each received mail of an in-scope account, in order (:func:`decide`):
    so it is team mail and shares the record (by design: whoever answers next can take it over);
    direct mail from someone new: skipped (a staff member's own mail never enters the POS).
 
+Screening: when an extension registers ``gunshop_crm_mail_screen``, team mail from someone new does
+not become a lead in the pull. A short background job (:func:`screen_new_sender`) asks the providers
+first; "not a customer" leaves the mail stored, unlinked, with a Comment saying why, and no lead. Any
+other answer (customer, no opinion, a failing provider) makes the lead as before. The sender is
+checked again when the job runs: a mail that was linked or a lead that appeared meanwhile goes by the
+normal rules and no provider is asked.
+
 "Skipped" means never stored: the Communication ``before_insert`` raises Frappe's own
 ``SentEmailInInboxError``, which ``EmailAccount.receive`` answers with a plain rollback (no Error
 Log, no failed count). Frappe's IMAP "ALL" sync starts each pull after the highest uid it has stored
@@ -49,12 +56,15 @@ stays, so anyone can take over later by changing the owner in CRM.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from functools import partial
 
 import frappe
+from frappe.core.utils import html_to_plain_text
 from frappe.email.receive import SentEmailInInboxError
 from frappe.utils import cint, now, nowdate, parse_addr, split_emails
+from frappe.utils.synchronization import filelock
 
 from ffl_core.crm import TITLE, installed, team
 from ffl_core.crm.deals import open_deal_for
@@ -71,6 +81,8 @@ MARKER_ID = "ffl-crm-skipped-mail-marker"
 SHARED_NOTE = "Team mail: shared with the team (CRM mail rules)"
 MARKER_SUBJECT = "Skipped mail marker (CRM mail rules): the highest mail uid this account left out"
 _SAVEPOINT = "ffl_crm_mail"
+SCREEN_HOOK = "gunshop_crm_mail_screen"
+SCREEN_BODY_LIMIT = 4000
 # Machine mail. Communication keeps no headers (Auto-Submitted, List-Unsubscribe), so the
 # address's local part is the signal there is.
 _AUTOMATED_LOCAL_PARTS = frozenset({
@@ -230,8 +242,9 @@ def _link(doc, doctype: str, name: str) -> None:
 	doc.save(ignore_permissions=True)   # the system's own mail record, as CRM's handler saves it
 
 
-def route(doc, decision=None) -> tuple[str, str] | None:
-	"""Where an incoming mail goes: (doctype, name) it was linked to, or None."""
+def route(doc, decision=None, screened: bool = False) -> tuple[str, str] | None:
+	"""Where an incoming mail goes: (doctype, name) it was linked to, or None. Team mail from someone new
+	waits for :func:`screen_new_sender` when a screening provider is installed, unless *screened*."""
 	if decision is None:
 		decision = decide(doc)
 	if not decision or decision[0] not in ("keep", "deal", "lead"):
@@ -246,6 +259,8 @@ def route(doc, decision=None) -> tuple[str, str] | None:
 	else:
 		lead, row = decision[1], decision[2]
 		if not lead:
+			if row and not screened and _queue_screening(doc):
+				return None
 			name, email = parse_addr(doc.get("sender") or "")
 			lead = _new_lead(email.strip().lower(), doc.get("sender_full_name") or name)
 		target = (LEAD, lead)
@@ -310,15 +325,70 @@ def _write_marker(email_account: str, uid: int) -> None:
 
 def on_incoming(doc, method=None):
 	"""Communication after_insert. Never fails the mail pull: a failure is rolled back and logged."""
-	if not installed():
-		return
+	if installed():
+		_route_logged(doc, doc.flags.get("ffl_crm_decision"))
+
+
+def _route_logged(doc, decision, screened: bool = False) -> None:
 	frappe.db.savepoint(_SAVEPOINT)
 	try:
-		route(doc, doc.flags.get("ffl_crm_decision"))
+		route(doc, decision, screened)
 	except Exception:
 		frappe.db.rollback(save_point=_SAVEPOINT)
 		doc.reference_doctype = doc.reference_name = None   # as stored again
 		frappe.log_error(title=f"[{TITLE}] Incoming mail not routed: {doc.name}", message=frappe.get_traceback())
+
+
+def _queue_screening(doc) -> bool:
+	"""Whether the lead for this mail is left to :func:`screen_new_sender` (queued once the mail commits)."""
+	if not frappe.get_hooks(SCREEN_HOOK):
+		return False
+	try:
+		frappe.enqueue("ffl_core.crm.mail.screen_new_sender", queue="short", enqueue_after_commit=True,
+			job_id=f"ffl_crm_mail_screen:{doc.name}", deduplicate=True, communication=doc.name)
+	except Exception:   # no queue to wait on: no screening, the lead is made now
+		frappe.log_error(title=f"[{TITLE}] Mail screening not queued: {doc.name}", message=frappe.get_traceback())
+		return False
+	return True
+
+
+def screen_new_sender(communication: str) -> None:
+	"""Background job: the lead for team mail from someone new, after the ``gunshop_crm_mail_screen``
+	providers have judged it. Jobs for one sender run one at a time, so two mails from the same new
+	sender make one lead, and the second is not screened."""
+	sender = frappe.db.get_value("Communication", communication, "sender")
+	if not sender:
+		return
+	email = parse_addr(sender)[1].strip().lower()
+	with filelock("ffl_crm_mail_screen_" + hashlib.md5(email.encode()).hexdigest(), timeout=120):
+		commit()   # a fresh snapshot: what the job that held the lock before us wrote is visible
+		doc = frappe.get_doc("Communication", communication)
+		decision = decide(doc)
+		if decision and decision[0] == "lead" and not decision[1]:
+			reason = _not_a_customer(doc, decision[2])
+			if reason:
+				doc.add_comment("Info", reason)
+				return
+			_route_logged(doc, decision, screened=True)
+		else:   # linked or answered by a lead / customer meanwhile: the normal rules
+			_route_logged(doc, decision)
+
+
+def _not_a_customer(doc, row) -> str | None:
+	"""The first provider's "not a customer" answer as a sentence; None when none says so."""
+	name, email = parse_addr(doc.get("sender") or "")
+	mail = {"communication": doc.name, "sender": email.strip().lower(), "sender_name": doc.get("sender_full_name") or name,
+		"to": sorted(_addresses(doc)), "subject": doc.get("subject") or "",
+		"body": html_to_plain_text(doc.get("content") or "")[:SCREEN_BODY_LIMIT], "team_address": row.address}
+	for hook in frappe.get_hooks(SCREEN_HOOK):
+		try:
+			answer = frappe.get_attr(hook)(dict(mail))
+		except Exception:
+			frappe.log_error(title=f"{SCREEN_HOOK} provider failed: {hook}")
+			continue
+		if isinstance(answer, dict) and answer.get("customer") is False:
+			return f"Not a customer inquiry ({answer.get('category') or 'other'}): {answer.get('reason') or 'no reason given'}"
+	return None
 
 
 def _assign_quietly(doctype: str, name: str, user: str) -> None:

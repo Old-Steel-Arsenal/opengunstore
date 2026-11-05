@@ -73,6 +73,28 @@ def home_boom(user):
 	raise RuntimeError("provider down")
 
 
+SCREENED: list[dict] = []
+
+
+def screen_not_customer(mail):
+	SCREENED.append(mail)
+	return {"customer": False, "category": "notification", "reason": "Carrier delivery notice."}
+
+
+def screen_customer(mail):
+	SCREENED.append(mail)
+	return {"customer": True, "category": "customer", "reason": "Asks about a rifle."}
+
+
+def screen_no_opinion(mail):
+	SCREENED.append(mail)
+	return None
+
+
+def screen_boom(mail):
+	raise RuntimeError("provider down")
+
+
 TOGGLES: list[tuple[str, bool]] = []
 
 
@@ -253,3 +275,155 @@ class TestExtensionToggled(ExtensionFixture):
 		with hooks("gunshop_extension_toggled", [f"{HERE}.on_toggled"]):
 			self._flip(0)
 		self.assertEqual(TOGGLES, [])
+
+
+# --- gunshop_crm_mail_screen ----------------------------------------------------------
+from ffl_core.crm import mail as crm_mail  # noqa: E402
+from ffl_core.tests.crm_support import CRMTestCase  # noqa: E402
+from ffl_core.tests.test_crm_mail import TEAM, _inbox, _leads, _receive, _settings  # noqa: E402
+
+
+class TestCrmMailScreen(CRMTestCase):
+	"""Team mail from someone new waits for a background job that asks the providers. The mail comes in
+	through Communication insert (the pull's own hooks); the queue is captured and the job run by hand."""
+
+	def setUp(self):
+		super().setUp()
+		_inbox()
+		_settings(blocked_sender_domains="", own_domains="store.test",
+			team_addresses=[{"address": TEAM, "address_type": "Group"}], primary_team_address="")
+		SCREENED.clear()
+		self.queued: list[dict] = []
+		patcher = patch.object(frappe, "enqueue", side_effect=lambda method, **kw: self.queued.append({"method": method, **kw}))
+		patcher.start()
+		self.addCleanup(patcher.stop)
+
+	def tearDown(self):
+		super().tearDown()
+		frappe.clear_document_cache(crm_mail.SETTINGS, crm_mail.SETTINGS)
+
+	def _comm(self, sender="jane@buyer.test", **fields):
+		fields.setdefault("content", "<p>Do you have <b>it</b>?</p>")
+		return _receive(sender, "Jane Public", recipients=TEAM, **fields)
+
+	def _run_job(self, comm):
+		crm_mail.screen_new_sender(comm.name)
+
+	def _reference(self, comm):
+		return frappe.db.get_value("Communication", comm.name, ["reference_doctype", "reference_name"])
+
+	def _screen_comments(self, comm):
+		return frappe.get_all("Comment", filters={"reference_doctype": "Communication", "reference_name": comm.name,
+			"comment_type": "Info"}, pluck="content")
+
+	def test_without_a_provider_the_lead_is_made_at_once(self):
+		with hooks("gunshop_crm_mail_screen", []):
+			comm = self._comm()
+		self.assertEqual(len(_leads("jane@buyer.test")), 1)
+		self.assertEqual(self._reference(comm)[0], "CRM Lead")
+		self.assertFalse(self.queued)
+
+	def test_with_a_provider_the_lead_waits_for_the_job(self):
+		with hooks("gunshop_crm_mail_screen", [f"{HERE}.screen_customer"]):
+			comm = self._comm()
+		self.assertFalse(_leads("jane@buyer.test"))
+		self.assertEqual(self._reference(comm), (None, None))
+		[job] = self.queued
+		self.assertEqual((job["method"], job["queue"], job["communication"]), ("ffl_core.crm.mail.screen_new_sender", "short", comm.name))
+		self.assertTrue(job["enqueue_after_commit"])
+		self.assertTrue(job["deduplicate"])
+		self.assertIn(comm.name, job["job_id"])
+
+	def test_a_customer_answer_makes_the_lead_and_shares_it(self):
+		with hooks("gunshop_crm_mail_screen", [f"{HERE}.screen_customer"]):
+			comm = self._comm()
+			self._run_job(comm)
+		[lead] = _leads("jane@buyer.test")
+		self.assertEqual(self._reference(comm), ("CRM Lead", lead))
+		self.assertTrue(frappe.db.exists("ToDo", {"reference_type": "CRM Lead", "reference_name": lead, "status": "Closed"}))
+		self.assertFalse(self._screen_comments(comm))
+		[mail] = SCREENED
+		body = mail.pop("body")
+		self.assertEqual(" ".join(body.split()), "Do you have it ?", "HTML stripped")
+		self.assertEqual(mail, {"communication": comm.name, "sender": "jane@buyer.test", "sender_name": "Jane Public",
+			"to": [TEAM], "subject": "Do you have it?", "team_address": TEAM})
+
+	def test_the_body_is_cut_at_4000_characters(self):
+		with hooks("gunshop_crm_mail_screen", [f"{HERE}.screen_customer"]):
+			comm = self._comm(content="<p>" + "x" * 9000 + "</p>")
+			self._run_job(comm)
+		self.assertEqual(len(SCREENED[0]["body"]), 4000)
+
+	def test_a_not_a_customer_answer_leaves_the_mail_unlinked_with_the_reason(self):
+		with hooks("gunshop_crm_mail_screen", [f"{HERE}.screen_not_customer", f"{HERE}.screen_customer"]):
+			comm = self._comm("pkginfo@carrier.test")
+			self._run_job(comm)
+		self.assertFalse(_leads("pkginfo@carrier.test"))
+		self.assertEqual(self._reference(comm), (None, None))
+		self.assertEqual(self._screen_comments(comm), ["Not a customer inquiry (notification): Carrier delivery notice."])
+		self.assertEqual(len(SCREENED), 1, "the first no settles it")
+		# The same sender writing again is screened again.
+		with hooks("gunshop_crm_mail_screen", [f"{HERE}.screen_not_customer"]):
+			self._comm("pkginfo@carrier.test")
+		self.assertEqual(len(self.queued), 2)
+
+	def test_no_opinion_makes_the_lead(self):
+		with hooks("gunshop_crm_mail_screen", [f"{HERE}.screen_no_opinion"]):
+			comm = self._comm()
+			self._run_job(comm)
+		self.assertEqual(len(_leads("jane@buyer.test")), 1)
+		self.assertEqual(len(SCREENED), 1)
+		self.assertFalse(self._screen_comments(comm))
+
+	def test_a_failing_provider_is_logged_and_the_next_one_still_counts(self):
+		with hooks("gunshop_crm_mail_screen", [f"{HERE}.screen_boom", f"{HERE}.screen_not_customer"]):
+			comm = self._comm()
+			self._run_job(comm)
+		self.assertTrue(_error_logged("gunshop_crm_mail_screen provider failed"))
+		self.assertFalse(_leads("jane@buyer.test"), "the healthy provider's no stands")
+		with hooks("gunshop_crm_mail_screen", [f"{HERE}.screen_boom"]):
+			comm = self._comm("other@buyer.test")
+			self._run_job(comm)
+		self.assertEqual(len(_leads("other@buyer.test")), 1, "every provider failed: the lead is made")
+
+	def test_a_sender_who_became_a_lead_meanwhile_is_linked_without_asking(self):
+		with hooks("gunshop_crm_mail_screen", [f"{HERE}.screen_not_customer"]):
+			comm = self._comm()
+			lead = crm_mail._new_lead("jane@buyer.test", "Jane Public")
+			self._run_job(comm)
+		self.assertEqual(self._reference(comm), ("CRM Lead", lead))
+		self.assertFalse(SCREENED)
+		self.assertEqual(_leads("jane@buyer.test"), [lead])
+
+	def test_a_sender_who_became_a_customer_meanwhile_goes_on_their_deal(self):
+		from ffl_core.tests.test_crm_mail import _customer_with_contact
+
+		with hooks("gunshop_crm_mail_screen", [f"{HERE}.screen_not_customer"]):
+			comm = self._comm()
+			_customer_with_contact("jane@buyer.test")
+			self._run_job(comm)
+		self.assertEqual(self._reference(comm)[0], "CRM Deal")
+		self.assertFalse(SCREENED)
+
+	def test_a_known_lead_or_customer_is_never_screened(self):
+		lead = crm_mail._new_lead("known@buyer.test", "Known Lead")
+		with hooks("gunshop_crm_mail_screen", [f"{HERE}.screen_not_customer"]):
+			comm = self._comm("known@buyer.test")
+		self.assertEqual(self._reference(comm), ("CRM Lead", lead))
+		self.assertFalse(self.queued)
+
+	def test_the_job_is_harmless_when_the_mail_is_gone_or_already_linked(self):
+		with hooks("gunshop_crm_mail_screen", [f"{HERE}.screen_customer"]):
+			comm = self._comm()
+			self._run_job(comm)
+			self._run_job(comm)   # a second run (a retry) adds nothing
+			crm_mail.screen_new_sender("no-such-communication")
+		self.assertEqual(len(_leads("jane@buyer.test")), 1)
+		self.assertEqual(len(SCREENED), 1)
+
+	def test_a_queue_that_is_down_falls_back_to_the_lead(self):
+		with hooks("gunshop_crm_mail_screen", [f"{HERE}.screen_not_customer"]), \
+				patch.object(frappe, "enqueue", side_effect=ConnectionError("redis down")):
+			comm = self._comm()
+		self.assertEqual(len(_leads("jane@buyer.test")), 1)
+		self.assertEqual(self._reference(comm)[0], "CRM Lead")
