@@ -114,7 +114,7 @@ These settings decide which mail from the store's mailboxes goes into CRM. Each 
 
 ### Setting up the mailboxes
 
-1. Ask your administrator to add an Email Account for each staff mailbox and each **Mailbox** address. Every staff mailbox and every mailbox that collects a team address must use IMAP and sync all mail, not only unread mail. The POS refuses to save one that does not: POP3 deletes from the mail server the personal mail CRM leaves out, and syncing unread mail marks every message read and misses mail already read on a phone.
+1. Ask your administrator to add an Email Account for each staff mailbox and each **Mailbox** address. Each one must use IMAP and sync all mail, not only unread mail, or the POS refuses to save it. POP3 would delete personal mail from the mail server, and syncing unread mail marks every message read.
 2. On each staff mailbox's Email Account, tick **Sync business mail to CRM**.
 3. Fill in **Team addresses** and **Reply-To for staff mail**, then click **Save**. Every staff mailbox gets the Reply-To, and everyone with Sales User or Sales Manager can answer as each **Mailbox** address.
 4. Each staff member opens their own **My Settings** and clicks **Connect my mailbox**, then signs in to their own mail account.
