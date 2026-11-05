@@ -298,6 +298,7 @@ doc_events = {
 	"Communication": {
 		"before_insert": "ffl_core.crm.mail.skip_unwanted",
 		"after_insert": ["ffl_core.crm.mail.on_incoming", "ffl_core.crm.mail.claim_on_reply"],
+		"onload": "ffl_core.crm.mail.mark_screened_out",   # Make lead button (public/js/communication_form.js)
 	},
 	"Serial No": {
 		# Inherit a firearm's manufacturer (never importer — that's per-gun only,
@@ -759,6 +760,8 @@ doctype_js = {
     "POS Invoice": "public/js/pos_invoice.js",
     # Connect my mailbox (ffl_core.api.crm.connect_my_mailbox) on a staff member's own My Settings.
     "User": "public/js/user_form.js",
+    # Make lead on a mail the screening left without one (ffl_core.api.crm.make_lead_from_mail).
+    "Communication": "public/js/communication_form.js",
 }
 doctype_list_js = {
     "Customer": "public/js/customer_list.js",

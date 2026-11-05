@@ -33,7 +33,8 @@ not become a lead in the pull. A short background job (:func:`screen_new_sender`
 first; "not a customer" leaves the mail stored, unlinked, with a Comment saying why, and no lead. Any
 other answer (customer, no opinion, a failing provider) makes the lead as before. The sender is
 checked again when the job runs: a mail that was linked or a lead that appeared meanwhile goes by the
-normal rules and no provider is asked.
+normal rules and no provider is asked. A job that fails itself makes the lead anyway. **Make lead** on
+the Communication form (:func:`make_lead`) files a mail the screening left without one.
 
 "Skipped" means never stored: the Communication ``before_insert`` raises Frappe's own
 ``SentEmailInInboxError``, which ``EmailAccount.receive`` answers with a plain rollback (no Error
@@ -61,6 +62,7 @@ import re
 from functools import partial
 
 import frappe
+from frappe import _
 from frappe.core.utils import html_to_plain_text
 from frappe.email.receive import SentEmailInInboxError
 from frappe.utils import cint, now, nowdate, parse_addr, split_emails
@@ -83,6 +85,7 @@ MARKER_SUBJECT = "Skipped mail marker (CRM mail rules): the highest mail uid thi
 _SAVEPOINT = "ffl_crm_mail"
 SCREEN_HOOK = "gunshop_crm_mail_screen"
 SCREEN_BODY_LIMIT = 4000
+NOT_A_CUSTOMER = "Not a customer inquiry"   # the Info Comment on a mail the screening left without a lead
 # Machine mail. Communication keeps no headers (Auto-Submitted, List-Unsubscribe), so the
 # address's local part is the signal there is.
 _AUTOMATED_LOCAL_PARTS = frozenset({
@@ -355,23 +358,65 @@ def _queue_screening(doc) -> bool:
 def screen_new_sender(communication: str) -> None:
 	"""Background job: the lead for team mail from someone new, after the ``gunshop_crm_mail_screen``
 	providers have judged it. Jobs for one sender run one at a time, so two mails from the same new
-	sender make one lead, and the second is not screened."""
-	sender = frappe.db.get_value("Communication", communication, "sender")
-	if not sender:
-		return
-	email = parse_addr(sender)[1].strip().lower()
-	with filelock("ffl_crm_mail_screen_" + hashlib.md5(email.encode()).hexdigest(), timeout=120):
-		commit()   # a fresh snapshot: what the job that held the lock before us wrote is visible
-		doc = frappe.get_doc("Communication", communication)
-		decision = decide(doc)
-		if decision and decision[0] == "lead" and not decision[1]:
-			reason = _not_a_customer(doc, decision[2])
-			if reason:
-				doc.add_comment("Info", reason)
-				return
-			_route_logged(doc, decision, screened=True)
-		else:   # linked or answered by a lead / customer meanwhile: the normal rules
-			_route_logged(doc, decision)
+	sender make one lead, and the second is not screened. A failure of the job itself (the lock, the
+	database) is logged and the lead is made anyway: the mail ends as a lead or as a "not a customer"
+	note, never as nothing."""
+	try:
+		sender = frappe.db.get_value("Communication", communication, "sender")
+		if not sender:
+			return
+		email = parse_addr(sender)[1].strip().lower()
+		with filelock("ffl_crm_mail_screen_" + hashlib.md5(email.encode()).hexdigest(), timeout=120):
+			commit()   # a fresh snapshot: what the job that held the lock before us wrote is visible
+			_screen(communication)
+	except Exception:
+		frappe.log_error(title=f"[{TITLE}] Mail screening failed: {communication}", message=frappe.get_traceback())
+		try:
+			doc = frappe.get_doc("Communication", communication)
+			_route_logged(doc, decide(doc), screened=True)
+		except Exception:
+			frappe.log_error(title=f"[{TITLE}] Screened mail not routed: {communication}", message=frappe.get_traceback())
+
+
+def _screen(communication: str) -> None:
+	doc = frappe.get_doc("Communication", communication)
+	decision = decide(doc)
+	if decision and decision[0] == "lead" and not decision[1]:
+		reason = _not_a_customer(doc, decision[2])
+		if reason:
+			doc.add_comment("Info", reason)
+			return
+	# A lead or customer that appeared meanwhile, or a mail linked since: the normal rules, no provider.
+	_route_logged(doc, decision, screened=True)
+
+
+def screened_out(doc) -> bool:
+	"""A received mail the screening judged "not a customer": unlinked, with that note on it."""
+	return bool(doc.get("communication_type") == "Communication" and doc.get("sent_or_received") == "Received"
+		and not doc.get("reference_doctype") and frappe.db.exists("Comment", {"reference_doctype": "Communication",
+		"reference_name": doc.name, "comment_type": "Info", "content": ["like", NOT_A_CUSTOMER + "%"]}))
+
+
+def mark_screened_out(doc, method=None):
+	"""Communication onload: tells the form to show **Make lead**."""
+	if installed() and screened_out(doc):
+		doc.set_onload("ffl_screened_out", 1)
+
+
+def make_lead(communication: str) -> tuple[str, str]:
+	"""A mail the screening left without a lead gets one, by the normal rules (a customer's mail goes on
+	their deal): (doctype, name) it was linked to. Refused for any other mail."""
+	doc = frappe.get_doc("Communication", communication)
+	# No Communication permission check: Sales Users have none (CRM reads mail through its own API), and
+	# a screened-out mail is team mail by construction. The caller's CRM role is the endpoint's gate.
+	if not screened_out(doc):
+		frappe.throw(_("Only a mail that was checked and judged not to be from a customer, and has no lead yet, can be turned into a lead."),
+			title=_("Not a screened mail"))
+	target = route(doc, decide(doc), screened=True)
+	if not target:
+		frappe.throw(_("The mail rules would not file this mail anywhere now (a blocked or automated sender)."),
+			title=_("No lead made"))
+	return target
 
 
 def _not_a_customer(doc, row) -> str | None:
@@ -387,7 +432,7 @@ def _not_a_customer(doc, row) -> str | None:
 			frappe.log_error(title=f"{SCREEN_HOOK} provider failed: {hook}")
 			continue
 		if isinstance(answer, dict) and answer.get("customer") is False:
-			return f"Not a customer inquiry ({answer.get('category') or 'other'}): {answer.get('reason') or 'no reason given'}"
+			return f"{NOT_A_CUSTOMER} ({answer.get('category') or 'other'}): {answer.get('reason') or 'no reason given'}"
 	return None
 
 
