@@ -135,15 +135,11 @@ def _register_sales_one_by_one(company: str, account: str, rows: list, since) ->
 	"""``rows`` with each merged register invoice replaced by its POS invoices, leaving out the ones whose cash the
 	drawer counted before ``since`` (the last close): a sale rung up, or a draft whose cash was taken, before that close
 	and merged after it is already in the opening. A merged invoice whose parts do not add up to its line stays as is."""
-	merged = [r.voucher_no for r in rows if r.voucher_type == "Sales Invoice"]
-	parts: dict[str, list] = {}
-	for p in cd.pending_pos_rows(company, account, merged_into=merged) if merged else ():
-		parts.setdefault(p.merged_into, []).append(p)
+	parts = cd.merged_parts(company, account, {r.voucher_no: r.amount for r in rows if r.voucher_type == "Sales Invoice"})
 	out = []
 	for r in rows:
-		mine = parts.get(r.voucher_no)
-		if mine and abs(sum(flt(p.amount) for p in mine) - flt(r.amount)) < 0.005:
-			out += [p for p in mine if not since or get_datetime(p.cash_at) > get_datetime(since)]
+		if r.voucher_no in parts:
+			out += [p for p in parts[r.voucher_no] if not since or get_datetime(p.cash_at) > get_datetime(since)]
 		else:
 			out.append(r)
 	return out
