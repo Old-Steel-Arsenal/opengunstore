@@ -121,8 +121,13 @@ def _pos_by_ref(ref: str) -> frappe._dict | None:
 			["name", "card_charged_amount as amount", "card_status as status"], as_dict=True)
 	if not r:
 		r = frappe.db.get_value("Card Terminal Payment", {"unique_reference": ref},
-			["sales_invoice as name", "amount", "status"], as_dict=True)
+			["sales_invoice as name", "gunbroker_order", "amount", "status"], as_dict=True)
 		doctype = "Sales Invoice"
+		if r and not r.name and r.gunbroker_order:
+			# Charged for a GunBroker order that has no invoice yet.
+			r.name, doctype = r.gunbroker_order, "GunBroker Order"
+		if r:
+			r.pop("gunbroker_order", None)
 	if not r:
 		return None
 	return frappe._dict(r, doctype=doctype,

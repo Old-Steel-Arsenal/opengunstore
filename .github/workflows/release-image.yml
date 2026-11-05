@@ -22,13 +22,22 @@ name: Build & push production image
 # Triggers:
 #   - PR to develop   -> light gate: api-docs + build only (image compiles, docs fresh; ~3 min).
 #                        Full tests on demand with the `ci:full` label. Draft PRs run nothing.
-#   - PR to main      -> full gate: api-docs + build + tests + upgrade smoke (the release PR)
+#   - PR to main      -> full gate: api-docs + build + tests + upgrade smoke (the release PR).
+#                        From this repository (never a fork), the build also pushes its image
+#                        as candidate-<tree> after the smoke, and once EVERY gate of the run has
+#                        passed, stamp-tested copies it to tested-<tree> (<tree> = the git tree
+#                        of the merge the run built and tested).
 #   - push to develop -> build + push develop-<sha7> after the smoke (the demo pulls it); `latest`
 #                        is never moved by a develop push. No test gate, same reason develop PRs
 #                        have none. With DEPLOY_REPO set, send pos-develop {tag, sha} to the
 #                        deploy repo (demo-dispatch).
-#   - push to main    -> build + push main-<sha7> (only that tag; never `latest`), then
-#                        `release`: once tests and build pass, the version in
+#   - push to main    -> if tested-<tree> exists for this commit's tree (the release PR was up
+#                        to date with main and passed, so main now holds exactly what it
+#                        built and tested), reuse-image tags that image main-<sha7> and build
+#                        + tests are skipped. Otherwise (a hotfix, a release PR merged behind
+#                        main, no stamp) build + push main-<sha7> and run the tests, as before.
+#                        Then `release` (never `latest` before it): once the image is reused or
+#                        tests and build pass, the version in
 #                        ffl_core/__init__.py becomes the git tag v<x.y.z> and the tags
 #                        v<x.y.z> and `latest` on the same image (scripts/ci/release_plan.py:
 #                        `latest` = the newest release). A version already tagged at another
@@ -84,9 +93,10 @@ jobs:
   # App tests run in PARALLEL with the build — the image build doesn't need the
   # test result. `release` gates on both (needs: [tests, build]), so untested code
   # is never tagged.
-  # One job for all three apps: its 10 workers are balanced across the whole
-  # suite by measured time (scripts/ci/parallel_tests.py). Two jobs (ffl_core /
-  # the rest) paid the container + site setup twice and took two runners.
+  # One suite for all three apps, balanced across the whole of it by measured time
+  # (scripts/ci/parallel_tests.py): on a self-hosted runner one job with 10 workers, on
+  # GitHub-hosted 3 shards of 4 workers (the plan job splits the modules once, so the
+  # shards are disjoint and complete).
   # use_cache=true reuses a cached frappe+erpnext bench on this CD path; the
   # daily ci.yml run stays uncached so it keeps catching upstream drift.
   # Tests: every non-PR run except develop pushes (push main / dispatch — the release gate), PRs
@@ -95,17 +105,24 @@ jobs:
   # No extension leg here: first-party extensions are tested by the maintainers' deployment
   # pipeline, which calls this repo's _app-tests.yml with its own list and token
   # (inputs documented in _app-tests.yml; docs/extensions/testing.md, "First-party extensions").
+  # On GitHub-hosted runners (4 cores, so 4 workers each) the suite is split across 3 jobs:
+  # ~14 min of tests in one job become ~5 min in each, next to the ~4 min every job spends on
+  # its bench and site. One self-hosted runner with 10 workers needs no shards.
+  # A push to main that reuses a release PR's tested image (reuse-image) skips it.
   tests:
+    needs: [reuse-image]
     if: >-
-      (github.event_name != 'pull_request' && github.ref_name != 'develop')
-      || (!github.event.pull_request.draft
-          && (github.event.pull_request.base.ref == 'main'
-              || contains(github.event.pull_request.labels.*.name, 'ci:full')))
+      !cancelled() && needs.reuse-image.outputs.hit != 'true'
+      && ((github.event_name != 'pull_request' && github.ref_name != 'develop')
+          || (!github.event.pull_request.draft
+              && (github.event.pull_request.base.ref == 'main'
+                  || contains(github.event.pull_request.labels.*.name, 'ci:full'))))
     uses: ./.github/workflows/_app-tests.yml
     with:
       use_cache: true
       # ~8 min of tests serially; 10 sites on a self-hosted runner bring them near 2 min.
       workers: 10
+      shards: ${{ ((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNS_ON_TEST) && 1 || 3 }}
       # Variable unset (public repo, fork) = a GitHub-hosted runner; _app-tests.yml caps the
       # workers to its cores there. The cold hosted bench + site build need the longer limit.
       runner: ${{ ((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNS_ON_TEST) || '"ubuntu-latest"' }}
@@ -134,6 +151,67 @@ jobs:
       modules: >-
         ffl_core.tests.test_build_order ffl_core.tests.test_edit_order ffl_core.tests.test_cancel_order ffl_core.tests.test_receive_goods ffl_core.tests.test_acquisition_disposition_cycle ffl_core.tests.test_4473_nics_gating ffl_core.tests.test_pos_close ffl_core.tests.test_consignment_warehouse ffl_core.tests.test_pay_on_sale_settle ffl_integrations.tests.test_fastbound_pos_4473 ffl_integrations.tests.test_payroc ffl_woo_sync.tests.test_channel_exclusion
       timeout_minutes: ${{ ((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNS_ON_TEST) && 30 || 90 }}
+
+  # Push to main: does a release PR run that passed EVERY gate (stamp-tested) hold the image of
+  # exactly this tree? Then that image becomes main-<sha7> and build + tests are skipped.
+  # Same tree = same source, Dockerfile, pinned frappe/ERPNext refs and workflow files as what
+  # that run built, smoke-tested and tested; the release PR is tested on its merge with main,
+  # so this holds whenever main did not move between that run and the merge. Any doubt (no
+  # such tag, a registry error, a failed retag) leaves hit unset: the full build + tests run.
+  # `hit` is written last, only after main-<sha7> points at the tested image.
+  reuse-image:
+    if: github.event_name == 'push' && github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      hit: ${{ steps.done.outputs.hit }}
+      tag: ${{ steps.done.outputs.tag }}
+    # Every step may fail without failing the job: a failure here only means "no reuse", and the
+    # full build + tests that follow decide the run (all-checks-pass counts a failed job).
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        continue-on-error: true
+        with:
+          sparse-checkout: scripts
+
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        continue-on-error: true
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Is there a tested image of this tree?
+        id: look
+        continue-on-error: true
+        env:
+          IMG: ${{ env.REGISTRY }}/${{ env.IMAGE }}
+        run: |
+          set -euo pipefail
+          TREE=$(git rev-parse "${GITHUB_SHA}^{tree}")
+          echo "commit ${GITHUB_SHA}, tree ${TREE}"
+          TREE="$TREE" python3 scripts/ci/release_plan.py reuse
+
+      - name: Tag it main-<sha7>
+        id: done
+        if: steps.look.outputs.digest != ''
+        continue-on-error: true
+        env:
+          IMG: ${{ env.REGISTRY }}/${{ env.IMAGE }}
+          DIGEST: ${{ steps.look.outputs.digest }}
+        run: |
+          set -euo pipefail
+          TAG="main-${GITHUB_SHA:0:7}"
+          if docker buildx imagetools create -t "${IMG}:${TAG}" "${IMG}@${DIGEST}" \
+              && [ "$(docker buildx imagetools inspect "${IMG}:${TAG}" --format '{{json .Manifest.Digest}}')" = "\"${DIGEST}\"" ]; then
+            echo "${IMG}:${TAG} -> ${DIGEST} (built and tested by the release PR): build and tests skipped"
+            { echo "hit=true"; echo "tag=${TAG}"; } >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::could not point ${TAG} at the tested image; building and testing as usual"
+          fi
 
   # Docs freshness: regenerate the API reference from source and fail on any
   # diff, so an endpoint change can't merge without its docs. Pure-python AST
@@ -180,7 +258,10 @@ jobs:
         run: python3 scripts/ci/release_plan.py --check
 
   build:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    needs: [reuse-image]
+    if: >-
+      !cancelled() && needs.reuse-image.outputs.hit != 'true'
+      && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     # CI_RUNS_ON_BUILD unset (public repo, fork) = GitHub-hosted ubuntu-latest.
     runs-on: ${{ fromJSON(((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNS_ON_BUILD) || '"ubuntu-latest"') }}
     # Warm builds take ~2 min on the self-hosted box; a cold frappe+erpnext layer rebuild
@@ -192,6 +273,9 @@ jobs:
       packages: write
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
+      # The git tree the image was built from, and the pushed digest (empty when not pushed).
+      tree: ${{ steps.meta.outputs.tree }}
+      digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -226,11 +310,14 @@ jobs:
               [[ "$v" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "::error::not a git ref: '$v'"; exit 1; }
             done
           fi
-          # The image tag (develop-/main-<sha7>, or a dispatch's own; never v* or `latest`) is
-          # decided in release_plan.py. Only the release job writes `latest`: it is the newest
-          # release, which the deploy repo and every human `docker pull` read.
-          python3 scripts/ci/release_plan.py build-tag
+          # The image tag (develop-/main-<sha7>, candidate-<tree> for a PR, or a dispatch's own;
+          # never v*, tested-* or `latest`) is decided in release_plan.py. Only the release job
+          # writes `latest`: it is the newest release, which the deploy repo and every human
+          # `docker pull` read.
+          TREE=$(git rev-parse "HEAD^{tree}")
+          TREE="$TREE" python3 scripts/ci/release_plan.py build-tag
           {
+            echo "tree=${TREE}"
             echo "frappe_ref=${FRAPPE_REF}"
             echo "erpnext_ref=${ERPNEXT_REF}"
             echo "hrms_ref=${HRMS_REF}"
@@ -271,7 +358,8 @@ jobs:
           # Never pushed from here: the image lands in this daemon's store (docker
           # driver) tagged as above, the extension-layer smoke below runs on it, and
           # only then does the push step publish it — so a tag (or `latest`) never
-          # points at an image that failed the smoke. PR builds stay local.
+          # points at an image that failed the smoke. PR builds stay local, except a
+          # release PR's (candidate-<tree>, see the push step).
           push: false
           load: ${{ runner.environment != 'self-hosted' }}
           cache-from: ${{ runner.environment != 'self-hosted' && 'type=gha' || '' }}
@@ -322,11 +410,76 @@ jobs:
           deploy/prod/tests/test_prune_images.sh
           deploy/prod/tests/test_install_new_apps.sh
 
+      # A release PR's image (into main, from this repository; a fork's token cannot push) goes up
+      # as candidate-<tree>: no deploy reads candidate-*, and it becomes tested-<tree> only
+      # through stamp-tested, once every gate of this run has passed.
       - name: Push image to GHCR (only after the smoke passed)
-        if: github.event_name != 'pull_request'
+        id: push
+        if: >-
+          github.event_name != 'pull_request'
+          || (github.event.pull_request.base.ref == 'main'
+              && github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          REF: ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ steps.meta.outputs.tag }}
         run: |
           set -euo pipefail
-          docker push "${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ steps.meta.outputs.tag }}"
+          docker push "$REF"
+          digest=$(docker buildx imagetools inspect "$REF" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::no digest for $REF: '$digest'"; exit 1; }
+          echo "$REF -> $digest"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+  # The release PR passed every gate: mark its image, by the tree it was built and tested from,
+  # tested-<tree>, for the push to main that merging it makes (reuse-image). By the digest this
+  # run pushed, so it is this run's own smoke-tested image. Only here are tested-* tags written
+  # (a dispatch may not use the prefix). all-checks-pass waits for it, so a release PR is green
+  # only once the stamp step has run; a registry error there is only a warning (the main push
+  # then builds and tests in full).
+  # lazy: candidate-*/tested-* tags are never deleted (one pair per release PR push, sharing
+  # the frappe/ERPNext layers); prune old ones with a scheduled package-version cleanup if the
+  # package grows.
+  stamp-tested:
+    name: Mark the image tested
+    needs: [api-docs-freshness, build, release-version, tests, upgrade]
+    if: >-
+      !cancelled() && github.event_name == 'pull_request' && !github.event.pull_request.draft
+      && github.event.pull_request.base.ref == 'main'
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && needs.api-docs-freshness.result == 'success' && needs.build.result == 'success'
+      && needs.release-version.result == 'success' && needs.tests.result == 'success'
+      && needs.upgrade.result == 'success' && needs.build.outputs.digest != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      packages: write
+    # The stamp only saves the main push a build: a registry error here must not turn a fully
+    # tested release PR red. Its steps may fail; the warning says the main push will build again.
+    steps:
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        id: login
+        continue-on-error: true
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag the image tested-<tree>
+        id: stamp
+        continue-on-error: true
+        env:
+          IMG: ${{ env.REGISTRY }}/${{ env.IMAGE }}
+          TREE: ${{ needs.build.outputs.tree }}
+          DIGEST: ${{ needs.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          [[ "$TREE" =~ ^[0-9a-f]{40}$ && "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::bad tree '$TREE' or digest '$DIGEST'"; exit 1; }
+          docker buildx imagetools create -t "${IMG}:tested-${TREE}" "${IMG}@${DIGEST}"
+          echo "${IMG}:tested-${TREE} -> $(docker buildx imagetools inspect "${IMG}:tested-${TREE}" --format '{{json .Manifest.Digest}}')"
+
+      - name: Stamp failed
+        if: steps.login.outcome == 'failure' || steps.stamp.outcome == 'failure'
+        run: echo "::warning::could not mark the image tested-<tree>; the push to main will build and test in full"
 
   # The demo is deployed from the deploy repo: hand it every develop build.
   demo-dispatch:
@@ -351,9 +504,9 @@ jobs:
           TAG: ${{ needs.build.outputs.tag }}
         run: scripts/ci/dispatch.sh pos-develop "tag=${TAG}" "sha=${GITHUB_SHA}"
 
-  # A release = a version, not a merge. After main's tests and build pass, the
-  # version in ffl_core/__init__.py (make bump-version) becomes the git tag
-  # v<x.y.z> and, on the image main just pushed (main-<sha7>), the tags v<x.y.z>
+  # A release = a version, not a merge. After main's tests and build pass (or main reused the
+  # release PR's tested image), the version in ffl_core/__init__.py (make bump-version) becomes
+  # the git tag v<x.y.z> and, on the image main just pushed or reused (main-<sha7>), the tags v<x.y.z>
   # and `latest` (the newest release) — same digest, no rebuild — and, once deploys are
   # handed off (DEPLOY_REPO), the deploy repo is told and proposes the upgrade per store.
   # scripts/ci/release_plan.py decides: new / resume (re-run after a later step failed: redo
@@ -364,8 +517,13 @@ jobs:
   # (a re-run rebuilds main-<sha7> with a new one).
   release:
     name: Tag the release
-    needs: [tests, build]
-    if: github.event_name == 'push' && github.ref_name == 'main'
+    needs: [reuse-image, tests, build]
+    # A reused image was built and fully tested by the release PR (reuse-image); otherwise this
+    # run's own tests and build must both have passed.
+    if: >-
+      !cancelled() && github.event_name == 'push' && github.ref_name == 'main'
+      && ((needs.reuse-image.result == 'success' && needs.reuse-image.outputs.hit == 'true')
+          || (needs.tests.result == 'success' && needs.build.result == 'success'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -409,7 +567,7 @@ jobs:
         env:
           IMG: ${{ env.REGISTRY }}/${{ env.IMAGE }}
           TAG: ${{ steps.v.outputs.tag }}
-          BUILT: ${{ needs.build.outputs.tag }}
+          BUILT: ${{ needs.reuse-image.outputs.hit == 'true' && needs.reuse-image.outputs.tag || needs.build.outputs.tag }}
           CREATE: ${{ steps.img.outputs.image }}
           LATEST: ${{ steps.img.outputs.latest }}
         run: |
@@ -448,7 +606,7 @@ jobs:
   #   draft-time result can never be a skipped pass sitting on the commit.
   all-checks-pass:
     name: ${{ github.event_name == 'pull_request' && 'all-checks-pass' || format('all-checks-pass ({0})', github.event_name) }}
-    needs: [api-docs-freshness, build, release-version, tests, upgrade]
+    needs: [api-docs-freshness, build, release-version, tests, upgrade, reuse-image, stamp-tested]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -464,4 +622,6 @@ jobs:
           # counts a skipped required job as passing, so this is the only guard.)
           TESTS_REQUIRED: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main' }}
           DRAFT: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
+          # A push to main that reused the release PR's tested image skips build and tests.
+          REUSED: ${{ github.event_name == 'push' && needs.reuse-image.outputs.hit == 'true' }}
         run: python3 scripts/ci/all_checks_pass.py

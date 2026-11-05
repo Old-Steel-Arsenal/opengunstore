@@ -139,6 +139,8 @@ _CARD_METHODS = frozenset({"Visa/MasterCard", "Amex", "Discover"})
 SOURCE_GATEWAY_CHECKOUT = "Gateway (Immediate Checkout)"
 SOURCE_CHECK = "Check or Money Order"
 SOURCE_GATEWAY_GB_SET = "Gateway (GB-set)"
+# Taken by the store itself (card on its own processor, Zelle, ACH), not on GunBroker.
+SOURCE_STORE = "Paid to Store"
 SOURCE_UNKNOWN = "Unknown"
 
 
@@ -869,6 +871,17 @@ def decode_payment_methods(value: Any) -> list[str]:
 	return out
 
 
+def payment_source_for_mode(mode: str) -> str:
+	"""payment_source of a payment we recorded. Only GunBroker's own card
+	checkout is a gateway payment; a card the store charged itself is not."""
+	mode = (mode or "").strip()
+	if mode == "GunBroker Card":
+		return SOURCE_GATEWAY_CHECKOUT
+	if mode == "GunBroker Check":
+		return SOURCE_CHECK
+	return SOURCE_STORE
+
+
 def classify_payment_source(order, methods: list[str]) -> str:
 	"""Where the money came from, first rule that fits.
 
@@ -878,8 +891,7 @@ def classify_payment_source(order, methods: list[str]) -> str:
 	the account, so card money should not exist.
 	"""
 	if (order.payment_mode_used or "").strip():
-		return SOURCE_CHECK if "Card" not in order.payment_mode_used \
-			else SOURCE_GATEWAY_CHECKOUT
+		return payment_source_for_mode(order.payment_mode_used)
 	has_log = bool(order.payment_log_transaction_id or order.payment_log_amount
 		or order.payment_log_date)
 	if has_log and any(m in _CARD_METHODS for m in methods):
@@ -921,7 +933,7 @@ def _warn_on_gateway_payment(order) -> None:
 			"them needs a human to find out what actually happened before the "
 			"gun ships — POS will not open the dispose gate on GunBroker's own "
 			"payment flag, so the order will sit there until somebody records "
-			"what was really banked with Mark Payment Received."
+			"what was really banked with Record Payment."
 		).format(order.name, order.gb_order_id, source),
 		dedup_key="gb_gateway_payment_unexpected", window_minutes=1440)
 

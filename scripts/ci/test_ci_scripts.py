@@ -12,11 +12,25 @@ import all_checks_pass  # noqa: E402
 
 
 class AllChecksPass(unittest.TestCase):
-	def verdict(self, tests_required=False, **results):
+	def verdict(self, tests_required=False, reused=False, **results):
 		base = {"api-docs-freshness": "success", "build": "success", "release-version": "success",
-			"tests": "success", "upgrade": "success"}
+			"tests": "success", "upgrade": "success", "reuse-image": "skipped", "stamp-tested": "skipped"}
 		base.update({k.replace("_", "-"): v for k, v in results.items()})
-		return all_checks_pass.problems({k: {"result": v} for k, v in base.items()}, tests_required)
+		return all_checks_pass.problems({k: {"result": v} for k, v in base.items()}, tests_required, reused=reused)
+
+	def test_reuse_and_stamp_may_skip_even_on_the_release_pr_but_not_fail(self):
+		self.assertEqual(self.verdict(tests_required=True), [])
+		self.assertEqual(self.verdict(tests_required=True, stamp_tested="success"), [])
+		self.assertEqual(self.verdict(tests_required=True, stamp_tested="failure"), ["stamp-tested: failure"])
+		self.assertEqual(self.verdict(reuse_image="failure"), ["reuse-image: failure"])
+
+	def test_a_reused_image_excuses_only_build_and_tests(self):
+		self.assertEqual(self.verdict(reused=True, reuse_image="success", build="skipped", tests="skipped",
+			upgrade="skipped", release_version="skipped"), [])
+		self.assertEqual(self.verdict(build="skipped"), ["build: skipped, but this run must execute it"])
+		self.assertEqual(self.verdict(reused=True, api_docs_freshness="skipped"),
+			["api-docs-freshness: skipped, but this run must execute it"])
+		self.assertEqual(self.verdict(reused=True, tests="failure"), ["tests: failure"])
 
 	def test_all_green_passes(self):
 		self.assertEqual(self.verdict(), [])
@@ -265,6 +279,56 @@ class ReleasePlan(unittest.TestCase):
 		for bad in ("v1.8.2", "v1", "vault", "latest", "main-abc1234", "develop-abc1234", "", "a b", "x;y"):
 			with self.assertRaises(SystemExit, msg=bad):
 				self.rp.build_tag("workflow_dispatch", "main", sha, bad)
+		tree = "f" * 40
+		for bad in ("candidate-" + tree, "tested-" + tree):   # only CI's own gate writes these
+			with self.assertRaises(SystemExit, msg=bad):
+				self.rp.build_tag("workflow_dispatch", "main", sha, bad)
+
+	def test_a_pull_request_image_is_named_by_its_tree(self):
+		tree = "0123456789abcdef0123456789abcdef01234567"
+		self.assertEqual(self.rp.build_tag("pull_request", "141/merge", "f" * 40, "", tree), "candidate-" + tree)
+		for bad in ("", "0123456", tree.upper(), tree + "0"):
+			with self.assertRaises(SystemExit, msg=bad):
+				self.rp.build_tag("pull_request", "141/merge", "f" * 40, "", bad)
+
+	def test_reuse_takes_only_one_clear_digest(self):
+		digest = "sha256:" + "a" * 64
+		self.assertEqual(self.rp.reuse_plan(0, f'"{digest}"\n', "")[0], digest)
+		gone = "ERROR: ghcr.io/x/y:tested-abc: not found"
+		self.assertEqual(self.rp.reuse_plan(1, "", gone)[0], "")
+		# Any doubt builds and tests as usual: never a failure, never a guess.
+		for rc, out, err in ((1, "", "ERROR: unauthorized: authentication required"), (1, "", ""),
+				(127, "", "docker: not found"), (0, "", ""), (0, f'"{digest}" "sha256:{"b" * 64}"', ""),
+				(0, '"sha256:short"', "")):
+			got, note = self.rp.reuse_plan(rc, out, err)
+			self.assertEqual(got, "", (rc, out, err))
+
+	def test_reuse_writes_the_digest_or_nothing(self):
+		import contextlib
+		import io
+		import tempfile
+		from unittest import mock
+		digest = "sha256:" + "c" * 64
+		tree = "1" * 40
+		for rc, out, err, want in ((0, f'"{digest}"', "", digest), (1, "", "manifest unknown", "")):
+			calls = []
+
+			def inspect(cmd, **kw):
+				calls.append(cmd)
+				return mock.Mock(returncode=rc, stdout=out, stderr=err)
+
+			with tempfile.TemporaryDirectory() as d:
+				path = os.path.join(d, "out")
+				with mock.patch.object(self.rp.subprocess, "run", side_effect=inspect), \
+						mock.patch.dict(os.environ, {"GITHUB_OUTPUT": path, "IMG": "ghcr.io/x/y", "TREE": tree}), \
+						contextlib.redirect_stdout(io.StringIO()):
+					self.assertEqual(self.rp.main(["reuse"]), 0)
+				with open(path) as fh:
+					self.assertEqual(fh.read(), f"digest={want}\n")
+			self.assertEqual(calls[0][:5], ["docker", "buildx", "imagetools", "inspect", f"ghcr.io/x/y:tested-{tree}"])
+		with mock.patch.dict(os.environ, {"GITHUB_OUTPUT": "/dev/null", "IMG": "ghcr.io/x/y", "TREE": "../x"}):
+			with self.assertRaises(SystemExit):
+				self.rp.main(["reuse"])
 
 
 class Dispatch(unittest.TestCase):

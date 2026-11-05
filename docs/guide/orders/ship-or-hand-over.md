@@ -6,7 +6,7 @@ Every button below is on the order's card on the **Pending Order** page. A card 
 
 ## Collect a payment (Record Payment)
 
-For a counter order sold on account, or one that still owes a balance. Web orders are paid before they reach the queue. GunBroker orders use [Mark Payment Received](#record-a-gunbroker-payment).
+For a counter order sold on account, or one that still owes a balance. Web orders are paid before they reach the queue. GunBroker orders have their own [Record Payment](#record-a-gunbroker-payment).
 
 1. Click **Record Payment** on the card.
 2. Pick the **Payment Method**: Cash, Credit Card, Zelle, ACH, or Check/Money Order.
@@ -21,13 +21,17 @@ If the card was already run on the Virtual Terminal or a standalone terminal, ti
 
 ## Record a GunBroker payment
 
-GunBroker buyers pay by check or money order. Recording the banked money is what opens **Dispose**. GunBroker's own "payment received" flag on their website does not.
+Recording the money is what opens **Dispose**. GunBroker's own "payment received" flag on their website does not.
 
-1. Bank the check and wait for it to clear.
-2. Click **Mark Payment Received** on the card.
-3. Pick the **Payment Method**: GunBroker Check or GunBroker Card.
-4. Enter the **Cheque / Money Order Number** and the **Amount Banked**.
-5. Set **Deposited On** to the day the money went into the bank, not the day the envelope arrived.
+1. Click **Record Payment** on the card.
+2. Pick the **Payment Method**: Credit Card, Zelle, ACH or Check/Money Order. GunBroker orders are not paid in cash.
+3. Enter the check or money-order number, the Zelle or ACH confirmation, or the card approval code.
+4. Check the **Amount**.
+5. Set **Payment received on** to the day the money went into the bank, not the day the envelope arrived.
+
+A check books to the GunBroker deposit account; Credit Card, Zelle and ACH book like a counter order.
+
+A manager can tick **Key in card number (no terminal)** to type the buyer's card on the card processor's payment page. Otherwise take the card on the Virtual Terminal and enter its approval code.
 
 ## Book the guns out (Dispose)
 
@@ -82,7 +86,7 @@ The order's invoice gets a comment naming you, the unsigned agreements and the r
 3. Click **Push to ShipStation**.
 4. Buy the label in ShipStation.
 
-Ship is greyed out for an expired FFL, for an unpaid individual's order, and while ship-to-store goods have not arrived. A counter pickup gets no Ship. On a GunBroker row, Ship opens after **Mark Payment Received**, before or after Dispose. Web orders never get Ship: the ShipStation plugin on WooCommerce buys their label.
+Ship is greyed out for an expired FFL, for an unpaid individual's order, and while ship-to-store goods have not arrived. A counter pickup gets no Ship. On a GunBroker row, Ship opens after **Record Payment**, before or after Dispose. Web orders never get Ship: the ShipStation plugin on WooCommerce buys their label.
 
 ## Mark an order shipped without ShipStation
 

@@ -19,8 +19,14 @@ on:
         default: false
 
 jobs:
+  # GitHub-hosted (4 cores): 3 shards of 4 workers, each building its bench from scratch. The
+  # serial run took ~30 min; the shards also save the per-module timings on the default
+  # branch, where every pull request's sharded run can read them.
   custom-app-tests:
     uses: ./.github/workflows/_app-tests.yml
+    with:
+      workers: 4
+      shards: 3
 
   # What prod runs (main) upgraded to what ships next (develop): the site is
   # built and filled on main, migrated to develop, then develop's suite runs on
@@ -37,6 +43,8 @@ jobs:
       use_cache: true
       runner: ${{ (!inputs.hosted && vars.CI_RUNS_ON_TEST) || '"ubuntu-latest"' }}
       workers: 8
+      # One job: every shard would first seed its site with the old release's whole suite, serially
+      # (the longest part), so sharding would repeat that, not split it.
       ref: develop
       upgrade_from: main
       seed_with_old_tests: true
