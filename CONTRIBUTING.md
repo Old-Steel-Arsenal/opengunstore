@@ -36,9 +36,12 @@
 5. When `develop` is verified, PR **`develop` → `main`**. That release PR runs
    the full gate (build + tests + the upgrade smoke from main) on the merged tree. Merging to
    `main` triggers the maintainers' deployment, so only maintainers merge release PRs.
-6. Nothing to tag by hand: once `main`'s tests and build pass, the `release` job tags the
-   merge commit `v<x.y.z>` (the version from step 4) and adds that tag to the image `main`
-   just pushed. A merge whose version is already tagged releases nothing — a hotfix
+   Merged while its last run is green and `main` has not moved since, `main` ends up with
+   exactly the tree that run tested, so the push to `main` reuses that run's image instead of
+   building and testing it again (minutes instead of ~20); otherwise it builds and tests as usual.
+6. Nothing to tag by hand: once `main`'s tests and build pass (or it reused the release PR's
+   tested image), the `release` job tags the merge commit `v<x.y.z>` (the version from step 4)
+   and adds that tag to `main`'s image. A merge whose version is already tagged releases nothing — a hotfix
    bumps the patch version (`make bump-version`) to ship.
 
 ## Working in a git worktree

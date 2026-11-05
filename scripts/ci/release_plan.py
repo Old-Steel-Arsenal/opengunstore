@@ -18,7 +18,10 @@ hotfix can move `latest` across lines (docs/versions.md): deploys pin a version,
 
   release_plan.py           → writes version/tag/action to $GITHUB_OUTPUT
   release_plan.py image     → writes image=create|keep and latest=true|false (env IMG, ACTION)
-  release_plan.py build-tag → the image tag the build job publishes (env EVENT, REF_NAME, SHA, DISPATCH_TAG)
+  release_plan.py build-tag → the image tag the build job publishes (env EVENT, REF_NAME, SHA, DISPATCH_TAG,
+                              TREE: a pull request's image is candidate-<tree>)
+  release_plan.py reuse     → for a push to main: is there a tested-<tree> image for this commit's tree?
+                              writes digest=<sha256:…> or digest= (env IMG, TREE)
   release_plan.py --check   → for a PR into main: fails if the version is already tagged
                               or is not greater than the highest release tag
 """
@@ -124,18 +127,46 @@ def image_plan(action: str, rc: int, stderr: str) -> str:
 	raise SystemExit(f"::error::no image to plan for action {action!r}")
 
 
-RESERVED = ("v", "latest", "main-", "develop-")
+RESERVED = ("v", "latest", "main-", "develop-", "candidate-", "tested-")
+TREE = re.compile(r"[0-9a-f]{40}")
 
 
-def build_tag(event: str, ref_name: str, sha: str, dispatch_tag: str) -> str:
-	"""The one tag a build publishes: develop-<sha7> / main-<sha7> / a manual dispatch's own tag."""
+def build_tag(event: str, ref_name: str, sha: str, dispatch_tag: str, tree: str = "") -> str:
+	"""The one tag a build publishes: develop-<sha7> / main-<sha7> / a manual dispatch's own tag.
+
+	A pull request's image is candidate-<tree>, by the git tree of the merge it built: only a
+	release PR (into main, from this repository) pushes it, after the smoke; the
+	stamp-tested job copies it to tested-<tree> once every gate of that run passed, and a push
+	to main whose commit has that same tree reuses it (`reuse`) instead of building again."""
 	if event == "workflow_dispatch":
 		if not re.fullmatch(r"[A-Za-z0-9._/-]+", dispatch_tag):
 			raise SystemExit(f"::error::not a valid image tag: {dispatch_tag!r}")
 		if dispatch_tag.startswith(RESERVED):
-			raise SystemExit(f"::error::{dispatch_tag!r} is reserved (v*, latest, main-*, develop-*): version tags come only from the release job")
+			raise SystemExit(f"::error::{dispatch_tag!r} is reserved (v*, latest, main-*, develop-*, candidate-*, tested-*): version tags come only from the release job")
 		return dispatch_tag
+	if event == "pull_request":
+		if not TREE.fullmatch(tree):
+			raise SystemExit(f"::error::not a git tree id: {tree!r}")
+		return f"candidate-{tree}"
 	return f"{'develop' if ref_name == 'develop' else 'main'}-{sha[:7]}"
+
+
+DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
+
+
+def reuse_plan(rc: int, stdout: str, stderr: str) -> tuple[str, str]:
+	"""(digest, note) from `imagetools inspect <img>:tested-<tree> --format '{{json .Manifest.Digest}}'`.
+
+	digest "" = build and test as usual. Unlike image_plan, nothing here stops the run: any doubt
+	(an error, an answer that is not one digest) only costs the full build and tests."""
+	if rc == 0:
+		found = DIGEST.findall(stdout)
+		if len(found) == 1:
+			return found[0], "a run that passed every gate built this tree: reusing its image"
+		return "", f"::warning::unexpected inspect answer, building as usual: {stdout.strip()[-200:]!r}"
+	if rc == 1 and ABSENT.search(stderr):
+		return "", "no tested image for this tree (a hotfix, or the release PR was not up to date): building as usual"
+	return "", f"::warning::cannot tell whether a tested image exists (inspect exit {rc}), building as usual: {stderr.strip()[-200:]}"
 
 
 def ls_remote(*refs: str) -> tuple[int, str]:
@@ -158,9 +189,20 @@ def output(**kv: str) -> None:
 def main(argv: list[str]) -> int:
 	if argv[:1] == ["build-tag"]:
 		env = os.environ
-		tag = build_tag(env["EVENT"], env["REF_NAME"], env["SHA"], env.get("DISPATCH_TAG", ""))
+		tag = build_tag(env["EVENT"], env["REF_NAME"], env["SHA"], env.get("DISPATCH_TAG", ""), env.get("TREE", ""))
 		print(f"image tag: {tag}")
 		output(tag=tag)
+		return 0
+	if argv[:1] == ["reuse"]:
+		tree = os.environ["TREE"]
+		if not TREE.fullmatch(tree):
+			raise SystemExit(f"::error::not a git tree id: {tree!r}")
+		ref = f"{os.environ['IMG']}:tested-{tree}"
+		p = subprocess.run(["docker", "buildx", "imagetools", "inspect", ref, "--format", "{{json .Manifest.Digest}}"],
+			capture_output=True, text=True)
+		digest, note = reuse_plan(p.returncode, p.stdout, p.stderr)
+		print(f"{ref}: {note}")
+		output(digest=digest)
 		return 0
 	version = read_version(INIT.read_text())
 	tag = f"v{version}"

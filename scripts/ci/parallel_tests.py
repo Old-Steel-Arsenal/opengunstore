@@ -18,6 +18,11 @@ Used by .github/workflows/_app-tests.yml when `workers` > 1 or `modules` is set:
    passes on the re-run is FLAKY: reported, not fatal. Failing again fails the job.
 6. Fail when a worker crashed or nothing ran at all.
 7. Save the measured per-module seconds to --timings for the next split.
+
+`parallel_tests.py plan` splits the modules across several CI jobs (shards) the same way,
+once, before any of them starts (the `plan` job of _app-tests.yml): each shard is then
+handed its own list through --modules and splits it again across its workers. Planning
+once keeps the shards disjoint and complete whatever timings each runner would read.
 """
 import argparse
 import concurrent.futures
@@ -80,6 +85,48 @@ def partition(module_weights, workers):
 		groups[i].append(module)
 		loads[i] += weight
 	return [sorted(g) for g in groups if g], loads
+
+
+def shard_legs(legs, groups):
+	"""The job matrix legs with the core leg replaced by one leg per group of modules.
+
+	legs: [{"suite": "core"}, {"suite": "extensions"}, ...] as the extensions gate decides;
+	every other leg is kept once, as it is. A shard never gets an empty list: an empty
+	--modules would mean every module."""
+	if not groups or not all(groups):
+		raise SystemExit("cannot shard: a shard would get no modules")
+	out = []
+	for leg in legs:
+		if leg.get("suite") != "core":
+			out.append(leg)
+			continue
+		out += [dict(leg, shard=k, shards=len(groups), modules=" ".join(g)) for k, g in enumerate(groups, 1)]
+	return out
+
+
+def plan_main(argv):
+	parser = argparse.ArgumentParser(prog="parallel_tests.py plan", description="Split the test modules across CI jobs")
+	parser.add_argument("--apps-dir", required=True, help="the checkout's apps/ (the modules are discovered there)")
+	parser.add_argument("--apps", required=True)
+	parser.add_argument("--shards", type=int, required=True)
+	parser.add_argument("--modules", default="")
+	parser.add_argument("--timings", default="")
+	parser.add_argument("--legs", default='[{"suite": "core"}]', help="JSON list of matrix legs (the extensions gate's)")
+	args = parser.parse_args(argv)
+	modules = select(discover(args.apps_dir, args.apps.split()), args.modules)
+	groups, loads = partition(weights(modules, read_json(args.timings, {}) if args.timings else {}), max(1, args.shards))
+	legs = shard_legs(json.loads(args.legs), groups)
+	print(f"{len(modules)} test modules in {len(groups)} shards; planned seconds per shard: "
+		f"{', '.join(f'{x:.0f}' for x in loads if x)}")
+	for leg in legs:
+		print(f"  {leg.get('suite')} {leg.get('shard', '')}: {len(leg.get('modules', '').split())} modules")
+	line = f"legs={json.dumps(legs, separators=(',', ':'))}\n"
+	if os.environ.get("GITHUB_OUTPUT"):
+		with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+			fh.write(line)
+	else:
+		sys.stdout.write(line)
+	return 0
 
 
 def verdict(first, reruns):
@@ -271,4 +318,4 @@ def main():
 	return 0 if ok else 1
 
 if __name__ == "__main__":
-	sys.exit(main())
+	sys.exit(plan_main(sys.argv[2:]) if sys.argv[1:2] == ["plan"] else main())
