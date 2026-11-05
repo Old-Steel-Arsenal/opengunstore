@@ -1,5 +1,6 @@
-"""Incoming staff mail: customer mail on their open deal, unknown senders become one lead each,
-our own / blocked / machine senders are left alone, and CRM's own lead switch is taken over."""
+"""Incoming staff mail inserted outside a mail pull: customer mail on their open deal, team mail from
+unknown senders becomes one lead each, direct mail from them and our own / blocked / machine senders
+are left alone, and CRM's own lead switch is taken over. The pull itself: test_crm_team_mail."""
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -10,6 +11,7 @@ from ffl_core.crm import mail
 from ffl_core.tests.crm_support import CRMTestCase
 
 INBOX = "_T CRM Staff Inbox"
+TEAM = "sales@store.test"
 
 
 def _inbox(auto: int = 1) -> str:
@@ -55,15 +57,16 @@ class TestIncomingMail(CRMTestCase):
 	def setUp(self):
 		super().setUp()
 		_inbox()
-		_settings(blocked_sender_domains="spam.test\n@Bulk.Test", own_domains="store.test")
+		_settings(blocked_sender_domains="spam.test\n@Bulk.Test", own_domains="store.test",
+			team_addresses=[{"address": TEAM, "address_type": "Group"}], primary_team_address="")
 
 	def tearDown(self):
 		super().tearDown()
 		# The rollback takes the settings back; the cached copy the save left does not go with it.
 		frappe.clear_document_cache(mail.SETTINGS, mail.SETTINGS)
 
-	def test_an_unknown_sender_becomes_one_lead(self):
-		comm = _receive("Jane Q Public <Jane@Buyer.test>", "Jane Q Public")
+	def test_an_unknown_sender_to_a_team_address_becomes_one_lead(self):
+		comm = _receive("Jane Q Public <Jane@Buyer.test>", "Jane Q Public", recipients=TEAM)
 		leads = _leads("jane@buyer.test")
 		self.assertEqual(len(leads), 1)
 		lead = frappe.get_doc("CRM Lead", leads[0])
@@ -71,9 +74,14 @@ class TestIncomingMail(CRMTestCase):
 		if frappe.db.exists("CRM Lead Source", "Email"):
 			self.assertEqual(lead.source, "Email")
 		self.assertEqual((comm.reference_doctype, comm.reference_name), ("CRM Lead", leads[0]))
-		again = _receive("jane@buyer.test")
+		again = _receive("jane@buyer.test")   # direct mail from a known lead
 		self.assertEqual(_leads("jane@buyer.test"), leads)
 		self.assertEqual(frappe.db.get_value("Communication", again.name, "reference_name"), leads[0])
+
+	def test_direct_mail_from_an_unknown_sender_makes_nothing(self):
+		comm = _receive("friend@buyer.test")
+		self.assertFalse(_leads("friend@buyer.test"))
+		self.assertFalse(frappe.db.get_value("Communication", comm.name, "reference_doctype"))
 
 	def test_a_customer_mail_goes_on_their_open_deal(self):
 		customer = _customer_with_contact("known@buyer.test")
@@ -104,7 +112,7 @@ class TestIncomingMail(CRMTestCase):
 	def test_blocked_own_and_machine_senders_make_nothing(self):
 		for sender in ("deals@spam.test", "x@news.bulk.test", "colleague@store.test", "no-reply@shop.test",
 				"alerts-noreply@bank.test", "noreply+tag@shop.test"):
-			comm = _receive(sender)
+			comm = _receive(sender, recipients=TEAM)
 			self.assertFalse(frappe.db.get_value("Communication", comm.name, "reference_doctype"), sender)
 		self.assertFalse(frappe.get_all("CRM Lead", filters={"email": ["in", ["deals@spam.test", "colleague@store.test",
 			"no-reply@shop.test"]]}))
@@ -120,7 +128,7 @@ class TestIncomingMail(CRMTestCase):
 
 	def test_a_routing_failure_never_fails_the_mail_pull(self):
 		with patch.object(mail, "_new_lead", side_effect=RuntimeError("CRM down")):
-			comm = _receive("broken@buyer.test")
+			comm = _receive("broken@buyer.test", recipients=TEAM)
 		self.assertTrue(frappe.db.exists("Communication", comm.name))
 		self.assertFalse(frappe.db.get_value("Communication", comm.name, "reference_doctype"))
 

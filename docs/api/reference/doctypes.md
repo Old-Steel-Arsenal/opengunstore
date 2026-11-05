@@ -523,10 +523,12 @@ app: `ffl_core` · module: FFL Core · child table
 
 app: `ffl_core` · module: FFL Core · single · roles: Sales Manager, System Manager
 
-Which incoming staff mail never becomes a CRM lead. Turn leads on per mailbox in its Email Account.
+Which incoming staff mail goes into CRM: the store's team addresses, and the domains whose mail never does. Turn CRM sync on per mailbox in its Email Account.
 
 | field | type | label | reqd | options |
 |---|---|---|---|---|
+| `team_addresses` | Table | Team addresses |  | Team Mail Address |
+| `primary_team_address` | Data | Reply-To for staff mail |  | Email |
 | `blocked_sender_domains` | Small Text | Blocked sender domains |  |  |
 | `own_domains` | Small Text | Our own domains |  |  |
 
@@ -748,6 +750,17 @@ A named area of the store (a bank of numbered slots, a display case, a rack, a s
 | `numbering` | Select | Numbering |  | Odd / even, In order |
 | `sort_order` | Int | Sort Order |  |  |
 | `disabled` | Check | Disabled |  |  |
+
+## Team Mail Address
+
+app: `ffl_core` · module: FFL Core · child table
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `address` | Data | Address | ✓ | Email |
+| `address_type` | Select | Type | ✓ | Group, Mailbox |
+| `collector` | Link | Collected by |  | Email Account |
+| `assignment` | Select | New leads |  | Pool, Round robin |
 
 ## Card Charge
 
@@ -1271,6 +1284,7 @@ app: `ffl_integrations` · module: FFL Integrations · single · roles: System M
 | `default_terminal` | Data | Gateway Terminal Number |  |  |
 | `device_serial_number` | Data | Device Serial Number |  |  |
 | `saved_card_terminal` | Data | Saved-Card Terminal Number |  |  |
+| `payment_page_secret` | Password | Payment Page Secret |  |  |
 | `sandbox_mode` | Check | Sandbox Mode |  |  |
 | `last_token_refreshed_at` | Datetime | Last Token Refreshed At |  |  |
 | `last_charge_at` | Datetime | Last Charge At |  |  |

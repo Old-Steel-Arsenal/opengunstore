@@ -1964,6 +1964,15 @@ def cash_ledger_rows(company: str, *, from_date=None, to_date=None, created_afte
 	return rows
 
 
+def merged_parts(company: str, account: str, lines: dict[str, float]) -> dict[str, list]:
+	"""The POS invoices merged into these Sales Invoices (name -> its cash line), keyed by invoice, kept only where
+	they add up to that line: a merge that does not stays one line on its own date."""
+	parts: dict[str, list] = {}
+	for p in pending_pos_rows(company, account, merged_into=list(lines)) if lines else ():
+		parts.setdefault(p.merged_into, []).append(p)
+	return {k: v for k, v in parts.items() if abs(sum(flt(p.amount) for p in v) - flt(lines[k])) < 0.005}
+
+
 _LOG_MERGE_DAYS = 7  # lazy: a register shift left open longer than this before its merge keeps one merged line; widen if shifts ever run that long
 
 
@@ -1974,30 +1983,31 @@ def log_rows(company: str, account: str, from_date, to_date) -> tuple[float, lis
 	crossed midnight lands on the next day in the ledger. The log dates every register sale by its own POS invoice
 	instead -- before and after the merge alike, so a day's lines and balances never move. A merged invoice whose
 	parts do not add up to its cash line stays one line on its own date."""
-	ledger = cash_ledger_rows(company, from_date=from_date, to_date=add_days(to_date, _LOG_MERGE_DAYS), account=account)
+	ahead = add_days(to_date, _LOG_MERGE_DAYS)
+	ledger = cash_ledger_rows(company, from_date=from_date, to_date=ahead, account=account)
 	names = [r.voucher_no for r in ledger if r.voucher_type == "Sales Invoice"]
 	merged = set(frappe.get_all("Sales Invoice", pluck="name", filters={"name": ["in", names or [""]], "is_consolidated": 1}))
-	parts: dict[str, list] = {}
-	if merged:
-		for p in pending_pos_rows(company, account, merged_into=list(merged)):
-			parts.setdefault(p.merged_into, []).append(p)
+	# Sales dated in or before the window whose merge posts after the lookahead (cash taken on an open order whose
+	# 4473 took longer than that): the ledger read above never reaches their merged line.
+	late = dict(frappe.db.sql(
+		"""SELECT gl.voucher_no, SUM(gl.debit - gl.credit) FROM `tabGL Entry` gl
+		WHERE gl.company = %(c)s AND gl.account = %(a)s AND gl.is_cancelled = 0 AND gl.voucher_type = 'Sales Invoice'
+			AND gl.posting_date > %(ahead)s AND gl.voucher_no IN (SELECT i.consolidated_invoice FROM `tabPOS Invoice` i
+				WHERE i.company = %(c)s AND i.docstatus = 1 AND DATE(i.ffl_cash_taken_at) <= %(to)s)
+		GROUP BY gl.voucher_no""",
+		{"c": company, "a": account, "ahead": ahead, "to": to_date})) if frappe.db.has_column("POS Invoice", "ffl_cash_taken_at") else {}
+	parts = merged_parts(company, account, {**{r.voucher_no: r.amount for r in ledger if r.voucher_no in merged}, **late})
 	opening = ledger_sum(company, account, before=from_date)
-	rows = []
+	rows, pos_rows = [], [p for k in late if k in parts for p in parts[k]] + pending_pos_rows(company, account)
 	for r in ledger:
-		mine = parts.get(r.voucher_no)
-		if mine and abs(sum(flt(p.amount) for p in mine) - flt(r.amount)) < 0.005:
-			for p in mine:
-				day = getdate(p.posting_date)
-				if day < from_date:
-					opening += flt(p.amount)  # sold before the window, merged inside it
-				elif day <= to_date:
-					rows.append(p)
+		if r.voucher_no in parts:
+			pos_rows += parts[r.voucher_no]
 		elif getdate(r.posting_date) <= to_date:
 			rows.append(r)
-	for p in pending_pos_rows(company, account):
+	for p in pos_rows:
 		day = getdate(p.posting_date)
 		if day < from_date:
-			opening += flt(p.amount)
+			opening += flt(p.amount)  # sold before the window, merged or still pending
 		elif day <= to_date:
 			rows.append(p)
 	rows.sort(key=lambda r: (str(r.posting_date), str(r.creation)))
@@ -2023,8 +2033,8 @@ def pending_pos_rows(company: str, account: str | None = None, created_after=Non
 	"""The cash of POS invoices not merged yet (tendered cash less change), one row each, same shape as
 	``cash_ledger_rows``. The one place that SQL lives: ``drawer_expected`` sums these. A return is a refund.
 	A draft counts once Take Payment stamped it (``stamp_draft_payment``: a part payment, or paid before the 4473
-	clears), dated by that stamp; ERPNext posts nothing for a draft, yet the cash is in the drawer. Its submit keeps it
-	here as a sale, so it is never counted twice.
+	clears), dated by that stamp -- also once submitted and merged; ERPNext posts nothing for a draft, yet the cash is in
+	the drawer. Its submit keeps it here as a sale, so it is never counted twice.
 
 	``merged_into`` (Sales Invoice names) instead lists the POS invoices already merged into those invoices, each with
 	``merged_into`` and ``cash_at`` (when the drawer started counting it: the Take Payment stamp, else its creation): the
@@ -2034,12 +2044,15 @@ def pending_pos_rows(company: str, account: str | None = None, created_after=Non
 	default_cash = frappe.db.get_value("Company", company, "default_cash_account") or account
 	# Column-guarded: the app code is live before ``bench migrate`` adds the stamp. A draft is dated by its stamp, not by
 	# posting_date, which ERPNext moves to today on every draft save.
-	# lazy: a draft re-stamped by a later Take Payment lists all its cash at the new time, and its submit moves it to the
-	# submit day in the log; booking Take Payment cash as a Payment Entry (needs a CPA ruling) would date each part once.
-	taken = not merged_into and frappe.db.has_column("POS Invoice", "ffl_cash_taken_at")
+	# A stamped draft keeps its stamp's day after submit and merge too: the cash went into the drawer that day, and a log
+	# dated by the submit would leave it out of the opening and list it again as a sale on the submit day.
+	# lazy: a draft re-stamped by a later Take Payment lists all its cash at the new time; booking Take Payment cash as a
+	# Payment Entry (needs a CPA ruling) would date each part once.
+	stamped = frappe.db.has_column("POS Invoice", "ffl_cash_taken_at")
+	taken = not merged_into and stamped
 	when = "IF(i.docstatus = 0, i.ffl_cash_taken_at, i.creation)" if taken else "i.creation"
-	day = "IF(i.docstatus = 0, DATE(i.ffl_cash_taken_at), i.posting_date)" if taken else "i.posting_date"
-	cash_at = "IFNULL(i.ffl_cash_taken_at, i.creation)" if frappe.db.has_column("POS Invoice", "ffl_cash_taken_at") else "i.creation"
+	day = "IFNULL(DATE(i.ffl_cash_taken_at), i.posting_date)" if stamped else "i.posting_date"
+	cash_at = "IFNULL(i.ffl_cash_taken_at, i.creation)" if stamped else "i.creation"
 	return frappe.db.sql(
 		"""SELECT {day} AS posting_date, {when} AS creation, {cash_at} AS cash_at, 'POS Invoice' AS voucher_type, i.name AS voucher_no,
 			i.customer AS party, i.owner, i.consolidated_invoice AS merged_into,

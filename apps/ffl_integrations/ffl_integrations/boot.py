@@ -54,7 +54,7 @@ def extend_bootinfo(bootinfo):
         except Exception:
             pass
 
-    # The card processor that takes new money: {code, label, enabled}; no processor
+    # The card processor that takes new money: {code, label, enabled, keyed}; no processor
     # on = enabled 0 (cards are plain tender on a standalone terminal). Its own try:
     # two processors switched on make active_processor() refuse, and that must not
     # take the FastBound / 4473 keys above down with it. An absent key makes the
@@ -63,7 +63,10 @@ def extend_bootinfo(bootinfo):
     try:
         card = active_processor()
         bootinfo.ffl_card_processor = {"code": card.code if card else "",
-            "label": card.label if card else "", "enabled": 1 if card else 0}
+            "label": card.label if card else "", "enabled": 1 if card else 0,
+            # Keyed entry (payments.api._check_keyed): the payment page is set up. The screens
+            # offer it to managers only; the server refuses everyone else.
+            "keyed": 1 if card and card.supports_keyed_entry() else 0}
     except Exception:
         try:
             frappe.log_error(

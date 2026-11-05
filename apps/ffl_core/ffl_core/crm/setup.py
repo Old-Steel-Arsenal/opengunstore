@@ -1,6 +1,7 @@
 """Frappe CRM on the POS — install / migrate plumbing.
 
-Owns: the two custom fields (``CUSTOM_FIELDS``), the Lead Mail Settings default, the same-site
+Owns: the two custom fields (``CUSTOM_FIELDS``), the Lead Mail Settings default, the team mail
+setup (``crm.team.apply``: staff Reply-To, team mailboxes in User Emails), the same-site
 ERPNext CRM Settings (on, this site, ``sync_products`` off), moving CRM's own "create lead from
 incoming email" switch to ours, the Contact page's Email button, and the one-off backfill that
 makes every Item a CRM Product.
@@ -22,7 +23,7 @@ from __future__ import annotations
 
 import frappe
 
-from ffl_core.crm import TITLE, installed
+from ffl_core.crm import TITLE, installed, team
 from ffl_core.crm.deal import SERIAL_FIELD
 from ffl_core.crm.mail import AUTO_LEAD, SETTINGS
 
@@ -58,8 +59,8 @@ CUSTOM_FIELDS = {
 		"fieldname": AUTO_LEAD,
 		"fieldtype": "Check",
 		"default": "0",
-		"label": "Create leads from unknown senders",
-		"description": "A mail from someone who is not a customer yet becomes a CRM lead; a customer's mail goes on their open deal.",
+		"label": "Sync business mail to CRM",
+		"description": "A staff mailbox: a customer's mail goes on their open deal, a known lead's on the lead, and mail to a team address from someone new becomes a lead. Other mail is not brought in. Team addresses: Lead Mail Settings.",
 		"insert_after": "create_lead_from_incoming_email",
 	}],
 }
@@ -88,6 +89,7 @@ def ensure(backfill: bool = True) -> dict:
 		_as_administrator(ensure_crm_settings)
 		_as_administrator(take_over_lead_flags)
 		_as_administrator(ensure_contact_script)
+		_as_administrator(team.apply)
 		if backfill:
 			enqueue_backfill()
 	except Exception:

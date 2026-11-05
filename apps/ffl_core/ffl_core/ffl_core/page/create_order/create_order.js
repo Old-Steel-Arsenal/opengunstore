@@ -350,6 +350,7 @@ class CreateOrderApp {
 					</div>
 					<div class="row" style="margin-top:12px">
 						<div id="f-charge-terminal"></div>
+						<div id="f-keyed-card" style="display:none"></div>
 						<div id="f-pay-later"></div>
 					</div>
 					<div class="helper" id="deposit-note" style="margin-top:4px"></div>
@@ -500,6 +501,12 @@ class CreateOrderApp {
 				label: __('Charge via Terminal'), fieldtype: 'Check', fieldname: 'charge_terminal',
 				default: 1, change: () => this._syncPaymentFields(),
 			}),
+			// Keyed entry (managers, payment page set up): the card number is typed on the card
+			// processor's payment page instead of the terminal. Not kept on drafts.
+			keyed_card: this._f('#f-keyed-card', {
+				label: __('Key in card number (no terminal)'), fieldtype: 'Check', fieldname: 'keyed_card',
+				default: 0, change: () => this._syncPaymentFields(),
+			}),
 			pay_later: this._f('#f-pay-later', {
 				label: __('Pay later'), fieldtype: 'Check', fieldname: 'pay_later',
 				description: __('No payment now: the order books on account; collect it from Pending Order.'),
@@ -577,13 +584,21 @@ class CreateOrderApp {
 		return !this._payLater() && this._cardOnTerminal() && !!this.fields.charge_terminal.get_value();
 	}
 
+	_keyedCard() {
+		return this._terminalPath() && !!(window.ffl.keyedCard && window.ffl.keyedCard.available())
+			&& !!this.fields.keyed_card.get_value();
+	}
+
 	_syncTerminalNote() {
 		const $n = this.$body.find('#terminal-note');
 		if (!this._terminalPath()) { $n.hide().empty(); return; }
 		const dispose = this.disposeNow
 			? ` ${__('Dispose & Ship Now is skipped for a terminal charge — the order ships from Pending Order once the card is approved.')}`
 			: '';
-		$n.show().html(`<span style="color:var(--blue-600,#1d4ed8)">${__('The card is charged on the terminal right after the order is created.')}${dispose}</span>`);
+		const how = this._keyedCard()
+			? __('The payment page opens right after the order is created — type the card there (card-not-present rates apply).')
+			: __('The card is charged on the terminal right after the order is created.');
+		$n.show().html(`<span style="color:var(--blue-600,#1d4ed8)">${how}${dispose}</span>`);
 	}
 
 	_syncPaymentFields() {
@@ -597,6 +612,8 @@ class CreateOrderApp {
 		if (!needTxn) this.fields.transaction_number.set_value('');
 		const payLater = this._payLater();
 		this.$body.find('#f-charge-terminal').toggle(!payLater && this._cardOnTerminal());
+		this.$body.find('#f-keyed-card').toggle(this._terminalPath()
+			&& !!(window.ffl.keyedCard && window.ffl.keyedCard.available()));
 		this.$body.find('#f-amount').toggle(!payLater);
 		this._syncDepositNote();
 		this._syncTerminalNote();
@@ -2697,6 +2714,7 @@ class CreateOrderApp {
 		// payment BEFORE submit, which a not-yet-charged card cannot satisfy — the
 		// order ships from Pending Order once the approval lands.
 		const terminalAmount = this._terminalPath() ? (flt(payload.paid_amount) || 0) : 0;
+		const keyed = this._keyedCard();
 		if (this._terminalPath()) {
 			payload.payment_received = 0; payload.paid_amount = 0; payload.transaction_number = '';
 			payload.dispose_now = 0;
@@ -2720,7 +2738,7 @@ class CreateOrderApp {
 						: __('Paid {0}', [format_currency(m.paid_amount)]);
 					let retryCard = null;
 					if (terminalAmount > 0 && m.outstanding > 0) {
-						const card = await this._chargeOnTerminal(si, Math.min(terminalAmount, m.outstanding), m.outstanding);
+						const card = await this._chargeOnTerminal(si, Math.min(terminalAmount, m.outstanding), m.outstanding, keyed);
 						pay = card.text;
 						retryCard = card.retry;
 					}
@@ -2795,7 +2813,7 @@ class CreateOrderApp {
 	// books the Payment Entry on approval). Returns {text, retry}: the payment
 	// line for the result dialog and, when the charge did not go through, a
 	// function that runs it again for the same amount.
-	async _chargeOnTerminal(si, amount, outstanding) {
+	async _chargeOnTerminal(si, amount, outstanding, keyed) {
 		const outcome = (res) => {
 			if (res.skip) {
 				return { text: __('On account — outstanding {0}. Terminal not configured: record the card payment from Pending Order.', [format_currency(outstanding)]), retry: null };
@@ -2807,10 +2825,10 @@ class CreateOrderApp {
 					retry: null };
 			}
 			return { text: `<span style="color:var(--orange-700,#92400e)">${__('Card not charged — on account, {0} outstanding. Retry the card here or collect it from Pending Order → Record Payment.', [format_currency(outstanding)])}</span>`,
-				retry: () => this._chargeOnTerminal(si, amount, outstanding) };
+				retry: () => this._chargeOnTerminal(si, amount, outstanding, keyed) };
 		};
 		if (!(window.ffl && window.ffl.chargeSalesInvoice)) return outcome({ skip: true });
-		const res = await window.ffl.chargeSalesInvoice(si, amount);
+		const res = await window.ffl.chargeSalesInvoice(si, amount, { keyed });
 		return outcome(res || { ok: false });
 	}
 
@@ -2834,6 +2852,7 @@ class CreateOrderApp {
 		this._syncCrSection();
 		this.fields.pay_later.set_value(0);
 		this.fields.charge_terminal.set_value(1);
+		this.fields.keyed_card.set_value(0);
 		this.fields.pickup?.set_value(0);
 		this.fields.pickup?.$input?.prop('disabled', false);
 		this.fields.mode.set_value('Cash');
