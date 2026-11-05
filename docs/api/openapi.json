@@ -1823,6 +1823,17 @@
         "type": "object",
         "description": "Custom DocType (ffl_core); CRUD via /api/resource/Lead%20Mail%20Settings — see docs/api/frappe-rest.md.",
         "properties": {
+          "team_addresses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Team_Mail_Address"
+            },
+            "description": "Team addresses"
+          },
+          "primary_team_address": {
+            "type": "string",
+            "description": "Reply-To for staff mail"
+          },
           "blocked_sender_domains": {
             "type": "string",
             "description": "Blocked sender domains"
@@ -2508,6 +2519,40 @@
           "zone_name",
           "kind",
           "company"
+        ]
+      },
+      "Team_Mail_Address": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Team%20Mail%20Address — see docs/api/frappe-rest.md.",
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "Address"
+          },
+          "address_type": {
+            "type": "string",
+            "enum": [
+              "Group",
+              "Mailbox"
+            ],
+            "description": "Type"
+          },
+          "collector": {
+            "type": "string",
+            "description": "Collected by (Link: Email Account)"
+          },
+          "assignment": {
+            "type": "string",
+            "enum": [
+              "Pool",
+              "Round robin"
+            ],
+            "description": "New leads"
+          }
+        },
+        "required": [
+          "address",
+          "address_type"
         ]
       },
       "Card_Charge": {
@@ -7380,13 +7425,68 @@
         }
       }
     },
+    "/api/method/ffl_core.api.crm.connect_my_mailbox": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Start connecting your own mailbox to the POS: the address of the provider's sign-in page.",
+        "description": "For a staff member whose mailbox an administrator set up as an OAuth Email Account with them as\nits connected user; they sign in to their own mail account, not the administrator. Frappe's own\nAuthorize button needs read access to the Connected App, which staff do not have.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:37`",
+        "operationId": "ffl_core.api.crm.connect_my_mailbox",
+        "responses": {
+          "200": {
+            "description": "str: The sign-in address to open. Refused for an Email Account whose connected user is someone else, or that does not sign in with OAuth.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email_account": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The Email Account to connect. Optional when you have only one."
+                  },
+                  "success_uri": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Where to land after signing in (a path on this site). Default: CRM."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.api.crm.open_deal": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "The contact's open deal, made when they have none, to write to them from CRM.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:13`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:15`",
         "operationId": "ffl_core.api.crm.open_deal",
         "responses": {
           "200": {
