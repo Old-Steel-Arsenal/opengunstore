@@ -223,7 +223,9 @@ The web order's **WooCommerce Refunds** table has, per refund: refund id, amount
 
 The method, number, amount banked and deposit date recorded there are replayed onto a payment entry the moment the invoice is raised. Dispose raises the invoice, posts to the general ledger, writes the bound book disposition and pushes to FastBound.
 
-The payment entry goes to the account of the method recorded: GunBroker Check to the deposit account in GunBroker Settings, and Credit Card, Zelle or ACH to the store's own account for that method (the card processor's clearing account for a card). It is dated with the invoice, and its remarks carry the day the money was received. A card keyed in on the card processor's payment page for a GunBroker order is linked to the invoice and its payment entry at that point, so voids, refunds and the card reconciliation treat it like any other counter card charge.
+The payment entry goes to the account of the method recorded. GunBroker Check goes to the deposit account in GunBroker Settings. Credit Card, Zelle and ACH go to the store's own account for that method. The entry is dated with the invoice; its remarks carry the day the money was received.
+
+A card keyed in for a GunBroker order is linked to the invoice and its payment entry once the invoice is raised. Voids, refunds and the card reconciliation then treat it like any other card charge.
 
 GunBroker collects and files sales tax on its orders under its own license, so refunds go through GunBroker's process for the state filing to follow. When the POS detects a cancellation, refund or return on GunBroker, it raises an alert and changes no accounts.
 

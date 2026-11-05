@@ -29,9 +29,9 @@ Recording the money is what opens **Dispose**. GunBroker's own "payment received
 4. Check the **Amount**.
 5. Set **Payment received on** to the day the money went into the bank, not the day the envelope arrived.
 
-A check is booked to the deposit account in GunBroker Settings. Credit Card, Zelle and ACH are booked to the store's own accounts for them, the same as a counter order. The payment entry itself is written when the order is disposed and invoiced.
+A check books to the GunBroker deposit account; Credit Card, Zelle and ACH book like a counter order.
 
-A manager can tick **Key in card number (no terminal)** to type the buyer's card on the card processor's payment page. The approval is recorded as the order's payment. Card-not-present rates apply. Without the box, take the card on the Virtual Terminal and enter its approval code.
+A manager can tick **Key in card number (no terminal)** to type the buyer's card on the card processor's payment page. Otherwise take the card on the Virtual Terminal and enter its approval code.
 
 ## Book the guns out (Dispose)
 
