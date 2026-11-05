@@ -101,6 +101,8 @@ These settings decide which mail from the store's mailboxes goes into CRM. Each 
 
 **Team addresses** lists the shared addresses customers write to, such as sales@ or info@. Mail to one of them from someone new becomes a lead. Mail to a staff member's own address goes in only when it comes from a customer or a known lead. Their other mail stays out of the POS. System Manager only.
 
+An extension can check mail from someone new first (the AI extension does, when its setting is on). Only mail it takes for a customer inquiry becomes a lead. The rest stays in the mail log with a note saying why. To fix a wrong guess, open that mail in the Communication list and click **Make lead**.
+
 | Column | What it does |
 |---|---|
 | **Address** | The shared address |

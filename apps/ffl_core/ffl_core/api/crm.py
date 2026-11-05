@@ -1,13 +1,14 @@
 """Frappe CRM endpoints: the CRM Contact page's Email button (``ffl_core.crm.setup.CONTACT_SCRIPT``)
 opens the contact's deal to write to them, since CRM shows and sends mail only on a lead or a deal;
 **Connect my mailbox** on a staff member's own My Settings (``public/js/user_form.js``) starts the
-sign-in that connects their own mailbox."""
+sign-in that connects their own mailbox; **Make lead** on a Communication (``public/js/communication_form.js``)
+files a mail the AI screening left without a lead."""
 from __future__ import annotations
 
 import frappe
 from frappe import _
 
-from ffl_core.crm import deals
+from ffl_core.crm import deals, mail
 from ffl_core.roles import CRM_ROLES
 
 
@@ -66,3 +67,25 @@ def connect_my_mailbox(email_account: str | None = None, success_uri: str | None
 	app = frappe.get_doc("Connected App", accounts[0].connected_app)
 	# As the caller themselves: Frappe checks no permission for a user's own flow.
 	return app.initiate_web_application_flow(user=user, success_uri=success_uri or "/crm")
+
+
+@frappe.whitelist(methods=["POST"])
+def make_lead_from_mail(communication: str) -> dict:
+	"""Make the lead for a mail the AI screening judged not to be from a customer.
+
+	The mail goes by the normal mail rules with the screening skipped: a new lead shared with the team,
+	or the sender's deal if they have become a customer.
+
+	Args:
+	    communication: The Communication's name.
+
+	Returns:
+	    dict: {"doctype": "CRM Lead" or "CRM Deal", "name": its name} (open it at /crm/leads/<name> or
+	    /crm/deals/<name>). Refused for a mail that is already linked, was not screened out, or is not
+	    received mail.
+	"""
+	frappe.only_for(CRM_ROLES)
+	if not isinstance(communication, str) or not frappe.db.exists("Communication", communication):
+		frappe.throw(_("This mail no longer exists."), frappe.DoesNotExistError)
+	doctype, name = mail.make_lead(communication)
+	return {"doctype": doctype, "name": name}

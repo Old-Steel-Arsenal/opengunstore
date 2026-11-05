@@ -7433,7 +7433,7 @@
           "ffl_core"
         ],
         "summary": "Start connecting your own mailbox to the POS: the address of the provider's sign-in page.",
-        "description": "For a staff member whose mailbox an administrator set up as an OAuth Email Account with them as\nits connected user; they sign in to their own mail account, not the administrator. Frappe's own\nAuthorize button needs read access to the Connected App, which staff do not have.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:37`",
+        "description": "For a staff member whose mailbox an administrator set up as an OAuth Email Account with them as\nits connected user; they sign in to their own mail account, not the administrator. Frappe's own\nAuthorize button needs read access to the Connected App, which staff do not have.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:38`",
         "operationId": "ffl_core.api.crm.connect_my_mailbox",
         "responses": {
           "200": {
@@ -7482,13 +7482,61 @@
         }
       }
     },
+    "/api/method/ffl_core.api.crm.make_lead_from_mail": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Make the lead for a mail the AI screening judged not to be from a customer.",
+        "description": "The mail goes by the normal mail rules with the screening skipped: a new lead shared with the team,\nor the sender's deal if they have become a customer.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:73`",
+        "operationId": "ffl_core.api.crm.make_lead_from_mail",
+        "responses": {
+          "200": {
+            "description": "dict: {\"doctype\": \"CRM Lead\" or \"CRM Deal\", \"name\": its name} (open it at /crm/leads/<name> or /crm/deals/<name>). Refused for a mail that is already linked, was not screened out, or is not received mail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "communication": {
+                    "type": "string",
+                    "description": "The Communication's name."
+                  }
+                },
+                "required": [
+                  "communication"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.api.crm.open_deal": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "The contact's open deal, made when they have none, to write to them from CRM.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:15`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:16`",
         "operationId": "ffl_core.api.crm.open_deal",
         "responses": {
           "200": {
