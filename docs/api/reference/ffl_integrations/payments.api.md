@@ -23,7 +23,7 @@ A cancel that races an approval records the approval instead.
 
 **Permissions:** POS charge roles (_check_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1446`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1455`</sub>
 
 ## `cancel_pos_charge`
 
@@ -191,7 +191,7 @@ evidence another rule force-collects clears itself).
 
 **Permissions:** Manager role (_check_manager).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:2572`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:2581`</sub>
 
 ## `list_terminals`
 
@@ -208,7 +208,7 @@ response's allowedTerminals).
 
 **Permissions:** Manager role.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1490`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1499`</sub>
 
 ## `poll_gb_order_charge`
 
@@ -227,7 +227,7 @@ Poll a keyed card charge started by charge_gb_order once.
 
 **Permissions:** POS charge roles (_check_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1421`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1430`</sub>
 
 ## `poll_pos_charge`
 
@@ -299,7 +299,7 @@ originals refund across rows within per-original-card caps.
 
 **Permissions:** Manager-gated refund roles (gate at entry).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1827`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1836`</sub>
 
 ## `unlock_refund_lock`
 
@@ -336,7 +336,7 @@ mirroring manager_override_4473's audit posture.
 
 **Permissions:** Manager gate (roles per the derived Auth line) + required reason — the reason must record what was verified in the processor's portal.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:2210`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:2219`</sub>
 
 ## `void_pos_invoice`
 
@@ -360,4 +360,4 @@ charge row's unique_reference when more than one live capture exists.
 
 **Permissions:** Refund/void roles (_check_refund_perm).
 
-<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1514`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payments/api.py:1523`</sub>

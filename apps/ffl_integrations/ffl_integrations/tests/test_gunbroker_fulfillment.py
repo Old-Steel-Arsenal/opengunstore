@@ -41,7 +41,6 @@ class _FulfillmentCase(FrappeTestCase):
 		# mark_payment_received reads the card charges on the order (Card Terminal
 		# Payment): its meta loads through the same patched db.get_value.
 		frappe.get_meta("Card Terminal Payment")
-		frappe.db.has_column("Card Terminal Payment", "gunbroker_order")
 		self._patch_object(fulfillment, "notify_admins",
 			side_effect=lambda s, m, **kw: self.alerts.append(kw["dedup_key"]))
 		self._patch("frappe.msgprint",

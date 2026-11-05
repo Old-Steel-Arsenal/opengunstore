@@ -490,6 +490,17 @@ check('GunBroker Record Payment sends what the operator typed', () => {
 	assert(call.args.received_on === '2026-08-25', 'received date not passed');
 });
 
+check('GunBroker Record Payment clears the reference when the method changes', () => {
+	dialogs.length = 0;
+	app._recordPayment(gbRow);
+	const d = dialogs[dialogs.length - 1];
+	d.values.mode = 'Zelle';
+	d.values.transaction_number = 'ZL-77';
+	d.values.mode = 'Check/Money Order';
+	d.opts.fields.find((f) => f.fieldname === 'mode').onchange();
+	assert(!d.values.transaction_number, 'a Zelle number rode along as the cheque number');
+});
+
 check('GunBroker Record Payment keys a card through charge_gb_order', () => {
 	dialogs.length = 0;
 	calls.length = 0;

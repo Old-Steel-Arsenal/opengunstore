@@ -1384,6 +1384,15 @@ def charge_gb_order(gunbroker_order: str, amount=None) -> dict:
             return res
         order = _lock_gb_order(gunbroker_order)
 
+    captured = [r for r in _gb_charges(gunbroker_order) if r.status == "CHARGED"]
+    if captured and not (order.payment_mode_used or "").strip():
+        # The card was taken but recording it failed: record it now, never charge again.
+        row = captured[0]
+        _record_gb_card_payment(row.name, gunbroker_order, flt(row.amount),
+            row.unique_reference or row.approval_code, processor_label=gateway(row.processor).label)
+        return {"ok": True, "already": True, "status": "COMPLETED",
+                "unique_reference": row.unique_reference, "approval_code": row.approval_code or "",
+                "amount": flt(row.amount), "payment_entry": None, "outstanding": 0, "paid": True}
     if (order.payment_mode_used or "").strip():
         frappe.throw(_("GunBroker order {0} is already recorded as paid ({1}).").format(
             order.gb_order_id, order.payment_mode_used))

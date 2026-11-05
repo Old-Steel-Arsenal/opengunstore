@@ -173,18 +173,19 @@ def list_pending_gb_orders() -> list[dict]:
 	# Oldest order first (``names`` is creation-ordered), so the order that has
 	# waited longest gets the gun that has been on the shelf longest.
 	pool = _SuggestionPool()
+	card_checkout = _card_checkout_enabled()
 	out: list[dict] = []
 	for name in names:
 		order = frappe.get_doc(ORDER_DOCTYPE, name)
 		row = _pending_row(order, ss_enabled=ss_enabled, limit_days=limit_days, today=today,
-			pool=pool)
+			pool=pool, card_checkout=card_checkout)
 		if row:
 			out.append(row)
 	return out
 
 
 def _pending_row(order, *, ss_enabled: bool, limit_days: int = 7, today=None,
-		pool: "_SuggestionPool | None" = None) -> dict | None:
+		pool: "_SuggestionPool | None" = None, card_checkout: bool | None = None) -> dict | None:
 	stage = order_stage(order)
 	if stage == STAGE_SHIPPED and order.tracking_pushed_at:
 		return None  # finished: the buyer has a tracking number on GunBroker
@@ -286,7 +287,7 @@ def _pending_row(order, *, ss_enabled: bool, limit_days: int = 7, today=None,
 		"last_payment_mode": order.payment_mode_used or "",
 		# GunBroker's own card checkout: offered in Record Payment only while a gateway
 		# is connected to the account (mark_payment_received refuses it otherwise).
-		"card_checkout_on_gb": _card_checkout_enabled(),
+		"card_checkout_on_gb": _card_checkout_enabled() if card_checkout is None else card_checkout,
 		"ship_pushed": shipstation_pushed(*_shipment(order, invoice)),
 		# The tracking number is written back by the poll, from the label the
 		# store bought. There is no honest manual equivalent, so the button that
@@ -498,16 +499,23 @@ def mark_payment_received(gunbroker_order: str, mode_of_payment: str,
 	"""
 	frappe.only_for(_ROLES)
 	order = frappe.get_doc(ORDER_DOCTYPE, gunbroker_order)
-	charged = _card_charge_on_record(order.name)
-	if charged:
+	charge = _card_charge_on_record(order.name)
+	if charge and charge.status == "IN_PROGRESS":
+		# The payment page may still be approved: a payment typed now would be
+		# overwritten by the card, and the buyer would have paid twice.
+		frappe.throw(_(
+			"A card charge for this order is still open on the card processor's "
+			"payment page. Finish or cancel it on Pending Order before recording "
+			"another payment."), title=_("Card Charge In Progress"))
+	if charge:
 		# The card money is in the processor's account under this order: typing
 		# a different payment over it would drop that money off the books.
 		frappe.throw(_(
 			"A card payment of {0} was already charged for this order (reference "
 			"{1}). That is the payment on record. Refund it with the card "
 			"processor first if a different payment should replace it."
-		).format(frappe.format_value(flt(charged.amount), {"fieldtype": "Currency"}),
-			charged.unique_reference or charged.approval_code or charged.name),
+		).format(frappe.format_value(flt(charge.amount), {"fieldtype": "Currency"}),
+			charge.unique_reference or charge.approval_code or charge.name),
 			title=_("Card Already Charged"))
 	return record_gb_payment(order, mode_of_payment, amount,
 		reference_no=reference_no, received_on=received_on,
@@ -601,12 +609,12 @@ def record_gb_payment(order, mode_of_payment: str, amount: float,
 
 
 def _card_charge_on_record(gunbroker_order: str):
-	"""The card charge taken for this order through the card processor, if any."""
-	if not frappe.db.has_column("Card Terminal Payment", "gunbroker_order"):
-		return None
+	"""A card charge for this order through the card processor that holds, or may
+	still take, the buyer's money (CHARGED first, else IN_PROGRESS)."""
 	rows = frappe.get_all("Card Terminal Payment",
-		filters={"gunbroker_order": gunbroker_order, "status": "CHARGED"},
-		fields=["name", "amount", "unique_reference", "approval_code"], limit=1)
+		filters={"gunbroker_order": gunbroker_order, "status": ("in", ["CHARGED", "IN_PROGRESS"])},
+		fields=["name", "status", "amount", "unique_reference", "approval_code"],
+		order_by="status asc", limit=1)
 	return rows[0] if rows else None
 
 

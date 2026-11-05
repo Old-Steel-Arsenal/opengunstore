@@ -178,6 +178,41 @@ class KeyedCard(_GbRecordPaymentCase):
 			["sales_invoice", "payment_entry"], as_dict=True)
 		self.assertEqual((row.sales_invoice, row.payment_entry), (si.name, pe.name))
 
+	def test_no_typed_payment_while_the_payment_page_is_open(self, cc, _p, _r):
+		client = cc.from_settings.return_value
+		client.find_transaction.return_value = {"data": []}
+		api.charge_gb_order(self.order.name)
+		with self.assertRaises(frappe.ValidationError) as caught:
+			fulfillment.mark_payment_received(self.order.name, "Zelle", self.total,
+				reference_no="ZL-2")
+		self.assertIn("still open", str(caught.exception))
+		self.order.reload()
+		self.assertFalse(self.order.payment_mode_used)
+
+	def test_an_unrecorded_capture_is_recorded_not_charged_again(self, cc, _p, _r):
+		# The card approved but recording it failed (the money fact is CHARGED, the order
+		# has no payment): the next Record Payment records that charge instead of a second one.
+		client = cc.from_settings.return_value
+		out = api.charge_gb_order(self.order.name)
+		self._approve(client, ref="RKG9")
+		with patch("ffl_integrations.payments.api._record_gb_card_payment",
+				side_effect=frappe.ValidationError("record failed")), \
+				self.assertRaises(frappe.ValidationError):
+			api.poll_gb_order_charge(self.order.name, out["instruction_id"])
+		self.assertEqual(frappe.db.get_value(api.TERMINAL_PAYMENT,
+			{"gunbroker_order": self.order.name}, "status"), "CHARGED")
+		self.order.reload()
+		self.assertFalse(self.order.payment_mode_used)
+
+		client.reset_mock()
+		again = api.charge_gb_order(self.order.name)
+		self.assertTrue(again["already"] and again["paid"])
+		client.payment_page_url.assert_not_called()
+		self.assertEqual(frappe.db.count(api.TERMINAL_PAYMENT, {"gunbroker_order": self.order.name}), 1)
+		self.order.reload()
+		self.assertEqual((self.order.payment_mode_used, self.order.payment_reference_no),
+			(MODE_OF_PAYMENT_NAME, "RKG9"))
+
 	def test_cancel_with_nothing_filed_records_nothing(self, cc, _p, _r):
 		client = cc.from_settings.return_value
 		client.find_transaction.return_value = {"data": []}

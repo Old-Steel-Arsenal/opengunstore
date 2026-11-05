@@ -1155,6 +1155,8 @@ class PendingDispositionsApp {
 					fieldtype: 'Select', fieldname: 'mode', label: __('Payment Method'),
 					options: modes.join('\n'), default: 'Check/Money Order', reqd: 1,
 					description: __('GunBroker orders are not paid in cash.'),
+					// A Zelle number must not ride along as a cheque number (or an approval code).
+					onchange: () => { if (d.get_value('transaction_number')) d.set_value('transaction_number', ''); },
 				},
 				...(keyedOk ? [Object.assign(window.ffl.keyedCard.field(), {
 					depends_on: `eval:doc.mode==${card}` })] : []),
