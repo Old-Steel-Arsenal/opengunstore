@@ -478,3 +478,70 @@ class TestConnectMyMailbox(TeamMailCase):
 		frappe.db.set_value("Email Account", STAFF_A, "auth_method", "Basic", update_modified=False)
 		with self.assertRaises(frappe.PermissionError):
 			self._connect(CLERK)
+
+
+class TestPullTeamMailboxes(TeamMailCase):
+	"""The every-minute pull of team mailboxes; only the enqueue and the queue lookup are patched."""
+
+	def setUp(self):
+		super().setUp()
+		frappe.db.set_value("Email Account", INFO, "awaiting_password", 0, update_modified=False)
+		self.queued_jobs: list[str] = []
+		self.enqueue = patch.object(mail, "enqueue").start()
+		self.get_jobs = patch.object(mail, "get_jobs", side_effect=lambda **kw: {frappe.local.site: self.queued_jobs}).start()
+		self.addCleanup(patch.stopall)
+
+	def _job(self, name: str) -> str:
+		return f"pull_from_email_account|{name}"
+
+	def test_a_collector_is_queued_like_frappes_own_pull(self):
+		mail.pull_team_mailboxes()
+		self.enqueue.assert_called_once_with(mail.pull_from_email_account, "short", event="all",
+			job_name=self._job(INFO), email_account=INFO)
+
+	def test_staff_mailboxes_are_left_to_frappes_own_pull(self):
+		mail.pull_team_mailboxes()
+		queued = [c.kwargs["email_account"] for c in self.enqueue.call_args_list]
+		self.assertEqual(queued, [INFO])   # STAFF_A / STAFF_B are in scope but collect nothing
+
+	def test_incoming_off_or_awaiting_password_is_not_queued(self):
+		for field, value in (("enable_incoming", 0), ("awaiting_password", 1)):
+			frappe.db.set_value("Email Account", INFO, field, value, update_modified=False)
+			mail.pull_team_mailboxes()
+			self.enqueue.assert_not_called()
+			frappe.db.set_value("Email Account", INFO, field, 1 - value, update_modified=False)
+
+	def test_oauth_without_a_token_is_not_queued(self):
+		app = frappe.get_doc({"doctype": "Connected App", "provider_name": "_T Team Poll OAuth", "client_id": "test-client",
+			"authorization_uri": "https://accounts.example.com/o/oauth2/auth", "token_uri": "https://accounts.example.com/token",
+			"scopes": [{"scope": "https://mail.example.com/"}]}).insert(ignore_permissions=True).name
+		frappe.db.set_value("Email Account", INFO, {"auth_method": "OAuth", "connected_app": app, "connected_user": CLERK},
+			update_modified=False)
+		mail.pull_team_mailboxes()
+		self.enqueue.assert_not_called()
+		# The app's own sign-in (no per-user token) is not that case.
+		frappe.db.set_value("Email Account", INFO, "backend_app_flow", 1, update_modified=False)
+		mail.pull_team_mailboxes()
+		self.enqueue.assert_called_once()
+
+	def test_a_job_already_queued_is_not_queued_twice(self):
+		self.queued_jobs.append(self._job(INFO))
+		mail.pull_team_mailboxes()
+		self.enqueue.assert_not_called()
+
+	def test_no_collectors_means_no_queue_lookup(self):
+		_settings(team_addresses=[], primary_team_address="")
+		mail.pull_team_mailboxes()
+		self.get_jobs.assert_not_called()
+		self.enqueue.assert_not_called()
+
+	def test_nothing_without_crm(self):
+		with patch.object(mail, "installed", return_value=False):
+			mail.pull_team_mailboxes()
+		self.get_jobs.assert_not_called()
+		self.enqueue.assert_not_called()
+
+	def test_it_is_scheduled_every_minute(self):
+		from ffl_core.tests.test_crm_setup import _hooks_py
+
+		self.assertIn("ffl_core.crm.mail.pull_team_mailboxes", _hooks_py()["scheduler_events"]["cron"]["* * * * *"])

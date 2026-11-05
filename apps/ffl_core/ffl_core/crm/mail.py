@@ -54,6 +54,9 @@ Owner (:func:`claim_on_reply`): the first mail a Sales User or Sales Manager sen
 Deal without an owner makes them its owner, the way CRM's own assignment does (an assignment, which
 CRM mirrors onto the owner field), made as the sender so no notice goes out. Everyone's assignment
 stays, so anyone can take over later by changing the owner in CRM.
+
+Pulling: Frappe pulls every Email Account every 10 minutes, which staff mailboxes keep; a team mailbox
+is also queued for a pull every minute (:func:`pull_team_mailboxes`), so customer mail arrives within about a minute.
 """
 from __future__ import annotations
 
@@ -64,8 +67,11 @@ from functools import partial
 import frappe
 from frappe import _
 from frappe.core.utils import html_to_plain_text
+from frappe.email.doctype.email_account.email_account import pull_from_email_account
 from frappe.email.receive import SentEmailInInboxError
+from frappe.integrations.doctype.connected_app.connected_app import has_token
 from frappe.utils import cint, now, nowdate, parse_addr, split_emails
+from frappe.utils.background_jobs import enqueue, get_jobs
 from frappe.utils.synchronization import filelock
 
 from ffl_core.crm import TITLE, installed, team
@@ -519,3 +525,26 @@ def claim_on_reply(doc, method=None):
 	except Exception:
 		frappe.db.rollback(save_point=_SAVEPOINT)
 		frappe.log_error(title=f"[{TITLE}] Owner not set from a reply: {doctype} {name}", message=frappe.get_traceback())
+
+
+def pull_team_mailboxes():
+	"""Cron, every minute: queue a pull of each team mailbox (collector), the way Frappe's own
+	``pull()`` does for every Email Account every 10 minutes. The same job name keeps a pull still
+	queued or running from being queued twice."""
+	if not installed():
+		return
+	names = team.collectors()
+	if not names:
+		return
+	accounts = frappe.get_all("Email Account", filters={"name": ["in", sorted(names)], "enable_incoming": 1,
+		"awaiting_password": 0}, fields=["name", "auth_method", "backend_app_flow", "connected_app", "connected_user"])
+	if not accounts:
+		return
+	queued = get_jobs(site=frappe.local.site, key="job_name")[frappe.local.site]
+	for account in accounts:
+		if account.auth_method == "OAuth" and not account.backend_app_flow \
+				and not has_token(account.connected_app, account.connected_user):
+			continue   # nothing to sign in with yet, as in Frappe's pull()
+		job_name = f"pull_from_email_account|{account.name}"
+		if job_name not in queued:
+			enqueue(pull_from_email_account, "short", event="all", job_name=job_name, email_account=account.name)

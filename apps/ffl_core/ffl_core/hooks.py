@@ -1044,6 +1044,11 @@ scheduler_events = {
 		"0 7 * * *": [
 			"ffl_core.membership.renew_memberships",
 		],
+		# Team mailboxes are pulled every minute; Frappe's own 10-minute pull of every Email Account
+		# (staff mailboxes included) is left as is (crm/mail.py).
+		"* * * * *": [
+			"ffl_core.crm.mail.pull_team_mailboxes",
+		],
 	},
 	"hourly": [
 		# Backstop for the Stock Ledger Entry hook: clear the storage location of any
