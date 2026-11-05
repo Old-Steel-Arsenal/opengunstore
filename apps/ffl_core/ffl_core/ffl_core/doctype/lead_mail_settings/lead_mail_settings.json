@@ -1,15 +1,46 @@
 {
  "actions": [],
  "creation": "2026-11-04 12:00:00.000000",
- "description": "Which incoming staff mail never becomes a CRM lead. Turn leads on per mailbox in its Email Account.",
+ "description": "Which incoming staff mail goes into CRM: the store's team addresses, and the domains whose mail never does. Turn CRM sync on per mailbox in its Email Account.",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "team_section",
+  "team_addresses",
+  "primary_team_address",
+  "domains_section",
   "blocked_sender_domains",
   "column_domains",
   "own_domains"
  ],
  "fields": [
+  {
+   "fieldname": "team_section",
+   "fieldtype": "Section Break",
+   "label": "Team addresses",
+   "permlevel": 1,
+   "description": "The shared addresses customers write to, such as sales@ or info@. Mail to one of them from someone new becomes a lead; mail to a staff member's own address goes into CRM only from a customer or a known lead."
+  },
+  {
+   "fieldname": "team_addresses",
+   "fieldtype": "Table",
+   "options": "Team Mail Address",
+   "label": "Team addresses",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "primary_team_address",
+   "fieldtype": "Data",
+   "options": "Email",
+   "label": "Reply-To for staff mail",
+   "permlevel": 1,
+   "description": "One of the team addresses. Mail staff send from their own mailbox asks the customer to reply to this address, so the conversation stays with the team. Empty: staff mailboxes keep their own Reply-To."
+  },
+  {
+   "fieldname": "domains_section",
+   "fieldtype": "Section Break",
+   "label": "Never leads"
+  },
   {
    "fieldname": "blocked_sender_domains",
    "fieldtype": "Small Text",
@@ -29,7 +60,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-04 12:00:00.000000",
+ "modified": "2026-11-05 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Lead Mail Settings",
@@ -46,6 +77,17 @@
    "read": 1,
    "role": "Sales Manager",
    "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Sales Manager"
   }
  ],
  "sort_field": "modified",

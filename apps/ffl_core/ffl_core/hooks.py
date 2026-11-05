@@ -280,15 +280,25 @@ doc_events = {
 		"before_rename": "ffl_core.crm.product.before_rename",
 		"on_trash": "ffl_core.crm.product.on_trash",
 	},
-	"CRM Deal": {"validate": "ffl_core.crm.deal.price_lines"},
+	"CRM Deal": {
+		"validate": "ffl_core.crm.deal.price_lines",
+		# A deal converted from a lead the team shares stays shared (ffl_core.crm.mail).
+		"after_insert": "ffl_core.crm.mail.share_converted_deal",
+	},
 	# A new staff account lands on the POS, not on the /apps picker CRM's own app brings (ffl_core.crm).
 	"User": {"validate": "ffl_core.crm.staff_default_app"},
 	"Quotation": {
 		"before_validate": "ffl_core.crm.quotation.default_sales_taxes",
 		"before_submit": "ffl_core.crm.quotation.refuse_submit",
 	},
-	"Email Account": {"validate": "ffl_core.crm.mail.take_over_lead_flag"},
-	"Communication": {"after_insert": "ffl_core.crm.mail.on_incoming"},
+	# CRM's lead switch becomes ours; a staff mailbox answers with the team's Reply-To (ffl_core.crm.team).
+	"Email Account": {"validate": ["ffl_core.crm.mail.take_over_lead_flag", "ffl_core.crm.team.reply_to_on_validate",
+		"ffl_core.crm.team.require_full_sync"]},
+	# Pulled mail: the copy CRM keeps and where it goes; the first reply owns the lead (ffl_core.crm.mail).
+	"Communication": {
+		"before_insert": "ffl_core.crm.mail.skip_unwanted",
+		"after_insert": ["ffl_core.crm.mail.on_incoming", "ffl_core.crm.mail.claim_on_reply"],
+	},
 	"Serial No": {
 		# Inherit a firearm's manufacturer (never importer — that's per-gun only,
 		# 2026-08-20) from its model Item when the serial doesn't set its own, so
@@ -747,6 +757,8 @@ doctype_js = {
     "Serial No": "public/js/serial_no.js",
     "Purchase Receipt": "public/js/purchase_receipt.js",
     "POS Invoice": "public/js/pos_invoice.js",
+    # Connect my mailbox (ffl_core.api.crm.connect_my_mailbox) on a staff member's own My Settings.
+    "User": "public/js/user_form.js",
 }
 doctype_list_js = {
     "Customer": "public/js/customer_list.js",

@@ -1,0 +1,61 @@
+{
+ "actions": [],
+ "creation": "2026-11-05 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "address",
+  "address_type",
+  "collector",
+  "assignment"
+ ],
+ "fields": [
+  {
+   "fieldname": "address",
+   "fieldtype": "Data",
+   "options": "Email",
+   "label": "Address",
+   "in_list_view": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "address_type",
+   "fieldtype": "Select",
+   "options": "Group\nMailbox",
+   "default": "Group",
+   "label": "Type",
+   "description": "Mailbox: a real mailbox with its own Email Account; replies to its mail go out from it. Group: a group or alias without a mailbox of its own.",
+   "in_list_view": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "collector",
+   "fieldtype": "Link",
+   "options": "Email Account",
+   "label": "Collected by",
+   "description": "The Email Account that brings this address's mail into CRM; staff mailboxes then leave it alone. Required for a mailbox. Left empty for a group, every staff mailbox that gets the mail keeps one copy.",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "assignment",
+   "fieldtype": "Select",
+   "options": "Pool\nRound robin",
+   "default": "Pool",
+   "label": "New leads",
+   "description": "Pool: a new lead has no owner until someone replies to it from CRM. Round robin: CRM's own Assignment Rule on leads picks the owner.",
+   "in_list_view": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-11-05 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FFL Core",
+ "name": "Team Mail Address",
+ "owner": "Administrator",
+ "states": [],
+ "istable": 1,
+ "editable_grid": 1,
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC"
+}
