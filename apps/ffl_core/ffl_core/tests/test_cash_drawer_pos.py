@@ -283,6 +283,15 @@ class ShiftCases:
 		self.assertEqual([(l["voucher_type"], l["voucher_no"], l["amount"]) for l in page["lines"]],
 			[("POS Invoice", later, 40)])  # the later sale one by one; the draft's cash not again
 		self.assertEqual((page["cash_in"], page["other"], page["expected"]), (40, 0, flt(page["opening"] + 40, 2)))
+		# The log: cash taken the day before the submit stays on that day, so the submit day opens with it
+		# and does not list it again as a sale.
+		yesterday = getdate(add_days(nowdate(), -1))
+		frappe.db.set_value("POS Invoice", inv.name, "ffl_cash_taken_at", f"{yesterday} 12:00:00")
+		opening, today_rows = cd.log_rows(self.company, self.cash, getdate(), getdate())
+		earlier_opening, earlier = cd.log_rows(self.company, self.cash, yesterday, yesterday)
+		self.assertNotIn(inv.name, [r.voucher_no for r in today_rows])
+		self.assertIn((inv.name, 300), [(r.voucher_no, r.amount) for r in earlier])
+		self.assertEqual(opening, flt(earlier_opening + sum(flt(r.amount) for r in earlier), 2))
 
 	def test_a_closing_made_on_the_pos_screen_is_per_shift_and_not_a_count(self):
 		"""One shift at a time: the Cash row is that shift's own cash (ERPNext's figure), opening 0, never the whole drawer."""

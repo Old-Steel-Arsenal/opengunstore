@@ -2023,8 +2023,8 @@ def pending_pos_rows(company: str, account: str | None = None, created_after=Non
 	"""The cash of POS invoices not merged yet (tendered cash less change), one row each, same shape as
 	``cash_ledger_rows``. The one place that SQL lives: ``drawer_expected`` sums these. A return is a refund.
 	A draft counts once Take Payment stamped it (``stamp_draft_payment``: a part payment, or paid before the 4473
-	clears), dated by that stamp; ERPNext posts nothing for a draft, yet the cash is in the drawer. Its submit keeps it
-	here as a sale, so it is never counted twice.
+	clears), dated by that stamp -- also once submitted and merged; ERPNext posts nothing for a draft, yet the cash is in
+	the drawer. Its submit keeps it here as a sale, so it is never counted twice.
 
 	``merged_into`` (Sales Invoice names) instead lists the POS invoices already merged into those invoices, each with
 	``merged_into`` and ``cash_at`` (when the drawer started counting it: the Take Payment stamp, else its creation): the
@@ -2034,12 +2034,15 @@ def pending_pos_rows(company: str, account: str | None = None, created_after=Non
 	default_cash = frappe.db.get_value("Company", company, "default_cash_account") or account
 	# Column-guarded: the app code is live before ``bench migrate`` adds the stamp. A draft is dated by its stamp, not by
 	# posting_date, which ERPNext moves to today on every draft save.
-	# lazy: a draft re-stamped by a later Take Payment lists all its cash at the new time, and its submit moves it to the
-	# submit day in the log; booking Take Payment cash as a Payment Entry (needs a CPA ruling) would date each part once.
-	taken = not merged_into and frappe.db.has_column("POS Invoice", "ffl_cash_taken_at")
+	# A stamped draft keeps its stamp's day after submit and merge too: the cash went into the drawer that day, and a log
+	# dated by the submit would leave it out of the opening and list it again as a sale on the submit day.
+	# lazy: a draft re-stamped by a later Take Payment lists all its cash at the new time; booking Take Payment cash as a
+	# Payment Entry (needs a CPA ruling) would date each part once.
+	stamped = frappe.db.has_column("POS Invoice", "ffl_cash_taken_at")
+	taken = not merged_into and stamped
 	when = "IF(i.docstatus = 0, i.ffl_cash_taken_at, i.creation)" if taken else "i.creation"
-	day = "IF(i.docstatus = 0, DATE(i.ffl_cash_taken_at), i.posting_date)" if taken else "i.posting_date"
-	cash_at = "IFNULL(i.ffl_cash_taken_at, i.creation)" if frappe.db.has_column("POS Invoice", "ffl_cash_taken_at") else "i.creation"
+	day = "IFNULL(DATE(i.ffl_cash_taken_at), i.posting_date)" if stamped else "i.posting_date"
+	cash_at = "IFNULL(i.ffl_cash_taken_at, i.creation)" if stamped else "i.creation"
 	return frappe.db.sql(
 		"""SELECT {day} AS posting_date, {when} AS creation, {cash_at} AS cash_at, 'POS Invoice' AS voucher_type, i.name AS voucher_no,
 			i.customer AS party, i.owner, i.consolidated_invoice AS merged_into,
