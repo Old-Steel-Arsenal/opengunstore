@@ -593,6 +593,16 @@ class TestSoftReserve(FrappeTestCase):
 		sn_sv = [c for c in mock_sv.call_args_list if c[0][0] == "Serial No"]
 		self.assertEqual(len(sn_sv), 0)
 
+	def test_a_new_order_is_noted(self):
+		body = _order_body(line_items=[{"id": 1, "sku": "AMMO-001", "quantity": 2, "price": "25.00"}])
+		patcher_new, doc = _patch_new_doc()
+		with _patch_db_exists(return_value=None), patcher_new, \
+				patch("frappe.db.get_value", return_value={"is_firearm": 0, "uniform_sell_price": 0}), \
+				patch("frappe.db.set_value"), patch("frappe.enqueue"), \
+				patch("ffl_woo_sync.woocommerce.webhook.note_web_order") as note:
+			_handle_order_created(body)
+		note.assert_called_once_with(doc.name, "placed")
+
 	def test_ffl_fields_captured_on_order(self):
 		"""FFL meta_data → captured on Woo Online Order doc."""
 		meta = [

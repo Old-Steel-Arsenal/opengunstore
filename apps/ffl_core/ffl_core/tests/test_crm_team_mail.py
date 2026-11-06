@@ -274,13 +274,6 @@ class TestIncoming(TeamMailCase):
 		self.assertEqual(_stored(bcc)[0].reference_doctype, "CRM Lead")
 		self.assertNoPullErrors()
 
-	def test_blocked_own_and_machine_team_mail_is_not_stored(self):
-		for i, sender in enumerate(("deals@spam.example.net", "colleague@example.com", "no-reply@example.org")):
-			raw = _raw(sender, SALES)
-			_pull(INFO, (raw, 20 + i))
-			self.assertFalse(_stored(raw), sender)
-		self.assertNoPullErrors()
-
 	def test_team_mail_is_left_to_its_collector(self):
 		raw = _raw("new.buyer@example.org", "ffltm-staff-a@example.com", cc=SALES)
 		_pull(STAFF_A, (raw, 30))

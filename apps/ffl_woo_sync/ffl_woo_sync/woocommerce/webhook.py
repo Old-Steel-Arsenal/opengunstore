@@ -35,6 +35,7 @@ from frappe.utils import flt
 
 from ffl_core.alerts import safe_log_error
 from ffl_core.compliance.ffl_number import FFL_NUMBER_RE, is_cr_license
+from ffl_core.crm.web_orders import CANCELLED, PLACED, REFUNDED, TRANSFERRED, note_web_order
 from ffl_core.firearm import is_antique_item, is_firearm_item, is_regulated_firearm_item
 from ffl_core.reservations import (
 	CHANNEL_WOO,
@@ -1290,6 +1291,7 @@ def _refresh_ship_to_if_unrouted(order, body: dict) -> bool:
 
 def _book_revenue_after_auto_clear(order) -> None:
 	"""#8 — book the Sales Invoice for an order auto-cleared to Transferred.
+	Also its note on the customer's open CRM deal: this is every auto-clear's next step.
 
 	The only route to a web Sales Invoice ran through ``Transferred``, and only a
 	firearm disposition ever set that — so a purely-accessory web order booked NO
@@ -1303,6 +1305,7 @@ def _book_revenue_after_auto_clear(order) -> None:
 	"""
 	if (order.get("order_status") or "") != "Transferred":
 		return
+	note_web_order(order.name, TRANSFERRED)
 	# Which job finishes the order — antique retire (stock out -> retire listing
 	# -> revenue, see antique.py) or the plain revenue booking (which now also
 	# issues an accessory order's own shelf stock) — is decided in ONE place,
@@ -1781,6 +1784,7 @@ def _handle_order_created(body: dict) -> None:
 
 	order.flags.ignore_permissions = True
 	order.insert()
+	note_web_order(order.name, PLACED)
 
 	# Tag the order 'web' (Desk-filterable) so it's distinguishable from counter
 	# orders. Write _user_tags directly: Document.add_tag() runs a permission check
@@ -2659,9 +2663,13 @@ def _handle_order_updated(body: dict) -> None:
 	# runs (so a job failure is retryable, never a lost refund). No-op on orders
 	# with no refunds.
 	from ffl_woo_sync.woocommerce.refunds import has_pending_breakdown, record_order_refunds
+	known_refunds = {str(row.woo_refund_id) for row in order.get("refunds") or []}
 	new_refund = record_order_refunds(order, body)
 	if new_refund:
 		changed = True
+		for row in order.refunds:
+			if str(row.woo_refund_id) not in known_refunds:
+				note_web_order(order.name, REFUNDED, key=str(row.woo_refund_id), amount=row.refund_amount)
 	if new_refund or has_pending_breakdown(order):
 		# One job per order: redeliveries while it waits add nothing. A refund
 		# that lands while the job is already RUNNING is dropped here (Frappe
@@ -2834,6 +2842,10 @@ def _handle_order_cancelled(body: dict) -> None:
 		"order_status": "Cancelled",
 		"woo_status": _order_status(body) or "cancelled",
 	})
+	# Not failed / trash / draft: an unpaid order that may yet come back is no news for the deal.
+	event = {"cancelled": CANCELLED, "refunded": REFUNDED}.get(_order_status(body))
+	if event:
+		note_web_order(order_name, event)
 
 	# #9 — the write above is db.set_value, which fires NO doc_events, so anything
 	# that must react to a cancellation has to be called explicitly. The

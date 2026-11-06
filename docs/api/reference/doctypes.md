@@ -45,6 +45,23 @@ The text of a waiver or agreement customers sign.
 | `body` | Text Editor | Agreement Text | ✓ |  |
 | `description` | Small Text | Staff Notes |  |  |
 
+## CRM Mail Category
+
+app: `ffl_core` · module: FFL Core · roles: Sales Manager, Sales User, System Manager
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `category_name` | Data | Category | ✓ |  |
+
+## CRM Mail Category Rule
+
+app: `ffl_core` · module: FFL Core · child table
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `domain` | Data | Domain | ✓ |  |
+| `category` | Link | Category | ✓ | CRM Mail Category |
+
 ## Caliber
 
 app: `ffl_core` · module: FFL Core · roles: Sales User, Stock User, System Manager
@@ -531,6 +548,8 @@ Which incoming staff mail goes into CRM: the store's team addresses, and the dom
 | `primary_team_address` | Data | Reply-To for staff mail |  | Email |
 | `blocked_sender_domains` | Small Text | Blocked sender domains |  |  |
 | `own_domains` | Small Text | Our own domains |  |  |
+| `category_rules` | Table | Category rules |  | CRM Mail Category Rule |
+| `spam_folder` | Data | Spam folder |  |  |
 | `crm_pos_link` | Check | Link deals to POS orders |  |  |
 
 ## MCP Settings

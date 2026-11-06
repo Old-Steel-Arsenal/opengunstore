@@ -1,5 +1,5 @@
 """Lead Mail Settings (CRM mail settings): the store's team addresses and the domains whose mail never
-becomes a CRM lead. Incoming rules in ffl_core.crm.mail, team addresses in ffl_core.crm.team. Its
+becomes a CRM lead. Also the rules that sort other mail, and the spam folder to check. Incoming rules in ffl_core.crm.mail, team addresses in ffl_core.crm.team. Its
 ``crm_pos_link`` switch turns on the deal to POS link (ffl_core.crm.customer, ffl_core.crm.orders)."""
 from __future__ import annotations
 
@@ -17,6 +17,10 @@ class LeadMailSettings(Document):
 		# One clean domain per line (lowercase, no "@", no blanks or repeats).
 		for field in ("blocked_sender_domains", "own_domains"):
 			self.set(field, "\n".join(domain_lines(self.get(field))))
+
+		for rule in self.get("category_rules") or []:
+			rule.domain = (rule.domain or "").strip().lower().lstrip("@")
+		self.spam_folder = (self.spam_folder or "").strip()
 
 		seen = set()
 		for row in self.get("team_addresses") or []:

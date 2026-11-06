@@ -48,7 +48,7 @@ def _contact(email: str | None = None, phone: str | None = None, first_name: str
 	return doc.name
 
 
-def _deal(contact: str | None = None, *, owner: str | None = OWNER, products=(), status: str = "Qualification"):
+def _deal(contact: str | None = None, *, owner: str | None = OWNER, products=(), status: str = "New"):
 	contact = contact or _contact(f"{_token()}@example.com")
 	doc = frappe.new_doc("CRM Deal")
 	doc.status = status
@@ -218,11 +218,11 @@ class TestWriteBack(DealPOSCase):
 
 		deal = _deal().name
 		si = self._sale(deal, 400)
-		frappe.db.set_value("CRM Deal", deal, "status", "Negotiation")
+		frappe.db.set_value("CRM Deal", deal, "status", "Talking")
 		ret = make_sales_return(si.name)
 		ret.insert(ignore_permissions=True)
 		ret.submit()
-		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "status"), "Negotiation")
+		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "status"), "Talking")
 
 	def test_an_amended_invoice_stays_on_the_deal(self):
 		deal = _deal().name
@@ -328,7 +328,7 @@ class TestWriteBack(DealPOSCase):
 		upsert_product(frappe.get_doc("Item", GUN))
 		deal = _deal(products=[{"product_code": product_of(GUN), "qty": 1, "ffl_serial_no": serial}]).name
 		si = self._sale(deal, 400)
-		frappe.db.set_value("CRM Deal", deal, "status", "Negotiation")
+		frappe.db.set_value("CRM Deal", deal, "status", "Talking")
 		frappe.db.set_value("Serial No", serial, "status", "Delivered")
 		si.reload()
 		si.cancel()
@@ -346,18 +346,18 @@ class TestWriteBack(DealPOSCase):
 			job_id=f"ffl_crm_recalculate:{deal}", deduplicate=True, deal=deal, may_win=True)
 		self.assertEqual(si.docstatus, 1)
 		self.assertEqual(frappe.db.get_value("Sales Invoice", si.name, "docstatus"), 1)
-		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "status"), "Qualification")
+		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "status"), "New")
 		self.assertEqual(frappe.db.count("Error Log", {"method": ["like", "[CRM] Deal write-back failed%"]}), before + 1)
 
 	def test_a_failed_write_back_is_retried_by_a_job(self):
-		deal = _deal(status="Qualification").name
+		deal = _deal(status="New").name
 		queued = []
 		with patch.object(orders, "_apply", side_effect=frappe.ValidationError("boom")), \
 				patch("frappe.enqueue", side_effect=lambda method, **kw: queued.append((method, kw))):
 			si = self._sale(deal, 400)
 		self.assertEqual(frappe.db.get_value("Sales Invoice", si.name, "docstatus"), 1)
 		self.assertTrue(frappe.db.exists("Error Log", {"method": f"[CRM] Deal write-back failed: {si.name}"}))
-		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "status"), "Qualification")
+		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "status"), "New")
 		self.assertEqual(len(queued), 1)
 		method, kw = queued[0]
 		self.assertEqual((kw["queue"], kw["enqueue_after_commit"], kw["deduplicate"]), ("short", True, True))
@@ -376,7 +376,7 @@ class TestWriteBack(DealPOSCase):
 			si.cancel()
 		orders.recalculate_deal(deal)
 		row = frappe.db.get_value("CRM Deal", deal, ["status", "deal_value"], as_dict=True)
-		self.assertEqual((row.status, flt(row.deal_value)), ("Qualification", 0), "no invoice stands: not Won")
+		self.assertEqual((row.status, flt(row.deal_value)), ("New", 0), "no invoice stands: not Won")
 		kept = self._sale(deal, 250)
 		orders.recalculate_deal(deal)
 		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "status"), "Won")
@@ -387,10 +387,10 @@ class TestWriteBack(DealPOSCase):
 		self.assertEqual(frappe.db.get_value("Sales Invoice", kept.name, "docstatus"), 1)
 
 	def test_the_retry_of_a_cancel_leaves_the_status_alone(self):
-		deal = _deal(status="Qualification").name
+		deal = _deal(status="New").name
 		self._sale(deal, 400)
 		second = self._sale(deal, 100)
-		frappe.db.set_value("CRM Deal", deal, "status", "Qualification")   # staff moved it back
+		frappe.db.set_value("CRM Deal", deal, "status", "New")   # staff moved it back
 		queued = []
 		with patch.object(orders, "_apply", side_effect=frappe.ValidationError("boom")), \
 				patch("frappe.enqueue", side_effect=lambda method, **kw: queued.append(kw)):
@@ -399,7 +399,7 @@ class TestWriteBack(DealPOSCase):
 		self.assertFalse(queued[0]["may_win"])
 		orders.recalculate_deal(deal, may_win=queued[0]["may_win"])
 		row = frappe.db.get_value("CRM Deal", deal, ["status", "deal_value"], as_dict=True)
-		self.assertEqual((row.status, flt(row.deal_value)), ("Qualification", 400))
+		self.assertEqual((row.status, flt(row.deal_value)), ("New", 400))
 
 	def test_a_queue_that_is_down_does_not_stop_the_invoice(self):
 		deal = _deal().name
@@ -453,7 +453,7 @@ class TestSwitch(DealPOSCase):
 		self.assertFalse(pos_link_on())
 		deal = _deal().name
 		si = self._sale(deal, 400)
-		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "status"), "Qualification")
+		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "status"), "New")
 		self.assertEqual(flt(frappe.db.get_value("CRM Deal", deal, "deal_value")), 0)
 		si.reload()
 		si.cancel()
@@ -718,7 +718,7 @@ class TestBannedAndFlagged(DealPOSCase):
 		payload.update(pickup_in_store=1, tax_exempt=1, pos_profile=self.pos)
 		with self.assertRaisesRegex(frappe.ValidationError, "Banned"):
 			manual_order.create_order(payload)
-		self.assertEqual(frappe.db.get_value("CRM Deal", deal.name, "status"), "Qualification")
+		self.assertEqual(frappe.db.get_value("CRM Deal", deal.name, "status"), "New")
 
 
 class TestSummary(DealPOSCase):

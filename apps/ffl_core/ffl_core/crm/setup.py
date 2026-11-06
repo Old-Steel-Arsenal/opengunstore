@@ -2,8 +2,8 @@
 
 Owns: the two custom fields (``CUSTOM_FIELDS``), the Lead Mail Settings default, the team mail
 setup (``crm.team.apply``: staff Reply-To, team mailboxes in User Emails), the same-site
-ERPNext CRM Settings (on, this site, ``sync_products`` off), CRM's currency, moving CRM's own "create lead from
-incoming email" switch to ours, the Contact page's Email button, the Deal page's customer card and
+ERPNext CRM Settings (on, this site, ``sync_products`` off), CRM's currency, the deal stages, moving CRM's own
+"create lead from incoming email" switch to ours, the Contact page's Email button, the Deal page's customer card and
 Open order button (:func:`apply_pos_link`, following Lead Mail Settings › crm_pos_link), and the
 one-off backfill that makes every Item a CRM Product.
 
@@ -29,14 +29,25 @@ import frappe
 from ffl_core.crm import TITLE, installed, pos_link_on, team
 from ffl_core.crm.customer import CARD_FIELD
 from ffl_core.crm.deal import SERIAL_FIELD
-from ffl_core.crm.deals import DEAL
-from ffl_core.crm.mail import AUTO_LEAD, SETTINGS
+from ffl_core.crm.deals import DEAL, STATUS
+from ffl_core.crm.mail import AUTO_LEAD, CATEGORY, CATEGORY_FIELD, LEAD, OTHER_MAIL, SETTINGS
 from ffl_core.crm.orders import DEAL_FIELD
 
 CRM_SETTINGS = "ERPNext CRM Settings"
 FCRM_SETTINGS = "FCRM Settings"
 SEEDED_FLAG = "ffl_crm_settings_seeded"
 BACKFILL_FLAG = "ffl_crm_backfill_done"
+DEAL_STAGES_FLAG = "ffl_crm_deal_stages_done"
+# CRM's stock deal stages and what they become. A stage dropped hands its deals to the one named.
+RENAMED_STAGES = {"Qualification": "New", "Demo/Making": "Talking", "Proposal/Quotation": "Quoted"}
+DROPPED_STAGES = {"Negotiation": "Talking", "Ready to Close": "Quoted"}
+DEAL_STAGES = ("New", "Talking", "Quoted", "Won", "Lost")
+MAIL_CATEGORIES = ("Automated", "Blocked", "Distributor", "Dealer", "GunBroker", "Marketing", "Notification",
+	"Our store", "Vendor", "Other")
+CATEGORY_RULES = {"gunbroker.com": "GunBroker", "rsrgroup.com": "Distributor"}
+MAIL_SETUP_FLAG = "ffl_crm_other_mail_seeded"
+VIEWS_FLAG = "ffl_crm_views_seeded"
+FOLLOW_UPS = "My follow-ups"
 BACKFILL_JOB = "ffl_crm_product_backfill"
 # CRM's own per-page customization (a CRM Form Script record): the Email button on a Contact page.
 CONTACT_SCRIPT = "OpenGunstore: Email a contact"
@@ -138,6 +149,14 @@ CUSTOM_FIELDS = {
 		"description": "For a gun priced one by one: the gun this line is for. Blank quotes the cheapest one in stock.",
 		"insert_after": "net_amount",
 	}],
+	"CRM Lead": [{
+		"fieldname": CATEGORY_FIELD,
+		"fieldtype": "Link",
+		"options": CATEGORY,
+		"label": "Mail category",
+		"insert_after": "status",
+		"in_standard_filter": 1,
+	}],
 	"Email Account": [{
 		"fieldname": AUTO_LEAD,
 		"fieldtype": "Check",
@@ -171,6 +190,9 @@ def ensure(backfill: bool = True) -> dict:
 		_as_administrator(ensure_settings)
 		_as_administrator(ensure_crm_settings)
 		_as_administrator(ensure_crm_currency)
+		_as_administrator(ensure_deal_stages)
+		_as_administrator(ensure_other_mail)
+		_as_administrator(ensure_crm_views)
 		_as_administrator(take_over_lead_flags)
 		_as_administrator(ensure_contact_script)
 		_as_administrator(apply_pos_link)
@@ -243,6 +265,100 @@ def ensure_crm_currency() -> str | None:
 	frappe.db.set_single_value(FCRM_SETTINGS, "currency", currency)
 	frappe.clear_document_cache(FCRM_SETTINGS, FCRM_SETTINGS)
 	return currency
+
+
+def ensure_deal_stages() -> bool:
+	"""Once per site: CRM's stock deal stages become the ones a gun store uses. Remembered with a site
+	global, so a stage a manager adds or renames later stays. A stage a site has already replaced is
+	left alone."""
+	if frappe.db.get_global(DEAL_STAGES_FLAG):
+		return False
+	moved = {}
+	for old, new in RENAMED_STAGES.items():
+		if frappe.db.exists(STATUS, old) and not frappe.db.exists(STATUS, new):
+			frappe.rename_doc(STATUS, old, new, force=True)
+			moved[old] = new
+	for old, new in DROPPED_STAGES.items():
+		if frappe.db.exists(STATUS, old) and frappe.db.exists(STATUS, new):
+			frappe.db.set_value(DEAL, {"status": old}, "status", new)
+			frappe.delete_doc(STATUS, old, ignore_permissions=True)
+			moved[old] = new
+	for position, stage in enumerate(DEAL_STAGES, 1):
+		if frappe.db.exists(STATUS, stage):
+			frappe.db.set_value(STATUS, stage, "position", position)
+	_move_stages_in_saved_views(moved)
+	frappe.db.set_global(DEAL_STAGES_FLAG, "1")
+	return True
+
+
+def _move_stages_in_saved_views(moved: dict) -> None:
+	"""A saved Deal view keeps stage names as JSON, in its filter and its kanban columns, where a
+	rename does not reach them."""
+	def swap(value):
+		return [swap(v) for v in value] if isinstance(value, list) else moved.get(value, value)
+
+	views = frappe.get_all("CRM View Settings", filters={"dt": DEAL}, fields=["name", "filters", "kanban_columns"])
+	for view in views:
+		filters = json.loads(view.filters or "{}")
+		if "status" in filters:
+			filters["status"] = swap(filters["status"])
+		columns = {}   # two old stages can land on one new stage: its column appears once
+		for column in json.loads(view.kanban_columns or "[]"):
+			column["name"] = swap(column.get("name"))
+			columns.setdefault(column["name"], column)
+		frappe.db.set_value("CRM View Settings", view.name, {"filters": json.dumps(filters),
+			"kanban_columns": json.dumps(list(columns.values()))}, update_modified=False)
+
+
+def ensure_other_mail() -> None:
+	"""The Other mail status always (mail depends on it); the categories and first rules once per site,
+	so a manager who removes one keeps it removed."""
+	if not frappe.db.exists("CRM Lead Status", OTHER_MAIL):
+		frappe.get_doc({"doctype": "CRM Lead Status", "lead_status": OTHER_MAIL, "type": "On Hold", "color": "gray",
+			"position": 99}).insert(ignore_permissions=True)
+	if frappe.db.get_global(MAIL_SETUP_FLAG) or not frappe.db.exists("DocType", CATEGORY):
+		return
+	for name in MAIL_CATEGORIES:
+		if not frappe.db.exists(CATEGORY, name):
+			frappe.get_doc({"doctype": CATEGORY, "category_name": name}).insert(ignore_permissions=True)
+	settings = frappe.get_doc(SETTINGS)
+	have = {rule.domain for rule in settings.get("category_rules") or []}
+	for domain, category in CATEGORY_RULES.items():
+		if domain not in have:
+			settings.append("category_rules", {"domain": domain, "category": category})
+	settings.save(ignore_permissions=True)   # our own Single, written by install/migrate as Administrator
+	frappe.db.set_global(MAIL_SETUP_FLAG, "1")
+
+
+def ensure_crm_views() -> None:
+	"""The shared views staff work from (CRM's sidebar lists public views). Once per site: a manager may
+	change or delete them. Follow-ups name the closed stages, so a stage added later is in the view."""
+	from crm.fcrm.doctype.crm_lead.crm_lead import CRMLead
+
+	if frappe.db.get_global(VIEWS_FLAG):
+		return
+	closed = lambda doctype: frappe.get_all(doctype, filters={"type": ["in", ["Won", "Lost"]]}, pluck="name")  # noqa: E731
+	columns = CRMLead.default_list_data()
+	_ensure_view(LEAD, "Leads", OTHER_MAIL, {"status": OTHER_MAIL},
+		columns=[{"label": "Mail category", "type": "Link", "key": CATEGORY_FIELD, "options": CATEGORY, "width": "10rem"},
+			*columns["columns"]], rows=[*columns["rows"], CATEGORY_FIELD])
+	_ensure_view(LEAD, "Leads", FOLLOW_UPS, {"lead_owner": ["in", ["@me", ""]], "communication_status": "Open",
+		"status": ["not in", [*closed("CRM Lead Status"), OTHER_MAIL]]}, order_by="modified asc")
+	_ensure_view(DEAL, "Deals", FOLLOW_UPS, {"deal_owner": ["in", ["@me", ""]], "communication_status": "Open",
+		"status": ["not in", closed(STATUS)]}, order_by="modified asc")
+	frappe.db.set_global(VIEWS_FLAG, "1")
+
+
+def _ensure_view(doctype: str, route: str, label: str, filters: dict, order_by: str = "modified desc",
+		columns: list | None = None, rows: list | None = None) -> None:
+	found = {"dt": doctype, "label": label, "public": 1}
+	if frappe.db.exists("CRM View Settings", found):
+		return
+	view = frappe.get_doc({"doctype": "CRM View Settings", "dt": doctype, "label": label, "type": "list", "public": 1,
+		"route_name": route, "filters": json.dumps(filters), "order_by": order_by,
+		"load_default_columns": 0 if columns else 1, "columns": json.dumps(columns or []), "rows": json.dumps(rows or [])})
+	view.insert(ignore_permissions=True)
+	frappe.db.set_value("CRM View Settings", view.name, "user", "")   # shared views have this, not NULL (CRM's get_views)
 
 
 def take_over_lead_flags() -> list[str]:

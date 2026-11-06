@@ -109,13 +109,14 @@ class TestIncomingMail(CRMTestCase):
 		deal = frappe.db.get_value("Communication", _receive("owner@buyer.test").name, "reference_name")
 		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "deal_owner"), user)
 
-	def test_blocked_own_and_machine_senders_make_nothing(self):
-		for sender in ("deals@spam.test", "x@news.bulk.test", "colleague@store.test", "no-reply@shop.test",
-				"alerts-noreply@bank.test", "noreply+tag@shop.test"):
+	def test_blocked_own_and_machine_senders_are_other_mail(self):
+		for sender, category in (("deals@spam.test", "Blocked"), ("x@news.bulk.test", "Blocked"),
+				("colleague@store.test", "Our store"), ("no-reply@shop.test", "Automated"),
+				("alerts-noreply@bank.test", "Automated"), ("noreply+tag@shop.test", "Automated")):
 			comm = _receive(sender, recipients=TEAM)
-			self.assertFalse(frappe.db.get_value("Communication", comm.name, "reference_doctype"), sender)
-		self.assertFalse(frappe.get_all("CRM Lead", filters={"email": ["in", ["deals@spam.test", "colleague@store.test",
-			"no-reply@shop.test"]]}))
+			[lead] = _leads(sender)
+			self.assertEqual(frappe.db.get_value("Communication", comm.name, "reference_name"), lead)
+			self.assertEqual(frappe.db.get_value("CRM Lead", lead, ["status", mail.CATEGORY_FIELD]), (mail.OTHER_MAIL, category))
 
 	def test_a_mailbox_without_the_switch_makes_nothing(self):
 		_inbox(auto=0)

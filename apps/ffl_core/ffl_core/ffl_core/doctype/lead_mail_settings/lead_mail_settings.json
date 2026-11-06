@@ -12,6 +12,9 @@
   "blocked_sender_domains",
   "column_domains",
   "own_domains",
+  "other_mail_section",
+  "category_rules",
+  "spam_folder",
   "pos_section",
   "crm_pos_link"
  ],
@@ -60,6 +63,22 @@
    "description": "One domain per line: the store's own mail, which never becomes a lead."
   },
   {
+   "fieldname": "other_mail_section",
+   "fieldtype": "Section Break",
+   "label": "Other mail"
+  },
+  {
+   "fieldname": "category_rules",
+   "fieldtype": "Table",
+   "label": "Category rules",
+   "options": "CRM Mail Category Rule"
+  },
+  {
+   "fieldname": "spam_folder",
+   "fieldtype": "Data",
+   "label": "Spam folder"
+  },
+  {
    "fieldname": "pos_section",
    "fieldtype": "Section Break",
    "label": "POS"
@@ -73,7 +92,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-05 12:00:00.000000",
+ "modified": "2026-11-06 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Lead Mail Settings",

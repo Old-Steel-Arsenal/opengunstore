@@ -195,6 +195,7 @@ nav:
           - Card voids and refunds: guide/manager/card-refunds.md
           - Set up the store map: guide/manager/store-map.md
           - Settings: guide/manager/settings.md
+          - Other mail: guide/manager/other-mail.md
       - Admin and bookkeeper:
           - guide/admin/index.md
           - Month-end close: guide/admin/month-end.md

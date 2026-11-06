@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenGunstore API",
-    "version": "0.6.7",
+    "version": "0.7.0",
     "description": "RPC API of the OpenGunstore custom apps (Frappe/ERPNext v16): ffl_core, ffl_integrations, ffl_woo_sync.\n\nAll endpoints are Frappe *whitelisted methods* invoked as `/api/method/<dotted.path>`. Unless an endpoint declares explicit HTTP verbs, it is documented here as POST (Frappe also accepts GET for read-only calls; always POST mutations). Arguments may be sent as JSON body, form data, or query string — JSON body is recommended.\n\nEvery operation carries an **Auth (derived from code)** line statically resolved from the role gate the function actually executes; the prose Permissions note adds semantics the machine can't infer.\n\nStandard CRUD on DocTypes is served by Frappe's REST layer (`/api/resource/<DocType>`) — see docs/api/frappe-rest.md; the custom DocTypes are modelled under components.schemas and listed in reference/doctypes.md."
   },
   "servers": [
@@ -196,6 +196,37 @@
         "required": [
           "title",
           "body"
+        ]
+      },
+      "CRM_Mail_Category": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/CRM%20Mail%20Category — see docs/api/frappe-rest.md.",
+        "properties": {
+          "category_name": {
+            "type": "string",
+            "description": "Category"
+          }
+        },
+        "required": [
+          "category_name"
+        ]
+      },
+      "CRM_Mail_Category_Rule": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/CRM%20Mail%20Category%20Rule — see docs/api/frappe-rest.md.",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Domain"
+          },
+          "category": {
+            "type": "string",
+            "description": "Category (Link: CRM Mail Category)"
+          }
+        },
+        "required": [
+          "domain",
+          "category"
         ]
       },
       "Caliber": {
@@ -1841,6 +1872,17 @@
           "own_domains": {
             "type": "string",
             "description": "Our own domains"
+          },
+          "category_rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CRM_Mail_Category_Rule"
+            },
+            "description": "Category rules"
+          },
+          "spam_folder": {
+            "type": "string",
+            "description": "Spam folder"
           },
           "crm_pos_link": {
             "type": "integer",
@@ -7490,6 +7532,36 @@
         }
       }
     },
+    "/api/method/ffl_core.api.crm.crm_list_data": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "CRM's list data for its Leads and Deals pages (hooks.py overrides ``crm.api.doc.get_data``), with",
+        "description": "two changes: a Leads list leaves out other mail unless it filters on the status or category, and\n``@me`` inside a filter's list of values is the caller (CRM's page replaces only a plain ``@me``, and\n**My follow-ups** asks for \"mine or nobody's\").\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:161`",
+        "operationId": "ffl_core.api.crm.crm_list_data",
+        "responses": {
+          "200": {
+            "description": "dict: CRM's answer: the rows and columns of the list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.api.crm.deal_customer_summary": {
       "post": {
         "tags": [
@@ -7534,6 +7606,36 @@
                 ]
               }
             }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.api.crm.deals_use_no_quotes": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Stands in for CRM's quotation gates (hooks.py): the Deal page shows no Quotations tab and no",
+        "description": "**Create Quotation** button, since a deal closes through **Open order**.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:193`",
+        "operationId": "ffl_core.api.crm.deals_use_no_quotes",
+        "responses": {
+          "200": {
+            "description": "bool: Always False.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
           }
         }
       }
@@ -24387,7 +24489,7 @@
           "webhooks"
         ],
         "summary": "Single WooCommerce webhook entry point (guest, HMAC-verified).",
-        "description": "**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\n**Payload:** WooCommerce's webhook JSON body; the X-WC-Webhook-Topic header selects the handler (order.created/updated, product.*, ...). The X-WC-Webhook-Signature header must carry a valid HMAC over the raw body (secret configured in Woo Sync Settings).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/webhook.py:2938`",
+        "description": "**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\n**Payload:** WooCommerce's webhook JSON body; the X-WC-Webhook-Topic header selects the handler (order.created/updated, product.*, ...). The X-WC-Webhook-Signature header must carry a valid HMAC over the raw body (secret configured in Woo Sync Settings).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/webhook.py:2950`",
         "operationId": "ffl_woo_sync.woocommerce.webhook.woo_event",
         "responses": {
           "200": {
