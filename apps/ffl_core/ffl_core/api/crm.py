@@ -2,13 +2,16 @@
 opens the contact's deal to write to them, since CRM shows and sends mail only on a lead or a deal;
 **Connect my mailbox** on a staff member's own My Settings (``public/js/user_form.js``) starts the
 sign-in that connects their own mailbox; **Make lead** on a Communication (``public/js/communication_form.js``)
-files a mail the AI screening left without a lead."""
+files a mail the AI screening left without a lead; the Deal page's customer card and **Open order**
+(``ffl_core.crm.setup.DEAL_SCRIPT``), behind Lead Mail Settings' switch."""
 from __future__ import annotations
 
 import frappe
 from frappe import _
+from frappe.utils import cint
 
-from ffl_core.crm import deals, mail
+from ffl_core.crm import customer as deal_customer
+from ffl_core.crm import deals, mail, pos_link_on
 from ffl_core.roles import CRM_ROLES
 
 
@@ -89,3 +92,66 @@ def make_lead_from_mail(communication: str) -> dict:
 		frappe.throw(_("This mail no longer exists."), frappe.DoesNotExistError)
 	doctype, name = mail.make_lead(communication)
 	return {"doctype": doctype, "name": name}
+
+
+def _deal_for_pos_link(deal: str, ptype: str):
+	if not pos_link_on():
+		frappe.throw(_("Linking deals to POS orders is off. A manager can turn it on in Lead Mail Settings."),
+			title=_("Turned off"))
+	if not isinstance(deal, str) or not frappe.db.exists(deals.DEAL, deal):
+		frappe.throw(_("This deal no longer exists."), frappe.DoesNotExistError)
+	frappe.has_permission(deals.DEAL, ptype, doc=deal, throw=True)
+	return frappe.get_doc(deals.DEAL, deal)
+
+
+@frappe.whitelist()
+def deal_customer_summary(deal: str) -> dict:
+	"""What the Deal page's customer card shows. Never carries an ID number, date of birth, 4473 or
+	NICS.
+
+	Args:
+	    deal: The CRM Deal's name.
+
+	Returns:
+	    dict: {"customer": None, "matches": [...], "html"} before the deal has a customer, else
+	    {"customer", "customer_name", "flags": {"status", "status_reason", "banned",
+	    "override_until", "alerts", "tags"}, "ffl": {"is_dealer", "on_file", "expiry_date",
+	    "expired"}, "orders": last orders, "open_orders": orders on Pending Order, "lifetime_spend":
+	    Net Sales as the Sales Report reads it, "html"}. Refused while the switch is off.
+	"""
+	frappe.only_for(CRM_ROLES)
+	return deal_customer.customer_summary(_deal_for_pos_link(deal, "read"))
+
+
+@frappe.whitelist(methods=["POST"])
+def ensure_deal_customer(deal: str, customer: str | None = None, create: int = 0) -> dict:
+	"""The deal's POS customer: its link, the matches to confirm, or a new customer on confirm.
+
+	Args:
+	    deal: The CRM Deal's name.
+	    customer: The Customer the employee confirmed: it goes on the deal and on its contact.
+	    create: 1 to make a new Customer from the deal's contact.
+
+	Returns:
+	    dict: {"customer": name} once there is one; else {"customer": None, "matches":
+	    [{"name", "customer_name", "customer_status", "matched", "banned", "status_reason",
+	    "alerts"}], "new": the values a new customer would take, "html": the dialog's text}.
+	"""
+	frappe.only_for(CRM_ROLES)
+	return deal_customer.ensure_customer(_deal_for_pos_link(deal, "write"), customer=customer or None,
+		create=bool(cint(create)))
+
+
+@frappe.whitelist(methods=["POST"])
+def open_deal_order(deal: str) -> dict:
+	"""Save a deal with a customer as a Create Order draft, to finish the sale on that page.
+
+	Args:
+	    deal: The CRM Deal's name.
+
+	Returns:
+	    dict: {"draft": the draft's name, "route": the page to open, "skipped": deal lines that are
+	    not POS items}. The page sets the prices, as for a line picked there.
+	"""
+	frappe.only_for(CRM_ROLES)
+	return deal_customer.open_order(_deal_for_pos_link(deal, "write"))

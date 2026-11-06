@@ -2,9 +2,10 @@
 
 Owns: the two custom fields (``CUSTOM_FIELDS``), the Lead Mail Settings default, the team mail
 setup (``crm.team.apply``: staff Reply-To, team mailboxes in User Emails), the same-site
-ERPNext CRM Settings (on, this site, ``sync_products`` off), moving CRM's own "create lead from
-incoming email" switch to ours, the Contact page's Email button, and the one-off backfill that
-makes every Item a CRM Product.
+ERPNext CRM Settings (on, this site, ``sync_products`` off), CRM's currency, moving CRM's own "create lead from
+incoming email" switch to ours, the Contact page's Email button, the Deal page's customer card and
+Open order button (:func:`apply_pos_link`, following Lead Mail Settings › crm_pos_link), and the
+one-off backfill that makes every Item a CRM Product.
 
 Runs at ffl_core's after_install and after_migrate, and when ``crm`` is installed on a site that
 already has ffl_core (after_app_install): an existing store gets Frappe CRM with the release that
@@ -21,13 +22,19 @@ Quotation "to" option, CRM's Create Quotation script) are called directly.
 """
 from __future__ import annotations
 
+import json
+
 import frappe
 
-from ffl_core.crm import TITLE, installed, team
+from ffl_core.crm import TITLE, installed, pos_link_on, team
+from ffl_core.crm.customer import CARD_FIELD
 from ffl_core.crm.deal import SERIAL_FIELD
+from ffl_core.crm.deals import DEAL
 from ffl_core.crm.mail import AUTO_LEAD, SETTINGS
+from ffl_core.crm.orders import DEAL_FIELD
 
 CRM_SETTINGS = "ERPNext CRM Settings"
+FCRM_SETTINGS = "FCRM Settings"
 SEEDED_FLAG = "ffl_crm_settings_seeded"
 BACKFILL_FLAG = "ffl_crm_backfill_done"
 BACKFILL_JOB = "ffl_crm_product_backfill"
@@ -45,8 +52,84 @@ CONTACT_SCRIPT_JS = """function setupForm({ doc, call, router }) {
 	}
 }
 """
+# The Deal page's customer card and Open order button: a CRM Form Script, on while the switch is.
+DEAL_SCRIPT = "OpenGunstore: Deal to POS"
+DEAL_SCRIPT_JS = """class CRMDeal {
+	onLoad() {
+		if (this.doc.__newDocument) return
+		this.actions.push({ label: __("Open order"), onClick: () => this.fflOpenOrder() })
+		this.fflLoadCard()
+	}
+	fflError(e) {
+		toast.error(e.messages?.[0] || e.message || __("Something went wrong."))
+	}
+	fflLoadCard() {
+		call("ffl_core.api.crm.deal_customer_summary", { deal: this.doc.name })
+			.then((summary) => this.setFieldHtml("%(card)s", summary.html))
+			.catch((e) => this.fflError(e))
+	}
+	async fflOpenOrder() {
+		try {
+			const linked = await call("ffl_core.api.crm.ensure_deal_customer", { deal: this.doc.name })
+			if (linked.customer) return await this.fflGoToOrder()
+			const choose = (args) => async (close) => {
+				close()
+				try {
+					await call("ffl_core.api.crm.ensure_deal_customer", { deal: this.doc.name, ...args })
+					await this.fflGoToOrder()
+				} catch (e) {
+					this.fflError(e)
+				}
+			}
+			createDialog({
+				title: __("Who is the buyer?"),
+				html: linked.html,
+				actions: [
+					...linked.matches.map((m) => ({
+						label: m.banned ? __("Use {0} (Banned)", [m.customer_name]) : __("Use {0}", [m.customer_name]),
+						variant: "solid",
+						theme: m.banned ? "red" : undefined,
+						onClick: choose({ customer: m.name }),
+					})),
+					{
+						label: __("Create customer"),
+						variant: linked.matches.length ? "outline" : "solid",
+						onClick: choose({ create: 1 }),
+					},
+				],
+			})
+		} catch (e) {
+			this.fflError(e)
+		}
+	}
+	async fflGoToOrder() {
+		const order = await call("ffl_core.api.crm.open_deal_order", { deal: this.doc.name })
+		window.location.href = order.route
+	}
+}
+""" % {"card": CARD_FIELD}
+# Where the card sits on the Deal page: after Contacts, as CRM places its own Lost Reason section.
+SIDE_PANEL = f"{DEAL}-Side Panel"
+CARD_SECTION = "ffl_customer_section"
 
 CUSTOM_FIELDS = {
+	"CRM Deal": [{
+		"fieldname": CARD_FIELD,
+		"fieldtype": "HTML",
+		"label": "Customer card",
+		"insert_after": "lead_name",
+	}],
+	# Data, as CRM's own Quotation.crm_deal: a deal deleted later must never stop a credit note.
+	# Not no_copy: a credit note and an amended invoice stay on the deal.
+	"Sales Invoice": [{
+		"fieldname": DEAL_FIELD,
+		"fieldtype": "Data",
+		"label": "CRM Deal",
+		"read_only": 1,
+		"print_hide": 1,
+		"search_index": 1,
+		"insert_after": "ffl_staff_note",
+	}],
 	"CRM Products": [{
 		"fieldname": SERIAL_FIELD,
 		"fieldtype": "Link",
@@ -87,8 +170,10 @@ def ensure(backfill: bool = True) -> dict:
 		_as_administrator(ensure_custom_fields)
 		_as_administrator(ensure_settings)
 		_as_administrator(ensure_crm_settings)
+		_as_administrator(ensure_crm_currency)
 		_as_administrator(take_over_lead_flags)
 		_as_administrator(ensure_contact_script)
+		_as_administrator(apply_pos_link)
 		_as_administrator(team.apply)
 		if backfill:
 			enqueue_backfill()
@@ -145,6 +230,21 @@ def ensure_crm_settings() -> dict:
 	return changed
 
 
+def ensure_crm_currency() -> str | None:
+	"""CRM's own currency is the store's. CRM saves its settings at install, so a site that gets CRM
+	before its setup wizard keeps whatever Frappe's default was then. A deal in the store's currency
+	then asks a public rate API on every insert (CRM Deal ``update_exchange_rate``); with that API
+	unreachable CRM refuses the deal, and a customer's mail stays unrouted. Returns the currency set."""
+	company = _default_company()
+	currency = company and frappe.db.get_value("Company", company, "default_currency")
+	if not currency or frappe.db.get_single_value(FCRM_SETTINGS, "currency") == currency:
+		return None
+	# Not a save: CRM makes the field read-only once set, and its save re-runs its own setup.
+	frappe.db.set_single_value(FCRM_SETTINGS, "currency", currency)
+	frappe.clear_document_cache(FCRM_SETTINGS, FCRM_SETTINGS)
+	return currency
+
+
 def take_over_lead_flags() -> list[str]:
 	"""Every Email Account with CRM's own lead switch on gets ours instead (CRM's would make a
 	lead for a customer we already know)."""
@@ -168,6 +268,39 @@ def ensure_contact_script() -> None:
 	current = frappe.db.get_value("CRM Form Script", CONTACT_SCRIPT, ["script", "enabled"], as_dict=True)
 	if current.script != CONTACT_SCRIPT_JS or not current.enabled:
 		frappe.db.set_value("CRM Form Script", CONTACT_SCRIPT, {"script": CONTACT_SCRIPT_JS, "enabled": 1})
+
+
+def apply_pos_link() -> None:
+	"""The Deal page follows Lead Mail Settings › crm_pos_link: the script runs and the card's section
+	shows only while it is on. Migrate and that page's save, by whoever may change the settings."""
+	if not frappe.db.exists("DocType", "CRM Form Script"):
+		return
+	on = pos_link_on()
+	want = {"script": DEAL_SCRIPT_JS, "enabled": 1 if on else 0}
+	if not frappe.db.exists("CRM Form Script", DEAL_SCRIPT):
+		frappe.get_doc({"doctype": "CRM Form Script", "name": DEAL_SCRIPT, "dt": DEAL, "view": "Form", **want}
+			).insert(ignore_permissions=True)
+	elif frappe.db.get_value("CRM Form Script", DEAL_SCRIPT, list(want), as_dict=True) != want:
+		frappe.db.set_value("CRM Form Script", DEAL_SCRIPT, want)
+	_place_card_section(on)
+
+
+def _place_card_section(on: bool) -> None:
+	if not frappe.db.exists("CRM Fields Layout", SIDE_PANEL):
+		return
+	layout = frappe.get_doc("CRM Fields Layout", SIDE_PANEL)
+	sections = json.loads(layout.layout or "[]")
+	present = any(section.get("name") == CARD_SECTION for section in sections)
+	if on and not present:
+		at = 1 if sections and sections[0].get("name") == "contacts_section" else 0
+		sections.insert(at, {"name": CARD_SECTION, "label": "Customer", "opened": True,
+			"columns": [{"name": "ffl_customer_column", "fields": [CARD_FIELD]}]})
+	elif not on and present:
+		sections = [section for section in sections if section.get("name") != CARD_SECTION]
+	else:
+		return
+	layout.layout = json.dumps(sections)
+	layout.save(ignore_permissions=True)
 
 
 def enqueue_backfill() -> bool:

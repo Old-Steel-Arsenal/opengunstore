@@ -725,6 +725,26 @@ def _order_facts(h, lines, item_meta) -> dict:
 	}
 
 
+def _net_sales(h, facts) -> float:
+	"""The one Net Sales expression: the invoice's net, gross of trade-in, without deposits."""
+	return flt(h.get("base_net_total")) - facts["trade_in_net"] - facts["deposit_net"]
+
+
+def net_sales_of(doctype: str, filters: dict) -> dict[str, float]:
+	"""Net Sales per invoice, as the report reads it, for the *doctype* (Sales Invoice or POS
+	Invoice) invoices *filters* picks. The caller says which invoices count: the report's own
+	rule is docstatus 1, no consolidated invoice, no counter pickup ticket. A credit note reads
+	negative."""
+	headers = frappe.get_all(doctype, filters=filters, fields=["name", "base_net_total"])
+	lines: dict[str, list] = {}
+	if headers:
+		for row in frappe.get_all(f"{doctype} Item", fields=["parent", "item_code", "base_net_amount"],
+				filters={"parent": ["in", [h.name for h in headers]],
+					"item_code": ["in", [TRADE_IN_CREDIT_ITEM, DEPOSIT_ITEM]]}):
+			lines.setdefault(row.parent, []).append(row)
+	return {h.name: _net_sales(h, _order_facts(h, lines.get(h.name, []), {})) for h in headers}
+
+
 def _build_rows(headers, lines_by_invoice, item_meta, serial_cost, product_type, consignment=None,
 		transfer_serials=None, dropship_cost=None, taxes_by_invoice=None):
 	rows = []
@@ -763,7 +783,7 @@ def _build_rows(headers, lines_by_invoice, item_meta, serial_cost, product_type,
 		# Net Sales exceeds GL income by exactly the allowance. A gunsmith
 		# deposit comes out of the net the same way (_order_facts).
 		trade_in_net = f["trade_in_net"]
-		net = flt(h.get("base_net_total")) - trade_in_net - f["deposit_net"]
+		net = _net_sales(h, f)
 		total = flt(h.get("grand_total"))
 		profit = net - cost
 		applied, payout = _trade_in_settlement(h, lines, trade_in_net, (taxes_by_invoice or {}).get(h["name"]))
