@@ -2842,7 +2842,10 @@ def _handle_order_cancelled(body: dict) -> None:
 		"order_status": "Cancelled",
 		"woo_status": _order_status(body) or "cancelled",
 	})
-	note_web_order(order_name, REFUNDED if _order_status(body) == "refunded" else CANCELLED)
+	# Not failed / trash / draft: an unpaid order that may yet come back is no news for the deal.
+	event = {"cancelled": CANCELLED, "refunded": REFUNDED}.get(_order_status(body))
+	if event:
+		note_web_order(order_name, event)
 
 	# #9 — the write above is db.set_value, which fires NO doc_events, so anything
 	# that must react to a cancellation has to be called explicitly. The

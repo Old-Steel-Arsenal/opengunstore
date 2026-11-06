@@ -116,12 +116,28 @@ class TestOtherMail(TeamMailCase):
 		_pull(INFO, (_raw("no-reply@example.org", SALES), 21))
 		self.assertEqual(_lead("no-reply@example.org").status, "New", "the next mail does not put it back")
 
-	def test_the_team_can_read_it(self):
+	def test_only_managers_see_it_until_it_is_an_ordinary_lead(self):
+		from ffl_core.tests.crm_support import MANAGER
 		from ffl_core.tests.test_crm_team_mail import _can_read
 
 		user(CLERK, "Sales User")
+		user(MANAGER, "Sales Manager")
 		_pull(INFO, (_raw("no-reply@example.org", SALES), 20))
-		self.assertTrue(_can_read(CLERK, "CRM Lead", _lead("no-reply@example.org").name))
+		name = _lead("no-reply@example.org").name
+		self.assertFalse(_can_read(CLERK, "CRM Lead", name))
+		self.assertTrue(_can_read(MANAGER, "CRM Lead", name))
+		lead = frappe.get_doc("CRM Lead", name)
+		lead.status = "New"
+		lead.save(ignore_permissions=True)
+		self.assertTrue(_can_read(CLERK, "CRM Lead", name))
+
+	def test_a_known_lead_at_a_rule_domain_keeps_direct_mail(self):
+		from ffl_core.tests.test_crm_team_mail import STAFF_A
+
+		lead = mail._new_lead("rep@gunbroker.com", "A Rep")
+		raw = _raw("rep@gunbroker.com", "ffltm-staff-a@example.com")
+		_pull(STAFF_A, (raw, 20))
+		self.assertEqual(_stored(raw)[0].reference_name, lead)
 
 	def test_the_ai_verdict_makes_other_mail_with_its_category(self):
 		_answer("notification")
@@ -198,9 +214,13 @@ class TestLists(TeamMailCase):
 
 	def test_a_deal_follow_up_has_no_closed_stage(self):
 		view = frappe.get_doc("CRM View Settings", {"dt": "CRM Deal", "label": setup.FOLLOW_UPS, "public": 1})
-		stages = json.loads(view.filters)["status"][1]
-		self.assertIn("New", stages)
-		self.assertFalse({"Won", "Lost"} & set(stages))
+		self.assertEqual(json.loads(view.filters)["status"][0], "not in")
+		self.assertEqual({"Won", "Lost"}, set(json.loads(view.filters)["status"][1]))
+
+	def test_a_deleted_view_stays_deleted(self):
+		frappe.db.delete("CRM View Settings", {"dt": "CRM Deal", "label": setup.FOLLOW_UPS, "public": 1})
+		setup.ensure_crm_views()
+		self.assertFalse(frappe.db.exists("CRM View Settings", {"dt": "CRM Deal", "label": setup.FOLLOW_UPS, "public": 1}))
 
 
 class TestSpamFolder(TeamMailCase):
@@ -257,6 +277,36 @@ class TestSpamFolder(TeamMailCase):
 		_check(FakeIMAP({5: first, 6: second}))
 		self.assertTrue(_stored(first))
 		self.assertTrue(_stored(second))
+
+	def test_a_mail_that_cannot_be_kept_does_not_stop_the_rest(self):
+		_answer("customer")
+		first, second = _raw("a@example.org", SALES), _raw("b@example.org", SALES)
+		real = mail.InboundMail.process
+
+		def fail_first(inbound):
+			if inbound.from_email == "a@example.org":
+				raise RuntimeError("bad attachment")
+			return real(inbound)
+
+		with patch.object(mail.InboundMail, "process", fail_first):
+			_check(FakeIMAP({5: first, 6: second}))
+		self.assertFalse(_stored(first))
+		self.assertTrue(_stored(second))
+		self.assertEqual(frappe.db.get_global(mail.SPAM_PLACE + INFO), "7:6")
+
+	def test_a_mail_that_cannot_be_read_does_not_stop_the_rest(self):
+		_answer("customer")
+		second = _raw("b@example.org", SALES)
+		with patch.object(mail, "InboundMail", side_effect=[ValueError("unreadable"), mail.InboundMail(second, frappe.get_doc("Email Account", INFO))]):
+			_check(FakeIMAP({5: b"junk", 6: second}))
+		self.assertTrue(_stored(second))
+
+	def test_an_empty_fetch_is_tried_again(self):
+		_answer("spam")
+		imap = FakeIMAP({5: _raw("a@example.org", SALES)})
+		with patch.object(imap, "uid", side_effect=[("OK", [b"5"]), ("OK", [None])]):
+			_check(imap)
+		self.assertFalse(frappe.db.get_global(mail.SPAM_PLACE + INFO))
 
 	def test_each_run_starts_where_the_last_stopped(self):
 		_answer("spam")

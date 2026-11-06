@@ -32,7 +32,9 @@ For each received mail of an in-scope account, in order (:func:`decide`):
 Other mail: team mail that is not a customer inquiry is kept, not dropped. Each sender has one CRM Lead
 with the status ``Other mail`` and a category (``ffl_mail_category``: a category rule's, else what made
 it other mail). The Leads list leaves those out (``api.crm.crm_list_data``), the Other mail view shows
-them, and changing the status makes it an ordinary lead (:func:`other_mail_on_validate`).
+them, and changing the status makes it an ordinary lead (:func:`other_mail_on_validate`). It can hold
+account mail (a password reset sent to info@), so only Sales Managers see it until then: it is not
+shared with the team until its status changes.
 
 Screening: when an extension registers ``gunshop_crm_mail_screen``, team mail from someone new does
 not become a lead in the pull. A short background job (:func:`screen_new_sender`) asks the providers
@@ -175,9 +177,14 @@ def _mailbox_user(email_account: str) -> str | None:
 
 def _sender_category(email: str) -> str | None:
 	"""The category that makes this sender's mail other mail, whatever it says; None for anyone else."""
+	return _rule_category(email.rsplit("@", 1)[-1].lower()) or _unwanted_category(email)
+
+
+def _unwanted_category(email: str) -> str | None:
+	"""Why no mailbox wants this sender's mail: a blocked or own domain, or a machine."""
 	domain = email.rsplit("@", 1)[-1].lower()
 	settings = frappe.get_cached_doc(SETTINGS)
-	return _rule_category(domain) or ("Blocked" if _in(domain, domain_lines(settings.blocked_sender_domains)) else None) \
+	return ("Blocked" if _in(domain, domain_lines(settings.blocked_sender_domains)) else None) \
 		or ("Our store" if _in(domain, domain_lines(settings.own_domains)) else None) \
 		or ("Automated" if is_automated(email) else None)
 
@@ -198,12 +205,14 @@ def _ensure_category(name: str) -> str:
 
 def other_mail_on_validate(doc, method=None):
 	"""CRM Lead validate: a category belongs to other mail. Moving a lead off that status makes it an
-	ordinary lead, which is what brings it back to the Leads list."""
+	ordinary lead, which brings it back to the Leads list and shares it with the team."""
 	if doc.get("status") == OTHER_MAIL:
 		if not doc.get(CATEGORY_FIELD):
 			doc.set(CATEGORY_FIELD, _ensure_category("Other"))
 	elif doc.get(CATEGORY_FIELD):
 		doc.set(CATEGORY_FIELD, None)
+		if not doc.is_new():
+			share_with_team(LEAD, doc.name)
 
 
 def _addresses(doc) -> set[str]:
@@ -293,9 +302,12 @@ def decide(doc) -> tuple | None:
 	contact = _customer_contact(email)
 	if contact:
 		return ("deal", contact, None if row else _mailbox_user(account), row)
-	category = _sender_category(email)
-	if category:
-		return ("other", category, row) if row else (SKIP, "blocked sender")
+	if row:
+		category = _sender_category(email)
+		if category:
+			return ("other", category, row)
+	elif _unwanted_category(email):
+		return (SKIP, "blocked sender")
 	lead = frappe.db.get_value(LEAD, {"email": email}, "name")
 	if lead or row:
 		return ("lead", lead, row)
@@ -387,7 +399,7 @@ def route(doc, decision=None, screened: bool = False) -> tuple[str, str] | None:
 			lead = _new_lead(email.strip().lower(), doc.get("sender_full_name") or name)
 		target = (LEAD, lead)
 		_link(doc, *target)
-	if row and target[0] in OWNER_FIELD:
+	if row and target[0] in OWNER_FIELD and not _is_other_mail(*target):
 		frappe.db.savepoint("ffl_crm_share")
 		try:
 			share_with_team(*target)
@@ -396,6 +408,10 @@ def route(doc, decision=None, screened: bool = False) -> tuple[str, str] | None:
 			frappe.log_error(title=f"[{TITLE}] Team mail not shared: {target[0]} {target[1]}",
 				message=frappe.get_traceback())
 	return target if decision[0] != "keep" else None
+
+
+def _is_other_mail(doctype: str, name: str) -> bool:
+	return doctype == LEAD and frappe.db.get_value(LEAD, name, "status") == OTHER_MAIL
 
 
 def skip_unwanted(doc, method=None):
@@ -624,7 +640,8 @@ def check_spam_folder(account: str) -> None:
 		for uid in sorted(uids)[:SPAM_BATCH]:
 			_status, fetched = server.imap.uid("fetch", str(uid), "(BODY.PEEK[])")
 			raw = next((part[1] for part in fetched or [] if isinstance(part, tuple)), None)
-			if raw and not _judge_spam_mail(raw, email_account):
+			# Nothing came back: the next run's search says whether the mail is still there.
+			if not raw or not _spam_mail_finished(raw, email_account, uid):
 				break
 			frappe.db.set_global(SPAM_PLACE + account, f"{validity}:{uid}")
 			commit()
@@ -642,9 +659,19 @@ def _spam_place(server, account: str, folder: str) -> tuple[str, int]:
 	return validity, cint(last) if saved == validity else max(uidnext - SPAM_FIRST_LOOK - 1, 0)
 
 
+def _spam_mail_finished(raw: bytes, email_account, uid: int) -> bool:
+	"""A mail that cannot be read or kept is logged and passed over: it must not stop the rest of the folder."""
+	try:
+		return _judge_spam_mail(raw, email_account)
+	except Exception:
+		frappe.log_error(title=f"[{TITLE}] Spam folder mail left out: {email_account.name} uid {uid}",
+			message=frappe.get_traceback())
+		return True
+
+
 def _judge_spam_mail(raw: bytes, email_account) -> bool:
-	"""One mail from the spam folder: whether it is finished with. False: no provider had an answer, or
-	the mail could not be kept, so it is tried again. A sender the store knows needs no opinion."""
+	"""One mail from the spam folder: whether it is finished with. False: no provider had an answer, so
+	it is tried again. A sender the store knows needs no opinion."""
 	mail = InboundMail(raw, email_account)
 	if mail.is_sender_same_as_receiver() or mail.is_exist_in_system():
 		return True
@@ -670,8 +697,7 @@ def _judge_spam_mail(raw: bytes, email_account) -> bool:
 		frappe.db.rollback(save_point="ffl_crm_spam")
 	except Exception:
 		frappe.db.rollback(save_point="ffl_crm_spam")
-		frappe.log_error(title=f"[{TITLE}] Mail from the spam folder not kept: {sender}", message=frappe.get_traceback())
-		return False
+		raise
 	finally:
 		frappe.flags.pop(SPAM_ANSWER_FLAG, None)
 	return True

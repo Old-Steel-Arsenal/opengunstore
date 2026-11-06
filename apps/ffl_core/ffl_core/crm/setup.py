@@ -46,6 +46,7 @@ MAIL_CATEGORIES = ("Automated", "Blocked", "Distributor", "Dealer", "GunBroker",
 	"Our store", "Vendor", "Other")
 CATEGORY_RULES = {"gunbroker.com": "GunBroker", "rsrgroup.com": "Distributor"}
 MAIL_SETUP_FLAG = "ffl_crm_other_mail_seeded"
+VIEWS_FLAG = "ffl_crm_views_seeded"
 FOLLOW_UPS = "My follow-ups"
 BACKFILL_JOB = "ffl_crm_product_backfill"
 # CRM's own per-page customization (a CRM Form Script record): the Email button on a Contact page.
@@ -330,19 +331,22 @@ def ensure_other_mail() -> None:
 
 
 def ensure_crm_views() -> None:
-	"""The shared views staff work from (CRM's sidebar lists public views). Made once: a manager may change them."""
+	"""The shared views staff work from (CRM's sidebar lists public views). Once per site: a manager may
+	change or delete them. Follow-ups name the closed stages, so a stage added later is in the view."""
 	from crm.fcrm.doctype.crm_lead.crm_lead import CRMLead
 
-	open_statuses = lambda doctype: frappe.get_all(doctype, filters={"type": ["not in", ["Won", "Lost"]],  # noqa: E731
-		"name": ["!=", OTHER_MAIL]}, pluck="name", order_by="position asc")
+	if frappe.db.get_global(VIEWS_FLAG):
+		return
+	closed = lambda doctype: frappe.get_all(doctype, filters={"type": ["in", ["Won", "Lost"]]}, pluck="name")  # noqa: E731
 	columns = CRMLead.default_list_data()
 	_ensure_view(LEAD, "Leads", OTHER_MAIL, {"status": OTHER_MAIL},
 		columns=[{"label": "Mail category", "type": "Link", "key": CATEGORY_FIELD, "options": CATEGORY, "width": "10rem"},
 			*columns["columns"]], rows=[*columns["rows"], CATEGORY_FIELD])
 	_ensure_view(LEAD, "Leads", FOLLOW_UPS, {"lead_owner": ["in", ["@me", ""]], "communication_status": "Open",
-		"status": ["in", open_statuses("CRM Lead Status")]}, order_by="modified asc")
+		"status": ["not in", [*closed("CRM Lead Status"), OTHER_MAIL]]}, order_by="modified asc")
 	_ensure_view(DEAL, "Deals", FOLLOW_UPS, {"deal_owner": ["in", ["@me", ""]], "communication_status": "Open",
-		"status": ["in", open_statuses(STATUS)]}, order_by="modified asc")
+		"status": ["not in", closed(STATUS)]}, order_by="modified asc")
+	frappe.db.set_global(VIEWS_FLAG, "1")
 
 
 def _ensure_view(doctype: str, route: str, label: str, filters: dict, order_by: str = "modified desc",

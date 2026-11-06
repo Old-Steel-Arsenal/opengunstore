@@ -124,9 +124,9 @@ CRM's Leads and Deals pages each have a **My follow-ups** view: open records tha
 
 ### Other mail
 
-Team mail that is not a customer inquiry is kept, under one lead per sender with the status **Other mail**. That covers senders in the two domain lists, automated senders such as noreply, the domains in **Category rules**, and mail the AI extension takes for something else. These leads stay off the Leads list. Open the **Other mail** view in CRM to see them.
+Team mail that is not a customer inquiry is kept, under one lead per sender with the status **Other mail**. That covers senders in the two domain lists, automated senders such as noreply, the domains in **Category rules**, and mail the AI extension takes for something else. These leads stay off the Leads list. A Sales Manager sees them in the **Other mail** view in CRM. They can hold account mail, such as a password reset sent to a team address, so other staff do not see them.
 
-To fix a wrong guess, open the lead and change its status to **New**. It becomes an ordinary lead and stays one when the sender writes again. CRM's dashboard still counts these leads in its lead totals.
+To fix a wrong guess, open the lead and change its status to **New**. It becomes an ordinary lead that everyone with Sales User or Sales Manager can see, and stays one when the sender writes again. CRM's dashboard still counts these leads in its lead totals.
 
 **Category rules** sort this mail by domain. Each row names a domain and a category, and a sender at that domain counts as other mail unless they are already a customer. To add a category, type a new name in the **Category** column and create it.
 
