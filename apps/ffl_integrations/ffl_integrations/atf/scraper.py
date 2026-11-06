@@ -95,7 +95,7 @@ class ATFFormScraperProvider:
 		# ATF's real not-found page: "You Entered FFL Number ... invalid and/or ...".
 		# Anything else with no license fields is a page we cannot read (a
 		# maintenance or blocking page served as 200), NOT a verdict on the FFL.
-		lowered = text.lower()
+		lowered = " ".join(text.lower().split())   # the page's source can wrap a phrase
 		if "you entered ffl number" in lowered and "invalid and/or" in lowered:
 			return EZCheckResult(ffl_number=ffl_number, found=False, status="NotFound")
 

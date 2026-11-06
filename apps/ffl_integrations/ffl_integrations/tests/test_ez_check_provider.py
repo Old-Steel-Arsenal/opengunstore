@@ -43,6 +43,12 @@ class ScraperParser(FrappeTestCase):
 		self.assertFalse(result.found)
 		self.assertEqual(result.status, "NotFound")
 
+	def test_not_found_marker_survives_a_wrapped_line(self):
+		html = _fixture("ez_check_not_found.html").replace("invalid and/or", "invalid\n  and/or")
+		result = ATFFormScraperProvider._parse(html,
+			ffl_number="9-99-999-99-9X-99999", today=date(2026, 5, 4))
+		self.assertEqual(result.status, "NotFound")
+
 	def test_parse_page_without_fields_or_marker_raises(self):
 		"""A maintenance or blocking page served as 200 is not a verdict on the FFL."""
 		with self.assertRaises(ValueError):
