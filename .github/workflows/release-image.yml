@@ -485,7 +485,11 @@ jobs:
   demo-dispatch:
     name: Hand the demo build to the deploy repo
     needs: [build]
-    if: github.event_name == 'push' && github.ref_name == 'develop' && vars.DEPLOY_REPO != ''
+    # !cancelled(): build needs reuse-image, which is skipped on develop, and the implicit success()
+    # skips a job when any job up its needs chain was skipped, even if its direct need succeeded.
+    if: >-
+      !cancelled() && needs.build.result == 'success'
+      && github.event_name == 'push' && github.ref_name == 'develop' && vars.DEPLOY_REPO != ''
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # DEPLOY_DISPATCH_TOKEN is a secret of this environment (branches main + develop only),
