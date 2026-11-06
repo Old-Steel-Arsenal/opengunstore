@@ -3,6 +3,7 @@ them, CRM's lead switch moved to ours, the product backfill queued once."""
 from __future__ import annotations
 
 import ast
+import json
 import os
 from unittest.mock import patch
 
@@ -209,6 +210,19 @@ class TestDealStages(CRMTestCase):
 		self.assertEqual(frappe.db.get_value(setup.STATUS, "Quoted", "deal_status"), "Quoted")
 		self.assertEqual(frappe.db.get_value(setup.DEAL, renamed, "status"), "Quoted")
 		self.assertEqual(frappe.db.get_value(setup.DEAL, dropped, "status"), "Talking")
+
+	def test_saved_views_follow_the_stages(self):
+		self._stock_stages()
+		view = frappe.get_doc({"doctype": "CRM View Settings", "label": "_T Stages", "dt": setup.DEAL, "type": "kanban",
+			"filters": json.dumps({"status": ["in", ["Proposal/Quotation", "Won"]], "email": "Negotiation"}),
+			"kanban_columns": json.dumps([{"name": "Demo/Making", "width": "20rem"}, {"name": "Negotiation"},
+				{"name": "Won"}])}).insert(ignore_permissions=True)
+		setup.ensure_deal_stages()
+		view.reload()
+		self.assertEqual(json.loads(view.filters),
+			{"status": ["in", ["Quoted", "Won"]], "email": "Negotiation"})
+		self.assertEqual(json.loads(view.kanban_columns),
+			[{"name": "Talking", "width": "20rem"}, {"name": "Won"}])
 
 	def test_a_stage_added_later_stays(self):
 		frappe.get_doc({"doctype": setup.STATUS, "deal_status": "Negotiation", "type": "Ongoing", "position": 9}

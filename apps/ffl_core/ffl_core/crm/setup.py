@@ -257,18 +257,41 @@ def ensure_deal_stages() -> bool:
 	left alone."""
 	if frappe.db.get_global(DEAL_STAGES_FLAG):
 		return False
+	moved = {}
 	for old, new in RENAMED_STAGES.items():
 		if frappe.db.exists(STATUS, old) and not frappe.db.exists(STATUS, new):
 			frappe.rename_doc(STATUS, old, new, force=True)
+			moved[old] = new
 	for old, new in DROPPED_STAGES.items():
 		if frappe.db.exists(STATUS, old) and frappe.db.exists(STATUS, new):
 			frappe.db.set_value(DEAL, {"status": old}, "status", new)
 			frappe.delete_doc(STATUS, old, ignore_permissions=True)
+			moved[old] = new
 	for position, stage in enumerate(DEAL_STAGES, 1):
 		if frappe.db.exists(STATUS, stage):
 			frappe.db.set_value(STATUS, stage, "position", position)
+	_move_stages_in_saved_views(moved)
 	frappe.db.set_global(DEAL_STAGES_FLAG, "1")
 	return True
+
+
+def _move_stages_in_saved_views(moved: dict) -> None:
+	"""A saved Deal view keeps stage names as JSON, in its filter and its kanban columns, where a
+	rename does not reach them."""
+	def swap(value):
+		return [swap(v) for v in value] if isinstance(value, list) else moved.get(value, value)
+
+	views = frappe.get_all("CRM View Settings", filters={"dt": DEAL}, fields=["name", "filters", "kanban_columns"])
+	for view in views:
+		filters = json.loads(view.filters or "{}")
+		if "status" in filters:
+			filters["status"] = swap(filters["status"])
+		columns = {}   # two old stages can land on one new stage: its column appears once
+		for column in json.loads(view.kanban_columns or "[]"):
+			column["name"] = swap(column.get("name"))
+			columns.setdefault(column["name"], column)
+		frappe.db.set_value("CRM View Settings", view.name, {"filters": json.dumps(filters),
+			"kanban_columns": json.dumps(list(columns.values()))}, update_modified=False)
 
 
 def take_over_lead_flags() -> list[str]:
