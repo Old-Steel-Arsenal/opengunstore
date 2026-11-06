@@ -262,7 +262,7 @@ def _new_lead(email: str, full_name: str | None) -> str:
 
 def _name_auto_contact(email: str, first: str, last: str) -> None:
 	"""The sender's Contact that Frappe made from the mail (``get_contacts``, named after the address
-	as "Xuanji86") takes the display name the lead has, so converting the lead to a deal (CRM copies
+	as "Jsmith42") takes the display name the lead has, so converting the lead to a deal (CRM copies
 	the Contact's name onto the lead) keeps it. Only a Contact still as Frappe made it: its first name
 	is the address's local part, no last name, linked to nothing (no Customer, no deal). Only the name
 	fields change, never the document's name. Never stops the lead: a failure is logged."""
