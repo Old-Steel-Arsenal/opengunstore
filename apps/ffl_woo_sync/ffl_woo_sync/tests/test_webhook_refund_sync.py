@@ -60,6 +60,15 @@ class TestOrderUpdatedRefundSync(FrappeTestCase):
 		self.assertTrue(reconcile[0].kwargs.get("deduplicate"))
 		order.save.assert_called_once()
 
+	def test_a_new_refund_is_noted_with_its_own_amount(self):
+		body = {"id": 9002, "status": "completed", "line_items": [],
+			"refunds": [{"id": 9003, "total": "-9.99"}]}
+		order = _updated_order()
+		order.append = lambda table, row: order.refunds.append(frappe._dict(row))
+		with patch("ffl_woo_sync.woocommerce.webhook.note_web_order") as note:
+			self._run(order, body)
+		note.assert_called_once_with("WOO-ORD-00007", "refunded", key="9003", amount=9.99)
+
 	def test_redelivered_same_refund_enqueues_nothing(self):
 		body = {"id": 9002, "status": "completed", "line_items": [],
 			"refunds": [{"id": 9003, "total": "-9.99"}]}
@@ -121,6 +130,22 @@ class TestOrderCancelledAlert(FrappeTestCase):
 			from ffl_woo_sync.woocommerce.webhook import _handle_order_cancelled
 			_handle_order_cancelled({"id": 9002, "status": "cancelled"})
 		return log
+
+	def test_only_a_real_cancel_or_refund_is_noted(self):
+		from ffl_woo_sync.woocommerce.webhook import _handle_order_cancelled
+
+		def _gv(doctype, *a, **k):
+			return {"name": "WOO-ORD-00007", "site": "retail"} if doctype == "Woo Online Order" else None
+
+		for status, event in (("cancelled", "cancelled"), ("refunded", "refunded"), ("failed", None), ("trash", None)):
+			with patch("frappe.db.get_value", side_effect=_gv), patch("frappe.db.set_value"), \
+					patch("frappe.get_all", return_value=[]), \
+					patch("ffl_woo_sync.woocommerce.webhook.note_web_order") as note:
+				_handle_order_cancelled({"id": 9002, "status": status})
+			if event:
+				note.assert_called_once_with("WOO-ORD-00007", event)
+			else:
+				note.assert_not_called()
 
 	def test_terminal_status_on_invoiced_order_alerts(self):
 		log = self._run(invoice_name="ACC-SINV-49")

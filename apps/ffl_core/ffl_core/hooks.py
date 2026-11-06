@@ -280,6 +280,8 @@ doc_events = {
 		"before_rename": "ffl_core.crm.product.before_rename",
 		"on_trash": "ffl_core.crm.product.on_trash",
 	},
+	# A lead off the Other mail status is an ordinary lead again (ffl_core.crm.mail).
+	"CRM Lead": {"validate": "ffl_core.crm.mail.other_mail_on_validate"},
 	"CRM Deal": {
 		# The quote's lines priced; the value pinned to the deal's invoices (ffl_core.crm.orders).
 		"validate": ["ffl_core.crm.deal.price_lines", "ffl_core.crm.orders.pin_deal_value"],
@@ -1056,6 +1058,10 @@ scheduler_events = {
 		"* * * * *": [
 			"ffl_core.crm.mail.pull_team_mailboxes",
 		],
+		# The AI's look at each team mailbox's spam folder (crm/mail.py).
+		"*/10 * * * *": [
+			"ffl_core.crm.mail.check_spam_folders",
+		],
 	},
 	"hourly": [
 		# Backstop for the Stock Ledger Entry hook: clear the storage location of any
@@ -1124,6 +1130,8 @@ override_whitelisted_methods = {
 		"ffl_core.api.crm.deals_use_no_quotes",
 	"crm.fcrm.doctype.erpnext_crm_settings.erpnext_crm_settings.can_create_quotations":
 		"ffl_core.api.crm.deals_use_no_quotes",
+	# The Leads list without other mail; "mine or nobody's" in My follow-ups (ffl_core.api.crm).
+	"crm.api.doc.get_data": "ffl_core.api.crm.crm_list_data",
 }
 
 # override_whitelisted_methods = {

@@ -61,7 +61,7 @@ Below them, the **Card on file** card turns on [saving a card to charge later](.
 | ShipStation Settings | **POS & Sales** card | Shipping labels, ship-from address, parcel defaults |
 | Cash Drawer Settings | **POS & Sales** card | The drawer's limits (below) |
 | Membership Settings | **POS & Sales** card | Automatic renewal charges and the yearly reminder. See [Memberships](../counter/memberships.md) |
-| Lead Mail Settings | **POS & Sales** card | Which customer mail goes into CRM: the store's team addresses, and the domains that never become a lead. The switch that links deals to POS orders. See [Lead Mail Settings](#lead-mail-settings) below |
+| Lead Mail Settings | **POS & Sales** card | Which customer mail goes into CRM: the store's team addresses, how other mail is sorted, and the spam folder. The switch that links deals to POS orders. See [Lead Mail Settings](#lead-mail-settings) below |
 | POS Profile | **POS & Sales** card | Each register's warehouse, price list and payment methods |
 | Mode of Payment | **POS & Sales** card | The tender types and the account each posts to |
 | Selling Settings | **POS & Sales** card | Store-wide selling defaults, such as customer naming |
@@ -101,7 +101,7 @@ These settings decide which mail from the store's mailboxes goes into CRM. Each 
 
 **Team addresses** lists the shared addresses customers write to, such as sales@ or info@. Mail to one of them from someone new becomes a lead. Mail to a staff member's own address goes in only when it comes from a customer or a known lead. Their other mail stays out of the POS. System Manager only.
 
-An extension can check mail from someone new first (the AI extension does, when its setting is on). Only mail it takes for a customer inquiry becomes a lead. The rest stays in the mail log with a note saying why. To fix a wrong guess, open that mail in the Communication list and click **Make lead**.
+An extension can check mail from someone new first (the AI extension does, when its setting is on). Only mail it takes for a customer inquiry becomes an ordinary lead. The rest goes to [other mail](other-mail.md).
 
 If a team address is a Google Group, set its **Post replies to** to **Sender chooses recipient**. Any other setting can put the group in the mail's Reply-To, and the POS then takes the group for the sender and leaves the mail out.
 
@@ -114,9 +114,11 @@ If a team address is a Google Group, set its **Post replies to** to **Sender cho
 
 **Reply-To for staff mail** is one of the team addresses. Mail staff send from their own mailbox asks the customer to reply there, so the conversation stays with the team. Mail answered from a **Mailbox** address goes out from that address.
 
-**Blocked sender domains** and **Our own domains** take one domain per line. Mail from them never becomes a lead.
+**Blocked sender domains** and **Our own domains** take one domain per line. Team mail from them goes to [other mail](other-mail.md). A staff member's own mailbox leaves it out.
 
 **Link deals to POS orders** puts the **Open order** button and the **Customer** section on a CRM deal, and writes each deal's invoices back to it. It is off until you tick it. See [Open an order from a CRM deal](../orders/open-an-order-from-a-deal.md).
+
+Team mail that is not a customer inquiry, the **Category rules** and the **Spam folder** are on [Other mail](other-mail.md).
 
 ### Setting up the mailboxes
 
@@ -127,7 +129,7 @@ If a team address is a Google Group, set its **Post replies to** to **Sender cho
 
 Every lead and deal that gets team mail shows to everyone with Sales User or Sales Manager, without a notice or an email to anyone. A deal converted from such a lead shows to them too. Whoever answers a new lead first from CRM becomes its owner. To take one over, change its owner in CRM.
 
-A lead or deal that only got mail sent to one staff member shows to its owner and to Sales Managers. Once the customer answers a reply sent from CRM, their answer goes to the Reply-To team address, and from then on the lead or deal shows to everyone too.
+A lead or deal that only got mail sent to one staff member shows to its owner and to Sales Managers. A customer's answer to a reply sent from CRM goes to the Reply-To team address, and the record then shows to everyone too.
 
 Save these settings again after you add a staff member. They see existing team leads once the next team mail reaches each one. Removing someone who leaves from a **Mailbox** address is done on their user record.
 

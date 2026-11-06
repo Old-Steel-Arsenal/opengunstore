@@ -32,6 +32,9 @@ def mark_transferred(order_name: str, *, at=None) -> str:
 	frappe.db.set_value("Woo Online Order", order_name,
 		{"order_status": TRANSFERRED, "transferred_at": stamp},
 		update_modified=False)
+	from ffl_core.crm.web_orders import TRANSFERRED as NOTE_TRANSFERRED, note_web_order
+
+	note_web_order(order_name, NOTE_TRANSFERRED)
 	return stamp
 
 

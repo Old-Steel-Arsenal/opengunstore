@@ -40,6 +40,9 @@ OPEN_BY_DESIGN = {
 	# Reviewed 2026-11-06: stands in for CRM's two quotation gates and always answers
 	# False. It reads nothing and only takes controls off the Deal page.
 	"ffl_core.api.crm.deals_use_no_quotes",
+	# Reviewed 2026-11-06: stands in for CRM's own list endpoint, which has no gate of its
+	# own either; the rows still go through frappe.get_list and CRM's permission rules.
+	"ffl_core.api.crm.crm_list_data",
 	# Reviewed 2026-10-30: the action catalog lists only what the caller's roles and
 	# DocType permissions reach; desk users only (_require_desk_user), and every
 	# listed endpoint still checks the caller when it is called.

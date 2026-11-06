@@ -355,18 +355,21 @@ class TestCrmMailScreen(CRMTestCase):
 			self._run_job(comm)
 		self.assertEqual(len(SCREENED[0]["body"]), 4000)
 
-	def test_a_not_a_customer_answer_leaves_the_mail_unlinked_with_the_reason(self):
+	def test_a_not_a_customer_answer_makes_other_mail_with_the_reason(self):
 		with hooks("gunshop_crm_mail_screen", [f"{HERE}.screen_not_customer", f"{HERE}.screen_customer"]):
 			comm = self._comm("pkginfo@carrier.test")
 			self._run_job(comm)
-		self.assertFalse(_leads("pkginfo@carrier.test"))
-		self.assertEqual(self._reference(comm), (None, None))
+		[lead] = _leads("pkginfo@carrier.test")
+		self.assertEqual(frappe.db.get_value("CRM Lead", lead, ["status", crm_mail.CATEGORY_FIELD]),
+			(crm_mail.OTHER_MAIL, "Notification"))
+		self.assertEqual(self._reference(comm), ("CRM Lead", lead))
 		self.assertEqual(self._screen_comments(comm), ["Not a customer inquiry (notification): Carrier delivery notice."])
 		self.assertEqual(len(SCREENED), 1, "the first no settles it")
-		# The same sender writing again is screened again.
+		# The same sender writing again goes on that lead, unasked.
 		with hooks("gunshop_crm_mail_screen", [f"{HERE}.screen_not_customer"]):
-			self._comm("pkginfo@carrier.test")
-		self.assertEqual(len(self.queued), 2)
+			again = self._comm("pkginfo@carrier.test")
+		self.assertEqual(self._reference(again), ("CRM Lead", lead))
+		self.assertEqual(len(self.queued), 1)
 
 	def test_no_opinion_makes_the_lead(self):
 		with hooks("gunshop_crm_mail_screen", [f"{HERE}.screen_no_opinion"]):
@@ -381,7 +384,8 @@ class TestCrmMailScreen(CRMTestCase):
 			comm = self._comm()
 			self._run_job(comm)
 		self.assertTrue(_error_logged("gunshop_crm_mail_screen provider failed"))
-		self.assertFalse(_leads("jane@buyer.test"), "the healthy provider's no stands")
+		self.assertEqual(frappe.db.get_value("CRM Lead", _leads("jane@buyer.test")[0], "status"), crm_mail.OTHER_MAIL,
+			"the healthy provider's no stands")
 		with hooks("gunshop_crm_mail_screen", [f"{HERE}.screen_boom"]):
 			comm = self._comm("other@buyer.test")
 			self._run_job(comm)
@@ -484,14 +488,14 @@ class TestCrmMailScreen(CRMTestCase):
 		with hooks("gunshop_crm_mail_screen", [f"{HERE}.screen_not_customer"]):
 			comm = self._comm("pkginfo@carrier.test")
 			self._flush_real_queue(queue)
-		self.assertFalse(_leads("pkginfo@carrier.test"))
+		self.assertEqual(frappe.db.get_value("CRM Lead", _leads("pkginfo@carrier.test")[0], "status"), crm_mail.OTHER_MAIL)
 		self.assertEqual(self._screen_comments(comm), ["Not a customer inquiry (notification): Carrier delivery notice."])
 
-	# --- Make lead on a mail the screening left without one -----------------------------
+	# --- Make lead on a mail screened before other mail: stored, unlinked, with the note ----
 	def _screened_out(self, sender="pkginfo@carrier.test"):
 		with hooks("gunshop_crm_mail_screen", [f"{HERE}.screen_not_customer"]):
 			comm = self._comm(sender)
-			self._run_job(comm)
+		comm.add_comment("Info", crm_mail.NOT_A_CUSTOMER + " (notification): Carrier delivery notice.")
 		return comm
 
 	def _make_lead(self, comm, as_user="Administrator"):
