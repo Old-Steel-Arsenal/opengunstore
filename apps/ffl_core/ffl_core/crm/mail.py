@@ -54,6 +54,11 @@ Owner (:func:`claim_on_reply`): the first mail a Sales User or Sales Manager sen
 Deal without an owner makes them its owner, the way CRM's own assignment does (an assignment, which
 CRM mirrors onto the owner field), made as the sender so no notice goes out. Everyone's assignment
 stays, so anyone can take over later by changing the owner in CRM.
+
+Pulling: Frappe pulls every Email Account every 10 minutes, which staff mailboxes keep; a team mailbox
+is also queued for a pull every minute (:func:`pull_team_mailboxes`), so customer mail arrives within about a minute.
+Mail sent on a CRM Lead or Deal leaves within seconds, not at Frappe's next flush (:func:`send_crm_mail_now`).
+A new lead's display name also goes to the sender's Contact when Frappe made that Contact from the mail (:func:`_name_auto_contact`), so converting the lead to a deal keeps the name.
 """
 from __future__ import annotations
 
@@ -64,8 +69,11 @@ from functools import partial
 import frappe
 from frappe import _
 from frappe.core.utils import html_to_plain_text
+from frappe.email.doctype.email_account.email_account import pull_from_email_account
 from frappe.email.receive import SentEmailInInboxError
-from frappe.utils import cint, now, nowdate, parse_addr, split_emails
+from frappe.integrations.doctype.connected_app.connected_app import has_token
+from frappe.utils import cint, get_datetime, now, now_datetime, nowdate, parse_addr, split_emails
+from frappe.utils.background_jobs import enqueue, get_jobs
 from frappe.utils.synchronization import filelock
 
 from ffl_core.crm import TITLE, installed, team
@@ -174,6 +182,19 @@ def _duplicate(doc) -> bool:
 		"sent_or_received": "Received", "email_account": ["in", others], **mine}))
 
 
+def _system_copy(doc) -> bool:
+	"""Frappe's copy of a received mail to the record's owner and assignees (``EmailAccount.receive``),
+	back through that person's mailbox. The mail service may give it a Message-ID of its own, so
+	:func:`_duplicate` misses it. It has no To, and we queued it to this mailbox."""
+	if doc.get("recipients"):
+		return False
+	originals = frappe.get_all("Communication", filters={"sender": doc.get("sender"), "subject": doc.get("subject"),
+		"sent_or_received": "Received", "email_account": ["!=", doc.email_account]}, pluck="name")
+	queued = originals and frappe.get_all("Email Queue", filters={"communication": ["in", originals]}, pluck="name")
+	return bool(queued) and bool(frappe.db.exists("Email Queue Recipient", {"parent": ["in", queued],
+		"recipient": frappe.db.get_value("Email Account", doc.email_account, "email_id")}))
+
+
 def _collected_elsewhere(row, account: str) -> bool:
 	"""Another Email Account brings in this address's mail. A collector that no longer pulls mail does
 	not count: its address's mail would then be lost everywhere."""
@@ -210,6 +231,8 @@ def decide(doc) -> tuple | None:
 		return None
 	if _duplicate(doc):
 		return (SKIP, "already in")
+	if _system_copy(doc):
+		return (SKIP, "our own copy")
 	row, collected = _team_row(doc, account)
 	if collected:
 		return (SKIP, "collected by another account")
@@ -230,18 +253,49 @@ def decide(doc) -> tuple | None:
 	return (SKIP, "direct mail from someone new")
 
 
+def _split_name(full_name: str | None) -> tuple[str, str]:
+	"""A display name as (first name, last name): the first word, then the rest."""
+	parts = (full_name or "").split()
+	return (parts[0], " ".join(parts[1:])) if parts else ("", "")
+
+
 def _new_lead(email: str, full_name: str | None) -> str:
 	lead = frappe.new_doc(LEAD)
 	lead.email = email
-	parts = (full_name or "").split()
-	lead.first_name = parts[0] if parts else email.split("@", 1)[0]
-	lead.last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
+	first, last = _split_name(full_name)
+	named = bool(first) and (full_name or "").strip().lower() != email
+	lead.first_name = first or email.split("@", 1)[0]
+	lead.last_name = last
 	if frappe.db.exists("CRM Lead Source", "Email"):
 		lead.source = "Email"
 	# No owner: a pool lead waits for its first reply, a round robin one for CRM's Assignment Rule.
 	# The mail pull runs as the system, not as a CRM user; CRM's own lead creation inserts the same way.
 	lead.insert(ignore_permissions=True)
+	if named:
+		_name_auto_contact(email, first, last)
 	return lead.name
+
+
+def _name_auto_contact(email: str, first: str, last: str) -> None:
+	"""The sender's Contact that Frappe made from the mail (``get_contacts``, named after the address
+	as "Jsmith42") takes the display name the lead has, so converting the lead to a deal (CRM copies
+	the Contact's name onto the lead) keeps it. Only a Contact still as Frappe made it: its first name
+	is the address's local part, no last name, linked to nothing (no Customer, no deal). Only the name
+	fields change, never the document's name. Never stops the lead: a failure is logged."""
+	frappe.db.savepoint("ffl_crm_contact")
+	try:
+		auto = frappe.unscrub(email.split("@", 1)[0])
+		for name in sorted(contacts_with_email(email)):
+			contact = frappe.db.get_value("Contact", name, ["first_name", "last_name"], as_dict=True)
+			if not contact or contact.first_name != auto or contact.last_name \
+					or frappe.db.exists("Dynamic Link", {"parenttype": "Contact", "parent": name}):
+				continue
+			frappe.db.set_value("Contact", name, {"first_name": first, "last_name": last,
+				"full_name": f"{first} {last}".strip()}, update_modified=False)
+			frappe.clear_document_cache("Contact", name)
+	except Exception:
+		frappe.db.rollback(save_point="ffl_crm_contact")
+		frappe.log_error(title=f"[{TITLE}] Contact not named from the mail: {email}", message=frappe.get_traceback())
 
 
 def _link(doc, doctype: str, name: str) -> None:
@@ -524,3 +578,60 @@ def claim_on_reply(doc, method=None):
 	except Exception:
 		frappe.db.rollback(save_point=_SAVEPOINT)
 		frappe.log_error(title=f"[{TITLE}] Owner not set from a reply: {doctype} {name}", message=frappe.get_traceback())
+
+
+def pull_team_mailboxes():
+	"""Cron, every minute: queue a pull of each team mailbox (collector), the way Frappe's own
+	``pull()`` does for every Email Account every 10 minutes. The same job name keeps a pull still
+	queued or running from being queued twice; an account that failed to connect is left to Frappe's pull."""
+	if not installed():
+		return
+	names = team.collectors()
+	if not names:
+		return
+	accounts = frappe.get_all("Email Account", filters={"name": ["in", sorted(names)], "enable_incoming": 1,
+		"awaiting_password": 0}, fields=["name", "auth_method", "backend_app_flow", "connected_app", "connected_user"])
+	if not accounts:
+		return
+	queued = get_jobs(site=frappe.local.site, key="job_name")[frappe.local.site]
+	for account in accounts:
+		if account.auth_method == "OAuth" and not account.backend_app_flow \
+				and not has_token(account.connected_app, account.connected_user):
+			continue   # nothing to sign in with yet, as in Frappe's pull()
+		job_name = f"pull_from_email_account|{account.name}"
+		if job_name in queued:
+			continue
+		# Frappe disables an account after 5 failed connects within 2 hours (cleared by a good connect):
+		# every minute that is minutes of outage, so a failing account is left to Frappe's 10-minute pull.
+		if frappe.get_doc("Email Account", account.name).get_failed_attempts_count():
+			continue
+		enqueue(pull_from_email_account, "short", event="all", job_name=job_name, email_account=account.name)
+
+
+def send_crm_mail_now(doc, method=None):
+	"""Email Queue after_insert: mail sent on a CRM Lead or Deal is sent by a short job right after the
+	request commits, not at Frappe's next flush (every few minutes). Scheduled mail (``send_after``)
+	and every other mail keep Frappe's batching. Never fails the send: if the job cannot be queued,
+	the row stays Not Sent and the flush sends it."""
+	try:
+		if not installed() or not doc.get("communication") or doc.get("send_after"):
+			return
+		comm = frappe.db.get_value("Communication", doc.communication, ["sent_or_received", "reference_doctype"], as_dict=True)
+		if not comm or comm.sent_or_received != "Sent" or comm.reference_doctype not in OWNER_FIELD:
+			return
+		enqueue(send_queued_crm_mail, "short", enqueue_after_commit=True, job_id=f"send_crm_mail|{doc.name}",
+			deduplicate=True, name=doc.name)
+	except Exception:
+		frappe.log_error(title=f"[{TITLE}] CRM mail not queued for sending: {doc.get('name')}", message=frappe.get_traceback())
+
+
+def send_queued_crm_mail(name: str) -> None:
+	"""The job of :func:`send_crm_mail_now`: sends the Email Queue row as Frappe's flush does (the row
+	locked, then ``send()``, which keeps the status and the retries). A row that is gone, already sent,
+	being sent by the flush, or scheduled for later is left alone."""
+	if not frappe.db.exists("Email Queue", name):
+		return
+	queue = frappe.get_doc("Email Queue", name, for_update=True)   # a flush racing this waits, then sees "Sending"
+	if queue.send_after and get_datetime(queue.send_after) > now_datetime():
+		return
+	queue.send()

@@ -103,6 +103,8 @@ These settings decide which mail from the store's mailboxes goes into CRM. Each 
 
 An extension can check mail from someone new first (the AI extension does, when its setting is on). Only mail it takes for a customer inquiry becomes a lead. The rest stays in the mail log with a note saying why. To fix a wrong guess, open that mail in the Communication list and click **Make lead**.
 
+If a team address is a Google Group, set its **Post replies to** to **Sender chooses recipient**. Any other setting can put the group in the mail's Reply-To, and the POS then takes the group for the sender and leaves the mail out.
+
 | Column | What it does |
 |---|---|
 | **Address** | The shared address |

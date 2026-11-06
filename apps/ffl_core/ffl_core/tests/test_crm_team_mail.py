@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from email.message import EmailMessage
 from email.utils import format_datetime
-from unittest.mock import patch
+from unittest.mock import PropertyMock, patch
 
 import frappe
 from frappe.email.doctype.email_account.email_account import EmailAccount, get_max_email_uid
@@ -165,6 +165,59 @@ class TestIncoming(TeamMailCase):
 		self.assertEqual(frappe.db.count("Communication", {"email_account": STAFF_A, "message_id": mail.MARKER_ID}), 1)
 		_pull(STAFF_A, (_raw("someone@example.org", "ffltm-staff-a@example.com"), 45))
 		self.assertEqual(get_max_email_uid(STAFF_A), 46)
+		self.assertNoPullErrors()
+
+	def _copy_of(self, raw: bytes, *, queued_to: str | None) -> bytes:
+		"""Frappe's copy of this received mail, as the mail service delivers it to a staff mailbox."""
+		[original] = _stored(raw)
+		comm = frappe.db.get_value("Communication", original.name, ["sender", "subject"], as_dict=True)
+		if queued_to:
+			frappe.get_doc({"doctype": "Email Queue", "communication": original.name, "sender": "noreply@example.com",
+				"message": "copy", "recipients": [{"recipient": queued_to}]}).insert(ignore_permissions=True)
+		msg = EmailMessage()
+		msg["From"] = "Store <noreply@example.com>"
+		msg["X-Original-From"] = comm.sender
+		msg["Reply-To"] = comm.sender
+		msg["Cc"] = "ffltm-staff-a@example.com"
+		msg["Subject"] = comm.subject
+		msg["Date"] = format_datetime(now_datetime().astimezone())
+		msg["Message-ID"] = f"<{frappe.generate_hash(length=12)}@mail-service.example.org>"
+		msg.set_content("Hello, is it still for sale?")
+		return msg.as_bytes()
+
+	def test_our_own_copy_of_a_received_mail_does_not_come_back(self):
+		raw = _raw("Jane <copyjane@example.org>", SALES)
+		_pull(INFO, (raw, 50))
+		copy = self._copy_of(raw, queued_to="ffltm-staff-a@example.com")
+		_pull(STAFF_A, (copy, 51))
+		self.assertFalse(_stored(copy))
+		self.assertEqual(len(_stored(raw)), 1)
+		self.assertNoPullErrors()
+
+	def test_a_mail_like_the_copy_that_we_did_not_send_here_stays(self):
+		raw = _raw("Jane <copyjane2@example.org>", SALES)
+		_pull(INFO, (raw, 52))
+		copy = self._copy_of(raw, queued_to="someone-else@example.com")
+		_pull(STAFF_A, (copy, 53))
+		self.assertEqual(len(_stored(copy)), 1, "queued to another mailbox: not this one's copy")
+		self.assertNoPullErrors()
+
+	def test_a_real_mail_with_the_same_subject_stays(self):
+		raw = _raw("Jane <copyjane3@example.org>", SALES)
+		_pull(INFO, (raw, 54))
+		[original] = _stored(raw)
+		frappe.get_doc({"doctype": "Email Queue", "communication": original.name, "sender": "noreply@example.com",
+			"message": "copy", "recipients": [{"recipient": "ffltm-staff-a@example.com"}]}).insert(ignore_permissions=True)
+		subject = frappe.db.get_value("Communication", original.name, "subject")
+		again = EmailMessage()
+		again["From"] = "Jane <copyjane3@example.org>"
+		again["To"] = "ffltm-staff-a@example.com"
+		again["Subject"] = subject
+		again["Date"] = format_datetime(now_datetime().astimezone())
+		again["Message-ID"] = "<ffl-test-direct-copyjane3@example.org>"
+		again.set_content("Writing to you directly.")
+		_pull(STAFF_A, (again.as_bytes(), 55))
+		self.assertEqual(len(_stored(again.as_bytes())), 1)
 		self.assertNoPullErrors()
 
 	def test_direct_mail_from_someone_new_is_not_stored(self):
@@ -478,3 +531,212 @@ class TestConnectMyMailbox(TeamMailCase):
 		frappe.db.set_value("Email Account", STAFF_A, "auth_method", "Basic", update_modified=False)
 		with self.assertRaises(frappe.PermissionError):
 			self._connect(CLERK)
+
+
+class TestPullTeamMailboxes(TeamMailCase):
+	"""The every-minute pull of team mailboxes; only the enqueue and the queue lookup are patched."""
+
+	def setUp(self):
+		super().setUp()
+		frappe.db.set_value("Email Account", INFO, "awaiting_password", 0, update_modified=False)
+		self.queued_jobs: list[str] = []
+		self.enqueue = patch.object(mail, "enqueue").start()
+		self.get_jobs = patch.object(mail, "get_jobs", side_effect=lambda **kw: {frappe.local.site: self.queued_jobs}).start()
+		self.addCleanup(patch.stopall)
+
+	def _job(self, name: str) -> str:
+		return f"pull_from_email_account|{name}"
+
+	def test_a_collector_is_queued_like_frappes_own_pull(self):
+		mail.pull_team_mailboxes()
+		self.enqueue.assert_called_once_with(mail.pull_from_email_account, "short", event="all",
+			job_name=self._job(INFO), email_account=INFO)
+
+	def test_staff_mailboxes_are_left_to_frappes_own_pull(self):
+		mail.pull_team_mailboxes()
+		queued = [c.kwargs["email_account"] for c in self.enqueue.call_args_list]
+		self.assertEqual(queued, [INFO])   # STAFF_A / STAFF_B are in scope but collect nothing
+
+	def test_incoming_off_or_awaiting_password_is_not_queued(self):
+		for field, value in (("enable_incoming", 0), ("awaiting_password", 1)):
+			frappe.db.set_value("Email Account", INFO, field, value, update_modified=False)
+			mail.pull_team_mailboxes()
+			self.enqueue.assert_not_called()
+			frappe.db.set_value("Email Account", INFO, field, 1 - value, update_modified=False)
+
+	def test_oauth_without_a_token_is_not_queued(self):
+		app = frappe.get_doc({"doctype": "Connected App", "provider_name": "_T Team Poll OAuth", "client_id": "test-client",
+			"authorization_uri": "https://accounts.example.com/o/oauth2/auth", "token_uri": "https://accounts.example.com/token",
+			"scopes": [{"scope": "https://mail.example.com/"}]}).insert(ignore_permissions=True).name
+		frappe.db.set_value("Email Account", INFO, {"auth_method": "OAuth", "connected_app": app, "connected_user": CLERK},
+			update_modified=False)
+		mail.pull_team_mailboxes()
+		self.enqueue.assert_not_called()
+		# The app's own sign-in (no per-user token) is not that case.
+		frappe.db.set_value("Email Account", INFO, "backend_app_flow", 1, update_modified=False)
+		mail.pull_team_mailboxes()
+		self.enqueue.assert_called_once()
+
+	def test_an_account_that_failed_to_connect_is_left_to_frappes_own_pull(self):
+		account = frappe.get_doc("Email Account", INFO)
+		self.addCleanup(account.set_failed_attempts_count, 0)
+		account.set_failed_attempts_count(2)
+		mail.pull_team_mailboxes()
+		self.enqueue.assert_not_called()
+		account.set_failed_attempts_count(0)   # what a good connect does
+		mail.pull_team_mailboxes()
+		self.enqueue.assert_called_once()
+
+	def test_a_job_already_queued_is_not_queued_twice(self):
+		self.queued_jobs.append(self._job(INFO))
+		mail.pull_team_mailboxes()
+		self.enqueue.assert_not_called()
+
+	def test_no_collectors_means_no_queue_lookup(self):
+		_settings(team_addresses=[], primary_team_address="")
+		mail.pull_team_mailboxes()
+		self.get_jobs.assert_not_called()
+		self.enqueue.assert_not_called()
+
+	def test_nothing_without_crm(self):
+		with patch.object(mail, "installed", return_value=False):
+			mail.pull_team_mailboxes()
+		self.get_jobs.assert_not_called()
+		self.enqueue.assert_not_called()
+
+	def test_it_is_scheduled_every_minute(self):
+		from ffl_core.tests.test_crm_setup import _hooks_py
+
+		self.assertIn("ffl_core.crm.mail.pull_team_mailboxes", _hooks_py()["scheduler_events"]["cron"]["* * * * *"])
+
+
+class TestSendCrmMailNow(TeamMailCase):
+	"""A mail sent on a CRM Lead / Deal is sent by a short job right after commit, not at the flush."""
+
+	def setUp(self):
+		super().setUp()
+		frappe.db.set_value("Email Account", STAFF_A, {"enable_outgoing": 1, "smtp_server": "smtp.example.com", "smtp_port": 587,
+			"use_tls": 1, "login_id": ADDRESS[STAFF_A], "default_outgoing": 0, "always_use_account_email_id_as_sender": 1},
+			update_modified=False)
+		self.lead = mail._new_lead("jane@example.org", "Jane")
+		self.enqueue = patch.object(mail, "enqueue").start()
+		self.addCleanup(patch.stopall)
+
+	def _send(self, doctype: str | None = "CRM Lead", name: str | None = None, **kwargs) -> str:
+		"""A mail sent from the CRM form, through Frappe's own make(); returns the Communication."""
+		from frappe.core.doctype.communication.email import make
+
+		return make(doctype=doctype, name=name or self.lead, content="Yes, it is.", subject="Re: stock",
+			sender=ADDRESS[STAFF_A], recipients="jane@example.org", send_email=True, **kwargs)["name"]
+
+	def _queue_of(self, communication: str) -> str:
+		return frappe.db.get_value("Email Queue", {"communication": communication}, "name")
+
+	def test_crm_mail_is_queued_for_sending_after_commit(self):
+		queue = self._queue_of(self._send())
+		self.assertTrue(queue)
+		self.enqueue.assert_called_once_with(mail.send_queued_crm_mail, "short", enqueue_after_commit=True,
+			job_id=f"send_crm_mail|{queue}", deduplicate=True, name=queue)
+		self.assertEqual(frappe.db.get_value("Email Queue", queue, "status"), "Not Sent", "sent by the job, not here")
+
+	def test_other_mail_keeps_the_flush(self):
+		# Not on a CRM record, a scheduled mail, a received mail, and a row with no Communication.
+		self._send("User", CLERK)
+		self._send(send_after=frappe.utils.add_to_date(now_datetime(), days=1))
+		self.enqueue.assert_not_called()
+		comm = frappe.get_doc({"doctype": "Communication", "communication_type": "Communication", "sent_or_received": "Received",
+			"subject": "In", "content": "In", "sender": "jane@example.org", "reference_doctype": "CRM Lead",
+			"reference_name": self.lead}).insert(ignore_permissions=True).name
+		for communication in (comm, None):
+			frappe.get_doc({"doctype": "Email Queue", "sender": ADDRESS[STAFF_A], "message": "x", "communication": communication,
+				"recipients": [{"recipient": "jane@example.org"}]}).insert(ignore_permissions=True)
+		self.enqueue.assert_not_called()
+
+	def test_a_queue_failure_does_not_break_the_send(self):
+		self.enqueue.side_effect = RuntimeError("redis is down")
+		errors = frappe.db.count("Error Log")
+		queue = self._queue_of(self._send())
+		self.assertEqual(frappe.db.get_value("Email Queue", queue, "status"), "Not Sent", "the flush will send it")
+		self.assertEqual(frappe.db.count("Error Log"), errors + 1)
+
+	def test_the_job_sends_a_not_sent_row_and_leaves_a_sent_one(self):
+		queue = self._queue_of(self._send())
+		frappe.flags.testing_email = True   # Frappe skips the SMTP send in tests unless this is set
+		self.addCleanup(frappe.flags.pop, "testing_email", None)
+		# send() commits when it takes the row ("Sending"); not in the test transaction.
+		with patch.object(frappe.db, "commit"), patch("frappe.email.smtp.SMTPServer.session", new_callable=PropertyMock) as session:
+			session.return_value.has_extn.return_value = False
+			mail.send_queued_crm_mail(queue)
+			self.assertEqual(frappe.db.get_value("Email Queue", queue, "status"), "Sent")
+			self.assertEqual(session.return_value.sendmail.call_count, 1)
+			mail.send_queued_crm_mail(queue)   # the flush got there first, or the job runs twice
+			mail.send_queued_crm_mail("no such row")
+			self.assertEqual(session.return_value.sendmail.call_count, 1, "a Sent row is not sent again")
+
+
+class TestContactNamedFromMail(TeamMailCase):
+	"""The Contact Frappe makes from a mail takes the display name the lead has, so Convert to Deal keeps it."""
+
+	def setUp(self):
+		super().setUp()
+		frappe.db.set_value("Email Account", INFO, "create_contact", 1, update_modified=False)
+
+	def _contact(self, email: str) -> dict:
+		(name,) = mail.contacts_with_email(email)
+		return frappe.db.get_value("Contact", name, ["name", "first_name", "last_name", "full_name"], as_dict=True)
+
+	def _mail_from(self, display: str, address: str) -> str:
+		"""Team mail from someone new through a real pull; returns the lead."""
+		_pull(INFO, (raw := _raw(f"{display} <{address}>" if display else address, SALES), 90))
+		(comm,) = _stored(raw)
+		self.assertEqual(comm.reference_doctype, "CRM Lead")
+		return comm.reference_name
+
+	def test_an_auto_made_contact_takes_the_display_name_and_survives_convert_to_deal(self):
+		from crm.fcrm.doctype.crm_lead.crm_lead import convert_to_deal
+
+		lead = self._mail_from("Jane Q Public", "jqp99@example.org")
+		contact = self._contact("jqp99@example.org")
+		self.assertEqual((contact.first_name, contact.last_name, contact.full_name), ("Jane", "Q Public", "Jane Q Public"))
+		self.assertEqual(contact.name, "Jqp99", "the document keeps the name Frappe gave it")
+		with patch.object(frappe.db, "commit"):
+			deal = convert_to_deal(lead=lead)
+		self.assertEqual(tuple(frappe.db.get_value("CRM Lead", lead, ["first_name", "last_name"])), ("Jane", "Q Public"))
+		deal_contact = frappe.get_doc("CRM Deal", deal).contacts[0].contact
+		self.assertEqual(deal_contact, "Jqp99")
+		self.assertEqual(frappe.db.get_value("Contact", deal_contact, "full_name"), "Jane Q Public")
+
+	def test_a_hand_named_contact_is_left_alone(self):
+		frappe.get_doc({"doctype": "Contact", "first_name": "Robert", "last_name": "Smith",
+			"email_ids": [{"email_id": "hand55@example.org", "is_primary": 1}]}).insert(ignore_permissions=True)
+		self._mail_from("Bob S", "hand55@example.org")
+		self.assertEqual(tuple(self._contact("hand55@example.org")[k] for k in ("first_name", "last_name")), ("Robert", "Smith"))
+
+	def test_no_display_name_leaves_the_contact(self):
+		self._mail_from("", "nodisp@example.org")   # Frappe fills the display name with the address
+		self.assertEqual(self._contact("nodisp@example.org").first_name, "Nodisp")
+		mail._new_lead("nodisp@example.org", "nodisp@example.org")   # a display name that is the address
+		self.assertEqual(self._contact("nodisp@example.org").first_name, "Nodisp")
+
+	def test_a_contact_linked_to_anything_is_left_alone(self):
+		customer = frappe.get_doc({"doctype": "Customer", "customer_name": "_T Team Linked", "customer_type": "Individual"}
+			).insert(ignore_permissions=True).name
+		for address, link in (("linked1@example.org", ("Customer", customer)),
+				("linked2@example.org", ("Company", frappe.db.get_value("Company", {}, "name")))):
+			frappe.get_doc({"doctype": "Contact", "first_name": frappe.unscrub(address.split("@")[0]),
+				"email_ids": [{"email_id": address, "is_primary": 1}],
+				"links": [{"link_doctype": link[0], "link_name": link[1]}]}).insert(ignore_permissions=True)
+			mail._new_lead(address, "Jane Public")
+			self.assertEqual(self._contact(address).first_name, frappe.unscrub(address.split("@")[0]), address)
+		# an auto-looking Contact someone gave a last name
+		frappe.get_doc({"doctype": "Contact", "first_name": "Lastname3", "last_name": "Given",
+			"email_ids": [{"email_id": "lastname3@example.org", "is_primary": 1}]}).insert(ignore_permissions=True)
+		mail._new_lead("lastname3@example.org", "Jane Public")
+		self.assertEqual(self._contact("lastname3@example.org").first_name, "Lastname3")
+
+	def test_a_failure_does_not_stop_the_lead(self):
+		errors = frappe.db.count("Error Log")
+		with patch.object(mail, "contacts_with_email", side_effect=RuntimeError("boom")):
+			lead = mail._new_lead("fail1@example.org", "Jane Public")
+		self.assertTrue(frappe.db.exists("CRM Lead", lead))
+		self.assertEqual(frappe.db.count("Error Log"), errors + 1)
