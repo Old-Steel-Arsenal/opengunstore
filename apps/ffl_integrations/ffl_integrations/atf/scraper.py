@@ -92,7 +92,11 @@ class ATFFormScraperProvider:
 		soup = BeautifulSoup(html, "html.parser")
 		text = soup.get_text(" ", strip=True)
 
-		if "invalid" in text.lower() and "not be found" in text.lower():
+		# ATF's real not-found page: "You Entered FFL Number ... invalid and/or ...".
+		# Anything else with no license fields is a page we cannot read (a
+		# maintenance or blocking page served as 200), NOT a verdict on the FFL.
+		lowered = text.lower()
+		if "you entered ffl number" in lowered and "invalid and/or" in lowered:
 			return EZCheckResult(ffl_number=ffl_number, found=False, status="NotFound")
 
 		licensee_name = _field(text, "License Name")
@@ -104,7 +108,8 @@ class ATFFormScraperProvider:
 		license_type = _license_type_from_number(ffl_number)
 
 		if not licensee_name and not expiry:
-			return EZCheckResult(ffl_number=ffl_number, found=False, status="NotFound")
+			# verify() turns this into EZCheckUnavailable: the record stays as it was.
+			raise ValueError("unrecognized EZ Check page: no license fields and no not-found marker")
 
 		status = "Expired" if (expiry and expiry < today) else "Verified"
 		return EZCheckResult(

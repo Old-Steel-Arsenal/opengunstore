@@ -97,7 +97,8 @@ class RemoteCatalogMixin:
 				message=frappe.get_traceback())
 			return []
 		from ffl_integrations.distributor.util import legal_firearm
-		offers = [dict(hit["best_offer"], distributor=self.code) for hit in hits]
+		# best_offer is null when every offer on the hit is unbuyable (a stale house).
+		offers = [dict(hit["best_offer"], distributor=self.code) for hit in hits if hit["best_offer"]]
 		remote_catalog.classify(offers)   # search offers carry no class
 		from ffl_integrations.distributor.util import master_key, prefetch_legal
 		prefetch_legal([master_key(o, self.code) for o in offers])   # one read, not one a row

@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from frappe.tests.utils import FrappeTestCase
 
 from ffl_integrations.distributor import remote_catalog
@@ -56,6 +58,18 @@ class TestRemoteCatalogStub(FrappeTestCase):
 		hits = remote_catalog.search("rsr", "glock", 10)
 		skus = sorted(h["best_offer"]["sku"] for h in hits)
 		self.assertEqual(skus, ["GLK19"])
+
+	def test_house_search_skips_a_hit_with_no_best_offer(self):
+		"""The service sends best_offer=null when every offer on a hit belongs to a
+		stale house. That hit has nothing to buy; the other hits must still come back."""
+		from ffl_integrations.distributor.rsr_provider import RSRProvider
+
+		catalog_stub.seed_catalog([{"rsr_stock_number": "GLK19", "short_description": "GLOCK 19"}])
+		live = remote_catalog.search("rsr", "glock", 10)
+		stale = {"upc": "1", "offers": [dict(live[0]["best_offer"], sku="STALE")], "best_offer": None}
+		with patch.object(remote_catalog, "search", return_value=[stale, *live]):
+			rows = RSRProvider().search("glock", 10)
+		self.assertEqual([r["sku"] for r in rows], ["GLK19"])
 
 	def test_health_reports_totals_and_honors_override(self):
 		catalog_stub.seed_catalog([{"rsr_stock_number": "A"}, {"rsr_stock_number": "B"}])
