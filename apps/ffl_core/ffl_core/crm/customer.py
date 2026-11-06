@@ -26,6 +26,7 @@ from frappe.utils import cint, escape_html, flt, fmt_money, formatdate, getdate,
 
 from ffl_core import customer_flags, pricing
 from ffl_core.crm.deal import SERIAL_FIELD
+from ffl_core.crm.deals import customer_of
 from ffl_core.crm.mail import contacts_with_email
 from ffl_core.crm.item import PRODUCT
 from ffl_core.customer_profile import ACTIVE, BANNED
@@ -121,9 +122,9 @@ def ensure_customer(deal, customer: str | None = None, create: bool = False) -> 
 	if existing:
 		return {"customer": existing}
 	contact = _primary_contact(deal)
-	linked = _customers_of_contacts([contact]) if contact else []
-	if len(linked) == 1:
-		return _link(deal, linked[0])   # several: the employee chooses among find_matches
+	linked = contact and customer_of(contact)
+	if linked:
+		return _link(deal, linked)   # several: none here, the employee chooses among find_matches
 	values = _new_customer_values(deal, contact)
 	if create:
 		return _link(deal, _create(values, contact))

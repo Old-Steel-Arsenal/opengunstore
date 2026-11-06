@@ -343,7 +343,7 @@ class TestWriteBack(DealPOSCase):
 				patch("frappe.enqueue") as enqueue:
 			si = self._sale(deal, 400)
 		enqueue.assert_called_once_with("ffl_core.crm.orders.recalculate_deal", queue="short", enqueue_after_commit=True,
-			job_id=f"ffl_crm_recalculate:{deal}", deduplicate=True, deal=deal)
+			job_id=f"ffl_crm_recalculate:{deal}", deduplicate=True, deal=deal, may_win=True)
 		self.assertEqual(si.docstatus, 1)
 		self.assertEqual(frappe.db.get_value("Sales Invoice", si.name, "docstatus"), 1)
 		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "status"), "Qualification")
@@ -385,6 +385,21 @@ class TestWriteBack(DealPOSCase):
 			orders.recalculate_deal(deal)   # only logs
 		self.assertEqual(frappe.db.count("Error Log", {"method": ["like", "[CRM] Deal recalculation failed%"]}), before + 1)
 		self.assertEqual(frappe.db.get_value("Sales Invoice", kept.name, "docstatus"), 1)
+
+	def test_the_retry_of_a_cancel_leaves_the_status_alone(self):
+		deal = _deal(status="Qualification").name
+		self._sale(deal, 400)
+		second = self._sale(deal, 100)
+		frappe.db.set_value("CRM Deal", deal, "status", "Qualification")   # staff moved it back
+		queued = []
+		with patch.object(orders, "_apply", side_effect=frappe.ValidationError("boom")), \
+				patch("frappe.enqueue", side_effect=lambda method, **kw: queued.append(kw)):
+			second.reload()
+			second.cancel()
+		self.assertFalse(queued[0]["may_win"])
+		orders.recalculate_deal(deal, may_win=queued[0]["may_win"])
+		row = frappe.db.get_value("CRM Deal", deal, ["status", "deal_value"], as_dict=True)
+		self.assertEqual((row.status, flt(row.deal_value)), ("Qualification", 400))
 
 	def test_a_queue_that_is_down_does_not_stop_the_invoice(self):
 		deal = _deal().name
@@ -587,6 +602,17 @@ class TestCustomerLink(DealPOSCase):
 			{first: ["contact link"], second: ["contact link"]})
 		self.assertIsNone(frappe.db.get_value("CRM Deal", deal.name, "erpnext_customer"))
 		self.assertEqual(deal_customer.ensure_customer(deal, customer=second), {"customer": second})
+
+	def test_a_new_deal_takes_a_contacts_only_customer_never_one_of_several(self):
+		from ffl_core.crm.deals import open_deal_for
+
+		first, second = _customer(), _customer()
+		only = frappe.get_doc({"doctype": "Contact", "first_name": "Only " + _token(),
+			"links": [{"link_doctype": "Customer", "link_name": first}]}).insert(ignore_permissions=True).name
+		shared = frappe.get_doc({"doctype": "Contact", "first_name": "Shared " + _token(),
+			"links": [{"link_doctype": "Customer", "link_name": c} for c in (first, second)]}).insert(ignore_permissions=True).name
+		self.assertEqual(frappe.db.get_value("CRM Deal", open_deal_for(only), "erpnext_customer"), first)
+		self.assertIsNone(frappe.db.get_value("CRM Deal", open_deal_for(shared), "erpnext_customer"))
 
 	def test_a_contacts_own_email_field_matches_too(self):
 		email = f"{_token()}@example.com"
@@ -888,4 +914,5 @@ class TestPageWiring(FrappeTestCase):
 		# A re-saved draft keeps the guns still to pick; picking one (by any route) drops its entry.
 		self.assertIn("payload.unpicked_firearms = this._unpicked", js)
 		self.assertIn("this._unpicked.splice(at, 1)", js)
+		self.assertIn("this._unpicked.push(gone._unpicked)", js)
 		self.assertIn("this._unpicked = []", js)

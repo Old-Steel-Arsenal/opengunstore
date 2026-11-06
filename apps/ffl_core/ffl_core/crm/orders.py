@@ -14,7 +14,7 @@ carries one.
 A write-back runs inside the invoice's transaction and never commits. It never stops an invoice
 either: a failure is rolled back to before it and goes in the Error Log, and a short job queued for
 after the invoice commits (:func:`recalculate_deal`) sums the deal again and makes it Won when an
-invoice stands. That retry makes no task for the owner: a return or a cancel whose write-back failed
+invoice stands, if the failed write-back was a sale's. That retry makes no task for the owner: a return or a cancel whose write-back failed
 leaves the Error Log entry as the only trace. If the retry fails too it only logs.
 
 lazy: two invoices of one deal submitted in the same second: the second waits on the deal's row
@@ -96,29 +96,30 @@ def _write_back(doc, cancelled: bool) -> None:
 		frappe.db.rollback(save_point=_SAVEPOINT)
 		del frappe.local.message_log[messages:]
 		frappe.log_error(title=f"[{TITLE}] Deal write-back failed: {doc.name}", message=frappe.get_traceback())
-		_queue_recalculation(deal)
+		_queue_recalculation(deal, may_win=not cancelled and not doc.get("is_return"))
 
 
-def _queue_recalculation(deal: str) -> None:
+def _queue_recalculation(deal: str, may_win: bool) -> None:
 	"""One recalculation per deal, after the invoice's transaction commits. A queue that is down
 	costs the retry, never the invoice."""
 	try:
 		frappe.enqueue("ffl_core.crm.orders.recalculate_deal", queue="short", enqueue_after_commit=True,
-			job_id=f"ffl_crm_recalculate:{deal}", deduplicate=True, deal=deal)
+			job_id=f"ffl_crm_recalculate:{deal}", deduplicate=True, deal=deal, may_win=may_win)
 	except Exception:
 		frappe.log_error(title=f"[{TITLE}] Deal recalculation not queued: {deal}", message=frappe.get_traceback())
 
 
-def recalculate_deal(deal: str) -> None:
+def recalculate_deal(deal: str, may_win: bool = True) -> None:
 	"""The retry job after a failed write-back, in its own transaction: the deal's value from its
-	submitted invoices, and Won when one that is not a credit note stands. Safe to run any number
-	of times. It makes no task for the owner."""
+	submitted invoices, and, with ``may_win`` (the failure was a sale's, not a return's or a cancel's,
+	which leave the status alone), Won when one that is not a credit note stands. Safe to run any
+	number of times. It makes no task for the owner."""
 	frappe.db.savepoint(_RETRY_SAVEPOINT)
 	try:
 		if pos_link_on() and frappe.db.exists(DEAL, deal):
 			doc = frappe.get_doc(DEAL, deal, for_update=True)
 			doc.deal_value = deal_sales(deal)[0]
-			if frappe.db.exists("Sales Invoice", {DEAL_FIELD: deal, "docstatus": 1, "is_return": 0, "is_consolidated": 0}):
+			if may_win and frappe.db.exists("Sales Invoice", {DEAL_FIELD: deal, "docstatus": 1, "is_return": 0, "is_consolidated": 0}):
 				_mark_won(doc)
 			_save(doc)
 		commit()

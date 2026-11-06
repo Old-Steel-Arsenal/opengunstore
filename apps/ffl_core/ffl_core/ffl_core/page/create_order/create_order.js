@@ -2018,7 +2018,7 @@ class CreateOrderApp {
 		if (line.is_firearm && line.serial) {
 			// A gun picked by any route (card, scan, serial) answers one still-to-pick entry of its model.
 			const at = (this._unpicked || []).findIndex((u) => u.item_code === line.item_code);
-			if (at >= 0) this._unpicked.splice(at, 1);
+			if (at >= 0) line._unpicked = this._unpicked.splice(at, 1)[0];
 		}
 		this._renderLines();
 		this._syncDestSection();
@@ -2094,7 +2094,8 @@ class CreateOrderApp {
 			this._reflectReadiness();
 		});
 		$tb.find('.btn-remove').on('click', (e) => {
-			this.lines.splice($(e.currentTarget).data('idx'), 1);
+			const [gone] = this.lines.splice($(e.currentTarget).data('idx'), 1);
+			if (gone?._unpicked) this._unpicked.push(gone._unpicked);   // the deal's gun is still to pick
 			this._renderLines(); this._syncDestSection(); this._reflectReadiness();
 		});
 		$tb.find('.line-loc').on('change', (e) => {
