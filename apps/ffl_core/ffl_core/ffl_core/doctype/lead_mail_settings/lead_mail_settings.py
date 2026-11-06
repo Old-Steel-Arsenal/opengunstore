@@ -1,5 +1,6 @@
 """Lead Mail Settings (CRM mail settings): the store's team addresses and the domains whose mail never
-becomes a CRM lead. Incoming rules in ffl_core.crm.mail, team addresses in ffl_core.crm.team."""
+becomes a CRM lead. Incoming rules in ffl_core.crm.mail, team addresses in ffl_core.crm.team. Its
+``crm_pos_link`` switch turns on the deal to POS link (ffl_core.crm.customer, ffl_core.crm.orders)."""
 from __future__ import annotations
 
 import frappe
@@ -37,7 +38,9 @@ class LeadMailSettings(Document):
 			frappe.throw(_("The Reply-To address must be one of the team addresses."))
 
 	def on_update(self):
+		from ffl_core.crm.setup import apply_pos_link
 		from ffl_core.crm.team import apply
 
 		frappe.clear_document_cache(self.doctype, self.name)   # apply() reads the cached settings
 		apply()
+		apply_pos_link()

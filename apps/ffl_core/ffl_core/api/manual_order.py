@@ -42,6 +42,7 @@ from ffl_core.api.counter_pickup import (
 )
 from ffl_core.compliance import channel_invoice, cr_transfer, dealer_transfer, le_excise_exempt
 from ffl_core.compliance.firearm import is_awaiting_procurement_row
+from ffl_core.crm.orders import deal_for_order
 from ffl_core.customer_name import refresh_customer_name_snapshots
 from ffl_core.firearm import (
 	available_serials_with_prices,
@@ -279,7 +280,10 @@ def create_order(payload) -> dict:
 	            off, sales tax stays; buyer and CDTFA-230-FET certificate required
 	            (compliance.le_excise_exempt),
 	        price_approval? — a manager's approval token for prices below list
-	            (price_approval.approve; needed while FFL Settings asks for one)
+	            (price_approval.approve; needed while FFL Settings asks for one),
+	        crm_deal? — the CRM Deal this order came from: kept on the invoice,
+	            which writes back to it (crm.orders); one that no longer exists
+	            is dropped and the order goes on
 	        } — dict or JSON string.
 
 	Agreements the buyer has not signed yet (FFL Settings › Used Item Agreement,
@@ -545,6 +549,7 @@ def _create_order(payload, *, shipping_tax_inclusive: int | None = None,
 	# broken invoice, and a pickup with a gun on it must never read as one.
 	si.ffl_pickup_in_store = 1 if pickup else 0
 	si.ffl_buyer_type = _BUYER_BUSINESS if is_business else _BUYER_INDIVIDUAL
+	si.ffl_crm_deal = deal_for_order(payload.get("crm_deal"))
 	si.update(le_exemption)
 	si.ffl_shipping_amount = shipping_amount
 	si.ffl_shipping_tax_inclusive = shipping_tax_inclusive
@@ -946,7 +951,7 @@ def age_days(posting_date, today=None) -> int:
 
 
 @frappe.whitelist()
-def list_pending_dispositions() -> list[dict]:
+def list_pending_dispositions(customer: str | None = None) -> list[dict]:
 	"""The Pending Order queue — every submitted counter order that still needs
 	work: undisposed firearm serials (needs disposing), an outstanding balance
 	(needs payment), or deferred physical stock that hasn't shipped (needs its
@@ -955,6 +960,9 @@ def list_pending_dispositions() -> list[dict]:
 	both live here; a fully-handled order leaves the queue. A business order
 	shipped on account therefore stays until paid, and a dispose-now order
 	appears (already disposed) until its shipment is pushed.
+
+	Args:
+	    customer: Only this customer's orders. Default: everyone's.
 
 	Returns:
 	    One card per order: invoice identity/customer/totals, paid state,
@@ -979,6 +987,8 @@ def list_pending_dispositions() -> list[dict]:
 	# without the exclusion every shipped GunBroker gun would sit here for ever.
 	# Shared with reservations.counter_holds — see channel_invoice.
 	base = channel_invoice.pending_si_base_filter()
+	if customer:
+		base["customer"] = customer
 	fields = ["name", "customer", "customer_name", "ffl_destination_ffl",
 		"ffl_buyer_type", "posting_date", "creation", "grand_total",
 		"outstanding_amount", "shipstation_status", "shipstation_order_id",
@@ -2743,6 +2753,7 @@ def get_order_for_edit(sales_invoice: str) -> dict:
 		# premise, never the buyer's (_counter_ship_to_block).
 		"ship_to": _edit_ship_to(si),
 		"distributor_options": _ordered_delivery_options(si.name),
+		"crm_deal": si.get("ffl_crm_deal") or None,
 	}
 	if is_business:
 		# Business buyers ship to their own license — the page re-resolves the
@@ -3393,6 +3404,8 @@ def update_order(sales_invoice: str, payload, refund_mode: str | None = None,
 	payload["payment_received"] = 0
 	payload["dispose_now"] = 0
 	payload.pop("draft", None)
+	# The rebuilt invoice stays on the old one's deal, whatever the page sent.
+	payload["crm_deal"] = si.get("ffl_crm_deal")
 	# Stale-email belt: on a buyer swap, get_order_for_edit carried the ORIGINAL
 	# buyer's contact_email into the payload — left as-is, the rebuilt invoice
 	# (and any later deliberate re-send) would address the WRONG person. Blank it

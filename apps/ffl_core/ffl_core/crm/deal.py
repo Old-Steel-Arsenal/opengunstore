@@ -18,6 +18,8 @@ from ffl_core.crm.deals import is_closed
 from ffl_core.crm.item import PRODUCT
 
 SERIAL_FIELD = "ffl_serial_no"
+# Set by crm.orders on its own save of a deal: an invoice's write-back never re-prices the quote.
+WRITE_BACK_FLAG = "ffl_crm_write_back"
 
 
 def _check_gun(serial: str, qty) -> None:
@@ -29,7 +31,7 @@ def _check_gun(serial: str, qty) -> None:
 def price_lines(doc, method=None):
 	"""CRM Deal validate."""
 	rows = doc.get("products") or []
-	if not rows or is_closed(doc.get("status")):
+	if not rows or doc.flags.get(WRITE_BACK_FLAG) or is_closed(doc.get("status")):
 		return
 	products = {p.name: p for p in frappe.get_all(PRODUCT, filters={"name": ["in", list({r.product_code for r in rows
 		if r.product_code})]}, fields=["name", "erpnext_item_code", "product_name"])}

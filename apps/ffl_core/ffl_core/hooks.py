@@ -281,7 +281,8 @@ doc_events = {
 		"on_trash": "ffl_core.crm.product.on_trash",
 	},
 	"CRM Deal": {
-		"validate": "ffl_core.crm.deal.price_lines",
+		# The quote's lines priced; the value pinned to the deal's invoices (ffl_core.crm.orders).
+		"validate": ["ffl_core.crm.deal.price_lines", "ffl_core.crm.orders.pin_deal_value"],
 		# A deal converted from a lead the team shares stays shared (ffl_core.crm.mail).
 		"after_insert": "ffl_core.crm.mail.share_converted_deal",
 	},
@@ -428,6 +429,8 @@ doc_events = {
 			"ffl_core.compliance.trade_in_settlement.reconcile_payout_on_merge",
 			# Each firearm sold agreements this sale used (agreements.py).
 			"ffl_core.agreements.mark_firearm_agreements_used",
+			# The invoice's CRM deal: its value, Won on the first sale (never blocks; crm/orders.py).
+			"ffl_core.crm.orders.on_submit",
 		],
 		"on_cancel": [
 			# First: a merged invoice whose ticket's payout a drawer count relied on stays
@@ -445,6 +448,8 @@ doc_events = {
 			"ffl_core.storage.stock_document_cancelled",
 			# Each firearm sold agreements this sale used (agreements.py).
 			"ffl_core.agreements.release_firearm_agreements",
+			# The invoice's CRM deal: its value, a task for the owner (never blocks; crm/orders.py).
+			"ffl_core.crm.orders.on_cancel",
 		],
 		# A membership invoice is never cancelled from the invoice: refunds are credit notes (membership.py).
 		"before_cancel": "ffl_core.membership.refuse_invoice_cancel",
