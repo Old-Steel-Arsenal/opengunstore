@@ -3,6 +3,7 @@ them, CRM's lead switch moved to ours, the product backfill queued once."""
 from __future__ import annotations
 
 import ast
+import json
 import os
 from unittest.mock import patch
 
@@ -20,7 +21,7 @@ def _hooks_py() -> dict:
 	return {n.targets[0].id: ast.literal_eval(n.value) for n in tree.body
 		if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)
 		and n.targets[0].id in ("required_apps", "after_install", "after_migrate", "after_app_install",
-			"doc_events", "scheduler_events")}
+			"doc_events", "scheduler_events", "override_whitelisted_methods")}
 
 
 def _listed(value) -> list:
@@ -179,3 +180,63 @@ class TestCurrency(CRMTestCase):
 		with patch("frappe.enqueue"):
 			self.assertEqual(setup.ensure(), {"ok": 1})
 		self.assertEqual(frappe.db.get_single_value(setup.FCRM_SETTINGS, "currency"), self._store_currency())
+
+
+class TestDealStages(CRMTestCase):
+	def _stock_stages(self):
+		for old, new in setup.RENAMED_STAGES.items():
+			frappe.rename_doc(setup.STATUS, new, old, force=True)
+		for stage in setup.DROPPED_STAGES:
+			frappe.get_doc({"doctype": setup.STATUS, "deal_status": stage, "type": "Ongoing", "position": 9}
+				).insert(ignore_permissions=True)
+		frappe.db.set_global(setup.DEAL_STAGES_FLAG, "")
+
+	def _deal(self, status: str) -> str:
+		return frappe.get_doc({"doctype": setup.DEAL, "status": status, "first_name": "_T Stage", "currency": "USD",
+			"organization": None}).insert(ignore_permissions=True).name
+
+	def _stages(self) -> list[str]:
+		return frappe.get_all(setup.STATUS, pluck="name", order_by="position asc")
+
+	def test_a_new_site_has_the_store_stages(self):
+		self.assertEqual(self._stages(), list(setup.DEAL_STAGES))
+
+	def test_stock_stages_become_the_store_stages_and_keep_their_deals(self):
+		self._stock_stages()
+		renamed = self._deal("Proposal/Quotation")
+		dropped = self._deal("Negotiation")
+		self.assertTrue(setup.ensure_deal_stages())
+		self.assertEqual(self._stages(), list(setup.DEAL_STAGES))
+		self.assertEqual(frappe.db.get_value(setup.STATUS, "Quoted", "deal_status"), "Quoted")
+		self.assertEqual(frappe.db.get_value(setup.DEAL, renamed, "status"), "Quoted")
+		self.assertEqual(frappe.db.get_value(setup.DEAL, dropped, "status"), "Talking")
+
+	def test_saved_views_follow_the_stages(self):
+		self._stock_stages()
+		view = frappe.get_doc({"doctype": "CRM View Settings", "label": "_T Stages", "dt": setup.DEAL, "type": "kanban",
+			"filters": json.dumps({"status": ["in", ["Proposal/Quotation", "Won"]], "email": "Negotiation"}),
+			"kanban_columns": json.dumps([{"name": "Demo/Making", "width": "20rem"}, {"name": "Negotiation"},
+				{"name": "Won"}])}).insert(ignore_permissions=True)
+		setup.ensure_deal_stages()
+		view.reload()
+		self.assertEqual(json.loads(view.filters),
+			{"status": ["in", ["Quoted", "Won"]], "email": "Negotiation"})
+		self.assertEqual(json.loads(view.kanban_columns),
+			[{"name": "Talking", "width": "20rem"}, {"name": "Won"}])
+
+	def test_a_stage_added_later_stays(self):
+		frappe.get_doc({"doctype": setup.STATUS, "deal_status": "Negotiation", "type": "Ongoing", "position": 9}
+			).insert(ignore_permissions=True)
+		self.assertFalse(setup.ensure_deal_stages())
+		self.assertTrue(frappe.db.exists(setup.STATUS, "Negotiation"))
+
+
+class TestNoQuotes(FrappeTestCase):
+	def test_the_deal_page_shows_no_quote_controls(self):
+		from ffl_core.api.crm import deals_use_no_quotes
+
+		base = "crm.fcrm.doctype.erpnext_crm_settings.erpnext_crm_settings."
+		for method in ("can_view_quotations", "can_create_quotations"):
+			self.assertEqual(_hooks_py()["override_whitelisted_methods"][base + method],
+				"ffl_core.api.crm.deals_use_no_quotes")
+		self.assertIs(deals_use_no_quotes(), False)

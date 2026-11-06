@@ -3,7 +3,7 @@ opens the contact's deal to write to them, since CRM shows and sends mail only o
 **Connect my mailbox** on a staff member's own My Settings (``public/js/user_form.js``) starts the
 sign-in that connects their own mailbox; **Make lead** on a Communication (``public/js/communication_form.js``)
 files a mail the AI screening left without a lead; the Deal page's customer card and **Open order**
-(``ffl_core.crm.setup.DEAL_SCRIPT``), behind Lead Mail Settings' switch."""
+(``ffl_core.crm.setup.DEAL_SCRIPT``), behind Lead Mail Settings' switch; the stand-in that takes quotes off the Deal page."""
 from __future__ import annotations
 
 import frappe
@@ -155,3 +155,14 @@ def open_deal_order(deal: str) -> dict:
 	"""
 	frappe.only_for(CRM_ROLES)
 	return deal_customer.open_order(_deal_for_pos_link(deal, "write"))
+
+
+@frappe.whitelist()
+def deals_use_no_quotes() -> bool:
+	"""Stands in for CRM's quotation gates (hooks.py): the Deal page shows no Quotations tab and no
+	**Create Quotation** button, since a deal closes through **Open order**.
+
+	Returns:
+	    bool: Always False.
+	"""
+	return False

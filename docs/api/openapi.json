@@ -7538,6 +7538,36 @@
         }
       }
     },
+    "/api/method/ffl_core.api.crm.deals_use_no_quotes": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Stands in for CRM's quotation gates (hooks.py): the Deal page shows no Quotations tab and no",
+        "description": "**Create Quotation** button, since a deal closes through **Open order**.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:161`",
+        "operationId": "ffl_core.api.crm.deals_use_no_quotes",
+        "responses": {
+          "200": {
+            "description": "bool: Always False.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.api.crm.ensure_deal_customer": {
       "post": {
         "tags": [

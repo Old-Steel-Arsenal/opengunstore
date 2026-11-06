@@ -44,6 +44,10 @@ class TestCRMContract(CRMTestCase):
 		settings = frappe.get_single("ERPNext CRM Settings")
 		for name in ("create_custom_fields", "add_quotation_to_option", "create_crm_form_script"):
 			self.assertTrue(callable(getattr(settings, name, None)), name)
+		# The two gates hooks.py overrides: the Quotations tab and the Create Quotation button.
+		module = inspect.getmodule(type(settings))
+		for name in ("can_view_quotations", "can_create_quotations"):
+			self.assertTrue(callable(getattr(module, name, None)), name)
 		# Its save grants Sales User / Manager write on Item: the reason setup writes the fields.
 		self.assertIn("grant_item_access_to_sales_roles", inspect.getsource(type(settings).validate))
 
@@ -74,6 +78,7 @@ class TestCRMContract(CRMTestCase):
 		self.assertTrue({"contact", "is_primary"} <= _fields("CRM Contacts"))
 		self.assertEqual(frappe.get_meta("CRM Contacts").get_field("contact").fieldtype, "Link")
 		self.assertTrue({"type", "position"} <= _fields("CRM Deal Status"))
+		self.assertTrue({"dt", "filters", "kanban_columns"} <= _fields("CRM View Settings"))
 		self.assertTrue({"title", "description", "priority", "status", "assigned_to", "reference_doctype",
 			"reference_docname"} <= _fields("CRM Task"))
 		options = frappe.get_meta("CRM Task").get_field("status").options

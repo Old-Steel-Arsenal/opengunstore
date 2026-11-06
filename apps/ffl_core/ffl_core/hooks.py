@@ -1119,6 +1119,11 @@ override_whitelisted_methods = {
 	# MCP clients that sign in from a terminal (Claude Code) register an
 	# http://localhost callback, which Frappe's registration refuses (api/oauth_dcr.py).
 	"frappe.integrations.oauth2.register_client": "ffl_core.api.oauth_dcr.register_client",
+	# A deal closes through Open order and Create Order: no Create Quotation button, no Quotations tab.
+	"crm.fcrm.doctype.erpnext_crm_settings.erpnext_crm_settings.can_view_quotations":
+		"ffl_core.api.crm.deals_use_no_quotes",
+	"crm.fcrm.doctype.erpnext_crm_settings.erpnext_crm_settings.can_create_quotations":
+		"ffl_core.api.crm.deals_use_no_quotes",
 }
 
 # override_whitelisted_methods = {

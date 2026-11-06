@@ -2,8 +2,8 @@
 
 Owns: the two custom fields (``CUSTOM_FIELDS``), the Lead Mail Settings default, the team mail
 setup (``crm.team.apply``: staff Reply-To, team mailboxes in User Emails), the same-site
-ERPNext CRM Settings (on, this site, ``sync_products`` off), CRM's currency, moving CRM's own "create lead from
-incoming email" switch to ours, the Contact page's Email button, the Deal page's customer card and
+ERPNext CRM Settings (on, this site, ``sync_products`` off), CRM's currency, the deal stages, moving CRM's own
+"create lead from incoming email" switch to ours, the Contact page's Email button, the Deal page's customer card and
 Open order button (:func:`apply_pos_link`, following Lead Mail Settings › crm_pos_link), and the
 one-off backfill that makes every Item a CRM Product.
 
@@ -29,7 +29,7 @@ import frappe
 from ffl_core.crm import TITLE, installed, pos_link_on, team
 from ffl_core.crm.customer import CARD_FIELD
 from ffl_core.crm.deal import SERIAL_FIELD
-from ffl_core.crm.deals import DEAL
+from ffl_core.crm.deals import DEAL, STATUS
 from ffl_core.crm.mail import AUTO_LEAD, SETTINGS
 from ffl_core.crm.orders import DEAL_FIELD
 
@@ -37,6 +37,11 @@ CRM_SETTINGS = "ERPNext CRM Settings"
 FCRM_SETTINGS = "FCRM Settings"
 SEEDED_FLAG = "ffl_crm_settings_seeded"
 BACKFILL_FLAG = "ffl_crm_backfill_done"
+DEAL_STAGES_FLAG = "ffl_crm_deal_stages_done"
+# CRM's stock deal stages and what they become. A stage dropped hands its deals to the one named.
+RENAMED_STAGES = {"Qualification": "New", "Demo/Making": "Talking", "Proposal/Quotation": "Quoted"}
+DROPPED_STAGES = {"Negotiation": "Talking", "Ready to Close": "Quoted"}
+DEAL_STAGES = ("New", "Talking", "Quoted", "Won", "Lost")
 BACKFILL_JOB = "ffl_crm_product_backfill"
 # CRM's own per-page customization (a CRM Form Script record): the Email button on a Contact page.
 CONTACT_SCRIPT = "OpenGunstore: Email a contact"
@@ -171,6 +176,7 @@ def ensure(backfill: bool = True) -> dict:
 		_as_administrator(ensure_settings)
 		_as_administrator(ensure_crm_settings)
 		_as_administrator(ensure_crm_currency)
+		_as_administrator(ensure_deal_stages)
 		_as_administrator(take_over_lead_flags)
 		_as_administrator(ensure_contact_script)
 		_as_administrator(apply_pos_link)
@@ -243,6 +249,49 @@ def ensure_crm_currency() -> str | None:
 	frappe.db.set_single_value(FCRM_SETTINGS, "currency", currency)
 	frappe.clear_document_cache(FCRM_SETTINGS, FCRM_SETTINGS)
 	return currency
+
+
+def ensure_deal_stages() -> bool:
+	"""Once per site: CRM's stock deal stages become the ones a gun store uses. Remembered with a site
+	global, so a stage a manager adds or renames later stays. A stage a site has already replaced is
+	left alone."""
+	if frappe.db.get_global(DEAL_STAGES_FLAG):
+		return False
+	moved = {}
+	for old, new in RENAMED_STAGES.items():
+		if frappe.db.exists(STATUS, old) and not frappe.db.exists(STATUS, new):
+			frappe.rename_doc(STATUS, old, new, force=True)
+			moved[old] = new
+	for old, new in DROPPED_STAGES.items():
+		if frappe.db.exists(STATUS, old) and frappe.db.exists(STATUS, new):
+			frappe.db.set_value(DEAL, {"status": old}, "status", new)
+			frappe.delete_doc(STATUS, old, ignore_permissions=True)
+			moved[old] = new
+	for position, stage in enumerate(DEAL_STAGES, 1):
+		if frappe.db.exists(STATUS, stage):
+			frappe.db.set_value(STATUS, stage, "position", position)
+	_move_stages_in_saved_views(moved)
+	frappe.db.set_global(DEAL_STAGES_FLAG, "1")
+	return True
+
+
+def _move_stages_in_saved_views(moved: dict) -> None:
+	"""A saved Deal view keeps stage names as JSON, in its filter and its kanban columns, where a
+	rename does not reach them."""
+	def swap(value):
+		return [swap(v) for v in value] if isinstance(value, list) else moved.get(value, value)
+
+	views = frappe.get_all("CRM View Settings", filters={"dt": DEAL}, fields=["name", "filters", "kanban_columns"])
+	for view in views:
+		filters = json.loads(view.filters or "{}")
+		if "status" in filters:
+			filters["status"] = swap(filters["status"])
+		columns = {}   # two old stages can land on one new stage: its column appears once
+		for column in json.loads(view.kanban_columns or "[]"):
+			column["name"] = swap(column.get("name"))
+			columns.setdefault(column["name"], column)
+		frappe.db.set_value("CRM View Settings", view.name, {"filters": json.dumps(filters),
+			"kanban_columns": json.dumps(list(columns.values()))}, update_modified=False)
 
 
 def take_over_lead_flags() -> list[str]:
