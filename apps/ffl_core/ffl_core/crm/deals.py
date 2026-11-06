@@ -23,9 +23,10 @@ def is_closed(status: str | None) -> bool:
 
 
 def customer_of(contact: str) -> str | None:
+	"""The Customer this Contact is linked to. None when it has several: choosing is the employee's."""
 	found = frappe.get_all("Dynamic Link", filters={"parenttype": "Contact", "parent": contact,
-		"link_doctype": "Customer"}, pluck="link_name", order_by="creation asc", limit=1)
-	return found[0] if found else None
+		"link_doctype": "Customer"}, pluck="link_name", limit=2)
+	return found[0] if len(found) == 1 else None
 
 
 def open_deal_for(contact: str, owner: str | None = None) -> str:

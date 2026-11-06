@@ -130,14 +130,15 @@ def take_over_lead_flag(doc, method=None):
 		doc.create_lead_from_incoming_email = 0
 
 
-def _contacts_of(email: str) -> set[str]:
+def contacts_with_email(email: str) -> set[str]:
+	"""The Contacts that hold this address, in the Email IDs table or as the Contact's own email_id."""
 	contacts = set(frappe.get_all("Contact Email", filters={"email_id": email, "parenttype": "Contact"}, pluck="parent"))
 	return contacts | set(frappe.get_all("Contact", filters={"email_id": email}, pluck="name"))
 
 
 def _customer_contact(email: str) -> str | None:
 	"""The (oldest) Contact with this email address that is linked to a Customer."""
-	contacts = _contacts_of(email)
+	contacts = contacts_with_email(email)
 	if not contacts:
 		return None
 	found = frappe.get_all("Dynamic Link", filters={"parenttype": "Contact", "parent": ["in", list(contacts)],
@@ -269,7 +270,7 @@ def _name_auto_contact(email: str, first: str, last: str) -> None:
 	frappe.db.savepoint("ffl_crm_contact")
 	try:
 		auto = frappe.unscrub(email.split("@", 1)[0])
-		for name in sorted(_contacts_of(email)):
+		for name in sorted(contacts_with_email(email)):
 			contact = frappe.db.get_value("Contact", name, ["first_name", "last_name"], as_dict=True)
 			if not contact or contact.first_name != auto or contact.last_name \
 					or frappe.db.exists("Dynamic Link", {"parenttype": "Contact", "parent": name}):

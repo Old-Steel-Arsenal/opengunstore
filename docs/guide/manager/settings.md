@@ -61,7 +61,7 @@ Below them, the **Card on file** card turns on [saving a card to charge later](.
 | ShipStation Settings | **POS & Sales** card | Shipping labels, ship-from address, parcel defaults |
 | Cash Drawer Settings | **POS & Sales** card | The drawer's limits (below) |
 | Membership Settings | **POS & Sales** card | Automatic renewal charges and the yearly reminder. See [Memberships](../counter/memberships.md) |
-| Lead Mail Settings | **POS & Sales** card | Which customer mail goes into CRM: the store's team addresses, and the domains that never become a lead. See [Lead Mail Settings](#lead-mail-settings) below |
+| Lead Mail Settings | **POS & Sales** card | Which customer mail goes into CRM: the store's team addresses, and the domains that never become a lead. The switch that links deals to POS orders. See [Lead Mail Settings](#lead-mail-settings) below |
 | POS Profile | **POS & Sales** card | Each register's warehouse, price list and payment methods |
 | Mode of Payment | **POS & Sales** card | The tender types and the account each posts to |
 | Selling Settings | **POS & Sales** card | Store-wide selling defaults, such as customer naming |
@@ -115,6 +115,8 @@ If a team address is a Google Group, set its **Post replies to** to **Sender cho
 **Reply-To for staff mail** is one of the team addresses. Mail staff send from their own mailbox asks the customer to reply there, so the conversation stays with the team. Mail answered from a **Mailbox** address goes out from that address.
 
 **Blocked sender domains** and **Our own domains** take one domain per line. Mail from them never becomes a lead.
+
+**Link deals to POS orders** puts the **Open order** button and the **Customer** section on a CRM deal, and writes each deal's invoices back to it. It is off until you tick it. See [Open an order from a CRM deal](../orders/open-an-order-from-a-deal.md).
 
 ### Setting up the mailboxes
 

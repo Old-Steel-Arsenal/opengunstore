@@ -9,6 +9,8 @@ Frappe CRM (app ``crm``) is installed, unmodified, on every site next to ffl_cor
 * CRM Deal lines are re-priced from the register, won and lost deals left alone (``deal``);
 * a Quotation takes the store's default sales tax and is never submitted (``quotation``);
 * incoming staff mail goes on the customer's open deal or becomes a lead (``mail``, ``deals``);
+* a deal links to a POS customer and opens as a Create Order draft (``customer``), and the
+  invoices made from it write back to the deal (``orders``), behind one switch (:func:`pos_link_on`);
 * install / migrate plumbing, ERPNext CRM Settings written field by field (``setup``).
 
 CRM's own Item → Product sync is skipped per save (``doc.flags.ignore_crm_sync``) and its
@@ -17,6 +19,8 @@ Product → Item push is off (ERPNext CRM Settings › ``sync_products`` = 0): t
 from __future__ import annotations
 
 import frappe
+
+from ffl_core.utils import single_flag
 
 # Error Log titles start with this.
 TITLE = "CRM"
@@ -28,6 +32,12 @@ def installed() -> bool:
 	``bench install-app crm`` (deploy/prod/auto_deploy.sh): every hook that touches a CRM table
 	or field stands down until then."""
 	return "crm" in frappe.get_installed_apps()
+
+
+def pos_link_on() -> bool:
+	"""Lead Mail Settings › crm_pos_link. Read from the Singles table: the first deploy of a release
+	runs its code for a moment before the migrate adds the field, and a hook must not throw over that."""
+	return installed() and single_flag("Lead Mail Settings", "crm_pos_link", default=0)
 
 
 def staff_default_app(doc, method=None):

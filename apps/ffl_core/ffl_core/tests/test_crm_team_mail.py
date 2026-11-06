@@ -629,7 +629,7 @@ class TestContactNamedFromMail(TeamMailCase):
 		frappe.db.set_value("Email Account", INFO, "create_contact", 1, update_modified=False)
 
 	def _contact(self, email: str) -> dict:
-		(name,) = mail._contacts_of(email)
+		(name,) = mail.contacts_with_email(email)
 		return frappe.db.get_value("Contact", name, ["name", "first_name", "last_name", "full_name"], as_dict=True)
 
 	def _mail_from(self, display: str, address: str) -> str:
@@ -683,7 +683,7 @@ class TestContactNamedFromMail(TeamMailCase):
 
 	def test_a_failure_does_not_stop_the_lead(self):
 		errors = frappe.db.count("Error Log")
-		with patch.object(mail, "_contacts_of", side_effect=RuntimeError("boom")):
+		with patch.object(mail, "contacts_with_email", side_effect=RuntimeError("boom")):
 			lead = mail._new_lead("fail1@example.org", "Jane Public")
 		self.assertTrue(frappe.db.exists("CRM Lead", lead))
 		self.assertEqual(frappe.db.count("Error Log"), errors + 1)
