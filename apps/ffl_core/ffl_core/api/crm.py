@@ -95,7 +95,6 @@ def make_lead_from_mail(communication: str) -> dict:
 
 
 def _deal_for_pos_link(deal: str, ptype: str):
-	frappe.only_for(CRM_ROLES)
 	if not pos_link_on():
 		frappe.throw(_("Linking deals to POS orders is off. A manager can turn it on in Lead Mail Settings."),
 			title=_("Turned off"))
@@ -120,6 +119,7 @@ def deal_customer_summary(deal: str) -> dict:
 	    "expired"}, "orders": last orders, "open_orders": orders on Pending Order, "lifetime_spend":
 	    Net Sales as the Sales Report reads it, "html"}. Refused while the switch is off.
 	"""
+	frappe.only_for(CRM_ROLES)
 	return deal_customer.customer_summary(_deal_for_pos_link(deal, "read"))
 
 
@@ -137,6 +137,7 @@ def ensure_deal_customer(deal: str, customer: str | None = None, create: int = 0
 	    [{"name", "customer_name", "customer_status", "matched", "banned", "status_reason",
 	    "alerts"}], "new": the values a new customer would take, "html": the dialog's text}.
 	"""
+	frappe.only_for(CRM_ROLES)
 	return deal_customer.ensure_customer(_deal_for_pos_link(deal, "write"), customer=customer or None,
 		create=bool(cint(create)))
 
@@ -152,4 +153,5 @@ def open_deal_order(deal: str) -> dict:
 	    dict: {"draft": the draft's name, "route": the page to open, "skipped": deal lines that are
 	    not POS items}. The page sets the prices, as for a line picked there.
 	"""
+	frappe.only_for(CRM_ROLES)
 	return deal_customer.open_order(_deal_for_pos_link(deal, "write"))
