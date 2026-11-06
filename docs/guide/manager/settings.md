@@ -61,7 +61,7 @@ Below them, the **Card on file** card turns on [saving a card to charge later](.
 | ShipStation Settings | **POS & Sales** card | Shipping labels, ship-from address, parcel defaults |
 | Cash Drawer Settings | **POS & Sales** card | The drawer's limits (below) |
 | Membership Settings | **POS & Sales** card | Automatic renewal charges and the yearly reminder. See [Memberships](../counter/memberships.md) |
-| Lead Mail Settings | **POS & Sales** card | Which customer mail goes into CRM: the store's team addresses, and the domains that never become a lead. The switch that links deals to POS orders. See [Lead Mail Settings](#lead-mail-settings) below |
+| Lead Mail Settings | **POS & Sales** card | Which customer mail goes into CRM: the store's team addresses, how other mail is sorted, and the spam folder. The switch that links deals to POS orders. See [Lead Mail Settings](#lead-mail-settings) below |
 | POS Profile | **POS & Sales** card | Each register's warehouse, price list and payment methods |
 | Mode of Payment | **POS & Sales** card | The tender types and the account each posts to |
 | Selling Settings | **POS & Sales** card | Store-wide selling defaults, such as customer naming |
@@ -101,7 +101,7 @@ These settings decide which mail from the store's mailboxes goes into CRM. Each 
 
 **Team addresses** lists the shared addresses customers write to, such as sales@ or info@. Mail to one of them from someone new becomes a lead. Mail to a staff member's own address goes in only when it comes from a customer or a known lead. Their other mail stays out of the POS. System Manager only.
 
-An extension can check mail from someone new first (the AI extension does, when its setting is on). Only mail it takes for a customer inquiry becomes a lead. The rest stays in the mail log with a note saying why. To fix a wrong guess, open that mail in the Communication list and click **Make lead**.
+An extension can check mail from someone new first (the AI extension does, when its setting is on). Only mail it takes for a customer inquiry becomes an ordinary lead. The rest goes to [other mail](#other-mail).
 
 If a team address is a Google Group, set its **Post replies to** to **Sender chooses recipient**. Any other setting can put the group in the mail's Reply-To, and the POS then takes the group for the sender and leaves the mail out.
 
@@ -114,9 +114,25 @@ If a team address is a Google Group, set its **Post replies to** to **Sender cho
 
 **Reply-To for staff mail** is one of the team addresses. Mail staff send from their own mailbox asks the customer to reply there, so the conversation stays with the team. Mail answered from a **Mailbox** address goes out from that address.
 
-**Blocked sender domains** and **Our own domains** take one domain per line. Mail from them never becomes a lead.
+**Blocked sender domains** and **Our own domains** take one domain per line. Team mail from them goes to [other mail](#other-mail). A staff member's own mailbox leaves it out.
 
 **Link deals to POS orders** puts the **Open order** button and the **Customer** section on a CRM deal, and writes each deal's invoices back to it. It is off until you tick it. See [Open an order from a CRM deal](../orders/open-an-order-from-a-deal.md).
+
+### My follow-ups
+
+CRM's Leads and Deals pages each have a **My follow-ups** view: open records that are yours or have no owner yet, where the last mail came from the customer, oldest first. Reply from there and the record leaves the view.
+
+### Other mail
+
+Team mail that is not a customer inquiry is kept, under one lead per sender with the status **Other mail**. That covers senders in the two domain lists, automated senders such as noreply, the domains in **Category rules**, and mail the AI extension takes for something else. These leads stay off the Leads list. Open the **Other mail** view in CRM to see them.
+
+To fix a wrong guess, open the lead and change its status to **New**. It becomes an ordinary lead and stays one when the sender writes again. CRM's dashboard still counts these leads in its lead totals.
+
+**Category rules** sort this mail by domain. Each row names a domain and a category, and a sender at that domain counts as other mail unless they are already a customer. To add a category, type a new name in the **Category** column and create it.
+
+If you use a CRM assignment rule on leads, add `status != "Other mail"` to its condition, so this mail is not assigned to anyone.
+
+**Spam folder** is the name of the folder to check, such as `[Gmail]/Spam` for a Google mailbox. Leave it empty to turn this off. It needs the AI extension's check to be on. Every 10 minutes, each **Mailbox** address's folder is read without changing anything in it. Real spam leaves no record. A customer's mail comes in with a note saying where it was found, and other mail goes to the Other mail view. A new folder starts with its latest 200 mails.
 
 ### Setting up the mailboxes
 

@@ -78,7 +78,10 @@ class TestCRMContract(CRMTestCase):
 		self.assertTrue({"contact", "is_primary"} <= _fields("CRM Contacts"))
 		self.assertEqual(frappe.get_meta("CRM Contacts").get_field("contact").fieldtype, "Link")
 		self.assertTrue({"type", "position"} <= _fields("CRM Deal Status"))
-		self.assertTrue({"dt", "filters", "kanban_columns"} <= _fields("CRM View Settings"))
+		self.assertTrue({"dt", "filters", "kanban_columns", "public", "pinned", "route_name", "user"} <= _fields("CRM View Settings"))
+		self.assertTrue({"title", "content", "reference_doctype", "reference_docname"} <= _fields("FCRM Note"))
+		self.assertTrue({"filters", "default_filters", "doctype"} <= set(inspect.signature(__import__("crm.api.doc", fromlist=["get_data"]).get_data).parameters))
+		self.assertIn("email", _fields("CRM Lead"))
 		self.assertTrue({"title", "description", "priority", "status", "assigned_to", "reference_doctype",
 			"reference_docname"} <= _fields("CRM Task"))
 		options = frappe.get_meta("CRM Task").get_field("status").options

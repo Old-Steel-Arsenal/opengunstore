@@ -16,7 +16,8 @@ For each received mail of an in-scope account, in order (:func:`decide`):
 4. a reply in a thread Frappe already linked: kept as linked;
    from a Customer's contact: on that contact's open deal (``crm.deals``; owned by the mailbox's user
    for direct mail, no owner for team mail);
-   from a blocked domain, one of our own domains, or an automated sender (noreply and the like): skipped;
+   team mail from a domain in the category rules, a blocked domain, one of our own domains, or an
+   automated sender (noreply and the like): *other mail* (below); the same as direct mail: skipped;
    from an existing CRM Lead: on that lead;
    team mail from someone new: a new CRM Lead with no owner (a round robin address leaves the owner to
    CRM's Assignment Rule);
@@ -28,13 +29,25 @@ For each received mail of an in-scope account, in order (:func:`decide`):
    so it is team mail and shares the record (by design: whoever answers next can take it over);
    direct mail from someone new: skipped (a staff member's own mail never enters the POS).
 
+Other mail: team mail that is not a customer inquiry is kept, not dropped. Each sender has one CRM Lead
+with the status ``Other mail`` and a category (``ffl_mail_category``: a category rule's, else what made
+it other mail). The Leads list leaves those out (``api.crm.crm_list_data``), the Other mail view shows
+them, and changing the status makes it an ordinary lead (:func:`other_mail_on_validate`).
+
 Screening: when an extension registers ``gunshop_crm_mail_screen``, team mail from someone new does
 not become a lead in the pull. A short background job (:func:`screen_new_sender`) asks the providers
-first; "not a customer" leaves the mail stored, unlinked, with a Comment saying why, and no lead. Any
-other answer (customer, no opinion, a failing provider) makes the lead as before. The sender is
-checked again when the job runs: a mail that was linked or a lead that appeared meanwhile goes by the
-normal rules and no provider is asked. A job that fails itself makes the lead anyway. **Make lead** on
-the Communication form (:func:`make_lead`) files a mail the screening left without one.
+first; "not a customer" makes it other mail, with a Comment on the mail saying why. Any other answer
+(customer, no opinion, a failing provider) makes an ordinary lead. The sender is checked again when
+the job runs: a mail that was linked or a lead that appeared meanwhile goes by the normal rules and no
+provider is asked. A job that fails itself makes the lead anyway. **Make lead** on the Communication
+form (:func:`make_lead`) files a mail screened before other mail existed, stored without a lead.
+
+Spam folder: with Lead Mail Settings › Spam folder set and a provider installed, each team mailbox's
+spam folder is read every 10 minutes (:func:`check_spam_folders`), read-only, without marking anything.
+Frappe cannot pull a second folder here: its "ALL" sync starts from one highest uid per account, and
+each folder counts its own uids. So this keeps its own place, stores a kept mail with no uid, and
+asks before storing. Spam leaves no record; a customer's mail is filed as usual, and any other mail
+becomes other mail. With no answer it stops there and tries that mail again on the next run.
 
 "Skipped" means never stored: the Communication ``before_insert`` raises Frappe's own
 ``SentEmailInInboxError``, which ``EmailAccount.receive`` answers with a plain rollback (no Error
@@ -70,7 +83,7 @@ import frappe
 from frappe import _
 from frappe.core.utils import html_to_plain_text
 from frappe.email.doctype.email_account.email_account import pull_from_email_account
-from frappe.email.receive import SentEmailInInboxError
+from frappe.email.receive import InboundMail, SentEmailInInboxError
 from frappe.integrations.doctype.connected_app.connected_app import has_token
 from frappe.utils import cint, get_datetime, now, now_datetime, nowdate, parse_addr, split_emails
 from frappe.utils.background_jobs import enqueue, get_jobs
@@ -93,7 +106,16 @@ MARKER_SUBJECT = "Skipped mail marker (CRM mail rules): the highest mail uid thi
 _SAVEPOINT = "ffl_crm_mail"
 SCREEN_HOOK = "gunshop_crm_mail_screen"
 SCREEN_BODY_LIMIT = 4000
-NOT_A_CUSTOMER = "Not a customer inquiry"   # the Info Comment on a mail the screening left without a lead
+NOT_A_CUSTOMER = "Not a customer inquiry"   # the Info Comment on a mail the screening judged
+OTHER_MAIL = "Other mail"                     # the CRM Lead Status of a sender who is not a customer
+CATEGORY = "CRM Mail Category"
+CATEGORY_FIELD = "ffl_mail_category"
+SPAM = "spam"                                 # the provider's category: such mail from the spam folder is dropped
+SPAM_JOB = "ffl_crm_spam_folder"
+SPAM_PLACE = "ffl_crm_spam_place:"            # site global per Email Account: "<uidvalidity>:<last uid read>"
+SPAM_BATCH = 25                               # mails per account per run
+SPAM_FIRST_LOOK = 200                         # a new folder: only its latest mails are read
+SPAM_ANSWER_FLAG = "ffl_crm_spam_answer"
 # Machine mail. Communication keeps no headers (Auto-Submitted, List-Unsubscribe), so the
 # address's local part is the signal there is.
 _AUTOMATED_LOCAL_PARTS = frozenset({
@@ -151,11 +173,37 @@ def _mailbox_user(email_account: str) -> str | None:
 	return address and frappe.db.get_value("User", {"email": address, "enabled": 1}, "name")
 
 
-def _skipped(email: str) -> bool:
+def _sender_category(email: str) -> str | None:
+	"""The category that makes this sender's mail other mail, whatever it says; None for anyone else."""
 	domain = email.rsplit("@", 1)[-1].lower()
 	settings = frappe.get_cached_doc(SETTINGS)
-	return (_in(domain, domain_lines(settings.blocked_sender_domains)) or _in(domain, domain_lines(settings.own_domains))
-		or is_automated(email))
+	return _rule_category(domain) or ("Blocked" if _in(domain, domain_lines(settings.blocked_sender_domains)) else None) \
+		or ("Our store" if _in(domain, domain_lines(settings.own_domains)) else None) \
+		or ("Automated" if is_automated(email) else None)
+
+
+def _rule_category(domain: str) -> str | None:
+	for rule in frappe.get_cached_doc(SETTINGS).get("category_rules") or []:
+		if _in(domain, [rule.domain]):
+			return rule.category
+	return None
+
+
+def _ensure_category(name: str) -> str:
+	"""A category a provider named gets a record the first time it is seen."""
+	if not frappe.db.exists(CATEGORY, name):
+		frappe.get_doc({"doctype": CATEGORY, "category_name": name}).insert(ignore_permissions=True)
+	return name
+
+
+def other_mail_on_validate(doc, method=None):
+	"""CRM Lead validate: a category belongs to other mail. Moving a lead off that status makes it an
+	ordinary lead, which is what brings it back to the Leads list."""
+	if doc.get("status") == OTHER_MAIL:
+		if not doc.get(CATEGORY_FIELD):
+			doc.set(CATEGORY_FIELD, _ensure_category("Other"))
+	elif doc.get(CATEGORY_FIELD):
+		doc.set(CATEGORY_FIELD, None)
 
 
 def _addresses(doc) -> set[str]:
@@ -222,8 +270,8 @@ def _team_row(doc, account: str):
 
 def decide(doc) -> tuple | None:
 	"""What to do with a received mail: None (not ours to touch), ("skip", reason), ("keep", row) as
-	Frappe linked it, ("deal", contact, owner, row) or ("lead", existing lead or None, row); *row* is
-	the team address it counts for, None for direct mail."""
+	Frappe linked it, ("deal", contact, owner, row), ("lead", existing lead or None, row) or ("other",
+	category, row); *row* is the team address it counts for, None for direct mail."""
 	if doc.get("communication_type") != "Communication" or doc.get("sent_or_received") != "Received":
 		return None
 	account = doc.get("email_account")
@@ -245,8 +293,9 @@ def decide(doc) -> tuple | None:
 	contact = _customer_contact(email)
 	if contact:
 		return ("deal", contact, None if row else _mailbox_user(account), row)
-	if _skipped(email):
-		return (SKIP, "blocked sender")
+	category = _sender_category(email)
+	if category:
+		return ("other", category, row) if row else (SKIP, "blocked sender")
 	lead = frappe.db.get_value(LEAD, {"email": email}, "name")
 	if lead or row:
 		return ("lead", lead, row)
@@ -259,9 +308,12 @@ def _split_name(full_name: str | None) -> tuple[str, str]:
 	return (parts[0], " ".join(parts[1:])) if parts else ("", "")
 
 
-def _new_lead(email: str, full_name: str | None) -> str:
+def _new_lead(email: str, full_name: str | None, category: str | None = None) -> str:
 	lead = frappe.new_doc(LEAD)
 	lead.email = email
+	if category:
+		lead.status = OTHER_MAIL
+		lead.set(CATEGORY_FIELD, _ensure_category(category))
 	first, last = _split_name(full_name)
 	named = bool(first) and (full_name or "").strip().lower() != email
 	lead.first_name = first or email.split("@", 1)[0]
@@ -309,7 +361,7 @@ def route(doc, decision=None, screened: bool = False) -> tuple[str, str] | None:
 	waits for :func:`screen_new_sender` when a screening provider is installed, unless *screened*."""
 	if decision is None:
 		decision = decide(doc)
-	if not decision or decision[0] not in ("keep", "deal", "lead"):
+	if not decision or decision[0] not in ("keep", "deal", "lead", "other"):
 		return None
 	if decision[0] == "keep":
 		target = (doc.reference_doctype, doc.reference_name)
@@ -317,6 +369,14 @@ def route(doc, decision=None, screened: bool = False) -> tuple[str, str] | None:
 	elif decision[0] == "deal":
 		target = ("CRM Deal", open_deal_for(decision[1], owner=decision[2]))
 		row = decision[3]
+		_link(doc, *target)
+	elif decision[0] == "other":
+		name, email = parse_addr(doc.get("sender") or "")
+		email = email.strip().lower()
+		row = decision[2]
+		# A sender who already has a lead keeps it, and its status: staff may have made it a real one.
+		target = (LEAD, frappe.db.get_value(LEAD, {"email": email}, "name")
+			or _new_lead(email, doc.get("sender_full_name") or name, decision[1]))
 		_link(doc, *target)
 	else:
 		lead, row = decision[1], decision[2]
@@ -387,8 +447,22 @@ def _write_marker(email_account: str, uid: int) -> None:
 
 def on_incoming(doc, method=None):
 	"""Communication after_insert. Never fails the mail pull: a failure is rolled back and logged."""
-	if installed():
-		_route_logged(doc, doc.flags.get("ffl_crm_decision"))
+	if not installed():
+		return
+	decision = doc.flags.get("ffl_crm_decision")
+	answer = frappe.flags.get(SPAM_ANSWER_FLAG)
+	if answer is None or doc.get("communication_type") != "Communication":
+		_route_logged(doc, decision)
+		return
+	doc.add_comment("Info", _("Found in the spam folder."))
+	if decision and decision[0] in ("lead", "other") and not answer.get("known"):
+		row = decision[-1]
+		if answer.get("customer"):
+			decision = ("lead", frappe.db.get_value(LEAD, {"email": _sender(doc)}, "name"), row)
+		else:
+			doc.add_comment("Info", _judged(answer))
+			decision = ("other", _sender_category(_sender(doc)) or _answer_category(answer), row)
+	_route_logged(doc, decision, screened=True)
 
 
 def _route_logged(doc, decision, screened: bool = False) -> None:
@@ -441,9 +515,10 @@ def _screen(communication: str) -> None:
 	doc = frappe.get_doc("Communication", communication)
 	decision = decide(doc)
 	if decision and decision[0] == "lead" and not decision[1]:
-		reason = _not_a_customer(doc, decision[2])
-		if reason:
-			doc.add_comment("Info", reason)
+		answer = _ask_providers(_mail_for_providers(doc, decision[2].address))
+		if answer and not answer["customer"]:
+			doc.add_comment("Info", _judged(answer))
+			_route_logged(doc, ("other", _answer_category(answer), decision[2]), screened=True)
 			return
 	# A lead or customer that appeared meanwhile, or a mail linked since: the normal rules, no provider.
 	_route_logged(doc, decision, screened=True)
@@ -478,12 +553,21 @@ def make_lead(communication: str) -> tuple[str, str]:
 	return target
 
 
-def _not_a_customer(doc, row) -> str | None:
-	"""The first provider's "not a customer" answer as a sentence; None when none says so."""
-	name, email = parse_addr(doc.get("sender") or "")
-	mail = {"communication": doc.name, "sender": email.strip().lower(), "sender_name": doc.get("sender_full_name") or name,
+def _sender(doc) -> str:
+	return parse_addr(doc.get("sender") or "")[1].strip().lower()
+
+
+def _mail_for_providers(doc, team_address: str) -> dict:
+	name = parse_addr(doc.get("sender") or "")[0]
+	return {"communication": doc.name, "sender": _sender(doc), "sender_name": doc.get("sender_full_name") or name,
 		"to": sorted(_addresses(doc)), "subject": doc.get("subject") or "",
-		"body": html_to_plain_text(doc.get("content") or "")[:SCREEN_BODY_LIMIT], "team_address": row.address}
+		"body": html_to_plain_text(doc.get("content") or "")[:SCREEN_BODY_LIMIT], "team_address": team_address}
+
+
+def _ask_providers(mail: dict) -> dict | None:
+	"""A provider's verdict: "not a customer" from any of them wins, else "customer" if one said so; None
+	when none has an opinion."""
+	verdict = None
 	for hook in frappe.get_hooks(SCREEN_HOOK):
 		try:
 			answer = frappe.get_attr(hook)(dict(mail))
@@ -491,8 +575,106 @@ def _not_a_customer(doc, row) -> str | None:
 			frappe.log_error(title=f"{SCREEN_HOOK} provider failed: {hook}")
 			continue
 		if isinstance(answer, dict) and answer.get("customer") is False:
-			return f"{NOT_A_CUSTOMER} ({answer.get('category') or 'other'}): {answer.get('reason') or 'no reason given'}"
-	return None
+			return answer
+		if isinstance(answer, dict) and answer.get("customer") is True:
+			verdict = answer
+	return verdict
+
+
+def _judged(answer: dict) -> str:
+	return f"{NOT_A_CUSTOMER} ({answer.get('category') or 'other'}): {answer.get('reason') or 'no reason given'}"
+
+
+def _answer_category(answer: dict) -> str:
+	return (answer.get("category") or "other").capitalize()
+
+
+def check_spam_folders():
+	"""Cron, every 10 minutes: one job per team mailbox, when a folder is set and someone can judge."""
+	if not installed() or not frappe.get_hooks(SCREEN_HOOK):
+		return
+	if not frappe.get_cached_doc(SETTINGS).get("spam_folder"):
+		return
+	accounts = frappe.get_all("Email Account", filters={"name": ["in", sorted(team.collectors()) or [""]],
+		"enable_incoming": 1, "awaiting_password": 0, "use_imap": 1}, pluck="name")
+	for account in accounts:
+		enqueue("ffl_core.crm.mail.check_spam_folder", "long", job_id=f"{SPAM_JOB}:{account}", deduplicate=True,
+			account=account)
+
+
+def check_spam_folder(account: str) -> None:
+	"""One mailbox's spam folder, from where the last run stopped. Selected read-only and fetched with
+	PEEK, so nothing in the mailbox changes. Each mail ends in its own commit with the place saved."""
+	folder = frappe.get_cached_doc(SETTINGS).get("spam_folder")
+	email_account = frappe.get_doc("Email Account", account)
+	try:
+		server = email_account.get_incoming_server()
+	except Exception:
+		frappe.log_error(title=f"[{TITLE}] Spam folder not reached: {account}", message=frappe.get_traceback())
+		return
+	try:
+		status, _data = server.imap.select(f'"{folder}"', readonly=True)
+		if status != "OK":
+			frappe.log_error(title=f"[{TITLE}] No such folder in {account}: {folder}")
+			return
+		validity, last = _spam_place(server, account, folder)
+		_status, found = server.imap.uid("search", None, f"UID {last + 1}:*")
+		# "n:*" always answers the newest mail, even when it is older than n.
+		uids = [int(uid) for uid in (found[0] or b"").split() if int(uid) > last]
+		for uid in sorted(uids)[:SPAM_BATCH]:
+			_status, fetched = server.imap.uid("fetch", str(uid), "(BODY.PEEK[])")
+			raw = next((part[1] for part in fetched or [] if isinstance(part, tuple)), None)
+			if raw and not _judge_spam_mail(raw, email_account):
+				break
+			frappe.db.set_global(SPAM_PLACE + account, f"{validity}:{uid}")
+			commit()
+	finally:
+		server.logout()
+
+
+def _spam_place(server, account: str, folder: str) -> tuple[str, int]:
+	"""(the folder's UIDVALIDITY, the last uid read). A new folder, or one whose uids were renumbered,
+	starts near its end."""
+	_status, status = server.imap.status(f'"{folder}"', "(UIDVALIDITY UIDNEXT)")
+	validity = server.parse_imap_response("UIDVALIDITY", status[0]) or ""
+	uidnext = cint(server.parse_imap_response("UIDNEXT", status[0]))
+	saved, _sep, last = (frappe.db.get_global(SPAM_PLACE + account) or "").partition(":")
+	return validity, cint(last) if saved == validity else max(uidnext - SPAM_FIRST_LOOK - 1, 0)
+
+
+def _judge_spam_mail(raw: bytes, email_account) -> bool:
+	"""One mail from the spam folder: whether it is finished with. False: no provider had an answer, or
+	the mail could not be kept, so it is tried again. A sender the store knows needs no opinion."""
+	mail = InboundMail(raw, email_account)
+	if mail.is_sender_same_as_receiver() or mail.is_exist_in_system():
+		return True
+	sender = (mail.from_email or "").strip().lower()
+	if "@" not in sender:
+		return True
+	if _customer_contact(sender) or frappe.db.exists(LEAD, {"email": sender}):
+		answer = {"known": True}
+	else:
+		data = mail.as_dict()
+		answer = _ask_providers({"communication": "", "sender": sender, "sender_name": mail.from_real_name or "",
+			"to": sorted(_addresses(data)), "subject": mail.subject or "",
+			"body": html_to_plain_text(mail.content or "")[:SCREEN_BODY_LIMIT], "team_address": email_account.email_id})
+		if not answer:
+			return False
+		if not answer["customer"] and answer.get("category") == SPAM:
+			return True
+	frappe.flags[SPAM_ANSWER_FLAG] = answer
+	frappe.db.savepoint("ffl_crm_spam")
+	try:
+		mail.process()
+	except SentEmailInInboxError:
+		frappe.db.rollback(save_point="ffl_crm_spam")
+	except Exception:
+		frappe.db.rollback(save_point="ffl_crm_spam")
+		frappe.log_error(title=f"[{TITLE}] Mail from the spam folder not kept: {sender}", message=frappe.get_traceback())
+		return False
+	finally:
+		frappe.flags.pop(SPAM_ANSWER_FLAG, None)
+	return True
 
 
 def _assign_quietly(doctype: str, name: str, user: str) -> None:

@@ -1,0 +1,40 @@
+{
+ "actions": [],
+ "creation": "2026-11-06 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "domain",
+  "category"
+ ],
+ "fields": [
+  {
+   "fieldname": "domain",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Domain",
+   "reqd": 1
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Category",
+   "options": "CRM Mail Category",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-06 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FFL Core",
+ "name": "CRM Mail Category Rule",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

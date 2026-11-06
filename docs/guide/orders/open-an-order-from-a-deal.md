@@ -54,3 +54,7 @@ A return or a cancel never reopens the deal. The owner decides what comes next, 
 | The deal stayed open after the order | The order is fine. The deal is brought up to date a moment later by itself. If it still has not changed, ask your administrator to check the Error Log, and mark the deal **Won** by hand. A return or cancel that failed this way gives no task to the owner |
 
 A sale rung at the register does not reach the deal. Mark that deal **Won** by hand.
+
+## Web orders on the deal
+
+While the link is on, a customer's web orders leave notes on their open deal, on the deal's **Notes** tab: placed, shipped or picked up, cancelled, and refunded, each with its amount. A note changes nothing on the deal: its value and status follow POS invoices only. A customer with no open deal gets no note and no new deal.

@@ -3,7 +3,7 @@ opens the contact's deal to write to them, since CRM shows and sends mail only o
 **Connect my mailbox** on a staff member's own My Settings (``public/js/user_form.js``) starts the
 sign-in that connects their own mailbox; **Make lead** on a Communication (``public/js/communication_form.js``)
 files a mail the AI screening left without a lead; the Deal page's customer card and **Open order**
-(``ffl_core.crm.setup.DEAL_SCRIPT``), behind Lead Mail Settings' switch; the stand-in that takes quotes off the Deal page."""
+(``ffl_core.crm.setup.DEAL_SCRIPT``), behind Lead Mail Settings' switch; the stand-ins that take quotes off the Deal page and other mail off the Leads list."""
 from __future__ import annotations
 
 import frappe
@@ -155,6 +155,38 @@ def open_deal_order(deal: str) -> dict:
 	"""
 	frappe.only_for(CRM_ROLES)
 	return deal_customer.open_order(_deal_for_pos_link(deal, "write"))
+
+
+@frappe.whitelist()
+def crm_list_data(**kwargs) -> dict:
+	"""CRM's list data for its Leads and Deals pages (hooks.py overrides ``crm.api.doc.get_data``), with
+	two changes: a Leads list leaves out other mail unless it filters on the status or category, and
+	``@me`` inside a filter's list of values is the caller (CRM's page replaces only a plain ``@me``, and
+	**My follow-ups** asks for "mine or nobody's").
+
+	Args:
+	    kwargs: CRM's own arguments, unchanged, chiefly doctype and filters.
+
+	Returns:
+	    dict: CRM's answer: the rows and columns of the list.
+	"""
+	from crm.api.doc import get_data
+
+	if kwargs.get("doctype") in ("CRM Lead", "CRM Deal"):
+		filters = frappe.parse_json(kwargs.get("filters") or {}) or {}
+		filters = {key: _with_caller(value) for key, value in filters.items()}
+		fixed = frappe.parse_json(kwargs.get("default_filters") or {}) or {}
+		if kwargs["doctype"] == "CRM Lead" and not ({"status", mail.CATEGORY_FIELD} & (set(filters) | set(fixed))):
+			filters[mail.CATEGORY_FIELD] = ["is", "not set"]
+		kwargs["filters"] = filters
+		kwargs["default_filters"] = fixed or None
+	return frappe.call(get_data, **kwargs)
+
+
+def _with_caller(value):
+	if isinstance(value, list):
+		return [_with_caller(entry) for entry in value]
+	return frappe.session.user if value == "@me" else value
 
 
 @frappe.whitelist()
