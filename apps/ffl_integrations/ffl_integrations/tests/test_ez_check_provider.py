@@ -63,13 +63,24 @@ class ScraperParser(FrappeTestCase):
 		self.assertEqual(result.status, "Verified")
 		self.assertEqual(result.expiry_date, date(2028, 12, 31))
 
-	def test_parse_page_missing_name_or_readable_expiry_raises(self):
-		verified = _fixture("ez_check_verified.html")
-		for partial in (verified.replace("12/31/2028", "December 31, 2028"),
-				verified.replace("SMITH JOHN", "")):
+	def test_parse_name_without_readable_expiry_raises(self):
+		"""Even with not-found wording on the page: a parsed name is not a NotFound."""
+		partial = _fixture("ez_check_verified.html").replace("12/31/2028", "December 31, 2028")
+		worded = partial.replace("</body>",
+			"<p>You Entered FFL Number: 1-99-XXX-XX-XX-12345. It may be invalid and/or fraudulent.</p></body>")
+		for html in (partial, worded):
 			with self.assertRaises(ValueError):
-				ATFFormScraperProvider._parse(partial,
+				ATFFormScraperProvider._parse(html,
 					ffl_number="1-99-888-01-XX-12345", today=date(2026, 5, 4))
+
+	def test_parse_blank_name_with_valid_expiry_is_found(self):
+		html = _fixture("ez_check_verified.html").replace("SMITH JOHN", "")
+		result = ATFFormScraperProvider._parse(html,
+			ffl_number="1-99-888-01-XX-12345", today=date(2026, 5, 4))
+		self.assertEqual(result.status, "Verified")
+		self.assertIsNone(result.licensee_name)
+		self.assertEqual(result.licensee_dba, "JOHN'S GUNS")
+		self.assertEqual(result.expiry_date, date(2028, 12, 31))
 
 	def test_parse_expired_response(self):
 		result = ATFFormScraperProvider._parse(_fixture("ez_check_expired.html"),
