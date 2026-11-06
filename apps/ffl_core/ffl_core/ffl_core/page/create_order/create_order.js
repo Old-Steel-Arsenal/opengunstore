@@ -1312,6 +1312,8 @@ class CreateOrderApp {
 		payload.distributor_options = this.deliveryOptions || {};
 		// The CRM deal this order came from: the invoice writes back to it.
 		if (this._crmDeal) payload.crm_deal = this._crmDeal;
+		// Guns of a deal still to be picked: a re-saved draft keeps them (_addLine drops one when its gun is picked).
+		if (this._unpicked?.length) payload.unpicked_firearms = this._unpicked;
 		for (const f of CreateOrderApp.DRAFT_SCALARS) {
 			const v = this.fields[f.field].get_value();
 			payload[f.key] = f.type === 'flt' ? (flt(v) || 0)
@@ -1533,7 +1535,8 @@ class CreateOrderApp {
 		frappe.show_alert({ message: this._editing
 			? __('Order loaded for editing.') : __('Draft loaded.'), indicator: 'green' }, 4);
 		// A CRM deal's gun with no serial picked yet: its serial picker opens, the others are named.
-		const unpicked = p.unpicked_firearms || [];
+		// Taken after the lines above are in, so a picked gun of the same model does not cancel its entry.
+		const unpicked = this._unpicked = (p.unpicked_firearms || []).slice();
 		if (unpicked.length) {
 			this._showPending(unpicked[0]);
 			frappe.show_alert({ message: __('Pick a serial for: {0}',
@@ -2012,6 +2015,11 @@ class CreateOrderApp {
 			return false;
 		}
 		this.lines.push(line);
+		if (line.is_firearm && line.serial) {
+			// A gun picked by any route (card, scan, serial) answers one still-to-pick entry of its model.
+			const at = (this._unpicked || []).findIndex((u) => u.item_code === line.item_code);
+			if (at >= 0) this._unpicked.splice(at, 1);
+		}
 		this._renderLines();
 		this._syncDestSection();
 		this._reflectReadiness();
@@ -2863,6 +2871,7 @@ class CreateOrderApp {
 		this.buyerType = 'individual'; this.disposeNow = false; this._amountEdited = false;
 		this._draftName = null;
 		this._crmDeal = null;
+		this._unpicked = [];
 		// Clearing amount to '' matches _lastAutoAmount ('' → 0), so the async change
 		// handler won't mistake the reset for a user edit and re-pin _amountEdited.
 		this._lastAutoAmount = '';

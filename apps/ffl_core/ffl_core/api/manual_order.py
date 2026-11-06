@@ -306,12 +306,14 @@ def create_order(payload) -> dict:
 
 
 def _create_order(payload, *, shipping_tax_inclusive: int | None = None,
-		prior_rates: dict | None = None) -> dict:
+		prior_rates: dict | None = None, keep_deal: bool = False) -> dict:
 	"""create_order's body. ``shipping_tax_inclusive`` pins the freight tax
 	basis instead of reading FFL Settings — update_order passes the edited
 	order's own. Never a payload key, so a
 	client cannot re-price the tax. ``prior_rates`` (update_order): the edited
-	order's line prices, which the rebuild keeps without a manager's approval."""
+	order's line prices, which the rebuild keeps without a manager's approval.
+	``keep_deal`` (update_order): the invoice stays on the payload's CRM deal even when its
+	customer is not the buyer; otherwise the deal stays only for its own customer."""
 	payload = _coerce_payload(payload)
 
 	customer = (str(payload.get("customer") or "")).strip()
@@ -549,7 +551,7 @@ def _create_order(payload, *, shipping_tax_inclusive: int | None = None,
 	# broken invoice, and a pickup with a gun on it must never read as one.
 	si.ffl_pickup_in_store = 1 if pickup else 0
 	si.ffl_buyer_type = _BUYER_BUSINESS if is_business else _BUYER_INDIVIDUAL
-	si.ffl_crm_deal = deal_for_order(payload.get("crm_deal"))
+	si.ffl_crm_deal = deal_for_order(payload.get("crm_deal"), customer, keep=keep_deal)
 	si.update(le_exemption)
 	si.ffl_shipping_amount = shipping_amount
 	si.ffl_shipping_tax_inclusive = shipping_tax_inclusive
@@ -3432,7 +3434,9 @@ def update_order(sales_invoice: str, payload, refund_mode: str | None = None,
 		created = _create_order(payload,
 			shipping_tax_inclusive=cint(si.get("ffl_shipping_tax_inclusive")),
 			# The order's own prices carry over; only a price lowered in this edit asks.
-			prior_rates=price_approval.prior_rates(si))
+			prior_rates=price_approval.prior_rates(si),
+			# The rebuilt invoice stays on the old one's deal, even if this edit changed the buyer.
+			keep_deal=True)
 	finally:
 		frappe.flags.ffl_suppress_sale_receipt = _prev_suppress
 		frappe.flags.ffl_carried_distributor_lines = _prev_carried

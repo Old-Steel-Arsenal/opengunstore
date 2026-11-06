@@ -122,10 +122,15 @@ def take_over_lead_flag(doc, method=None):
 		doc.create_lead_from_incoming_email = 0
 
 
+def contacts_with_email(email: str) -> set[str]:
+	"""The Contacts that hold this address, in the Email IDs table or as the Contact's own email_id."""
+	contacts = set(frappe.get_all("Contact Email", filters={"email_id": email, "parenttype": "Contact"}, pluck="parent"))
+	return contacts | set(frappe.get_all("Contact", filters={"email_id": email}, pluck="name"))
+
+
 def _customer_contact(email: str) -> str | None:
 	"""The (oldest) Contact with this email address that is linked to a Customer."""
-	contacts = set(frappe.get_all("Contact Email", filters={"email_id": email, "parenttype": "Contact"}, pluck="parent"))
-	contacts |= set(frappe.get_all("Contact", filters={"email_id": email}, pluck="name"))
+	contacts = contacts_with_email(email)
 	if not contacts:
 		return None
 	found = frappe.get_all("Dynamic Link", filters={"parenttype": "Contact", "parent": ["in", list(contacts)],

@@ -2,7 +2,8 @@
 
 :func:`ensure_customer` answers with the customer once the deal has one. Otherwise it returns the
 customers the deal's email or phone match for the employee to confirm, or makes a new one when asked
-to. A Contact's email counts here (``customer_flags.find_possible_duplicates`` reads the Customer's
+to. A deal whose Contact is linked to exactly one Customer takes it; a Contact linked to several
+leaves the choice to the employee, with those customers among the matches. A Contact's email counts here (``customer_flags.find_possible_duplicates`` reads the Customer's
 own): the Woo and GunBroker resolvers must keep ignoring Contact emails, because they book an order
 with no one to confirm the match, so this lookup stays local.
 
@@ -23,9 +24,9 @@ import frappe
 from frappe import _
 from frappe.utils import cint, escape_html, flt, fmt_money, formatdate, getdate, nowdate
 
-from ffl_core import customer_flags
+from ffl_core import customer_flags, pricing
 from ffl_core.crm.deal import SERIAL_FIELD
-from ffl_core.crm.deals import customer_of
+from ffl_core.crm.mail import contacts_with_email
 from ffl_core.crm.item import PRODUCT
 from ffl_core.customer_profile import ACTIVE, BANNED
 
@@ -50,16 +51,16 @@ def _primary_contact(deal) -> str | None:
 	return row.contact if row else None
 
 
-def _customers_by_contact_email(email: str | None) -> list[str]:
-	email = (email or "").strip()
-	if not email:
-		return []
-	contacts = frappe.get_all("Contact Email", filters={"parenttype": "Contact", "email_id": email},
-		pluck="parent", distinct=True)
+def _customers_of_contacts(contacts) -> list[str]:
 	if not contacts:
 		return []
-	return frappe.get_all("Dynamic Link", filters={"parenttype": "Contact", "parent": ["in", contacts],
+	return frappe.get_all("Dynamic Link", filters={"parenttype": "Contact", "parent": ["in", list(contacts)],
 		"link_doctype": "Customer"}, pluck="link_name", distinct=True, order_by="link_name")
+
+
+def _customers_by_contact_email(email: str | None) -> list[str]:
+	email = (email or "").strip()
+	return _customers_of_contacts(contacts_with_email(email)) if email else []
 
 
 def _safe_flags(customer: str) -> dict:
@@ -69,15 +70,19 @@ def _safe_flags(customer: str) -> dict:
 
 def find_matches(deal) -> list[dict]:
 	"""Customers the deal's email or phone match, each with its flags: [{"name", "customer_name",
-	"customer_status", "matched", "banned", "status_reason", "alerts"}]."""
+	"customer_status", "matched", "banned", "status_reason", "alerts"}]. The customers the deal's
+	primary Contact is linked to are in it too, whatever their email and phone say."""
 	rows = customer_flags.find_possible_duplicates(email=deal.get("email"),
 		phone=deal.get("mobile_no") or deal.get("phone"))
 	by_name = {row["name"]: row for row in rows}
-	for customer in _customers_by_contact_email(deal.get("email")):
-		if customer not in by_name and frappe.db.exists("Customer", customer):
-			row = frappe.db.get_value("Customer", customer, ["name", "customer_name", "customer_status"], as_dict=True)
-			row["matched"] = ["contact email"]
-			by_name[customer] = row
+	contact = _primary_contact(deal)
+	for why, customers in (("contact email", _customers_by_contact_email(deal.get("email"))),
+			("contact link", _customers_of_contacts([contact] if contact else []))):
+		for customer in customers:
+			if customer not in by_name and frappe.db.exists("Customer", customer):
+				row = frappe.db.get_value("Customer", customer, ["name", "customer_name", "customer_status"], as_dict=True)
+				row["matched"] = [why]
+				by_name[customer] = row
 	out = []
 	for row in by_name.values():
 		flags = _safe_flags(row["name"])
@@ -116,9 +121,9 @@ def ensure_customer(deal, customer: str | None = None, create: bool = False) -> 
 	if existing:
 		return {"customer": existing}
 	contact = _primary_contact(deal)
-	linked = contact and customer_of(contact)
-	if linked:
-		return _link(deal, linked)
+	linked = _customers_of_contacts([contact]) if contact else []
+	if len(linked) == 1:
+		return _link(deal, linked[0])   # several: the employee chooses among find_matches
 	values = _new_customer_values(deal, contact)
 	if create:
 		return _link(deal, _create(values, contact))
@@ -136,7 +141,21 @@ def _create(values: dict, contact: str | None) -> str:
 		made = frappe.db.get_value("Customer", name, "customer_primary_contact")
 		frappe.db.set_value("Customer", name, "customer_primary_contact", contact)
 		frappe.delete_doc("Contact", made, ignore_permissions=True)
+		_keep_phone(contact, values["phone"])
 	return name
+
+
+def _keep_phone(contact: str, phone: str) -> None:
+	"""The deal's Contact takes the phone the new Customer was made with, so a lookup by phone through
+	the Contact still finds the customer. A phone it holds is left as it is, primary mobile too."""
+	if not phone:
+		return
+	doc = frappe.get_doc("Contact", contact)
+	if any(row.phone == phone for row in doc.phone_nos):
+		return
+	doc.add_phone(phone, is_primary_mobile_no=0 if any(row.is_primary_mobile_no for row in doc.phone_nos) else 1)
+	doc.flags.ignore_permissions = True   # the caller holds the deal; ERPNext's Contact rights are not CRM's
+	doc.save()
 
 
 def _link(deal, customer: str) -> dict:
@@ -327,7 +346,9 @@ def _card_html(summary: dict) -> str:
 
 def _order_lines(deal) -> tuple[list[dict], list[dict], list[str]]:
 	"""(draft lines, guns still to pick, lines that are not POS items). Prices are the Create Order
-	page's for a line picked there: the gun's own price, the Item's selling price."""
+	page's for a line picked there, and the deal's own (``crm.deal``): a gun's own price, any other
+	line ``pricing.counter_price_for`` (the Item's selling price, not ``Item.standard_rate``); a line
+	with no price opens at 0."""
 	from ffl_core.api.manual_order import _serial_status
 	from ffl_core.firearm import is_firearm_item
 
@@ -341,7 +362,7 @@ def _order_lines(deal) -> tuple[list[dict], list[dict], list[str]]:
 		if not item_code:
 			skipped.append(row.product_name or row.product_code)
 			continue
-		item = frappe.db.get_value("Item", item_code, ["item_name", "is_antique", "standard_rate"], as_dict=True)
+		item = frappe.db.get_value("Item", item_code, ["item_name", "is_antique"], as_dict=True)
 		serial = row.get(SERIAL_FIELD)
 		if serial:
 			# A gun that cannot be sold any more stays on the draft: the page drops it and says why.
@@ -354,7 +375,7 @@ def _order_lines(deal) -> tuple[list[dict], list[dict], list[str]]:
 				"is_antique": bool(item.is_antique)})
 		else:
 			lines.append({"item_code": item_code, "item_name": item.item_name, "is_firearm": False,
-				"qty": flt(row.qty) or 1, "rate": flt(item.standard_rate), "serials": []})
+				"qty": flt(row.qty) or 1, "rate": pricing.counter_price_for(item_code), "serials": []})
 	return lines, unpicked, skipped
 
 

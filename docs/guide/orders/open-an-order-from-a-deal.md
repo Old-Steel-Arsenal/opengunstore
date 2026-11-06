@@ -24,11 +24,11 @@ It never shows an ID number, a date of birth, a 4473 or a background check. Befo
 ## Steps
 
 1. Open the deal and click **Open order** at the top.
-2. If the deal has no customer yet, the **Who is the buyer?** box lists the matches. Click the **Use** button with the right name, or click **Create customer** to make a new one from the deal's contact. A new customer needs an email address.
+2. If the deal has no customer yet, the **Who is the buyer?** box lists the matches. A contact that belongs to several customers is never picked for you; they are all in the list. Click the **Use** button with the right name, or click **Create customer** to make a new one from the deal's contact. A new customer needs an email address.
 3. The **Create Order** page opens with the buyer and the deal's items and serial numbers filled in.
-4. Check the prices. They are the prices the page charges today, not the deal's discounts. Change one the way you would on any order.
+4. Check the prices. They are the prices the page charges today (a gun's own price, any other item's selling price), not the deal's discounts. An item with no price opens at 0. Change a price the way you would on any order.
 5. A gun with no serial number on the deal waits for you: its serial picker opens, and you pick one. A gun that has sold since is taken off, and the page says why.
-6. Finish the order and click **Create Order**.
+6. Finish the order and click **Create Order**. If you change the buyer first, the order is made for the new buyer and is not linked to the deal.
 
 ## What happens next
 
@@ -51,6 +51,6 @@ A return or a cancel never reopens the deal. The owner decides what comes next, 
 |---|---|
 | **Banned customer** on the Create Order page | Do not serve them. A manager can override the ban from that box |
 | **This contact has no email address** or **Enter the buyer's email** | Add an email to the deal's contact, then click **Open order** again |
-| The deal stayed open after the order | The order is fine. Ask your administrator to check the Error Log, and mark the deal **Won** by hand |
+| The deal stayed open after the order | The order is fine. The deal is brought up to date a moment later by itself. If it still has not changed, ask your administrator to check the Error Log, and mark the deal **Won** by hand. A return or cancel that failed this way gives no task to the owner |
 
 A sale rung at the register does not reach the deal. Mark that deal **Won** by hand.

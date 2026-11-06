@@ -12,6 +12,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, nowdate
 
+from ffl_core import pricing
 from ffl_core.api import crm as api
 from ffl_core.api import manual_order
 from ffl_core.crm import customer as deal_customer
@@ -57,6 +58,11 @@ def _deal(contact: str | None = None, *, owner: str | None = OWNER, products=(),
 		doc.append("products", row)
 	doc.insert(ignore_permissions=True)
 	return doc
+
+
+def item_price_of(code: str) -> float:
+	"""The price the register charges a line without a serial: the Item Price, not Item.standard_rate."""
+	return flt(pricing.counter_price_for(code))
 
 
 def _tasks(deal: str) -> list:
@@ -117,13 +123,17 @@ class DealPOSCase(BuildOrderMixin, CRMTestCase):
 	def _sale(self, deal: str, rate: float = 100, **kwargs):
 		return self._invoice(deal, [(ACC, rate)], **kwargs)
 
-	def _order(self, deal: str | None, rate: float = 250, **over):
+	def _order(self, deal: str | None, rate: float = 250, *, linked: bool = True, **over):
+		"""An order through create_order. The deal is the buyer's, as Open order leaves it, unless
+		*linked* is False."""
 		payload = {"buyer_type": "individual", "customer": self._indiv("_T CRM Deal Buyer"), "pos_profile": self.pos,
 			"tax_exempt": 1, "pickup_in_store": 1, "payment_received": 0,
 			"items": [{"item_code": ACC, "qty": 1, "rate": rate}]}
+		payload.update(over)
 		if deal:
 			payload["crm_deal"] = deal
-		payload.update(over)
+			if linked and frappe.db.exists("CRM Deal", deal):
+				frappe.db.set_value("CRM Deal", deal, "erpnext_customer", payload["customer"])
 		return manual_order.create_order(payload)
 
 	def _trade_in(self, cost: float) -> str:
@@ -239,6 +249,29 @@ class TestWriteBack(DealPOSCase):
 		self.assertEqual(row.status, "Won")
 		self.assertEqual(_tasks(deal), [], "an edit's cancel makes no task")
 
+	def test_a_changed_buyer_leaves_the_deal_alone(self):
+		deal = _deal().name
+		frappe.db.set_value("CRM Deal", deal, "erpnext_customer", self._indiv("_T CRM Deal Owner"))
+		before = frappe.db.get_value("CRM Deal", deal, ["status", "deal_value"], as_dict=True)
+		created = self._order(deal, rate=300, linked=False)   # the employee picked another buyer
+		self.assertEqual(frappe.db.get_value("Sales Invoice", created["sales_invoice"], "docstatus"), 1)
+		self.assertIsNone(frappe.db.get_value("Sales Invoice", created["sales_invoice"], "ffl_crm_deal"))
+		self.assertEqual(frappe.db.get_value("CRM Deal", deal, ["status", "deal_value"], as_dict=True), before)
+		self.assertEqual(_tasks(deal), [])
+
+	def test_a_deal_with_no_customer_is_not_the_buyers(self):
+		deal = _deal().name
+		created = self._order(deal, linked=False)
+		self.assertIsNone(frappe.db.get_value("Sales Invoice", created["sales_invoice"], "ffl_crm_deal"))
+
+	def test_edit_order_keeps_the_deal_when_the_buyer_changes(self):
+		deal = _deal().name
+		created = self._order(deal, rate=300)
+		edited = manual_order.update_order(created["sales_invoice"], {"buyer_type": "individual",
+			"customer": self._indiv("_T CRM Deal New Buyer"), "pos_profile": self.pos, "tax_exempt": 1, "pickup_in_store": 1,
+			"items": [{"item_code": ACC, "qty": 1, "rate": 300}]})
+		self.assertEqual(frappe.db.get_value("Sales Invoice", edited["sales_invoice"], "ffl_crm_deal"), deal)
+
 	def test_cancel_order_makes_a_task(self):
 		deal = _deal().name
 		created = self._order(deal, rate=300)
@@ -306,12 +339,60 @@ class TestWriteBack(DealPOSCase):
 		deal = _deal().name
 		before = frappe.db.count("Error Log", {"method": ["like", "[CRM] Deal write-back failed%"]})
 		with patch.object(orders, "_task_for_owner", side_effect=frappe.ValidationError("boom")), \
-				patch.object(orders, "deal_sales", side_effect=frappe.ValidationError("no sum")):
+				patch.object(orders, "deal_sales", side_effect=frappe.ValidationError("no sum")), \
+				patch("frappe.enqueue") as enqueue:
 			si = self._sale(deal, 400)
+		enqueue.assert_called_once_with("ffl_core.crm.orders.recalculate_deal", queue="short", enqueue_after_commit=True,
+			job_id=f"ffl_crm_recalculate:{deal}", deduplicate=True, deal=deal)
 		self.assertEqual(si.docstatus, 1)
 		self.assertEqual(frappe.db.get_value("Sales Invoice", si.name, "docstatus"), 1)
 		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "status"), "Qualification")
 		self.assertEqual(frappe.db.count("Error Log", {"method": ["like", "[CRM] Deal write-back failed%"]}), before + 1)
+
+	def test_a_failed_write_back_is_retried_by_a_job(self):
+		deal = _deal(status="Qualification").name
+		queued = []
+		with patch.object(orders, "_apply", side_effect=frappe.ValidationError("boom")), \
+				patch("frappe.enqueue", side_effect=lambda method, **kw: queued.append((method, kw))):
+			si = self._sale(deal, 400)
+		self.assertEqual(frappe.db.get_value("Sales Invoice", si.name, "docstatus"), 1)
+		self.assertTrue(frappe.db.exists("Error Log", {"method": f"[CRM] Deal write-back failed: {si.name}"}))
+		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "status"), "Qualification")
+		self.assertEqual(len(queued), 1)
+		method, kw = queued[0]
+		self.assertEqual((kw["queue"], kw["enqueue_after_commit"], kw["deduplicate"]), ("short", True, True))
+		# The worker runs it once the invoice has committed; running it twice changes nothing more.
+		for _ in range(2):
+			frappe.get_attr(method)(**{"deal": kw["deal"]})
+		row = frappe.db.get_value("CRM Deal", deal, ["status", "deal_value"], as_dict=True)
+		self.assertEqual((row.status, flt(row.deal_value)), ("Won", 400))
+		self.assertEqual(_tasks(deal), [], "the retry makes no task")
+
+	def test_the_retry_follows_what_stands_and_logs_its_own_failure(self):
+		deal = _deal().name
+		with patch.object(orders, "_apply", side_effect=frappe.ValidationError("boom")), patch("frappe.enqueue"):
+			si = self._sale(deal, 400)
+			si.reload()
+			si.cancel()
+		orders.recalculate_deal(deal)
+		row = frappe.db.get_value("CRM Deal", deal, ["status", "deal_value"], as_dict=True)
+		self.assertEqual((row.status, flt(row.deal_value)), ("Qualification", 0), "no invoice stands: not Won")
+		kept = self._sale(deal, 250)
+		orders.recalculate_deal(deal)
+		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "status"), "Won")
+		before = frappe.db.count("Error Log", {"method": ["like", "[CRM] Deal recalculation failed%"]})
+		with patch.object(orders, "deal_sales", side_effect=frappe.ValidationError("no sum")):
+			orders.recalculate_deal(deal)   # only logs
+		self.assertEqual(frappe.db.count("Error Log", {"method": ["like", "[CRM] Deal recalculation failed%"]}), before + 1)
+		self.assertEqual(frappe.db.get_value("Sales Invoice", kept.name, "docstatus"), 1)
+
+	def test_a_queue_that_is_down_does_not_stop_the_invoice(self):
+		deal = _deal().name
+		with patch.object(orders, "_apply", side_effect=frappe.ValidationError("boom")), \
+				patch("frappe.enqueue", side_effect=ConnectionError("redis down")):
+			si = self._sale(deal, 400)
+		self.assertEqual(frappe.db.get_value("Sales Invoice", si.name, "docstatus"), 1)
+		self.assertTrue(frappe.db.exists("Error Log", {"method": f"[CRM] Deal recalculation not queued: {deal}"}))
 
 	def test_a_failure_part_way_leaves_no_half_written_deal(self):
 		deal = _deal().name
@@ -495,6 +576,51 @@ class TestCustomerLink(DealPOSCase):
 			"links": [{"link_doctype": "Customer", "link_name": customer}]}).insert(ignore_permissions=True).name
 		self.assertEqual(deal_customer.ensure_customer(_deal(contact)), {"customer": customer})
 
+	def test_a_contact_linked_to_several_customers_is_not_linked_for_the_employee(self):
+		first, second = _customer(), _customer()
+		contact = frappe.get_doc({"doctype": "Contact", "first_name": "Shared " + _token(),
+			"links": [{"link_doctype": "Customer", "link_name": c} for c in (first, second)]}).insert(ignore_permissions=True).name
+		deal = _deal(contact)
+		out = deal_customer.ensure_customer(deal)
+		self.assertIsNone(out["customer"])
+		self.assertEqual({m["name"]: m["matched"] for m in out["matches"]},
+			{first: ["contact link"], second: ["contact link"]})
+		self.assertIsNone(frappe.db.get_value("CRM Deal", deal.name, "erpnext_customer"))
+		self.assertEqual(deal_customer.ensure_customer(deal, customer=second), {"customer": second})
+
+	def test_a_contacts_own_email_field_matches_too(self):
+		email = f"{_token()}@example.com"
+		customer = _customer()
+		other = frappe.get_doc({"doctype": "Contact", "first_name": "Other " + _token(),
+			"links": [{"link_doctype": "Customer", "link_name": customer}]}).insert(ignore_permissions=True)
+		frappe.db.set_value("Contact", other.name, "email_id", email)   # not in the Email IDs table
+		self.assertFalse(frappe.db.exists("Contact Email", {"parent": other.name, "email_id": email}))
+		self.assertEqual(deal_customer._customers_by_contact_email(email), [customer])
+
+	def test_create_keeps_the_phone_on_the_deals_contact(self):
+		phone = "512555" + str(random.randint(1000, 9999))
+		contact = _contact(f"{_token()}@example.com")
+		deal = _deal(contact)
+		deal.mobile_no = phone
+		deal_customer.ensure_customer(deal, create=True)
+		rows = frappe.get_all("Contact Phone", filters={"parent": contact}, fields=["phone", "is_primary_mobile_no"])
+		self.assertEqual([(r.phone, r.is_primary_mobile_no) for r in rows], [(phone, 1)])
+
+	def test_create_leaves_a_phone_the_contact_has(self):
+		held, other = "512555" + str(random.randint(1000, 4999)), "512555" + str(random.randint(5000, 9999))
+		contact = _contact(f"{_token()}@example.com", phone=held)
+		deal = _deal(contact)
+		deal.mobile_no = other
+		deal_customer.ensure_customer(deal, create=True)
+		rows = frappe.get_all("Contact Phone", filters={"parent": contact}, fields=["phone", "is_primary_mobile_no"], order_by="idx")
+		self.assertEqual([(r.phone, r.is_primary_mobile_no) for r in rows], [(held, 1), (other, 0)])
+		# The deal's own phone, already on the Contact: no second row.
+		contact2 = _contact(f"{_token()}@example.com", phone=held)
+		deal2 = _deal(contact2)
+		deal2.mobile_no = held
+		deal_customer.ensure_customer(deal2, create=True)
+		self.assertEqual(frappe.db.count("Contact Phone", {"parent": contact2}), 1)
+
 	def test_create_makes_one_customer_on_the_deals_contact(self):
 		email = f"{_token()}@example.com"
 		contact = _contact(email, first_name="Morgan " + _token())
@@ -661,7 +787,7 @@ class TestOpenOrder(DealPOSCase):
 
 	def test_the_draft_carries_the_customer_lines_and_deal_at_the_pages_prices(self):
 		serial = self._stocked_serial("CRMOO" + _token().upper())
-		frappe.db.set_value("Item", AMMO, "standard_rate", 22.49)
+		self.assertNotEqual(frappe.db.get_value("Item", AMMO, "standard_rate"), item_price_of(AMMO))
 		deal = self._linked_deal(products=[
 			{"product_code": product_of(AMMO), "qty": 3, "discount_percentage": 50},
 			{"product_code": self._gun_product(), "qty": 1, "ffl_serial_no": serial},
@@ -673,10 +799,21 @@ class TestOpenOrder(DealPOSCase):
 		self.assertEqual(payload["crm_deal"], deal.name)
 		self.assertEqual(payload["buyer_type"], "individual")
 		ammo, gun = payload["items"]
-		self.assertEqual((ammo["item_code"], ammo["qty"], ammo["rate"], ammo["serials"]), (AMMO, 3, 22.49, []))
+		self.assertEqual((ammo["item_code"], ammo["qty"], ammo["rate"], ammo["serials"]), (AMMO, 3, item_price_of(AMMO), []))
 		self.assertEqual((gun["item_code"], gun["serials"], gun["is_firearm"]), (GUN, [serial], True))
 		data, _reason = manual_order._serial_status(serial, probe=False)
 		self.assertEqual(gun["rate"], flt(data["sell_price"]))
+
+	def test_a_line_with_no_price_opens_at_zero(self):
+		from ffl_core.crm.item import upsert_product
+		from ffl_core.tests.crm_support import make_item
+
+		code = "_T-CRM-NO-PRICE"
+		upsert_product(make_item(code))
+		self.assertFalse(frappe.db.exists("Item Price", {"item_code": code, "selling": 1}))
+		deal = self._linked_deal(products=[{"product_code": product_of(code), "qty": 2}, {"product_code": product_of(AMMO), "qty": 1}])
+		items = manual_order.get_order_draft(api.open_deal_order(deal.name)["draft"])["payload"]["items"]
+		self.assertEqual([(i["item_code"], i["rate"]) for i in items], [(code, 0), (AMMO, item_price_of(AMMO))])
 
 	def test_a_gun_with_no_serial_waits_for_a_pick(self):
 		deal = self._linked_deal(products=[{"product_code": product_of(PER_GUN), "qty": 1}])
@@ -748,3 +885,7 @@ class TestPageWiring(FrappeTestCase):
 		self.assertIn("this._crmDeal = null", js)
 		self.assertIn("r[1] === 'draft'", js)
 		self.assertIn("p.unpicked_firearms", js)
+		# A re-saved draft keeps the guns still to pick; picking one (by any route) drops its entry.
+		self.assertIn("payload.unpicked_firearms = this._unpicked", js)
+		self.assertIn("this._unpicked.splice(at, 1)", js)
+		self.assertIn("this._unpicked = []", js)

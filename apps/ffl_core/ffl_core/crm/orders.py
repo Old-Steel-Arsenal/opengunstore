@@ -12,7 +12,10 @@ task. Only Sales Invoice takes part: POS Invoice has no deal field, and a consol
 carries one.
 
 A write-back runs inside the invoice's transaction and never commits. It never stops an invoice
-either: a failure is rolled back to before it and goes in the Error Log.
+either: a failure is rolled back to before it and goes in the Error Log, and a short job queued for
+after the invoice commits (:func:`recalculate_deal`) sums the deal again and makes it Won when an
+invoice stands. That retry makes no task for the owner: a return or a cancel whose write-back failed
+leaves the Error Log entry as the only trace. If the retry fails too it only logs.
 
 lazy: two invoices of one deal submitted in the same second: the second waits on the deal's row
 and then sums from its own snapshot, or fails to the Error Log under InnoDB snapshot isolation.
@@ -30,18 +33,27 @@ from frappe.utils import flt, fmt_money
 from ffl_core.crm import TITLE, installed, pos_link_on
 from ffl_core.crm.deal import WRITE_BACK_FLAG
 from ffl_core.crm.deals import DEAL, STATUS
+from ffl_core.utils import commit
 
 DEAL_FIELD = "ffl_crm_deal"
 # update_order's mark on the invoice it cancels and rebuilds (api/manual_order.py).
 EDIT_FLAG = "ffl_edit_carry_forward"
 _SAVEPOINT = "ffl_crm_write_back"
+_RETRY_SAVEPOINT = "ffl_crm_recalculate"
 
 
-def deal_for_order(deal) -> str | None:
-	"""The deal an order's payload names, when it still exists. A deal deleted while its draft
-	waited is no reason to refuse the sale."""
+def deal_for_order(deal, customer: str, keep: bool = False) -> str | None:
+	"""The deal an order's payload names, when it still exists and is the buyer's: a deal stays on
+	the invoice only while its ``erpnext_customer`` is the order's customer, so an employee who
+	changed the buyer on Create Order leaves the deal as it was. ``keep`` skips that check (Edit
+	Order rebuilds on the old invoice's deal). A deal deleted while its draft waited is no reason to
+	refuse the sale."""
 	deal = str(deal or "").strip()
-	return deal if deal and installed() and frappe.db.exists(DEAL, deal) else None
+	if not deal or not installed() or not frappe.db.exists(DEAL, deal):
+		return None
+	if not keep and frappe.db.get_value(DEAL, deal, "erpnext_customer") != customer:
+		return None
+	return deal
 
 
 def deal_sales(deal: str) -> tuple[float, bool]:
@@ -84,6 +96,48 @@ def _write_back(doc, cancelled: bool) -> None:
 		frappe.db.rollback(save_point=_SAVEPOINT)
 		del frappe.local.message_log[messages:]
 		frappe.log_error(title=f"[{TITLE}] Deal write-back failed: {doc.name}", message=frappe.get_traceback())
+		_queue_recalculation(deal)
+
+
+def _queue_recalculation(deal: str) -> None:
+	"""One recalculation per deal, after the invoice's transaction commits. A queue that is down
+	costs the retry, never the invoice."""
+	try:
+		frappe.enqueue("ffl_core.crm.orders.recalculate_deal", queue="short", enqueue_after_commit=True,
+			job_id=f"ffl_crm_recalculate:{deal}", deduplicate=True, deal=deal)
+	except Exception:
+		frappe.log_error(title=f"[{TITLE}] Deal recalculation not queued: {deal}", message=frappe.get_traceback())
+
+
+def recalculate_deal(deal: str) -> None:
+	"""The retry job after a failed write-back, in its own transaction: the deal's value from its
+	submitted invoices, and Won when one that is not a credit note stands. Safe to run any number
+	of times. It makes no task for the owner."""
+	frappe.db.savepoint(_RETRY_SAVEPOINT)
+	try:
+		if pos_link_on() and frappe.db.exists(DEAL, deal):
+			doc = frappe.get_doc(DEAL, deal, for_update=True)
+			doc.deal_value = deal_sales(deal)[0]
+			if frappe.db.exists("Sales Invoice", {DEAL_FIELD: deal, "docstatus": 1, "is_return": 0, "is_consolidated": 0}):
+				_mark_won(doc)
+			_save(doc)
+		commit()
+	except Exception:
+		frappe.db.rollback(save_point=_RETRY_SAVEPOINT)
+		frappe.log_error(title=f"[{TITLE}] Deal recalculation failed: {deal}", message=frappe.get_traceback())
+
+
+def _mark_won(deal) -> None:
+	if frappe.db.get_value(STATUS, deal.status, "type") != "Won":
+		# CRM's validate logs the status change and sets closed_date.
+		deal.status = frappe.db.get_value(STATUS, {"type": "Won"}, "name", order_by="position asc")
+
+
+def _save(deal) -> None:
+	deal.flags[WRITE_BACK_FLAG] = True
+	# CRM's DocType, written for whoever submitted the invoice, who need not hold CRM rights.
+	deal.flags.ignore_permissions = True
+	deal.save()
 
 
 def _apply(doc, name: str, cancelled: bool) -> None:
@@ -92,13 +146,9 @@ def _apply(doc, name: str, cancelled: bool) -> None:
 	deal = frappe.get_doc(DEAL, name, for_update=True)
 	is_return = bool(doc.get("is_return"))
 	deal.deal_value = deal_sales(name)[0]
-	if not cancelled and not is_return and frappe.db.get_value(STATUS, deal.status, "type") != "Won":
-		# CRM's validate logs the status change and sets closed_date.
-		deal.status = frappe.db.get_value(STATUS, {"type": "Won"}, "name", order_by="position asc")
-	deal.flags[WRITE_BACK_FLAG] = True
-	# CRM's DocType, written for whoever submitted the invoice, who need not hold CRM rights.
-	deal.flags.ignore_permissions = True
-	deal.save()
+	if not cancelled and not is_return:
+		_mark_won(deal)
+	_save(deal)
 	if is_return or (cancelled and not doc.flags.get(EDIT_FLAG)):
 		_task_for_owner(deal, doc, cancelled)
 

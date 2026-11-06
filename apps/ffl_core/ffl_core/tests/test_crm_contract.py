@@ -114,6 +114,12 @@ class TestCRMContract(CRMTestCase):
 		self.assertIn("ignore_permissions", inspect.signature(_add).parameters)
 		self.assertIn("assign", inspect.getsource(CRMTask.assign_to))
 
+	def test_contact_add_phone_signature(self):
+		# crm.customer._keep_phone puts a new customer's phone on the deal's Contact.
+		from frappe.contacts.doctype.contact.contact import Contact
+
+		self.assertTrue({"phone", "is_primary_mobile_no"} <= set(inspect.signature(Contact.add_phone).parameters))
+
 	def test_the_frontend_renders_what_the_deal_script_sends(self):
 		# setFieldHtml fills an HTML field on the side panel (DOMPurify) and createDialog takes `html`.
 		root = frappe.get_app_path("crm", "..", "frontend", "src")
