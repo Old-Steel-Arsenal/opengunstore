@@ -100,7 +100,7 @@ class ATFFormScraperProvider:
 		# encoded as segment 4 of the FFL number itself.
 		license_type = _license_type_from_number(ffl_number)
 
-		if licensee_name and expiry:
+		if expiry:
 			return EZCheckResult(
 				ffl_number=ffl_number,
 				found=True,
@@ -113,14 +113,15 @@ class ATFFormScraperProvider:
 			)
 
 		# ATF's real not-found page: "You Entered FFL Number ... invalid and/or ...".
-		# Anything else without both license fields is a page we cannot read (a
+		# Anything else without a readable expiry is a page we cannot read (a
 		# maintenance or blocking page served as 200, or a changed layout), NOT a
 		# verdict on the FFL: verify() turns this into EZCheckUnavailable and the
-		# record stays as it was.
+		# record stays as it was. A parsed name means ATF listed the licence, so
+		# not-found wording alongside it is not a NotFound.
 		lowered = " ".join(text.lower().split())   # the page's source can wrap a phrase
-		if "you entered ffl number" in lowered and "invalid and/or" in lowered:
+		if not licensee_name and "you entered ffl number" in lowered and "invalid and/or" in lowered:
 			return EZCheckResult(ffl_number=ffl_number, found=False, status="NotFound")
-		raise ValueError("unrecognized EZ Check page: no readable license fields and no not-found marker")
+		raise ValueError("unrecognized EZ Check page: no readable expiry and no not-found marker")
 
 
 def _parse_ffl(ffl_number: str) -> tuple[str, str, str]:
