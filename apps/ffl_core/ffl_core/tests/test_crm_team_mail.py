@@ -167,6 +167,59 @@ class TestIncoming(TeamMailCase):
 		self.assertEqual(get_max_email_uid(STAFF_A), 46)
 		self.assertNoPullErrors()
 
+	def _copy_of(self, raw: bytes, *, queued_to: str | None) -> bytes:
+		"""Frappe's copy of this received mail, as the mail service delivers it to a staff mailbox."""
+		[original] = _stored(raw)
+		comm = frappe.db.get_value("Communication", original.name, ["sender", "subject"], as_dict=True)
+		if queued_to:
+			frappe.get_doc({"doctype": "Email Queue", "communication": original.name, "sender": "noreply@example.com",
+				"message": "copy", "recipients": [{"recipient": queued_to}]}).insert(ignore_permissions=True)
+		msg = EmailMessage()
+		msg["From"] = "Store <noreply@example.com>"
+		msg["X-Original-From"] = comm.sender
+		msg["Reply-To"] = comm.sender
+		msg["Cc"] = "ffltm-staff-a@example.com"
+		msg["Subject"] = comm.subject
+		msg["Date"] = format_datetime(now_datetime().astimezone())
+		msg["Message-ID"] = f"<{frappe.generate_hash(length=12)}@mail-service.example.org>"
+		msg.set_content("Hello, is it still for sale?")
+		return msg.as_bytes()
+
+	def test_our_own_copy_of_a_received_mail_does_not_come_back(self):
+		raw = _raw("Jane <copyjane@example.org>", SALES)
+		_pull(INFO, (raw, 50))
+		copy = self._copy_of(raw, queued_to="ffltm-staff-a@example.com")
+		_pull(STAFF_A, (copy, 51))
+		self.assertFalse(_stored(copy))
+		self.assertEqual(len(_stored(raw)), 1)
+		self.assertNoPullErrors()
+
+	def test_a_mail_like_the_copy_that_we_did_not_send_here_stays(self):
+		raw = _raw("Jane <copyjane2@example.org>", SALES)
+		_pull(INFO, (raw, 52))
+		copy = self._copy_of(raw, queued_to="someone-else@example.com")
+		_pull(STAFF_A, (copy, 53))
+		self.assertEqual(len(_stored(copy)), 1, "queued to another mailbox: not this one's copy")
+		self.assertNoPullErrors()
+
+	def test_a_real_mail_with_the_same_subject_stays(self):
+		raw = _raw("Jane <copyjane3@example.org>", SALES)
+		_pull(INFO, (raw, 54))
+		[original] = _stored(raw)
+		frappe.get_doc({"doctype": "Email Queue", "communication": original.name, "sender": "noreply@example.com",
+			"message": "copy", "recipients": [{"recipient": "ffltm-staff-a@example.com"}]}).insert(ignore_permissions=True)
+		subject = frappe.db.get_value("Communication", original.name, "subject")
+		again = EmailMessage()
+		again["From"] = "Jane <copyjane3@example.org>"
+		again["To"] = "ffltm-staff-a@example.com"
+		again["Subject"] = subject
+		again["Date"] = format_datetime(now_datetime().astimezone())
+		again["Message-ID"] = "<ffl-test-direct-copyjane3@example.org>"
+		again.set_content("Writing to you directly.")
+		_pull(STAFF_A, (again.as_bytes(), 55))
+		self.assertEqual(len(_stored(again.as_bytes())), 1)
+		self.assertNoPullErrors()
+
 	def test_direct_mail_from_someone_new_is_not_stored(self):
 		raw = _raw("Stranger <friend@example.org>", "ffltm-staff-a@example.com")
 		_pull(STAFF_A, (raw, 3))

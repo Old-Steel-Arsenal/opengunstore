@@ -182,6 +182,19 @@ def _duplicate(doc) -> bool:
 		"sent_or_received": "Received", "email_account": ["in", others], **mine}))
 
 
+def _system_copy(doc) -> bool:
+	"""Frappe's copy of a received mail to the record's owner and assignees (``EmailAccount.receive``),
+	back through that person's mailbox. The mail service may give it a Message-ID of its own, so
+	:func:`_duplicate` misses it. It has no To, and we queued it to this mailbox."""
+	if doc.get("recipients"):
+		return False
+	originals = frappe.get_all("Communication", filters={"sender": doc.get("sender"), "subject": doc.get("subject"),
+		"sent_or_received": "Received", "email_account": ["!=", doc.email_account]}, pluck="name")
+	queued = originals and frappe.get_all("Email Queue", filters={"communication": ["in", originals]}, pluck="name")
+	return bool(queued) and bool(frappe.db.exists("Email Queue Recipient", {"parent": ["in", queued],
+		"recipient": frappe.db.get_value("Email Account", doc.email_account, "email_id")}))
+
+
 def _collected_elsewhere(row, account: str) -> bool:
 	"""Another Email Account brings in this address's mail. A collector that no longer pulls mail does
 	not count: its address's mail would then be lost everywhere."""
@@ -218,6 +231,8 @@ def decide(doc) -> tuple | None:
 		return None
 	if _duplicate(doc):
 		return (SKIP, "already in")
+	if _system_copy(doc):
+		return (SKIP, "our own copy")
 	row, collected = _team_row(doc, account)
 	if collected:
 		return (SKIP, "collected by another account")
