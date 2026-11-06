@@ -55,6 +55,22 @@ class ScraperParser(FrappeTestCase):
 			ATFFormScraperProvider._parse(MAINTENANCE_PAGE,
 				ffl_number="9-99-999-99-9X-99999", today=date(2026, 5, 4))
 
+	def test_license_fields_win_over_not_found_wording(self):
+		html = _fixture("ez_check_verified.html").replace("</body>",
+			"<p>You Entered FFL Number: 1-99-XXX-XX-XX-12345. It may be invalid and/or fraudulent.</p></body>")
+		result = ATFFormScraperProvider._parse(html,
+			ffl_number="1-99-888-01-XX-12345", today=date(2026, 5, 4))
+		self.assertEqual(result.status, "Verified")
+		self.assertEqual(result.expiry_date, date(2028, 12, 31))
+
+	def test_parse_page_missing_name_or_readable_expiry_raises(self):
+		verified = _fixture("ez_check_verified.html")
+		for partial in (verified.replace("12/31/2028", "December 31, 2028"),
+				verified.replace("SMITH JOHN", "")):
+			with self.assertRaises(ValueError):
+				ATFFormScraperProvider._parse(partial,
+					ffl_number="1-99-888-01-XX-12345", today=date(2026, 5, 4))
+
 	def test_parse_expired_response(self):
 		result = ATFFormScraperProvider._parse(_fixture("ez_check_expired.html"),
 			ffl_number="6-04-123-01-XX-11111", today=date(2026, 5, 4))
@@ -370,6 +386,15 @@ class NotFoundKeepsRecord(FrappeTestCase):
 		with self._atf_answers(MAINTENANCE_PAGE):
 			r = ez_check.verify(self.DEALER, force_live=True)
 		self.assertTrue(r.found)   # the cached row answers
+		self.assertEqual(frappe.db.get_value("ATF FFL Record", self.DEALER, "expiry_date"),
+			date(2029, 1, 31))
+		self.assertIsNone(atf_record_block(self.DEALER))
+
+	def test_unreadable_expiry_keeps_dealer_expiry_and_shipping_open(self):
+		from ffl_core.compliance.dealer_transfer import atf_record_block
+		html = _fixture("ez_check_verified.html").replace("12/31/2028", "December 31, 2028")
+		with self._atf_answers(html):
+			ez_check.verify(self.DEALER, force_live=True)
 		self.assertEqual(frappe.db.get_value("ATF FFL Record", self.DEALER, "expiry_date"),
 			date(2029, 1, 31))
 		self.assertIsNone(atf_record_block(self.DEALER))
