@@ -2,7 +2,7 @@
 
 Owns: the two custom fields (``CUSTOM_FIELDS``), the Lead Mail Settings default, the team mail
 setup (``crm.team.apply``: staff Reply-To, team mailboxes in User Emails), the same-site
-ERPNext CRM Settings (on, this site, ``sync_products`` off), moving CRM's own "create lead from
+ERPNext CRM Settings (on, this site, ``sync_products`` off), CRM's currency, moving CRM's own "create lead from
 incoming email" switch to ours, the Contact page's Email button, the Deal page's customer card and
 Open order button (:func:`apply_pos_link`, following Lead Mail Settings › crm_pos_link), and the
 one-off backfill that makes every Item a CRM Product.
@@ -34,6 +34,7 @@ from ffl_core.crm.mail import AUTO_LEAD, SETTINGS
 from ffl_core.crm.orders import DEAL_FIELD
 
 CRM_SETTINGS = "ERPNext CRM Settings"
+FCRM_SETTINGS = "FCRM Settings"
 SEEDED_FLAG = "ffl_crm_settings_seeded"
 BACKFILL_FLAG = "ffl_crm_backfill_done"
 BACKFILL_JOB = "ffl_crm_product_backfill"
@@ -169,6 +170,7 @@ def ensure(backfill: bool = True) -> dict:
 		_as_administrator(ensure_custom_fields)
 		_as_administrator(ensure_settings)
 		_as_administrator(ensure_crm_settings)
+		_as_administrator(ensure_crm_currency)
 		_as_administrator(take_over_lead_flags)
 		_as_administrator(ensure_contact_script)
 		_as_administrator(apply_pos_link)
@@ -226,6 +228,21 @@ def ensure_crm_settings() -> dict:
 	settings.create_crm_form_script()
 	frappe.clear_document_cache(CRM_SETTINGS, CRM_SETTINGS)
 	return changed
+
+
+def ensure_crm_currency() -> str | None:
+	"""CRM's own currency is the store's. CRM saves its settings at install, so a site that gets CRM
+	before its setup wizard keeps whatever Frappe's default was then. A deal in the store's currency
+	then asks a public rate API on every insert (CRM Deal ``update_exchange_rate``); with that API
+	unreachable CRM refuses the deal, and a customer's mail stays unrouted. Returns the currency set."""
+	company = _default_company()
+	currency = company and frappe.db.get_value("Company", company, "default_currency")
+	if not currency or frappe.db.get_single_value(FCRM_SETTINGS, "currency") == currency:
+		return None
+	# Not a save: CRM makes the field read-only once set, and its save re-runs its own setup.
+	frappe.db.set_single_value(FCRM_SETTINGS, "currency", currency)
+	frappe.clear_document_cache(FCRM_SETTINGS, FCRM_SETTINGS)
+	return currency
 
 
 def take_over_lead_flags() -> list[str]:

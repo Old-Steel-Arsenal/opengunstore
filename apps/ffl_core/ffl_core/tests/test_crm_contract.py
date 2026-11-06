@@ -87,6 +87,14 @@ class TestCRMContract(CRMTestCase):
 		self.assertIn("add_status_change_log", source)
 		self.assertIn("closed_date", source)
 
+	def test_a_deal_fetches_a_rate_only_when_its_currency_is_not_crms(self):
+		# crm.setup.ensure_crm_currency keeps the two equal so that no deal depends on a public API.
+		from crm.fcrm.doctype.crm_deal.crm_deal import CRMDeal
+
+		source = inspect.getsource(CRMDeal.update_exchange_rate)
+		self.assertIn('"FCRM Settings", "currency"', source)
+		self.assertIn("self.currency != system_currency", source)
+
 	def test_the_deal_side_panel_is_a_list_of_sections(self):
 		# crm.setup adds the customer card's section the way CRM adds its Lost Reason one.
 		from crm.fcrm.doctype.utils import add_or_remove_lost_reason_section_in_sidepanel

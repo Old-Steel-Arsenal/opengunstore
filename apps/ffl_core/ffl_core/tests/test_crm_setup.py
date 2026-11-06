@@ -147,3 +147,35 @@ class TestStaffDefaultApp(FrappeTestCase):
 		user.append("roles", {"role": "Sales User"})
 		user.save(ignore_permissions=True)
 		self.assertEqual((user.user_type, user.default_app), ("System User", "ffl_core"))
+
+
+class TestCurrency(CRMTestCase):
+	"""A deal made in the store's currency never needs the public rate API, so mail routing does not."""
+
+	def _store_currency(self) -> str:
+		company = setup._default_company()
+		return frappe.db.get_value("Company", company, "default_currency")
+
+	def test_crm_takes_the_stores_currency(self):
+		frappe.db.set_single_value(setup.FCRM_SETTINGS, "currency", "INR")
+		self.assertEqual(setup.ensure_crm_currency(), self._store_currency())
+		self.assertEqual(frappe.db.get_single_value(setup.FCRM_SETTINGS, "currency"), self._store_currency())
+		self.assertIsNone(setup.ensure_crm_currency(), "already the store's: nothing to do")
+
+	def test_a_new_deal_asks_no_rate_api(self):
+		from ffl_core.crm.deals import open_deal_for
+
+		frappe.db.set_single_value(setup.FCRM_SETTINGS, "currency", "INR")
+		setup.ensure_crm_currency()
+		contact = frappe.get_doc({"doctype": "Contact", "first_name": "No Rate Call"}).insert(ignore_permissions=True)
+		with patch("crm.fcrm.doctype.crm_deal.crm_deal.get_exchange_rate",
+				side_effect=AssertionError("a deal in the store's currency must not fetch a rate")) as fetch:
+			deal = open_deal_for(contact.name)
+		fetch.assert_not_called()
+		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "exchange_rate"), 1)
+
+	def test_migrate_applies_it(self):
+		frappe.db.set_single_value(setup.FCRM_SETTINGS, "currency", "INR")
+		with patch("frappe.enqueue"):
+			self.assertEqual(setup.ensure(), {"ok": 1})
+		self.assertEqual(frappe.db.get_single_value(setup.FCRM_SETTINGS, "currency"), self._store_currency())

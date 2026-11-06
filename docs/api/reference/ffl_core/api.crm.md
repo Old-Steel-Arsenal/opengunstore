@@ -29,7 +29,7 @@ Authorize button needs read access to the Connected App, which staff do not have
 
 `POST /api/method/ffl_core.api.crm.deal_customer_summary`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager
 
 What the Deal page's customer card shows. Never carries an ID number, date of birth, 4473 or
 
@@ -41,13 +41,13 @@ NICS.
 
 **Returns:** dict: {"customer": None, "matches": [...], "html"} before the deal has a customer, else {"customer", "customer_name", "flags": {"status", "status_reason", "banned", "override_until", "alerts", "tags"}, "ffl": {"is_dealer", "on_file", "expiry_date", "expired"}, "orders": last orders, "open_orders": orders on Pending Order, "lifetime_spend": Net Sales as the Sales Report reads it, "html"}. Refused while the switch is off.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:109`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:108`</sub>
 
 ## `ensure_deal_customer`
 
 `POST /api/method/ffl_core.api.crm.ensure_deal_customer`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager
 
 The deal's POS customer: its link, the matches to confirm, or a new customer on confirm.
 
@@ -100,7 +100,7 @@ The contact's open deal, made when they have none, to write to them from CRM.
 
 `POST /api/method/ffl_core.api.crm.open_deal_order`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager
 
 Save a deal with a customer as a Create Order draft, to finish the sale on that page.
 
@@ -110,4 +110,4 @@ Save a deal with a customer as a Create Order draft, to finish the sale on that 
 
 **Returns:** dict: {"draft": the draft's name, "route": the page to open, "skipped": deal lines that are not POS items}. The page sets the prices, as for a line picked there.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:145`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:146`</sub>
