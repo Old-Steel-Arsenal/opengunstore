@@ -473,7 +473,8 @@ def _with_extension_meta(payload: dict, doctype: str, name: str) -> dict:
 # MAP price control: the retail storefront (the storefront plugin's MapPrice) hides a price below
 # the Item's MAP according to the brand's mode. Retail only.
 # Both keys go on every retail push, empty
-# when there is no MAP, so a MAP taken off an Item reaches the store too.
+# when there is no MAP (unless the brand's mode is "Always show in cart", see
+# ``map_meta``), so a MAP taken off an Item reaches the store too.
 MAP_META_KEYS = ("_osa_map_price", "_osa_map_mode")
 # The Item fields map_meta reads: the push triggers (doc_events) and reconcile's
 # batched rows both use this one list.
@@ -483,6 +484,9 @@ MAP_ITEM_FIELDS = ("map_price", "brand", "manufacturer", "is_used")
 # The mode a site without a registrant carries: the website price never goes
 # below MAP. Called "Floor" before; the storefront reads either name.
 MAP_MODE_DEFAULT = "MAP is minimum price"
+# The one mode that also applies to an Item with no MAP: the storefront hides the
+# price of any product carrying it. Spelled exactly as the storefront reads it.
+MAP_MODE_ALWAYS_IN_CART = "Always show in cart"
 
 
 def map_mode_for_item(item_code, brand) -> str:
@@ -498,12 +502,21 @@ def map_mode_for_item(item_code, brand) -> str:
 def map_meta(item) -> dict:
     """The retail MAP meta for an Item (a doc or a row with name, map_price, brand,
     manufacturer, is_used) — what the push writes and reconcile expects. A used gun
-    carries no new-product MAP."""
-    map_price = 0.0 if item.get("is_used") else float(item.get("map_price") or 0)
-    if map_price <= 0:
+    carries no new-product MAP. An Item with no MAP carries a mode only when its
+    brand's mode is ``MAP_MODE_ALWAYS_IN_CART`` (the storefront hides the price
+    whatever the MAP): then ``_osa_map_price`` is empty and ``_osa_map_mode`` is that
+    mode. Every other no-MAP Item carries both keys empty."""
+    if item.get("is_used"):
         return dict.fromkeys(MAP_META_KEYS, "")
-    return dict(zip(MAP_META_KEYS, (f"{map_price:.2f}", map_mode_for_item(
-        item.get("name"), item.get("brand") or item.get("manufacturer")))))
+    map_price = float(item.get("map_price") or 0)
+    # lazy: one map_mode_for_item call per no-MAP Item, so a reconcile sweep makes
+    # one hook call (the registrant's two point reads) per listed Item without a MAP;
+    # a few thousand listed products. Batch the brand table into the sweep's Item
+    # read if it ever gets slow.
+    mode = map_mode_for_item(item.get("name"), item.get("brand") or item.get("manufacturer"))
+    if map_price <= 0:
+        return dict(zip(MAP_META_KEYS, ("", mode if mode == MAP_MODE_ALWAYS_IN_CART else "")))
+    return dict(zip(MAP_META_KEYS, (f"{map_price:.2f}", mode)))
 
 
 def _with_map_meta(payload: dict, item) -> dict:
