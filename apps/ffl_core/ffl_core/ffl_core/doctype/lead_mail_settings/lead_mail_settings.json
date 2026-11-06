@@ -11,7 +11,9 @@
   "domains_section",
   "blocked_sender_domains",
   "column_domains",
-  "own_domains"
+  "own_domains",
+  "pos_section",
+  "crm_pos_link"
  ],
  "fields": [
   {
@@ -56,6 +58,17 @@
    "fieldtype": "Small Text",
    "label": "Our own domains",
    "description": "One domain per line: the store's own mail, which never becomes a lead."
+  },
+  {
+   "fieldname": "pos_section",
+   "fieldtype": "Section Break",
+   "label": "POS"
+  },
+  {
+   "default": "0",
+   "fieldname": "crm_pos_link",
+   "fieldtype": "Check",
+   "label": "Link deals to POS orders"
   }
  ],
  "issingle": 1,

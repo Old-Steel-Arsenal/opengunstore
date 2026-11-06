@@ -1310,6 +1310,10 @@ class CreateOrderApp {
 			})),
 		};
 		payload.distributor_options = this.deliveryOptions || {};
+		// The CRM deal this order came from: the invoice writes back to it.
+		if (this._crmDeal) payload.crm_deal = this._crmDeal;
+		// Guns of a deal still to be picked: a re-saved draft keeps them (_addLine drops one when its gun is picked).
+		if (this._unpicked?.length) payload.unpicked_firearms = this._unpicked;
 		for (const f of CreateOrderApp.DRAFT_SCALARS) {
 			const v = this.fields[f.field].get_value();
 			payload[f.key] = f.type === 'flt' ? (flt(v) || 0)
@@ -1430,6 +1434,8 @@ class CreateOrderApp {
 				this._draftName = name;
 				this._applyPayload(p);
 			},
+			// A /draft/ address whose draft is gone (the order was made): start clean.
+			error: () => { if (frappe.get_route()[1] === 'draft') frappe.set_route('create-order'); },
 		});
 	}
 
@@ -1439,6 +1445,7 @@ class CreateOrderApp {
 	_applyPayload(p) {
 		this.deliveryOptions = (p.distributor_options && typeof p.distributor_options === 'object')
 			? { ...p.distributor_options } : {};
+		this._crmDeal = p.crm_deal || null;
 		// Buyer type first — it shows/hides the sections the rest fill.
 		this.$body.find(`#seg-buyer button[data-v="${p.buyer_type === 'business' ? 'business' : 'individual'}"]`).click();
 		if (p.buyer_type === 'business') {
@@ -1527,6 +1534,14 @@ class CreateOrderApp {
 		}
 		frappe.show_alert({ message: this._editing
 			? __('Order loaded for editing.') : __('Draft loaded.'), indicator: 'green' }, 4);
+		// A CRM deal's gun with no serial picked yet: its serial picker opens, the others are named.
+		// Taken after the lines above are in, so a picked gun of the same model does not cancel its entry.
+		const unpicked = this._unpicked = (p.unpicked_firearms || []).slice();
+		if (unpicked.length) {
+			this._showPending(unpicked[0]);
+			frappe.show_alert({ message: __('Pick a serial for: {0}',
+				[unpicked.map((i) => frappe.utils.escape_html(i.item_name || i.item_code)).join(', ')]), indicator: 'orange' }, 8);
+		}
 	}
 
 	_syncDepositNote() {
@@ -2000,6 +2015,11 @@ class CreateOrderApp {
 			return false;
 		}
 		this.lines.push(line);
+		if (line.is_firearm && line.serial) {
+			// A gun picked by any route (card, scan, serial) answers one still-to-pick entry of its model.
+			const at = (this._unpicked || []).findIndex((u) => u.item_code === line.item_code);
+			if (at >= 0) line._unpicked = this._unpicked.splice(at, 1)[0];
+		}
 		this._renderLines();
 		this._syncDestSection();
 		this._reflectReadiness();
@@ -2074,7 +2094,8 @@ class CreateOrderApp {
 			this._reflectReadiness();
 		});
 		$tb.find('.btn-remove').on('click', (e) => {
-			this.lines.splice($(e.currentTarget).data('idx'), 1);
+			const [gone] = this.lines.splice($(e.currentTarget).data('idx'), 1);
+			if (gone?._unpicked) this._unpicked.push(gone._unpicked);   // the deal's gun is still to pick
 			this._renderLines(); this._syncDestSection(); this._reflectReadiness();
 		});
 		$tb.find('.line-loc').on('change', (e) => {
@@ -2415,7 +2436,18 @@ class CreateOrderApp {
 	// a stale form that could double-create.
 
 	_syncEditRoute() {
-		const r = frappe.get_route(); // ['create-order'] | ['create-order','edit',SI]
+		const r = frappe.get_route(); // ['create-order'] | ['create-order','edit',SI] | ['create-order','draft',name]
+		// A draft opened by address (Open order on a CRM deal): loaded once per address.
+		const draft = r[1] === 'draft' ? r[2] : null;
+		if (draft !== this._routedDraft) {
+			this._routedDraft = draft;
+			if (draft) {
+				if (this._editing) this._exitEditMode();
+				this._loadDraft(draft);
+				return;
+			}
+		}
+		if (draft) return;
 		const si = r[1] === 'edit' ? r[2] : null;
 		if (si && this._editing?.si !== si) this._enterEditMode(si);
 		else if (!si && this._editing) this._exitEditMode();
@@ -2778,6 +2810,7 @@ class CreateOrderApp {
 					this._draftName = null;
 					this._refreshDraftCount();
 					this._resetForNext();
+					if (frappe.get_route()[1] === 'draft') frappe.set_route('create-order');
 				}
 			},
 			error: () => { $btn.prop('disabled', false).text(__('Create Order')); },
@@ -2838,6 +2871,8 @@ class CreateOrderApp {
 		this.deliveryOptions = {};
 		this.buyerType = 'individual'; this.disposeNow = false; this._amountEdited = false;
 		this._draftName = null;
+		this._crmDeal = null;
+		this._unpicked = [];
 		// Clearing amount to '' matches _lastAutoAmount ('' → 0), so the async change
 		// handler won't mistake the reset for a user edit and re-pin _amountEdited.
 		this._lastAutoAmount = '';

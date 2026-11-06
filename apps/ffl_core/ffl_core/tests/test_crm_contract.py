@@ -3,6 +3,7 @@ fails here instead of silently turning the CRM wiring into a no-op."""
 from __future__ import annotations
 
 import inspect
+import os
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
@@ -65,6 +66,74 @@ class TestCRMContract(CRMTestCase):
 		self.assertTrue({"email", "first_name", "last_name", "source"} <= _fields("CRM Lead"))
 		self.assertTrue({"create_lead_from_incoming_email", "ffl_auto_lead"} <= _fields("Email Account"))
 		self.assertTrue({"dt", "view", "script", "enabled"} <= _fields("CRM Form Script"))
+
+	def test_deal_fields_the_pos_link_reads_and_writes(self):
+		self.assertTrue({"erpnext_customer", "deal_value", "net_total", "status", "closed_date", "status_change_log",
+			"contacts", "deal_owner", "email", "mobile_no", "phone", "first_name", "last_name", "lead_name",
+			"organization"} <= _fields("CRM Deal"))
+		self.assertTrue({"contact", "is_primary"} <= _fields("CRM Contacts"))
+		self.assertEqual(frappe.get_meta("CRM Contacts").get_field("contact").fieldtype, "Link")
+		self.assertTrue({"type", "position"} <= _fields("CRM Deal Status"))
+		self.assertTrue({"title", "description", "priority", "status", "assigned_to", "reference_doctype",
+			"reference_docname"} <= _fields("CRM Task"))
+		options = frappe.get_meta("CRM Task").get_field("status").options
+		self.assertIn("Todo", options)
+		self.assertIn("High", frappe.get_meta("CRM Task").get_field("priority").options)
+
+	def test_crm_sets_closed_date_and_logs_a_status_change_in_validate(self):
+		from crm.fcrm.doctype.crm_deal.crm_deal import CRMDeal
+
+		source = inspect.getsource(CRMDeal.validate)
+		self.assertIn("add_status_change_log", source)
+		self.assertIn("closed_date", source)
+
+	def test_a_deal_fetches_a_rate_only_when_its_currency_is_not_crms(self):
+		# crm.setup.ensure_crm_currency keeps the two equal so that no deal depends on a public API.
+		from crm.fcrm.doctype.crm_deal.crm_deal import CRMDeal
+
+		source = inspect.getsource(CRMDeal.update_exchange_rate)
+		self.assertIn('"FCRM Settings", "currency"', source)
+		self.assertIn("self.currency != system_currency", source)
+
+	def test_the_deal_side_panel_is_a_list_of_sections(self):
+		# crm.setup adds the customer card's section the way CRM adds its Lost Reason one.
+		from crm.fcrm.doctype.utils import add_or_remove_lost_reason_section_in_sidepanel
+
+		source = inspect.getsource(add_or_remove_lost_reason_section_in_sidepanel)
+		self.assertIn('f"{doctype}-Side Panel"', source)
+		self.assertIn("contacts_section", source)
+		self.assertEqual(frappe.get_meta("CRM Fields Layout").autoname, "format:{dt}-{type}")
+		self.assertEqual(setup.SIDE_PANEL, "CRM Deal-Side Panel")
+
+	def test_frappe_assign_takes_ignore_permissions(self):
+		# crm.orders assigns the owner's task for a user with no CRM rights; CRM's own after_insert
+		# path checks the session user.
+		from crm.fcrm.doctype.crm_task.crm_task import CRMTask
+		from frappe.desk.form.assign_to import _add
+
+		self.assertIn("ignore_permissions", inspect.signature(_add).parameters)
+		self.assertIn("assign", inspect.getsource(CRMTask.assign_to))
+
+	def test_contact_add_phone_signature(self):
+		# crm.customer._keep_phone puts a new customer's phone on the deal's Contact.
+		from frappe.contacts.doctype.contact.contact import Contact
+
+		self.assertTrue({"phone", "is_primary_mobile_no"} <= set(inspect.signature(Contact.add_phone).parameters))
+
+	def test_the_frontend_renders_what_the_deal_script_sends(self):
+		# setFieldHtml fills an HTML field on the side panel (DOMPurify) and createDialog takes `html`.
+		root = frappe.get_app_path("crm", "..", "frontend", "src")
+		if not os.path.isdir(root):
+			self.skipTest("a release build without the frontend's source")
+		reads = {
+			"data/script.js": "setFieldHtml",
+			"components/SidePanelLayout.vue": "fieldHtmlMap",
+			"components/Controls/HtmlControl.vue": "sanitizeHTML",
+			"utils/dialogs.jsx": "dialog.html",
+		}
+		for path, needle in reads.items():
+			with open(os.path.join(root, path)) as handle:
+				self.assertIn(needle, handle.read(), path)
 
 	def test_crm_lead_from_mail_is_keyed_on_the_email_account_switch(self):
 		from crm.utils import create_lead_from_incoming_email

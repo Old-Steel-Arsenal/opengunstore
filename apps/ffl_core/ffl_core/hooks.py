@@ -281,7 +281,8 @@ doc_events = {
 		"on_trash": "ffl_core.crm.product.on_trash",
 	},
 	"CRM Deal": {
-		"validate": "ffl_core.crm.deal.price_lines",
+		# The quote's lines priced; the value pinned to the deal's invoices (ffl_core.crm.orders).
+		"validate": ["ffl_core.crm.deal.price_lines", "ffl_core.crm.orders.pin_deal_value"],
 		# A deal converted from a lead the team shares stays shared (ffl_core.crm.mail).
 		"after_insert": "ffl_core.crm.mail.share_converted_deal",
 	},
@@ -294,6 +295,8 @@ doc_events = {
 	# CRM's lead switch becomes ours; a staff mailbox answers with the team's Reply-To (ffl_core.crm.team).
 	"Email Account": {"validate": ["ffl_core.crm.mail.take_over_lead_flag", "ffl_core.crm.team.reply_to_on_validate",
 		"ffl_core.crm.team.require_full_sync"]},
+	# Mail sent on a CRM Lead or Deal leaves within seconds, not at the next flush (ffl_core.crm.mail).
+	"Email Queue": {"after_insert": "ffl_core.crm.mail.send_crm_mail_now"},
 	# Pulled mail: the copy CRM keeps and where it goes; the first reply owns the lead (ffl_core.crm.mail).
 	"Communication": {
 		"before_insert": "ffl_core.crm.mail.skip_unwanted",
@@ -428,6 +431,8 @@ doc_events = {
 			"ffl_core.compliance.trade_in_settlement.reconcile_payout_on_merge",
 			# Each firearm sold agreements this sale used (agreements.py).
 			"ffl_core.agreements.mark_firearm_agreements_used",
+			# The invoice's CRM deal: its value, Won on the first sale (never blocks; crm/orders.py).
+			"ffl_core.crm.orders.on_submit",
 		],
 		"on_cancel": [
 			# First: a merged invoice whose ticket's payout a drawer count relied on stays
@@ -445,6 +450,8 @@ doc_events = {
 			"ffl_core.storage.stock_document_cancelled",
 			# Each firearm sold agreements this sale used (agreements.py).
 			"ffl_core.agreements.release_firearm_agreements",
+			# The invoice's CRM deal: its value, a task for the owner (never blocks; crm/orders.py).
+			"ffl_core.crm.orders.on_cancel",
 		],
 		# A membership invoice is never cancelled from the invoice: refunds are credit notes (membership.py).
 		"before_cancel": "ffl_core.membership.refuse_invoice_cancel",
@@ -1043,6 +1050,11 @@ scheduler_events = {
 		# (membership.py). Morning, so a decline reaches the staff the same day.
 		"0 7 * * *": [
 			"ffl_core.membership.renew_memberships",
+		],
+		# Team mailboxes are pulled every minute; Frappe's own 10-minute pull of every Email Account
+		# (staff mailboxes included) is left as is (crm/mail.py).
+		"* * * * *": [
+			"ffl_core.crm.mail.pull_team_mailboxes",
 		],
 	},
 	"hourly": [

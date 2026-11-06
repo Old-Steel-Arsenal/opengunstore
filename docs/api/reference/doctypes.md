@@ -531,6 +531,7 @@ Which incoming staff mail goes into CRM: the store's team addresses, and the dom
 | `primary_team_address` | Data | Reply-To for staff mail |  | Email |
 | `blocked_sender_domains` | Small Text | Blocked sender domains |  |  |
 | `own_domains` | Small Text | Our own domains |  |  |
+| `crm_pos_link` | Check | Link deals to POS orders |  |  |
 
 ## MCP Settings
 

@@ -159,6 +159,7 @@ nav:
       - Orders and shipping:
           - guide/orders/index.md
           - Build an order and its splits: guide/orders/build-an-order.md
+          - Open an order from a CRM deal: guide/orders/open-an-order-from-a-deal.md
           - Ship a firearm to another dealer: guide/orders/ship-to-dealer.md
           - Ship accessories to a customer: guide/orders/ship-to-customer.md
           - Deposits and special orders: guide/orders/special-orders.md
