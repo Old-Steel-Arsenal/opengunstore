@@ -210,10 +210,15 @@ class ShipStationClient:
 		or a truthy `voided` flag — so its stale tracking number can never win over
 		a live label."""
 		body = self._request("GET", "labels", params={"shipment_id": shipment_id}) or {}
-		return [
-			label for label in (body.get("labels") or [])
-			if (label.get("status") or "").lower() != "voided" and not label.get("voided")
-		]
+		return _live(body.get("labels"))
+
+	def labels_for_tracking(self, tracking_number: str) -> list[dict]:
+		"""GET /v2/labels?tracking_number=… — the live labels carrying this
+		tracking number, whichever shipment they were bought on. For a label
+		bought on a shipment the POS did not create (staff built the order in
+		ShipStation by hand), where labels_for_shipment has nothing to find."""
+		body = self._request("GET", "labels", params={"tracking_number": tracking_number}) or {}
+		return _live(body.get("labels"))
 
 	def probe_connection(self) -> dict:
 		"""Cheap credentials canary: GET /v2/carriers."""
@@ -225,3 +230,11 @@ class ShipStationClient:
 		without leaving the desk (the create-shipment API requires one)."""
 		body = self._request("GET", "warehouses") or {}
 		return body.get("warehouses") or []
+
+
+def _live(labels: list[dict] | None) -> list[dict]:
+	"""Drop voided labels (status 'voided' or a truthy `voided` flag)."""
+	return [
+		label for label in (labels or [])
+		if (label.get("status") or "").lower() != "voided" and not label.get("voided")
+	]

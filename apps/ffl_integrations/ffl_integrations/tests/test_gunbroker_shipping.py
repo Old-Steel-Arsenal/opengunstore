@@ -140,6 +140,17 @@ class TestSelection(_ShippingCase):
 					return_value={"SI-C"}):
 			self.assertEqual(shipping.pending_writeback_orders(), ["C"])
 
+	def test_an_entered_tracking_number_is_selected_without_a_pos_shipment(self):
+		# The label was bought on an order built in ShipStation by hand: no POS
+		# shipment, but staff entered its tracking number. _fetch_label still
+		# checks it against a live label before anything is sent.
+		rows = [frappe._dict({"name": "E", "sales_invoice": "SI-E",
+			"shipping_flag_pushed_at": None, "tracking_pushed_at": None,
+			"gb_ship_writeback_pending": 0, "tracking_number": "879313497280"})]
+		with patch("frappe.get_all", return_value=rows), \
+				patch.object(shipping, "_invoices_with_a_shipment", return_value=set()):
+			self.assertEqual(shipping.pending_writeback_orders(), ["E"])
+
 	def test_the_shipment_lookup_asks_for_the_shipstation_id(self):
 		captured = {}
 
@@ -380,3 +391,45 @@ class TestPollGate(_ShippingCase):
 		self.assertEqual(seen, ["A", "B"])
 		self.assertEqual(summary["failed"], 1)
 		self.assertEqual(summary["pushed"], 1)
+
+
+# ---------------------------------------------------------------------------
+# Finding the label
+# ---------------------------------------------------------------------------
+
+class TestFetchLabel(_ShippingCase):
+	def _fetch(self, order, *, shipment_id, by_shipment, by_tracking):
+		ss = MagicMock()
+		ss.labels_for_shipment.return_value = by_shipment
+		ss.labels_for_tracking.return_value = by_tracking
+		self._patch("frappe.db.get_value", return_value=shipment_id)
+		self._patch("ffl_integrations.shipstation.client.ShipStationClient.from_settings",
+			return_value=ss)
+		return shipping._fetch_label(order), ss
+
+	def test_the_pos_shipments_label_wins(self):
+		found, ss = self._fetch(self._order(tracking_number="TYPED"), shipment_id="se-1",
+			by_shipment=[{"tracking_number": "ON-BOX", "carrier_code": "fedex"}],
+			by_tracking=[{"tracking_number": "TYPED", "carrier_code": "fedex"}])
+		self.assertEqual(found, ("ON-BOX", "fedex", ""))
+		ss.labels_for_tracking.assert_not_called()
+
+	def test_a_label_bought_on_another_shipstation_order_is_found_by_tracking(self):
+		# The 2026-11 case: staff built the order in ShipStation by hand, so the
+		# POS shipment never got a label and the poll waited forever.
+		found, ss = self._fetch(self._order(tracking_number="879313497280"),
+			shipment_id="se-empty", by_shipment=[],
+			by_tracking=[{"tracking_number": "879313497280", "carrier_code": "fedex"}])
+		self.assertEqual(found, ("879313497280", "fedex", ""))
+		ss.labels_for_tracking.assert_called_once_with("879313497280")
+
+	def test_an_entered_number_with_no_live_label_sends_nothing(self):
+		found, _ss = self._fetch(self._order(tracking_number="TYPO"), shipment_id="",
+			by_shipment=[], by_tracking=[])
+		self.assertIsNone(found)
+
+	def test_no_shipment_and_no_entered_number_asks_shipstation_nothing(self):
+		found, ss = self._fetch(self._order(), shipment_id="", by_shipment=[], by_tracking=[])
+		self.assertIsNone(found)
+		ss.labels_for_shipment.assert_not_called()
+		ss.labels_for_tracking.assert_not_called()

@@ -62,3 +62,15 @@ class TestLabelsForShipment(FrappeTestCase):
 		for body in ({"labels": []}, {}, None):
 			with patch.object(client, "_request", return_value=body):
 				self.assertEqual(client.labels_for_shipment("se-1"), [])
+
+
+class TestLabelsForTracking(FrappeTestCase):
+	def test_queries_labels_by_tracking_number_and_drops_voided(self):
+		client = _client()
+		body = {"labels": [
+			{"label_id": "a", "tracking_number": "879", "status": "voided"},
+			{"label_id": "b", "tracking_number": "879", "status": "completed"}]}
+		with patch.object(client, "_request", return_value=body) as req:
+			labels = client.labels_for_tracking("879")
+		req.assert_called_once_with("GET", "labels", params={"tracking_number": "879"})
+		self.assertEqual([l["label_id"] for l in labels], ["b"])
