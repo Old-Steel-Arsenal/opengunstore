@@ -173,11 +173,27 @@ def is_regulated_firearm_item(item_code: str | None) -> bool:
 	))
 
 
+# A person checked an A&D record and it does not belong in the bound book (an antique
+# booked by mistake). ffl_integrations.fastbound.reconcile.mark_not_in_bound_book
+# stamps it at the start of `fastbound_sync_error` (a field ffl_core ships); the FastBound
+# sync stops pushing the record, and the bound-book guards below stop counting it.
+NOT_IN_BOOK_PREFIX = "[NOT A&D] "
+
+
+def on_book_acquisitions(filters: dict, fields: list) -> list:
+	"""Submitted FFL Acquisitions matching `filters` that are IN the bound book: those
+	marked off-book (NOT_IN_BOOK_PREFIX) are left out. The one predicate every
+	"is this gun on the books?" guard reads."""
+	rows = frappe.get_all("FFL Acquisition", filters={**filters, "docstatus": 1},
+		fields=list({*fields, "fastbound_sync_error"}))
+	return [r for r in rows if not (r.fastbound_sync_error or "").startswith(NOT_IN_BOOK_PREFIX)]
+
+
 def items_with_boundbook_presence(item_codes) -> set:
 	"""The subset of item_codes that have a firearm CURRENTLY in the bound book — an
 	in-stock (status='Active') Serial No carrying a FastBound id, or one under a
-	submitted (docstatus=1) FFL Acquisition. Such an Item is a regulated firearm on
-	the books and can't be flagged antique.
+	submitted (docstatus=1) FFL Acquisition not marked off-book. Such an Item is a
+	regulated firearm on the books and can't be flagged antique.
 
 	Deliberately excludes sold/transferred/cancelled serials (Delivered/Inactive)
 	and DRAFT acquisitions: their A&D entries already stand on their own, and
@@ -199,11 +215,7 @@ def items_with_boundbook_presence(item_codes) -> set:
 	# while the serial is still in stock (Active).
 	remaining = [c for c in codes if c not in booked]
 	if remaining:
-		acqs = frappe.get_all(
-			"FFL Acquisition",
-			filters={"item": ("in", remaining), "docstatus": 1},
-			fields=["item", "serial"],
-		)
+		acqs = on_book_acquisitions({"item": ("in", remaining)}, ["item", "serial"])
 		live = {a.serial for a in acqs if a.serial}
 		if live:
 			active = set(frappe.get_all(

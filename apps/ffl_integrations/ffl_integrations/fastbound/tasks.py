@@ -7,6 +7,8 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime
 
+from ffl_core.firearm import NOT_IN_BOOK_PREFIX  # reconcile imports it from here
+
 from ffl_integrations.fastbound.client import (
 	FastBoundClient,
 	FastBoundConfigError,
@@ -20,10 +22,10 @@ from ffl_integrations.notifications import notify_admins
 # PER-RECORD terminal failure (FastBoundError.terminal). See _fb_error_is_terminal.
 _TERMINAL_PREFIX = "[TERMINAL] "
 
-# A person checked the record and it does not belong in the bound book (an antique booked
-# by mistake, DISP-2026-02131). Stamped by reconcile.mark_not_in_bound_book: nothing pushes
-# or retries it, and neither the stuck digest nor the Dashboard lists it as waiting.
-NOT_IN_BOOK_PREFIX = "[NOT A&D] "
+# NOT_IN_BOOK_PREFIX (imported above; defined in ffl_core so its bound-book guards read it
+# too) marks a record a person checked and found not to belong in the bound book (an antique
+# booked by mistake, DISP-2026-02131). Stamped by reconcile.mark_not_in_bound_book: nothing
+# pushes or retries it, and neither the stuck digest nor the Dashboard lists it as waiting.
 
 
 def _off_book(doctype: str, name: str) -> bool:
