@@ -151,6 +151,49 @@ class TestOtherMail(TeamMailCase):
 		self.assertTrue(frappe.db.exists("Comment", {"reference_name": _stored(raw)[0].name,
 			"content": ["like", mail.NOT_A_CUSTOMER + "%"]}))
 
+	def test_a_lost_race_for_the_lead_number_keeps_the_verdict(self):
+		# Another sender's job took the lead number first: the database drops our transaction (1020).
+		_answer("notification")
+		raw = _raw("orders@shop.example.org", SALES)
+		real_route, calls = mail.route, []
+
+		def route(*args, **kwargs):
+			calls.append(1)
+			if len(calls) == 1:
+				raise frappe.QueryDeadlockError("Record has changed since last read in table 'tabSeries'")
+			return real_route(*args, **kwargs)
+
+		with hooks(mail.SCREEN_HOOK, [f"{HERE}.provider"]), patch("frappe.enqueue"):
+			_pull(INFO, (raw, 20))
+			with patch.object(mail, "route", side_effect=route), patch.object(frappe.db, "rollback"):
+				mail.screen_new_sender(_stored(raw)[0].name)
+		lead = _lead("orders@shop.example.org")
+		self.assertEqual((lead.status, lead.get(mail.CATEGORY_FIELD)), (mail.OTHER_MAIL, "Notification"))
+		self.assertEqual(len(calls), 2)
+
+	def test_our_own_store_notice_is_not_filed_under_the_customer(self):
+		from email.message import EmailMessage
+		from email.utils import format_datetime
+
+		from frappe.utils import now_datetime
+
+		company = frappe.get_all("Company", pluck="company_name", limit=1)[0]
+		buyer = "web-buyer@example.org"
+		_customer_contact(buyer)
+		msg = EmailMessage()
+		msg["From"] = f"{company} <shop@mailer.example.net>"
+		msg["Reply-To"] = buyer
+		msg["To"] = SALES
+		msg["Subject"] = "New order: #1001"
+		msg["Date"] = format_datetime(now_datetime().astimezone())
+		msg["Message-ID"] = f"<ffl-test-{frappe.generate_hash(length=12)}@example.org>"
+		msg.set_content("You've got a new order.")
+		raw = msg.as_bytes()
+		_pull(INFO, (raw, 20))
+		self.assertFalse(_stored(raw), "not on the buyer's deal")
+		self.assertFalse(_lead(buyer))
+		self.assertNoPullErrors()
+
 	def test_no_ai_verdict_makes_an_ordinary_lead(self):
 		_answer(None)
 		raw = _raw("buyer@example.org", SALES)
