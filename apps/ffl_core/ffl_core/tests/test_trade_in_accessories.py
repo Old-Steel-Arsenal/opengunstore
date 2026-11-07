@@ -33,7 +33,10 @@ def _item(item_code: str, item_group: str, **fields) -> str:
 	return item_code
 
 
-class TradeInAccessories(FrappeTestCase):
+class TradeInFixtures(FrappeTestCase):
+	"""Seller, counter user, POS opening and the trade-in helpers; no tests of its own, so suites can share it
+	(test_trade_in_antique) without re-running these."""
+
 	@classmethod
 	def setUpClass(cls) -> None:
 		super().setUpClass()
@@ -112,6 +115,8 @@ class TradeInAccessories(FrappeTestCase):
 		inv.save()
 		return inv
 
+
+class TradeInAccessories(TradeInFixtures):
 	# ------------------------------------------------------------------ credit
 
 	def test_accessories_only_credit_parks_a_draft_receipt(self):

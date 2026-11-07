@@ -14,19 +14,10 @@ import frappe
 from frappe.utils import flt
 
 from ffl_core.setup.trade_in_credit import TRADE_IN_SELLER_FIELD, TRADE_IN_STAMP_FIELD
-# The module, not the class: a class imported here would be collected and run a second time.
-from ffl_core.tests import test_trade_in_accessories as acc
-
-SELLER, _item = acc.SELLER, acc._item
+from ffl_core.tests.test_trade_in_accessories import SELLER, TradeInFixtures, _item
 
 
-class TradeInAntique(acc.TradeInAccessories):
-	"""Reuses the accessory suite's setup (seller, counter user, POS opening) and helpers, not its tests."""
-
-	@classmethod
-	def _drop_inherited_tests(cls) -> None:
-		for name in [n for n in dir(acc.TradeInAccessories) if n.startswith("test_")]:
-			setattr(cls, name, None)
+class TradeInAntique(TradeInFixtures):
 
 	def _antique(self, suffix: str, **over) -> dict:
 		return self._payload(suffix, **{"accessories": [], "is_antique": 1, "serial_no": f"TIANT-{suffix}",
@@ -136,5 +127,3 @@ def trade_in_call(payload: dict) -> dict:
 	from ffl_core.api import trade_in
 	return trade_in.create_trade_in_intake(payload)
 
-
-TradeInAntique._drop_inherited_tests()
