@@ -185,7 +185,7 @@ Declarable only by an extension whose manifest has `first_party` (lint). They de
 | `distributor_stock_batch` | `(item_codes: list) -> context manager \| None`: held open around the WooCommerce reconcile's Pass 1 so `distributor_stock_source` can batch reads; must not change answers | logged, pass runs unbatched |
 | `dropship_source_for_item` | `(item_code, *, lead=True) -> {distributor, sku, fulfillment_mode, lead_days} \| None` | the store ships it (lane `local`) |
 | `distributor_web_price` | `(item_code) -> float \| None`: website price | `Item.standard_rate` |
-| `map_mode_for_item` | `(item_code, brand) -> str` | `MAP is minimum price` |
+| `map_mode_for_item` | `(item_code, brand) -> str`; the answer `Always show in cart` also rides an Item with no MAP (empty `_osa_map_price`), so the storefront hides its price | `MAP is minimum price` |
 | `distributor_listing_push_failed` | `(item_code, site, error)` | logged |
 | `woo_order_cancelled` | `(woo_online_order_name)` | logged; the order stays cancelled |
 | `override_whitelisted_methods` | Frappe's hook, `{old path: new path}`: only to keep an endpoint that moved from the core into the extension answering at its old path | — |
