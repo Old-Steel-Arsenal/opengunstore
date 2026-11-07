@@ -1,7 +1,7 @@
 """A CRM Deal's POS customer: finding or making it, what staff see about it, and opening its order.
 
 :func:`ensure_customer` answers with the customer once the deal has one. Otherwise it returns the
-customers the deal's email or phone match for the employee to confirm, or makes a new one when asked
+customers the deal's email, phone or full name match for the employee to confirm, or makes a new one when asked
 to. A deal whose Contact is linked to exactly one Customer takes it; a Contact linked to several
 leaves the choice to the employee, with those customers among the matches. A Contact's email counts here (``customer_flags.find_possible_duplicates`` reads the Customer's
 own): the Woo and GunBroker resolvers must keep ignoring Contact emails, because they book an order
@@ -94,7 +94,7 @@ def find_matches(deal) -> list[dict]:
 	contact = _primary_contact(deal)
 	for why, customers in (("contact email", _customers_by_contact_email(deal.get("email"))),
 			("contact link", _customers_of_contacts([contact] if contact else [])),
-			("name only", _customers_by_name(_new_customer_values(deal, contact)["customer_name"]))):
+			("name only", _customers_by_name(_person_name(deal, contact)))):
 		for customer in customers:
 			if customer not in by_name and frappe.db.exists("Customer", customer):
 				row = frappe.db.get_value("Customer", customer, ["name", "customer_name", "customer_status"], as_dict=True)
@@ -109,10 +109,14 @@ def find_matches(deal) -> list[dict]:
 	return out
 
 
+def _person_name(deal, contact: str | None) -> str:
+	"""The buyer's own name: the primary Contact's, else the deal's first + last name."""
+	return (contact and frappe.db.get_value("Contact", contact, "full_name")) \
+		or " ".join(p for p in (deal.get("first_name"), deal.get("last_name")) if p)
+
+
 def _new_customer_values(deal, contact: str | None) -> dict:
-	name = (contact and frappe.db.get_value("Contact", contact, "full_name")) \
-		or " ".join(p for p in (deal.get("first_name"), deal.get("last_name")) if p) \
-		or deal.get("lead_name") or deal.get("organization")
+	name = _person_name(deal, contact) or deal.get("lead_name") or deal.get("organization")
 	return {"customer_name": name or "", "email_id": deal.get("email") or "",
 		"phone": deal.get("mobile_no") or deal.get("phone") or ""}
 
