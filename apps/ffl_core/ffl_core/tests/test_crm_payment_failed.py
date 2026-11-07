@@ -23,7 +23,7 @@ def _id() -> str:
 
 def _body(order_id: str, status: str, email: str = EMAIL, **over) -> dict:
 	body = {"id": order_id, "status": status, "total": "125.50", "currency": "USD", "order_key": "wc_order_k3y",
-		"date_paid": None, "payment_method_title": "Credit card", "line_items": [{"name": "Range Bag", "quantity": 2}],
+		"date_paid": None, "created_via": "checkout", "payment_method_title": "Credit card", "line_items": [{"name": "Range Bag", "quantity": 2}],
 		"billing": {"first_name": "Pat", "last_name": "Buyer", "email": email, "phone": "555-0100"}}
 	body.update(over)
 	return body
@@ -135,8 +135,8 @@ class TestPaymentFailed(DealPOSCase):
 		self.assertFalse(frappe.db.exists("ToDo", {"reference_type": web_orders.TASK, "reference_name": task.name, "status": "Open"}))
 		self._send(_body(paid, "completed"))
 		self.assertEqual(_notes(deal).count(f"Recovered by web order {paid}"), 1)
-		# A new failure after that is a new task.
-		self._send(_body(_id(), "failed"))
+		# A new failure after that (a newer order) is a new task.
+		self._send(_body(str(int(paid) + 1), "failed"))
 		self.assertEqual(sorted(t.status for t in _tasks(deal)), ["Done", "Todo"])
 
 	def test_a_failed_order_that_is_paid_after_all_closes_its_own_task(self):
@@ -147,6 +147,26 @@ class TestPaymentFailed(DealPOSCase):
 		self._send(_body(self.order, "processing", date_paid="2026-11-01T10:00:00"))   # the reopen path
 		self.assertEqual(frappe.db.get_value("Woo Online Order", {"woo_order_id": self.order}, "order_status"), "Pending Fulfillment")
 		self.assertEqual(frappe.db.get_value(web_orders.TASK, task.name, "status"), "Done")
+
+	def test_an_abandoned_order_cancelled_after_a_paid_retry_is_no_failure(self):
+		# Card declined on the first order (it stays pending); the shopper pays a new one; Woo cancels the
+		# abandoned first order an hour later. They already bought: no task.
+		first = self.order
+		self._send(_body(first, "pending"))
+		self._send(_body(str(int(first) + 1), "processing", date_paid="2026-11-01T10:00:00"))
+		self._send(_body(first, "cancelled"))
+		self.assertEqual(_tasks(), [])
+		self.assertFalse(frappe.db.exists(web_orders.NOTE, {"title": f"Web order {first} payment failed"}))
+
+	def test_an_order_staff_made_in_woo_is_no_shopper_failure(self):
+		self._send(_body(self.order, "cancelled", created_via="admin"))
+		self._send(_body(_id(), "failed", created_via="rest-api"))
+		self.assertEqual(_tasks(), [])
+
+	def test_an_awaiting_stock_payment_closes_the_task(self):
+		self._send(_body(self.order, "failed"))
+		self._send(_body(str(int(self.order) + 1), "awaiting-stock", date_paid="2026-11-01T10:00:00"))
+		self.assertEqual([t.status for t in _tasks()], ["Done"])
 
 	def test_another_customers_payment_does_not_close_it(self):
 		self._send(_body(self.order, "failed"))
