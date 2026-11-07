@@ -16,6 +16,7 @@ the Desk form shows those read-only).
 from __future__ import annotations
 
 import frappe
+from frappe.utils import validate_email_address
 
 _PAIRS = (("ffl_email", "email_id"), ("ffl_phone", "mobile_no"))
 
@@ -26,9 +27,17 @@ def sync_email_phone(doc, method=None) -> None:
 	typed = {}
 	for field, source in _PAIRS:
 		value = (doc.get(field) or "").strip()
-		if value and value != (doc.get(source) or "") and doc.has_value_changed(field):
+		if value and value.lower() != (doc.get(source) or "").lower() and doc.has_value_changed(field):
 			typed[source] = value
-	picked = not doc.is_new() and doc.has_value_changed("customer_primary_contact")
+	if typed.get("email_id"):
+		validate_email_address(typed["email_id"], throw=True)
+	if typed and not doc.customer_primary_contact and not doc.is_new():
+		# A Contact already linked (a CRM deal links its own) becomes primary, not a second Contact.
+		doc.customer_primary_contact = next(iter(frappe.get_all("Dynamic Link", pluck="parent",
+			filters={"parenttype": "Contact", "link_doctype": "Customer", "link_name": doc.name},
+			order_by="creation asc", limit=1)), None)
+	picked = not doc.is_new() and doc.has_value_changed("customer_primary_contact") \
+		and bool(doc.get_doc_before_save().customer_primary_contact)
 	if typed and doc.customer_primary_contact and not picked:   # a newly picked Contact brings its own values
 		_make_primary(doc.customer_primary_contact, typed.get("email_id"), typed.get("mobile_no"))
 	if not picked:

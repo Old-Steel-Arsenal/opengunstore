@@ -82,3 +82,20 @@ class CustomerEmailPhone(FrappeTestCase):
 		frappe.db.set_value("Customer", doc.name, "ffl_email", "", update_modified=False)
 		backfill()
 		self.assertEqual(frappe.db.get_value("Customer", doc.name, "ffl_email"), email)
+
+	def test_a_linked_contact_becomes_primary_not_a_second_one(self):
+		doc = _customer()
+		linked = frappe.get_doc({"doctype": "Contact", "first_name": "Linked " + frappe.generate_hash(length=6),
+			"links": [{"link_doctype": "Customer", "link_name": doc.name}]}).insert(ignore_permissions=True).name
+		email = _email()
+		doc = _save(doc.name, ffl_email=email)
+		self.assertEqual(doc.customer_primary_contact, linked)
+		self.assertEqual(frappe.db.get_value("Contact", linked, "email_id"), email)
+		self.assertEqual(frappe.db.count("Dynamic Link", {"parenttype": "Contact", "link_name": doc.name}), 1)
+
+	def test_a_legacy_phone_does_not_block_a_save(self):
+		doc = _customer(ffl_phone="5125550104")
+		legacy = "937-626-0217 ext 2 (work, after 5pm only)"   # older data the Phone check would refuse
+		frappe.db.set_value("Contact", doc.customer_primary_contact, "mobile_no", legacy)
+		frappe.db.set_value("Customer", doc.name, {"mobile_no": legacy, "ffl_phone": legacy})
+		_save(doc.name, customer_details="note")

@@ -93,12 +93,12 @@ def ensure() -> dict:
 					"module": "FFL Core",
 				},
 				# The primary Contact's email and mobile, editable here and kept equal to it
-				# (customer_contact.py). Not virtual: the Desk form never lets one be typed in.
+				# (customer_contact.py). Not virtual: the Desk form never lets one be typed in. No
+				# Email/Phone option: those check every save, and a legacy Contact value would block it.
 				{
 					"fieldname": "ffl_email",
 					"fieldtype": "Data",
 					"label": "Email",
-					"options": "Email",
 					"insert_after": "name_suffix",
 					"module": "FFL Core",
 				},
@@ -106,7 +106,6 @@ def ensure() -> dict:
 					"fieldname": "ffl_phone",
 					"fieldtype": "Data",
 					"label": "Phone",
-					"options": "Phone",
 					"insert_after": "ffl_email",
 					"module": "FFL Core",
 				},
