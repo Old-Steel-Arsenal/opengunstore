@@ -78,6 +78,7 @@ def ensure() -> dict:
 					"fieldtype": "Data",
 					"label": "Last Name",
 					"insert_after": "middle_name",
+					"search_index": 1,   # customer_flags.find_customers_by_name
 					"depends_on": _INDIVIDUAL,
 					"allow_in_quick_entry": 1,
 					"module": "FFL Core",

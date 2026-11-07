@@ -64,18 +64,10 @@ def _customers_by_contact_email(email: str | None) -> list[str]:
 	return _customers_of_contacts(contacts_with_email(email)) if email else []
 
 
-def _customers_by_name(full_name: str | None) -> list[str]:
-	"""Customers with this full name: only a guess (two people share a name), so the employee
-	confirms it like any match. ``customer_name`` is read as well as the first and last name
-	fields, which customers made before those fields existed leave empty. One word is no name."""
-	words = (full_name or "").split()
-	if len(words) < 2:
-		return []
-	by_full = frappe.get_all("Customer", filters={"customer_name": " ".join(words), "disabled": 0},
-		pluck="name", limit=customer_flags._MAX_MATCHES)
-	by_parts = frappe.get_all("Customer", filters={"ffl_first_name": words[0], "ffl_last_name": words[-1],
-		"disabled": 0}, pluck="name", limit=customer_flags._MAX_MATCHES)
-	return list(dict.fromkeys(by_full + by_parts))
+def _customers_by_name(full_name: str) -> list[str]:
+	"""Customers with this full name (first and last word). One word is no name."""
+	words = full_name.split()
+	return customer_flags.find_customers_by_name(words[0], words[-1], full_name=True) if len(words) > 1 else []
 
 
 def _safe_flags(customer: str) -> dict:
@@ -83,18 +75,19 @@ def _safe_flags(customer: str) -> dict:
 	return {key: flags[key] for key in _FLAG_KEYS}
 
 
-def find_matches(deal) -> list[dict]:
+def find_matches(deal, person: str | None = None) -> list[dict]:
 	"""Customers the deal's email, phone or full name match, each with its flags: [{"name",
 	"customer_name", "customer_status", "matched", "banned", "status_reason", "alerts"}]. The
 	customers the deal's primary Contact is linked to are in it too, whatever their email and phone
-	say. A customer found only by name is marked "name only"."""
+	say. A customer found only by name is marked "name only"; ``person`` is the buyer's name when
+	the caller already has it (:func:`_person_name`)."""
 	rows = customer_flags.find_possible_duplicates(email=deal.get("email"),
 		phone=deal.get("mobile_no") or deal.get("phone"))
 	by_name = {row["name"]: row for row in rows}
 	contact = _primary_contact(deal)
 	for why, customers in (("contact email", _customers_by_contact_email(deal.get("email"))),
 			("contact link", _customers_of_contacts([contact] if contact else [])),
-			("name only", _customers_by_name(_person_name(deal, contact)))):
+			("name only", _customers_by_name(_person_name(deal, contact) if person is None else person))):
 		for customer in customers:
 			if customer not in by_name and frappe.db.exists("Customer", customer):
 				row = frappe.db.get_value("Customer", customer, ["name", "customer_name", "customer_status"], as_dict=True)
@@ -115,8 +108,8 @@ def _person_name(deal, contact: str | None) -> str:
 		or " ".join(p for p in (deal.get("first_name"), deal.get("last_name")) if p)
 
 
-def _new_customer_values(deal, contact: str | None) -> dict:
-	name = _person_name(deal, contact) or deal.get("lead_name") or deal.get("organization")
+def _new_customer_values(deal, person: str) -> dict:
+	name = person or deal.get("lead_name") or deal.get("organization")
 	return {"customer_name": name or "", "email_id": deal.get("email") or "",
 		"phone": deal.get("mobile_no") or deal.get("phone") or ""}
 
@@ -145,10 +138,11 @@ def ensure_customer(deal, customer: str | None = None, create: bool = False) -> 
 	linked = contact and customer_of(contact)
 	if linked:
 		return _link(deal, linked)   # several: none here, the employee chooses among find_matches
-	values = _new_customer_values(deal, contact)
+	person = _person_name(deal, contact)
+	values = _new_customer_values(deal, person)
 	if create:
 		return _link(deal, _create(values, contact))
-	matches = find_matches(deal)
+	matches = find_matches(deal, person)
 	return {"customer": None, "matches": matches, "new": values, "html": _matches_html(matches, values)}
 
 

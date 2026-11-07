@@ -282,15 +282,33 @@ def find_customers_by_scan(first: str | None = None, last: str | None = None,
 
 	frappe.has_permission("Customer", "read", throw=True)
 	by_id = [r.name for r in find_customers_by_id_number(id_number)] if id_number else []
-	by_name = frappe.get_all("Customer", pluck="name", limit=_MAX_MATCHES, order_by="modified desc",
-		filters={"ffl_first_name": (first or "").strip(), "ffl_last_name": (last or "").strip(), "disabled": 0}) \
-		if (first or "").strip() and (last or "").strip() else []
-	names = list(dict.fromkeys(by_id + by_name))[:_MAX_MATCHES]
+	names = list(dict.fromkeys(by_id + find_customers_by_name(first, last)))[:_MAX_MATCHES]
 	rows = _customer_rows(names)
 	for r in rows:
 		r["address"] = customer_address_line(r.name)
 		r["by_id"] = r.name in by_id
 	return rows
+
+
+def find_customers_by_name(first: str | None, last: str | None, full_name: bool = False) -> list[str]:
+	"""Enabled customers with this first + last name (``ffl_first_name`` / ``ffl_last_name``), at
+	most 5. With ``full_name``, also those whose ``customer_name`` is the first name, any middle
+	words, then the last name, however spaced: customers made before the name fields leave them
+	empty. A name match is only a guess; the caller lets someone confirm it."""
+	first, last = (first or "").strip(), (last or "").strip()
+	if not (first and last):
+		return []
+	names = frappe.get_all("Customer", pluck="name", limit=_MAX_MATCHES, order_by="modified desc",
+		filters={"ffl_first_name": first, "ffl_last_name": last, "disabled": 0})
+	if full_name:
+		like = lambda s: s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")  # noqa: E731
+		# A prefix LIKE on the indexed customer_name, then the words checked here.
+		for row in frappe.get_all("Customer", fields=["name", "customer_name"], order_by="modified desc",
+				filters={"customer_name": ("like", f"{like(first)} %{like(last)}"), "disabled": 0}):
+			words = row.customer_name.lower().split()
+			if words[0] == first.lower() and words[-1] == last.lower() and row.name not in names:
+				names.append(row.name)
+	return names[:_MAX_MATCHES]
 
 
 def _phone_key(value: str | None) -> str:
