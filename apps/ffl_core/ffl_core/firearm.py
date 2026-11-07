@@ -180,12 +180,12 @@ def is_regulated_firearm_item(item_code: str | None) -> bool:
 NOT_IN_BOOK_PREFIX = "[NOT A&D] "
 
 
-def on_book_acquisitions(filters: dict, fields: list) -> list:
+def on_book_acquisitions(filters: dict, fields: list, order_by: str | None = None) -> list:
 	"""Submitted FFL Acquisitions matching `filters` that are IN the bound book: those
 	marked off-book (NOT_IN_BOOK_PREFIX) are left out. The one predicate every
 	"is this gun on the books?" guard reads."""
 	rows = frappe.get_all("FFL Acquisition", filters={**filters, "docstatus": 1},
-		fields=list({*fields, "fastbound_sync_error"}))
+		fields=list({*fields, "fastbound_sync_error"}), order_by=order_by)
 	return [r for r in rows if not (r.fastbound_sync_error or "").startswith(NOT_IN_BOOK_PREFIX)]
 
 

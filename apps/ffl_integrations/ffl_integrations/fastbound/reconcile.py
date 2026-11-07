@@ -376,6 +376,21 @@ def mark_not_in_bound_book(doctype: str, name: str, reason: str) -> dict:
 	return {"ok": True, "doctype": doctype, "name": name}
 
 
+def _refuse_if_antique(doctype: str, name: str, action: str) -> None:
+	"""Refuse putting a record back on the bound book once its gun is antique — its Item
+	flagged, or its serial moved to an antique Item. An antique leaves without a 4473 or a
+	disposition, so a bound-book entry made for it could never be closed."""
+	from ffl_core.firearm import is_antique_item
+
+	row = frappe.db.get_value(doctype, name, ["item", "serial"], as_dict=True) or {}
+	current = frappe.db.get_value("Serial No", row.get("serial"), "item_code") if row.get("serial") else None
+	antique = next((i for i in (row.get("item"), current) if i and is_antique_item(i)), None)
+	if antique:
+		frappe.throw(_("Cannot {0} {1} {2}: its gun is under Antique Item {3}, and an antique stays "
+			"out of the bound book. Untick Antique on the Item, or move the serial back to a "
+			"regulated Item, first.").format(action, doctype, name, antique))
+
+
 @frappe.whitelist()
 def clear_not_in_bound_book(doctype: str, name: str) -> dict:
 	"""Undo :func:`mark_not_in_bound_book` — the record turned out to belong in the
@@ -398,6 +413,7 @@ def clear_not_in_bound_book(doctype: str, name: str) -> dict:
 	marked = frappe.db.get_value(doctype, name, "fastbound_sync_error") or ""
 	if not marked.startswith(NOT_IN_BOOK_PREFIX):
 		frappe.throw(_("{0} {1} is not marked as off the bound book.").format(doctype, name))
+	_refuse_if_antique(doctype, name, _("clear the mark on"))
 	frappe.db.set_value(doctype, name, "fastbound_sync_error", "", update_modified=False)
 	frappe.get_doc(doctype, name).add_comment("Info", _("Bound-book mark cleared by {0} (was: {1})").format(
 		frappe.session.user, marked[len(NOT_IN_BOOK_PREFIX):]))
@@ -444,6 +460,7 @@ def reconcile_record_to_fastbound(doctype: str, name: str, fastbound_ref: str) -
 		frappe.throw(_("{0} {1} is already linked to FastBound record {2}. "
 			"Re-linking is deliberate surgery — clear the link manually first "
 			"if that record is truly wrong.").format(doctype, name, doc.fastbound_id))
+	_refuse_if_antique(doctype, name, _("link"))
 
 	ref = (fastbound_ref or "").strip()
 	if not ref:
