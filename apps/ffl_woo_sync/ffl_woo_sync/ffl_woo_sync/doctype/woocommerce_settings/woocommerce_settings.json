@@ -90,7 +90,7 @@
   },
   {
    "default": "0",
-   "description": "Hourly, sends the email and name of customers added or changed in the POS to the shop's marketing list. The shop must answer POST /wp-json/osa-growth/v1/pos-customers (the OSA Growth plugin does); the request is signed with the outbound webhook secret above.",
+   "description": "Hourly, sends the email and name of customers added or changed in the POS to the shop's marketing list. The shop must answer POST /wp-json/opengunstore/v1/customers; the request is signed with the outbound webhook secret above.",
    "fieldname": "send_customer_events",
    "fieldtype": "Check",
    "label": "Send customer emails to the shop"

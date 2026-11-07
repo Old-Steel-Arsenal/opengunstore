@@ -5,7 +5,7 @@ list. When an operator turns on *Send customer emails to the shop* (WooCommerce
 Settings), an hourly job posts every Customer whose record, or whose primary
 Contact, changed since the last delivery to the storefront plugin:
 
-    POST {store_url}/wp-json/osa-growth/v1/pos-customers
+    POST {store_url}/wp-json/opengunstore/v1/customers
     x-osa-timestamp: <unix seconds>
     x-osa-signature: hex(HMAC-SHA256(secret, "<timestamp>.<raw body>"))
 
@@ -25,10 +25,10 @@ the watermark write) is harmless.
 
 The watermark is the change time of the last delivered batch, kept as a
 global default (``frappe.db.set_global``): database state, so it survives the
-cache flush every deployment runs. **The first run has no watermark: it sets it
-to now and sends nothing** — the customers that existed before the feature was
-switched on were backfilled by hand, and replaying the whole book from here
-would only hand the shop a flood it already has.
+cache flush every deployment runs. **The first run has no watermark: it starts from
+the settings' last save** (the save that ticked the box), so customers that
+existed before the feature was switched on are not replayed — they are
+backfilled by hand — while those added after the box was ticked are not lost.
 
 The watermark moves only after a 2xx. A failed run stops, keeps it, and logs
 the failure once: while the same batch (same ``event_id``) keeps failing the
@@ -38,22 +38,22 @@ not fill the Error Log. The job never raises.
 from __future__ import annotations
 
 import re
-import time
 from urllib.parse import urlparse
 
 import frappe
-import requests
 from frappe.utils import add_to_date, now_datetime
 from pypika.terms import CustomFunction
 
 from ffl_core.utils import commit
 from ffl_woo_sync.woocommerce.client import RETAIL_SITE, STORES
-from ffl_woo_sync.woocommerce.status_events import TIMEOUT_SECONDS, outbound_config, sign
+from ffl_woo_sync.woocommerce.status_events import deliver, outbound_config
 
-WEBHOOK_PATH = "/wp-json/osa-growth/v1/pos-customers"
+WEBHOOK_PATH = "/wp-json/opengunstore/v1/customers"
 WATERMARK_KEY = "ffl_customer_events_watermark"
 LAST_FAILURE_KEY = "ffl_customer_events_last_failure"
 BATCH_SIZE = 200
+# The most rows one request may carry: the storefront refuses a bigger batch.
+MAX_BATCH_ROWS = 500
 # lazy: 2,000 customers per hourly run; a bigger backlog drains over the next
 # runs. Raise the cap (or the cadence) if a store ever imports customers in bulk.
 MAX_BATCHES_PER_RUN = 10
@@ -141,7 +141,7 @@ def _fetch(watermark: str) -> list:
 
 	Change time is the later of the Customer's and its primary Contact's
 	``modified``. If a full batch is all one instant (a bulk update), the limit
-	doubles until the instant ends, so no row is left behind the watermark."""
+	doubles (up to :data:`MAX_BATCH_ROWS`) so no row is left behind the watermark."""
 	customer = frappe.qb.DocType("Customer")
 	contact = frappe.qb.DocType("Contact")
 	changed = _GREATEST(customer.modified, _IFNULL(contact.modified, customer.modified))
@@ -163,24 +163,15 @@ def _fetch(watermark: str) -> list:
 		).run(as_dict=True)
 		if len(rows) < limit or rows[0]["changed"] != rows[-1]["changed"]:
 			return rows
-		limit *= 2
+		if limit >= MAX_BATCH_ROWS:
+			# lazy: more than MAX_BATCH_ROWS customers stamped in one instant (a bulk
+			# SQL update): send these and move on; the rest of that instant is skipped.
+			# Upgrade path: page within the instant by customer name.
+			return rows
+		limit = min(limit * 2, MAX_BATCH_ROWS)
 
 
 # -- delivery --------------------------------------------------------------------
-
-
-def _deliver(store_url: str, secret: str, event: dict) -> None:
-	"""POST one signed event; raises on a transport error or a non-2xx."""
-	body = frappe.as_json(event, indent=None).encode()
-	ts = str(int(time.time()))
-	response = requests.post(
-		store_url + WEBHOOK_PATH, data=body, timeout=TIMEOUT_SECONDS,
-		headers={
-			"content-type": "application/json",
-			"x-osa-timestamp": ts,
-			"x-osa-signature": sign(secret, ts, body),
-		})
-	response.raise_for_status()
 
 
 def _report_failure(event_id: str) -> None:
@@ -223,9 +214,9 @@ def _push() -> dict:
 	store_url, secret = config
 	watermark = frappe.db.get_global(WATERMARK_KEY)
 	if not watermark:
-		frappe.db.set_global(WATERMARK_KEY, str(now_datetime()))
+		watermark = str(frappe.get_single(STORES[RETAIL_SITE]["settings"]).modified)
+		frappe.db.set_global(WATERMARK_KEY, watermark)
 		commit()
-		return {"sent": 0, "reason": "watermark initialised"}
 	shop_host = store_host(store_url)
 	sent = batches = 0
 	event_id = ""
@@ -241,7 +232,8 @@ def _push() -> dict:
 			customers = [c for c in (customer_payload(r, shop_host) for r in rows) if c]
 			if customers:
 				event_id = f"customers:{watermark}:{newest}"
-				_deliver(store_url, secret, {"event_id": event_id, "site": RETAIL_SITE, "customers": customers})
+				deliver(store_url, secret, {"event_id": event_id, "site": RETAIL_SITE, "customers": customers},
+					WEBHOOK_PATH)
 				sent += len(customers)
 			watermark = newest
 			frappe.db.set_global(WATERMARK_KEY, watermark)

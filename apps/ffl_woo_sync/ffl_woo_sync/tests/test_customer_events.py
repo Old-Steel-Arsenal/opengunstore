@@ -118,7 +118,7 @@ class TestPushCustomerChanges(FrappeTestCase):
 		return customer.name
 
 	def _run(self, code=200):
-		with patch.object(ce.requests, "post", return_value=_response(code)) as post:
+		with patch.object(se.requests, "post", return_value=_response(code)) as post:
 			out = ce.push_customer_changes()
 		return out, post
 
@@ -140,13 +140,31 @@ class TestPushCustomerChanges(FrappeTestCase):
 		out, post = self._run()
 		post.assert_not_called()
 
-	def test_first_run_sets_the_watermark_and_sends_nothing(self):
-		self._customer("First", "first@example.com")
+	def test_first_run_starts_from_the_settings_save(self):
+		# Before the box was ticked: backfilled by hand, not replayed.
+		self._customer("Before", "before@example.com", self.ts(2))
+		# After the box was ticked (later than the settings' last save): sent.
+		self._customer("After", "after@example.com", self.ts(5))
+		# The save that ticked the box, between the two (this test's own year, so
+		# rows other tests left behind fall before it).
+		frappe.db.sql("update tabSingles set value=%s where doctype=%s and field='modified'",
+			(self.ts(3), SETTINGS))
+		frappe.clear_document_cache(SETTINGS, SETTINGS)
 		frappe.db.set_global(ce.WATERMARK_KEY, None)
 		clear_defaults_cache()
 		out, post = self._run()
-		post.assert_not_called()
-		self.assertTrue(frappe.db.get_global(ce.WATERMARK_KEY))
+		(_, _, _, event), = self._sent(post)
+		self.assertEqual([c["email"] for c in event["customers"]], ["after@example.com"])
+		self.assertEqual(event["event_id"], f"customers:{self.ts(3)}:{self.ts(5)}")
+
+	def test_a_bulk_instant_is_capped_at_the_shop_limit(self):
+		with patch.object(ce, "BATCH_SIZE", 2), patch.object(ce, "MAX_BATCH_ROWS", 3):
+			for n in "PQRS":
+				self._customer(n, f"{n.lower()}@example.com", self.ts(6))
+			out, post = self._run(200)
+		sizes = [len(e["customers"]) for *_, e in self._sent(post)]
+		self.assertEqual(sizes[0], 3)
+		self.assertTrue(all(size <= 3 for size in sizes))
 
 	def test_delivers_a_signed_batch_and_advances_the_watermark(self):
 		name = self._customer("Ann Lee", "Ann@Example.com", self.ts(2))
@@ -154,7 +172,7 @@ class TestPushCustomerChanges(FrappeTestCase):
 		self._customer("Blank", "", self.ts(4))
 		out, post = self._run(200)
 		(url, headers, body, event), = self._sent(post)
-		self.assertEqual(url, "https://shop.test/wp-json/osa-growth/v1/pos-customers")
+		self.assertEqual(url, "https://shop.test/wp-json/opengunstore/v1/customers")
 		self.assertEqual(headers["x-osa-signature"], se.sign(SECRET, headers["x-osa-timestamp"], body))
 		self.assertEqual(event["site"], "retail")
 		self.assertEqual(event["event_id"], f"customers:{self.base}:{self.ts(4)}")
@@ -201,7 +219,7 @@ class TestPushCustomerChanges(FrappeTestCase):
 
 	def test_a_transport_error_does_not_raise(self):
 		self._customer("Down", "down@example.com")
-		with patch.object(ce.requests, "post", side_effect=requests.ConnectionError("down")), \
+		with patch.object(se.requests, "post", side_effect=requests.ConnectionError("down")), \
 			 patch("frappe.log_error") as log:
 			out = ce.push_customer_changes()
 		self.assertEqual(out["reason"], "delivery failed")
