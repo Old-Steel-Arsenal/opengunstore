@@ -1,7 +1,7 @@
 """A CRM Deal's POS customer: finding or making it, what staff see about it, and opening its order.
 
 :func:`ensure_customer` answers with the customer once the deal has one. Otherwise it returns the
-customers the deal's email or phone match for the employee to confirm, or makes a new one when asked
+customers the deal's email, phone or full name match for the employee to confirm, or makes a new one when asked
 to. A deal whose Contact is linked to exactly one Customer takes it; a Contact linked to several
 leaves the choice to the employee, with those customers among the matches. A Contact's email counts here (``customer_flags.find_possible_duplicates`` reads the Customer's
 own): the Woo and GunBroker resolvers must keep ignoring Contact emails, because they book an order
@@ -64,21 +64,30 @@ def _customers_by_contact_email(email: str | None) -> list[str]:
 	return _customers_of_contacts(contacts_with_email(email)) if email else []
 
 
+def _customers_by_name(full_name: str) -> list[str]:
+	"""Customers with this full name (first and last word). One word is no name."""
+	words = full_name.split()
+	return customer_flags.find_customers_by_name(words[0], words[-1], full_name=True) if len(words) > 1 else []
+
+
 def _safe_flags(customer: str) -> dict:
 	flags = customer_flags.get_customer_flags(customer)
 	return {key: flags[key] for key in _FLAG_KEYS}
 
 
-def find_matches(deal) -> list[dict]:
-	"""Customers the deal's email or phone match, each with its flags: [{"name", "customer_name",
-	"customer_status", "matched", "banned", "status_reason", "alerts"}]. The customers the deal's
-	primary Contact is linked to are in it too, whatever their email and phone say."""
+def find_matches(deal, person: str | None = None) -> list[dict]:
+	"""Customers the deal's email, phone or full name match, each with its flags: [{"name",
+	"customer_name", "customer_status", "matched", "banned", "status_reason", "alerts"}]. The
+	customers the deal's primary Contact is linked to are in it too, whatever their email and phone
+	say. A customer found only by name is marked "name only"; ``person`` is the buyer's name when
+	the caller already has it (:func:`_person_name`)."""
 	rows = customer_flags.find_possible_duplicates(email=deal.get("email"),
 		phone=deal.get("mobile_no") or deal.get("phone"))
 	by_name = {row["name"]: row for row in rows}
 	contact = _primary_contact(deal)
 	for why, customers in (("contact email", _customers_by_contact_email(deal.get("email"))),
-			("contact link", _customers_of_contacts([contact] if contact else []))):
+			("contact link", _customers_of_contacts([contact] if contact else [])),
+			("name only", _customers_by_name(_person_name(deal, contact) if person is None else person))):
 		for customer in customers:
 			if customer not in by_name and frappe.db.exists("Customer", customer):
 				row = frappe.db.get_value("Customer", customer, ["name", "customer_name", "customer_status"], as_dict=True)
@@ -93,10 +102,14 @@ def find_matches(deal) -> list[dict]:
 	return out
 
 
-def _new_customer_values(deal, contact: str | None) -> dict:
-	name = (contact and frappe.db.get_value("Contact", contact, "full_name")) \
-		or " ".join(p for p in (deal.get("first_name"), deal.get("last_name")) if p) \
-		or deal.get("lead_name") or deal.get("organization")
+def _person_name(deal, contact: str | None) -> str:
+	"""The buyer's own name: the primary Contact's, else the deal's first + last name."""
+	return (contact and frappe.db.get_value("Contact", contact, "full_name")) \
+		or " ".join(p for p in (deal.get("first_name"), deal.get("last_name")) if p)
+
+
+def _new_customer_values(deal, person: str) -> dict:
+	name = person or deal.get("lead_name") or deal.get("organization")
 	return {"customer_name": name or "", "email_id": deal.get("email") or "",
 		"phone": deal.get("mobile_no") or deal.get("phone") or ""}
 
@@ -125,10 +138,11 @@ def ensure_customer(deal, customer: str | None = None, create: bool = False) -> 
 	linked = contact and customer_of(contact)
 	if linked:
 		return _link(deal, linked)   # several: none here, the employee chooses among find_matches
-	values = _new_customer_values(deal, contact)
+	person = _person_name(deal, contact)
+	values = _new_customer_values(deal, person)
 	if create:
 		return _link(deal, _create(values, contact))
-	matches = find_matches(deal)
+	matches = find_matches(deal, person)
 	return {"customer": None, "matches": matches, "new": values, "html": _matches_html(matches, values)}
 
 
@@ -170,6 +184,13 @@ def _link(deal, customer: str) -> dict:
 		doc.append("links", {"link_doctype": "Customer", "link_name": customer})
 		doc.flags.ignore_permissions = True   # the caller holds the deal; ERPNext's Contact rights are not CRM's
 		doc.save()
+	if contact and not frappe.db.get_value("Customer", customer, "customer_primary_contact"):
+		# A customer with no primary Contact takes the deal's: its email and mobile are what the
+		# Customer shows and what an order's lookup by email reads.
+		email, mobile = frappe.db.get_value("Contact", contact, ["email_id", "mobile_no"])
+		frappe.db.set_value("Customer", customer, {"customer_primary_contact": contact,
+			"email_id": email or "", "mobile_no": mobile or ""})
+		frappe.db.set_value("Contact", contact, "is_primary_contact", 1)
 	return {"customer": customer}
 
 
