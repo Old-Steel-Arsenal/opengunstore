@@ -13747,7 +13747,7 @@
           "ffl_core"
         ],
         "summary": "Return {item_code: [in-stock serial, ...]} so the POS 4473 dialog can offer",
-        "description": "a pick-list of real on-hand serials instead of free-typing one.\n\nEvery firearm has has_serial_no=1 and its serials live in the Serial No\ntable — Item.firearm_serial fallback was removed when the Used Firearm\npath was unified. Codes with nothing on hand map to [] so the caller can\nwarn + block the sale.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:599`",
+        "description": "a pick-list of real on-hand serials instead of free-typing one.\n\nEvery firearm has has_serial_no=1 and its serials live in the Serial No\ntable — Item.firearm_serial fallback was removed when the Used Firearm\npath was unified. Codes with nothing on hand map to [] so the caller can\nwarn + block the sale.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:611`",
         "operationId": "ffl_core.firearm.available_serials_for_items",
         "responses": {
           "200": {
@@ -13806,7 +13806,7 @@
           "ffl_core"
         ],
         "summary": "Like available_serials_for_items but enriches each serial with sell_price",
-        "description": "and purchase_rate (cost), sorted by sell_price ascending so the POS picks\nthe cheapest in-stock unit by default. Used by the POS Item Details serial\npicker to render a price-first dropdown.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1337`",
+        "description": "and purchase_rate (cost), sorted by sell_price ascending so the POS picks\nthe cheapest in-stock unit by default. Used by the POS Item Details serial\npicker to render a price-first dropdown.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1349`",
         "operationId": "ffl_core.firearm.available_serials_with_prices",
         "responses": {
           "200": {
@@ -13865,7 +13865,7 @@
           "ffl_core"
         ],
         "summary": "Return the subset of item_codes that are REGULATED firearms (antiques excluded).",
-        "description": "Called from POS JS to decide whether to surface the 4473 button / whether\nthe submit gate applies. Antique firearms (GCA-exempt) need no 4473, so\nthey are filtered out here — an antique-only cart looks like an accessories\ncart to the POS and completes without the charge-then-hold flow.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:413`",
+        "description": "Called from POS JS to decide whether to surface the 4473 button / whether\nthe submit gate applies. Antique firearms (GCA-exempt) need no 4473, so\nthey are filtered out here — an antique-only cart looks like an accessories\ncart to the POS and completes without the charge-then-hold flow.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:425`",
         "operationId": "ffl_core.firearm.firearm_items_in",
         "responses": {
           "200": {
@@ -13913,7 +13913,7 @@
           "ffl_core"
         ],
         "summary": "POS transfer-dialog config: the fee item + default per-firearm fee.",
-        "description": "Lazily creates the TRANSFER-FEE service item on first use — by the time the POS\nis live the site's UOM/Item-Group masters exist, unlike at install/migrate time\n(a fresh install runs hooks/patches before ERPNext's setup wizard). Mirrors\nreceive_goods.get_receive_sources for reading FFL Settings.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1473`",
+        "description": "Lazily creates the TRANSFER-FEE service item on first use — by the time the POS\nis live the site's UOM/Item-Group masters exist, unlike at install/migrate time\n(a fresh install runs hooks/patches before ERPNext's setup wizard). Mirrors\nreceive_goods.get_receive_sources for reading FFL Settings.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1485`",
         "operationId": "ffl_core.firearm.get_transfer_config",
         "responses": {
           "200": {
@@ -13943,7 +13943,7 @@
           "ffl_core"
         ],
         "summary": "Every in-stock firearm serial, for the POS customer-transfer picker.",
-        "description": "The two cart-driven pickers (available_serials_for_items, firearm_items_in)\nneed item_codes up front; a transfer starts before any gun is in the cart,\nso this returns the whole in-stock firearm set instead. Price is informational\n(picker label) — reuses the uniform/per-serial logic of\navailable_serials_with_prices; the transfer always adds the gun at $0.\n\nCustody guns are deliberately NOT excluded here (exclude_custody=False),\nunlike in the two SALE pickers. This dialog is how a customer's gun goes\nhome: hiding custody guns from it would strand every gun the custody\nwarehouse receives, which is the opposite of the point.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1532`",
+        "description": "The two cart-driven pickers (available_serials_for_items, firearm_items_in)\nneed item_codes up front; a transfer starts before any gun is in the cart,\nso this returns the whole in-stock firearm set instead. Price is informational\n(picker label) — reuses the uniform/per-serial logic of\navailable_serials_with_prices; the transfer always adds the gun at $0.\n\nCustody guns are deliberately NOT excluded here (exclude_custody=False),\nunlike in the two SALE pickers. This dialog is how a customer's gun goes\nhome: hiding custody guns from it would strand every gun the custody\nwarehouse receives, which is the opposite of the point.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1544`",
         "operationId": "ffl_core.firearm.in_stock_firearm_serials",
         "responses": {
           "200": {
@@ -13988,7 +13988,7 @@
           "ffl_core"
         ],
         "summary": "Per-item POS pricing summary — the single data source for the POS card",
-        "description": "price range, the add-to-cart rate seed, the picker's auto-pick decision and\nthe checkout gate.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1425`",
+        "description": "price range, the add-to-cart rate seed, the picker's auto-pick decision and\nthe checkout gate.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1437`",
         "operationId": "ffl_core.firearm.pos_pricing_summary",
         "responses": {
           "200": {
@@ -14036,7 +14036,7 @@
           "ffl_core"
         ],
         "summary": "Flip Serial No.needs_service AND keep the gunsmith ToDo queue in sync.",
-        "description": "Used by the Service Needed pill on the Item form's Serial Numbers tab.\nGoes through this single helper (instead of raw db.set_value on the client)\nso the ToDo create/close stays glued to the flag — toggling on creates a\nToDo, toggling off closes the matching Open ones.\n\nPermission gate: the helpers below elevate via flags.ignore_permissions /\nraw db.set_value to bypass ToDo/Serial No DocPerms (managers vs cashiers).\nWithout this gate, any logged-in user could flip needs_service on any\nserial — including silently closing a gunsmith's Open ToDo queue. Restrict\nto roles that already own Serial No writes.\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\n**Permissions:** Frappe write permission on Serial No (a DocType permission check, not a fixed role list — whichever roles carry Serial No write).\n\nSource: `apps/ffl_core/ffl_core/firearm.py:691`",
+        "description": "Used by the Service Needed pill on the Item form's Serial Numbers tab.\nGoes through this single helper (instead of raw db.set_value on the client)\nso the ToDo create/close stays glued to the flag — toggling on creates a\nToDo, toggling off closes the matching Open ones.\n\nPermission gate: the helpers below elevate via flags.ignore_permissions /\nraw db.set_value to bypass ToDo/Serial No DocPerms (managers vs cashiers).\nWithout this gate, any logged-in user could flip needs_service on any\nserial — including silently closing a gunsmith's Open ToDo queue. Restrict\nto roles that already own Serial No writes.\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\n**Permissions:** Frappe write permission on Serial No (a DocType permission check, not a fixed role list — whichever roles carry Serial No write).\n\nSource: `apps/ffl_core/ffl_core/firearm.py:703`",
         "operationId": "ffl_core.firearm.toggle_serial_service_need",
         "responses": {
           "200": {
@@ -18171,7 +18171,7 @@
           "ffl_integrations"
         ],
         "summary": "Import / re-sync the FastBound bound book into ERPNext.",
-        "description": "Re-running is a SYNC: already-imported guns (matched by FastBound id) are re-synced\nfrom FastBound, which stays authoritative. A corrected maker/importer re-stamps the\nSerial No; a corrected serial renames it (stock + A&D follow); a corrected\nmodel/caliber re-keys the gun onto the right Item (reverse + re-create). Every\nstructural fix is listed in `corrected`; a gun that can't be safely auto-moved\n(sold/transferred — not a clean in-stock import) is listed in `regroup_needed`.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/importer.py:93`",
+        "description": "Re-running is a SYNC: already-imported guns (matched by FastBound id) are re-synced\nfrom FastBound, which stays authoritative. A corrected maker/importer re-stamps the\nSerial No; a corrected serial renames it (stock + A&D follow); a corrected\nmodel/caliber re-keys the gun onto the right Item (reverse + re-create). Every\nstructural fix is listed in `corrected`; a gun that can't be safely auto-moved\n(sold/transferred — not a clean in-stock import) is listed in `regroup_needed`.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/importer.py:94`",
         "operationId": "ffl_integrations.fastbound.importer.import_bound_book",
         "responses": {
           "200": {
@@ -18236,7 +18236,7 @@
           "ffl_integrations"
         ],
         "summary": "Move one in-stock firearm serial from its current Item to `target_item`,",
-        "description": "keeping the SAME Serial No and FFL Acquisition records — so the gun's price,\nphotos, condition, maker/importer/model/caliber, A&D history and FastBound\nlinkage all survive (nothing is deleted, so nothing can be dropped).\n\nERPNext ties a serial to one Item, so the stock moves with two ledger legs:\nissue the serial out of the old Item, flip the serial's item_code, then receive\nit into the target. The A&D record's `item` is re-pointed in place. FastBound is\nNOT touched — reassign is a POS-internal re-bucketing; the bound book only changes\non an explicit serial edit. A per-gun WooCommerce listing, where the gun has one,\nIS delisted: it belonged to the old Item, and leaving it live sells the same rifle\ntwice. Whitelisted for the Serial No form's \"Reassign Item\" action, for resolving\nthe sync's `regroup_needed` list, and for the Woo webhook's declared cross-Item\npick (`ffl_woo_sync.woocommerce.tasks.rebucket_and_apply_serial_task`).\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/importer.py:330`",
+        "description": "keeping the SAME Serial No and FFL Acquisition records — so the gun's price,\nphotos, condition, maker/importer/model/caliber, A&D history and FastBound\nlinkage all survive (nothing is deleted, so nothing can be dropped).\n\nERPNext ties a serial to one Item, so the stock moves with two ledger legs:\nissue the serial out of the old Item, flip the serial's item_code, then receive\nit into the target. The A&D record's `item` is re-pointed in place. FastBound is\nNOT touched — reassign is a POS-internal re-bucketing; the bound book only changes\non an explicit serial edit. A per-gun WooCommerce listing, where the gun has one,\nIS delisted: it belonged to the old Item, and leaving it live sells the same rifle\ntwice. Whitelisted for the Serial No form's \"Reassign Item\" action, for resolving\nthe sync's `regroup_needed` list, and for the Woo webhook's declared cross-Item\npick (`ffl_woo_sync.woocommerce.tasks.rebucket_and_apply_serial_task`).\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/importer.py:331`",
         "operationId": "ffl_integrations.fastbound.importer.reassign_serial_to_item",
         "responses": {
           "200": {
@@ -19186,7 +19186,7 @@
           "ffl_integrations"
         ],
         "summary": "Push a post-acquisition manufacturer / importer correction for ONE",
-        "description": "firearm to FastBound, editing the bound-book item in place (PUT /Items/{id})\n— no delete/recreate, FastBound audit-logs the edit.\n\nCalled synchronously from the Serial No form's \"sync to FastBound?\" confirm\nafter an operator edits a per-unit manufacturer / importer.\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/tasks.py:657`",
+        "description": "firearm to FastBound, editing the bound-book item in place (PUT /Items/{id})\n— no delete/recreate, FastBound audit-logs the edit.\n\nCalled synchronously from the Serial No form's \"sync to FastBound?\" confirm\nafter an operator edits a per-unit manufacturer / importer.\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/tasks.py:659`",
         "operationId": "ffl_integrations.fastbound.tasks.push_serial_to_fastbound",
         "responses": {
           "200": {
