@@ -129,6 +129,10 @@ def create_trade_in_intake(payload) -> dict:
 	But Not Billed / Cr Cash or the bank) so the cash drawer count includes it
 	(_buy_now).
 
+	An antique (payload.is_antique, a pre-1899 receiver) never enters the bound book: it is filed under an antique
+	Item (a new one for this gun, or a chosen antique Item), with credit parked as a draft Material Receipt its credit
+	line locks to (_park_antique), paid now as an antique line on the seller's receipt.
+
 	Accessories / ammo (payload.accessories, [{item_code, qty, rate}] with
 	rate the per-unit value) come in alone (has_firearm 0) or with the gun:
 	with apply_credit a draft Material Receipt and a credit line of their own
@@ -173,6 +177,8 @@ def create_trade_in_intake(payload) -> dict:
 	accessories = _accessory_lines(payload.get("accessories"))
 	# The dialog's "Includes a firearm" box; an API caller that never sends it is trading in a gun, as always.
 	has_gun = bool(frappe.utils.cint(payload.get("has_firearm", 1)))
+	# The dialog's "Antique" box: a pre-1899 receiver is no firearm under the GCA, so it never enters the bound book.
+	antique = has_gun and bool(frappe.utils.cint(payload.get("is_antique")))
 	if not has_gun and not accessories:
 		frappe.throw(_("Nothing to trade in: add the firearm or at least one accessory / ammo line."))
 	required = _REQUIRED if has_gun else _SELLER_REQUIRED
@@ -189,6 +195,8 @@ def create_trade_in_intake(payload) -> dict:
 	customer_name = frappe.db.get_value("Customer", customer, "customer_name")
 	if accessories and not customer_name:
 		frappe.throw(_("Pick the seller from Customers to take accessories or ammo in trade."))
+	if antique and not customer_name:
+		frappe.throw(_("Pick the seller from Customers to take an antique in trade."))
 
 	intake_payload = {
 		"source_type": TRADE_IN_SOURCE,
@@ -225,6 +233,7 @@ def create_trade_in_intake(payload) -> dict:
 		# A gun the store sold and takes back is filed under its own Item: decide that before the Item check.
 		_check_serial_free(intake_payload)
 		_check_counter_item(intake_payload["item_code"])
+		_check_antique_match(intake_payload["item_code"], antique)
 
 	apply_credit = frappe.utils.cint(payload.get("apply_credit"))
 	payout_method = str(payload.get("payout_method") or "").strip()
@@ -233,7 +242,10 @@ def create_trade_in_intake(payload) -> dict:
 			", ".join(PAYOUT_METHODS)))
 	if apply_credit:
 		result = {"ok": True, "item_code": None, "acquisition": None}
-		if has_gun:
+		if antique:
+			result.update(_park_antique(intake_payload, customer))
+		elif has_gun:
+			_take_over_pending(intake_payload["serial"], antique=False, kinds=("Stock Entry",))
 			result.update(
 				_refresh_pending_draft(intake_payload)
 				# Deferred booking: draft acquisition only — the gun enters the
@@ -257,7 +269,8 @@ def create_trade_in_intake(payload) -> dict:
 			result["credit"] = {
 				"item_code": TRADE_IN_CREDIT_ITEM,
 				"rate": flt(-flt(intake_payload["acquisition_cost"]), precision),
-				"acquisition": result["acquisition"],
+				# An antique's credit locks to its parked receipt, like the accessories' (no acquisition).
+				**({"stock_entry": result["antique_receipt"]} if antique else {"acquisition": result["acquisition"]}),
 			}
 			result["credits"].append(result["credit"])
 		if accessories:
@@ -271,7 +284,7 @@ def create_trade_in_intake(payload) -> dict:
 
 	# A reference typed for a bank payment and left behind when the method went back to Cash is not this payment's.
 	reference = None if payout_method == "Cash" else str(payload.get("payout_reference") or "").strip() or None
-	return _buy_now(intake_payload, has_gun, accessories, payout_method, reference)
+	return _buy_now(intake_payload, has_gun, accessories, payout_method, reference, antique=antique)
 
 
 def _check_counter_item(item_code: str | None) -> None:
@@ -398,7 +411,8 @@ def create_accessory_item(item_name: str, item_group: str, sell_price: float | N
 TRADE_IN_ACCESSORY_PARENTS = (AMMUNITION, ACCESSORY, PARTS)
 
 
-def _buy_now(intake: dict, has_gun: bool, accessories: list[dict], method: str, reference: str | None) -> dict:
+def _buy_now(intake: dict, has_gun: bool, accessories: list[dict], method: str, reference: str | None,
+		antique: bool = False) -> dict:
 	"""The store buys the gun (and any accessories / ammo) and pays the seller now: a Receive Goods receipt from
 	the seller, paid with it (receive_goods._create_receive, the Receive Goods endpoint's gate-free body) -- the same
 	stock, seller payment and bound-book entry as buying from a private seller on the Receive Goods page, dated
@@ -416,23 +430,15 @@ def _buy_now(intake: dict, has_gun: bool, accessories: list[dict], method: str, 
 	if has_gun:
 		_validate_required(intake)
 		_validate_source(intake)
-		# A credit run for this gun that was never checked out left a draft acquisition: paying now replaces it,
-		# keeping the Item that run made for the gun. Rolled back with the rest if the buy fails.
-		draft = frappe.db.get_value("FFL Acquisition",
-			{"serial": intake["serial"].strip(), "docstatus": 0, "source_type": TRADE_IN_SOURCE},
-			["name", "item"], as_dict=True)
-		if draft:
-			held = frappe.db.get_value("POS Invoice Item",
-				{"ffl_trade_in_acquisition": draft.name, "docstatus": 0}, "parent")
-			if held:
-				frappe.throw(_("This gun's trade-in credit is on held sale {0}. Remove the credit line there "
-					"first.").format(held))
-			intake["item_code"] = intake["item_code"] or draft.item
-			frappe.delete_doc("FFL Acquisition", draft.name, ignore_permissions=True)
+		# A credit run for this gun that was never checked out left a draft acquisition (or an antique's draft
+		# receipt): paying now replaces it, keeping the Item that run made for the gun. Rolled back with the rest if
+		# the buy fails.
+		reused = _take_over_pending(intake["serial"], antique=antique)  # always: a chosen Item must not skip it
+		intake["item_code"] = intake["item_code"] or reused
 		_check_serial_free(intake)
 		if flt(intake["acquisition_cost"], 2) <= 0:  # a receipt that pays nobody would still reach the bound book
 			frappe.throw(_("Enter what the store pays the seller."))
-		item_code = _resolve_item(intake)
+		item_code = _antique_item(intake) if antique else _resolve_item(intake)
 		# A shared model SKU keeps its own model fields (_create_receive writes the line's onto the Item); this gun's
 		# own values reach its Serial No through _stamp_serial.
 		model = frappe.db.get_value("Item", item_code, ["model_name", "caliber", "firearm_type"], as_dict=True)
@@ -442,6 +448,9 @@ def _buy_now(intake: dict, has_gun: bool, accessories: list[dict], method: str, 
 			**{f: model.get(f) or intake.get(f) or "" for f in ("model_name", "firearm_type", "caliber")},
 			**{f: intake.get(f) or "" for f in ("manufacturer", "importer")},
 			"year_made": intake["year_made"],
+			# Receive Goods' own antique line: no bound-book acquisition when the receipt submits. A regulated line
+			# sends no key, so the receipt never writes the Item's flag (an explicit 0 would un-flag it).
+			**({"is_antique": 1} if antique else {}),
 		})
 	items.extend({"item_code": a["item_code"], "qty": a["qty"], "rate": a["rate"]} for a in accessories)
 	received = _create_receive({
@@ -468,6 +477,100 @@ def _buy_now(intake: dict, has_gun: bool, accessories: list[dict], method: str, 
 		"acquisition": frappe.db.get_value("FFL Acquisition", {"purchase_receipt": received["name"], "docstatus": 1}, "name"),
 		"payout": {"entry": paid["entry"], "journal_entry": paid["journal_entry"]},
 	}
+
+
+def _check_antique_match(item_code: str | None, antique: bool) -> None:
+	"""An antique is filed only under an antique Item, a regulated gun never under one: Item.is_antique is what keeps
+	a gun out of the bound book and off the 4473 (firearm.is_regulated_firearm_item). Blank is fine either way: the
+	trade-in makes this gun its own Item."""
+	if not item_code:
+		return
+	is_antique = frappe.utils.cint(frappe.db.get_value("Item", item_code, "is_antique"))
+	if antique and not is_antique:
+		frappe.throw(_("Item {0} is not an antique item. Leave Item blank (one is made for this antique) or pick an "
+			"antique item. If this serial was filed under {0} before, a stock manager has to tick Antique on Item {0} "
+			"first (possible while none of its guns is in the bound book).").format(item_code))
+	if not antique and is_antique:
+		frappe.throw(_("Item {0} is an antique item. Tick Antique, or pick a non-antique item for this gun.").format(
+			item_code))
+
+
+def _antique_item(p: dict) -> str:
+	"""The antique Item this gun is filed under: the one given (checked antique by _check_antique_match), or a new
+	one made for this gun and flagged Antique (firearm.log_antique_flip records who decided)."""
+	from ffl_core.api.firearm_intake import _create_item
+	from ffl_core.firearm import log_antique_flip
+
+	if p.get("item_code"):
+		return p["item_code"]
+	item_code = _create_item(p)
+	frappe.db.set_value("Item", item_code, "is_antique", 1, update_modified=False)
+	log_antique_flip(item_code, source="Trade-in", year_made=p.get("year_made"), extra=f"Serial: {p['serial']}")
+	return item_code
+
+
+def _park_antique(p: dict, customer: str) -> dict:
+	"""An antique taken in on credit: its Item, and a DRAFT Material Receipt of the gun marked as a trade-in from
+	``customer`` -- the anchor its credit line locks to, as the accessories' (_park_accessories). No acquisition: an
+	antique never enters the bound book. The gun's own facts wait on the receipt until checkout submits it and stamps
+	them on the new Serial No (compliance/trade_in_credit._book_accessories)."""
+	from ffl_core import storage
+	from ffl_core.api.firearm_intake import (
+		_company, _default_warehouse, _parked_stamp_payload, _placements, _validate_required)
+	from ffl_core.firearm import serialized_receipt_row
+	from ffl_core.setup.trade_in_credit import TRADE_IN_SELLER_FIELD, TRADE_IN_STAMP_FIELD
+
+	_validate_required(p)
+	company = _company()
+	storage.validate_placements(_placements(p), company)
+	reused = _take_over_pending(p["serial"], antique=True)  # always: a chosen Item must not skip it
+	p["item_code"] = p["item_code"] or reused
+	item_code = _antique_item(p)
+	se = frappe.get_doc({
+		"doctype": "Stock Entry",
+		"stock_entry_type": "Material Receipt",
+		"company": company,
+		TRADE_IN_SELLER_FIELD: customer,
+		TRADE_IN_STAMP_FIELD: _json.dumps(_parked_stamp_payload(p)),
+		"remarks": _("Antique trade-in from {0}").format(customer),
+		"items": [serialized_receipt_row(item_code=item_code, qty=1, warehouse=_default_warehouse(company),
+			basic_rate=flt(p["acquisition_cost"]), serial=p["serial"].strip())],
+	})
+	se.flags.ignore_permissions = True
+	se.insert()
+	return {"ok": True, "item_code": item_code, "acquisition": None, "antique_receipt": se.name}
+
+
+def _take_over_pending(serial: str, antique: bool, kinds=("FFL Acquisition", "Stock Entry")) -> str | None:
+	"""Drop an earlier credit run for this serial that was never checked out -- a gun's draft acquisition or an
+	antique's draft receipt (_park_antique) -- so this run replaces it. Refused while its credit line sits on a held
+	sale. Returns the Item that run filed the gun under when it can be reused (same antique-ness), else None."""
+	from ffl_core.setup.trade_in_credit import TRADE_IN_SELLER_FIELD, TRADE_IN_STAMP_FIELD, TRADE_IN_STOCK_ENTRY_FIELD
+
+	serial = (serial or "").strip()
+	pending = []
+	if "FFL Acquisition" in kinds:
+		acq = frappe.db.get_value("FFL Acquisition",
+			{"serial": serial, "docstatus": 0, "source_type": TRADE_IN_SOURCE}, ["name", "item"], as_dict=True)
+		if acq:
+			pending.append(("FFL Acquisition", "ffl_trade_in_acquisition", acq.name, acq.item))
+	if "Stock Entry" in kinds:
+		pending += [("Stock Entry", TRADE_IN_STOCK_ENTRY_FIELD, name, item) for name, item in frappe.db.sql(f"""
+			SELECT se.name, sed.item_code FROM `tabStock Entry Detail` sed
+			JOIN `tabStock Entry` se ON se.name = sed.parent
+			WHERE sed.serial_no = %s AND se.docstatus = 0
+			  AND IFNULL(se.`{TRADE_IN_SELLER_FIELD}`, '') != '' AND IFNULL(se.`{TRADE_IN_STAMP_FIELD}`, '') != ''""",
+			serial)]
+	reuse = None
+	for doctype, field, name, item in pending:
+		held = frappe.db.get_value("POS Invoice Item", {field: name, "docstatus": 0}, "parent")
+		if held:
+			frappe.throw(_("This gun's trade-in credit is on held sale {0}. Remove the credit line there "
+				"first.").format(held))
+		frappe.delete_doc(doctype, name, ignore_permissions=True)
+		if item and bool(frappe.utils.cint(frappe.db.get_value("Item", item, "is_antique"))) == antique:
+			reuse = item
+	return reuse
 
 
 def _refresh_pending_draft(intake_payload: dict) -> dict | None:

@@ -1216,6 +1216,16 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 					default: 'Very Good',
 				},
 				{
+					label: __('Antique (receiver made before 1899)'), fieldname: 'is_antique', fieldtype: 'Check',
+					depends_on: GUN,
+					description: __('Not a firearm under federal law: it is not entered in the bound book. '
+						+ 'Leave Item blank, or pick an antique item.'),
+				},
+				{
+					label: __('Year Made'), fieldname: 'year_made', fieldtype: 'Int',
+					depends_on: 'eval:doc.has_firearm && doc.is_antique',
+				},
+				{
 					label: __('Storage location'), fieldname: 'storage_location', fieldtype: 'Link',
 					options: 'Storage Location', depends_on: GUN,
 					description: __('Leave blank to place it later.'),
@@ -1301,6 +1311,7 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 					method: 'ffl_core.api.trade_in.create_trade_in_intake',
 					args: { payload: JSON.stringify({
 						...values, accessories, has_firearm: values.has_firearm ? 1 : 0,
+						is_antique: values.has_firearm && values.is_antique ? 1 : 0,
 						item_code: values.has_firearm ? selectedItemCode : '',
 					}) },
 					freeze: true,
