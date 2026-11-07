@@ -151,6 +151,58 @@ class TestOtherMail(TeamMailCase):
 		self.assertTrue(frappe.db.exists("Comment", {"reference_name": _stored(raw)[0].name,
 			"content": ["like", mail.NOT_A_CUSTOMER + "%"]}))
 
+	def test_the_verdict_takes_the_stores_spelling_of_a_category(self):
+		mail._ensure_category("FFL")
+		_answer("ffl")
+		raw = _raw("transfers@dealer.example.org", SALES)
+		with hooks(mail.SCREEN_HOOK, [f"{HERE}.provider"]), patch("frappe.enqueue"):
+			_pull(INFO, (raw, 20))
+			mail.screen_new_sender(_stored(raw)[0].name)
+		self.assertEqual(_lead("transfers@dealer.example.org").get(mail.CATEGORY_FIELD), "FFL")
+
+	def test_a_lost_race_for_the_lead_number_keeps_the_verdict(self):
+		# Another sender's job took the lead number first: the database drops our transaction (1020).
+		_answer("notification")
+		raw = _raw("orders@shop.example.org", SALES)
+		real_route, calls = mail.route, []
+
+		def route(*args, **kwargs):
+			calls.append(1)
+			if len(calls) == 1:
+				raise frappe.QueryDeadlockError("Record has changed since last read in table 'tabSeries'")
+			return real_route(*args, **kwargs)
+
+		with hooks(mail.SCREEN_HOOK, [f"{HERE}.provider"]), patch("frappe.enqueue"):
+			_pull(INFO, (raw, 20))
+			with patch.object(mail, "route", side_effect=route), patch.object(frappe.db, "rollback"):
+				mail.screen_new_sender(_stored(raw)[0].name)
+		lead = _lead("orders@shop.example.org")
+		self.assertEqual((lead.status, lead.get(mail.CATEGORY_FIELD)), (mail.OTHER_MAIL, "Notification"))
+		self.assertEqual(len(calls), 2)
+
+	def test_our_own_store_notice_is_not_filed_under_the_customer(self):
+		from email.message import EmailMessage
+		from email.utils import format_datetime
+
+		from frappe.utils import now_datetime
+
+		company = frappe.get_all("Company", pluck="company_name", limit=1)[0]
+		buyer = "web-buyer@example.org"
+		_customer_contact(buyer)
+		msg = EmailMessage()
+		msg["From"] = f"{company} <shop@mailer.example.net>"
+		msg["Reply-To"] = buyer
+		msg["To"] = SALES
+		msg["Subject"] = "New order: #1001"
+		msg["Date"] = format_datetime(now_datetime().astimezone())
+		msg["Message-ID"] = f"<ffl-test-{frappe.generate_hash(length=12)}@example.org>"
+		msg.set_content("You've got a new order.")
+		raw = msg.as_bytes()
+		_pull(INFO, (raw, 20))
+		self.assertFalse(_stored(raw), "not on the buyer's deal")
+		self.assertFalse(_lead(buyer))
+		self.assertNoPullErrors()
+
 	def test_no_ai_verdict_makes_an_ordinary_lead(self):
 		_answer(None)
 		raw = _raw("buyer@example.org", SALES)
@@ -277,6 +329,23 @@ class TestSpamFolder(TeamMailCase):
 		_check(FakeIMAP({5: first, 6: second}))
 		self.assertTrue(_stored(first))
 		self.assertTrue(_stored(second))
+
+	def test_a_lost_race_keeps_the_mail_for_the_next_run(self):
+		_answer("customer")
+		raw = _raw("racer@example.org", SALES)
+		real_rollback = frappe.db.rollback
+
+		def rollback(*, save_point=None, chain=False):
+			# The database dropped the transaction; here that is the mail's own savepoint.
+			return real_rollback(save_point=save_point or "ffl_crm_spam")
+
+		with patch.object(mail, "route", side_effect=frappe.QueryDeadlockError("tabSeries")), \
+				patch.object(frappe.db, "rollback", side_effect=rollback):
+			_check(FakeIMAP({5: raw}))
+		self.assertFalse(_stored(raw))
+		self.assertNotEqual(frappe.db.get_global(mail.SPAM_PLACE + INFO), "7:5", "not passed over")
+		_check(FakeIMAP({5: raw}))
+		self.assertEqual(_stored(raw)[0].reference_name, _lead("racer@example.org").name)
 
 	def test_a_mail_that_cannot_be_kept_does_not_stop_the_rest(self):
 		_answer("customer")
