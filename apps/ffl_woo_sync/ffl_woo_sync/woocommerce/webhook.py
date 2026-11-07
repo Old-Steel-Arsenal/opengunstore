@@ -35,7 +35,15 @@ from frappe.utils import flt
 
 from ffl_core.alerts import safe_log_error
 from ffl_core.compliance.ffl_number import FFL_NUMBER_RE, is_cr_license
-from ffl_core.crm.web_orders import CANCELLED, PLACED, REFUNDED, TRANSFERRED, note_web_order
+from ffl_core.crm.web_orders import (
+	CANCELLED,
+	PLACED,
+	REFUNDED,
+	TRANSFERRED,
+	note_web_order,
+	payment_failed,
+	payment_recovered,
+)
 from ffl_core.firearm import is_antique_item, is_firearm_item, is_regulated_firearm_item
 from ffl_core.reservations import (
 	CHANNEL_WOO,
@@ -2909,6 +2917,80 @@ def _handle_order_cancelled(body: dict) -> None:
 	_announce_commitments(set(claimed_items) | set(line_items))
 
 
+# Orders the shopper placed at the storefront checkout; one staff made in Woo admin or over REST and
+# then cancelled is not a shopper's failed payment.
+_SHOPPER_CREATED_VIA: frozenset[str] = frozenset({"checkout", "store-api"})
+
+
+def _is_payment_failure(body: dict, before: str | None) -> bool:
+	"""A payment failure: Woo's ``failed`` status, or ``cancelled`` on an order that was never paid,
+	on an order the shopper placed at checkout. Paid is a paid time on the order or a status it had
+	before (a shop cancelling a paid order, or one already refunded, is not a failed payment).
+	*before* is the status POS held for the order."""
+	if (body.get("created_via") or "").strip().lower() not in _SHOPPER_CREATED_VIA:
+		return False
+	status = _order_status(body)
+	if status == "failed":
+		return True
+	if status not in ("cancelled", "canceled"):
+		return False
+	from ffl_woo_sync.woocommerce.fulfillment import _is_paid_woo_status
+
+	return not (body.get("date_paid") or body.get("date_paid_gmt") or _is_paid_woo_status(before)
+		or (before or "").strip().lower() == "refunded")
+
+
+def _paid_since(email: str, order_id: object) -> bool:
+	"""Has this shopper already paid a web order placed after *order_id*? The usual way back from a
+	declined card is a new order, and Woo cancels the abandoned one only later (its hold-stock
+	timeout): that cancel is no lost sale. Woo order numbers grow with time on a site."""
+	from ffl_woo_sync.woocommerce.fulfillment import _is_paid_woo_status
+
+	email = (email or "").strip().lower()
+	try:
+		failed = int(str(order_id).strip())
+	except ValueError:
+		return False
+	if not email:
+		return False
+	rows = frappe.get_all("Woo Online Order", fields=["woo_order_id", "woo_status"],
+		filters={"customer_email": email, "site": frappe.flags.get("woo_sync_site") or "retail"})
+	return any(_is_paid_woo_status(r.woo_status) and str(r.woo_order_id).strip().isdigit()
+		and int(r.woo_order_id) > failed for r in rows)
+
+
+def _pay_link(body: dict) -> str:
+	"""Where the shopper can pay this order: Woo's own link when the payload carries it, else the
+	order-pay URL built from the store URL and the order key."""
+	link = (body.get("payment_url") or "").strip()
+	key = (body.get("order_key") or "").strip()
+	if link or not key:
+		return link
+	from ffl_woo_sync.woocommerce.client import SETTINGS_DOCTYPE
+
+	store = str(frappe.db.get_single_value(SETTINGS_DOCTYPE, "store_url") or "").strip().rstrip("/")
+	return f"{store}/checkout/order-pay/{body.get('id')}/?pay_for_order=true&key={key}" if store else ""
+
+
+def _crm_follow_up_failed_payment(body: dict, before: str | None) -> None:
+	"""Tell the CRM a web order's payment failed (see ``crm.web_orders``). Built from the payload, not
+	from the Woo Online Order: Woo delivers the order's first webhook late enough to say ``failed``,
+	and such an order was never recorded here. Never fails the webhook."""
+	try:
+		billing = body.get("billing") or {}
+		if not _is_payment_failure(body, before) or _paid_since(billing.get("email"), body.get("id")):
+			return
+		payment_failed(
+			str(body.get("id") or ""), billing.get("email") or "",
+			full_name=(f"{billing.get('first_name') or ''} {billing.get('last_name') or ''}").strip(),
+			phone=(billing.get("phone") or "").strip(), total=flt(body.get("total")), currency=body.get("currency"),
+			items=[f"{int(flt(i.get('quantity')) or 1)} x {i.get('name')}" for i in body.get("line_items") or [] if i.get("name")],
+			pay_link=_pay_link(body), method=(body.get("payment_method_title") or "").strip())
+	except Exception:
+		_log_error(title=f"Woo webhook: payment failure not passed to the CRM for order {body.get('id')}",
+			message=_tb.format_exc())
+
+
 def _handle_order_upsert(body: dict) -> None:
 	"""Route ``order.created`` / ``order.updated`` by the order's status.
 
@@ -2920,9 +3002,17 @@ def _handle_order_upsert(body: dict) -> None:
 	keeps a draft checkout from holding a firearm out of stock.
 	"""
 	if _order_status(body) in _RELEASE_STATUSES:
+		# Read before the cancel handler overwrites it: what the order was before tells paid from unpaid.
+		before = frappe.db.get_value("Woo Online Order", {"woo_order_id": str(body.get("id") or "").strip(),
+			"site": frappe.flags.get("woo_sync_site") or "retail"}, "woo_status")
 		_handle_order_cancelled(body)
+		_crm_follow_up_failed_payment(body, before)
 	else:
 		_handle_order_created(body)
+		from ffl_woo_sync.woocommerce.fulfillment import _is_paid_woo_status
+
+		if _is_paid_woo_status(_order_status(body)):
+			payment_recovered(str(body.get("id") or ""), (body.get("billing") or {}).get("email") or "")
 
 
 _HANDLERS: dict[str, Any] = {
