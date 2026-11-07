@@ -272,11 +272,20 @@ def complete_intake(acquisition: str) -> dict:
 	doc.flags.ignore_permissions = True
 	doc.submit()
 	_create_stock_receipt(doc.item, p, company=doc.company)
+	settle_received_serial(p)
+	return {"ok": True, "booked": True}
+
+
+def settle_received_serial(p: dict) -> None:
+	"""After a deferred trade-in's receipt creates the Serial No: reset its ownership stamps, stamp the parked
+	per-gun facts and put it where the counter said. Runs inside the checkout, so nothing here may fail it.
+	Shared by a gun's acquisition (complete_intake) and an antique's parked receipt
+	(compliance/trade_in_credit._book_accessories)."""
 	# A gun taken back after a sale is a new stay: start it from "the store's own gun",
 	# as every Purchase Receipt does (compliance/purchase.py), or the last stay's
 	# consignor / pay-on-sale / custody stamps would bill or block its next sale.
 	from ffl_core.compliance.purchase import _STORE_OWNED, _acquired_stamps
-	frappe.db.set_value("Serial No", doc.serial, {
+	frappe.db.set_value("Serial No", p["serial"], {
 		**_STORE_OWNED, **_acquired_stamps(frappe._dict(), frappe._dict()), "needs_service": 0,
 	}, update_modified=False)
 	_stamp_serial(p)
@@ -286,7 +295,6 @@ def complete_intake(acquisition: str) -> dict:
 	for problem in storage.place_softly(lambda: _placements(p)):
 		frappe.msgprint(_("The gun is booked, but not in a location: {0}").format(problem),
 			alert=True, indicator="orange")
-	return {"ok": True, "booked": True}
 
 
 def _placements(p: dict) -> list[dict]:
