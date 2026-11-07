@@ -184,6 +184,13 @@ def _link(deal, customer: str) -> dict:
 		doc.append("links", {"link_doctype": "Customer", "link_name": customer})
 		doc.flags.ignore_permissions = True   # the caller holds the deal; ERPNext's Contact rights are not CRM's
 		doc.save()
+	if contact and not frappe.db.get_value("Customer", customer, "customer_primary_contact"):
+		# A customer with no primary Contact takes the deal's: its email and mobile are what the
+		# Customer shows and what an order's lookup by email reads.
+		email, mobile = frappe.db.get_value("Contact", contact, ["email_id", "mobile_no"])
+		frappe.db.set_value("Customer", customer, {"customer_primary_contact": contact,
+			"email_id": email or "", "mobile_no": mobile or ""})
+		frappe.db.set_value("Contact", contact, "is_primary_contact", 1)
 	return {"customer": customer}
 
 

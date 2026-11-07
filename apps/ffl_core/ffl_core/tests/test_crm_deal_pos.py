@@ -597,6 +597,17 @@ class TestCustomerLink(DealPOSCase):
 			"links": [{"link_doctype": "Customer", "link_name": customer}]}).insert(ignore_permissions=True)
 		self.assertIsNone(find_customer_by_email(email))
 
+	def test_linking_makes_the_contact_primary_only_when_there_is_none(self):
+		email = f"{_token()}@example.com"
+		customer, contact = _customer(), _contact(email, "5125550188")
+		deal_customer.ensure_customer(_deal(contact), customer=customer)
+		self.assertEqual(frappe.db.get_value("Customer", customer, ["customer_primary_contact", "email_id", "mobile_no"]),
+			(contact, email, "5125550188"))
+		# A customer that has a primary Contact keeps it.
+		other = _contact(f"{_token()}@example.com")
+		deal_customer.ensure_customer(_deal(other), customer=customer)
+		self.assertEqual(frappe.db.get_value("Customer", customer, "customer_primary_contact"), contact)
+
 	def test_confirming_writes_the_deal_and_the_contact(self):
 		customer, contact = _customer(), _contact(f"{_token()}@example.com")
 		deal = _deal(contact)
