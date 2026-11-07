@@ -64,21 +64,37 @@ def _customers_by_contact_email(email: str | None) -> list[str]:
 	return _customers_of_contacts(contacts_with_email(email)) if email else []
 
 
+def _customers_by_name(full_name: str | None) -> list[str]:
+	"""Customers with this full name: only a guess (two people share a name), so the employee
+	confirms it like any match. ``customer_name`` is read as well as the first and last name
+	fields, which customers made before those fields existed leave empty. One word is no name."""
+	words = (full_name or "").split()
+	if len(words) < 2:
+		return []
+	by_full = frappe.get_all("Customer", filters={"customer_name": " ".join(words), "disabled": 0},
+		pluck="name", limit=customer_flags._MAX_MATCHES)
+	by_parts = frappe.get_all("Customer", filters={"ffl_first_name": words[0], "ffl_last_name": words[-1],
+		"disabled": 0}, pluck="name", limit=customer_flags._MAX_MATCHES)
+	return list(dict.fromkeys(by_full + by_parts))
+
+
 def _safe_flags(customer: str) -> dict:
 	flags = customer_flags.get_customer_flags(customer)
 	return {key: flags[key] for key in _FLAG_KEYS}
 
 
 def find_matches(deal) -> list[dict]:
-	"""Customers the deal's email or phone match, each with its flags: [{"name", "customer_name",
-	"customer_status", "matched", "banned", "status_reason", "alerts"}]. The customers the deal's
-	primary Contact is linked to are in it too, whatever their email and phone say."""
+	"""Customers the deal's email, phone or full name match, each with its flags: [{"name",
+	"customer_name", "customer_status", "matched", "banned", "status_reason", "alerts"}]. The
+	customers the deal's primary Contact is linked to are in it too, whatever their email and phone
+	say. A customer found only by name is marked "name only"."""
 	rows = customer_flags.find_possible_duplicates(email=deal.get("email"),
 		phone=deal.get("mobile_no") or deal.get("phone"))
 	by_name = {row["name"]: row for row in rows}
 	contact = _primary_contact(deal)
 	for why, customers in (("contact email", _customers_by_contact_email(deal.get("email"))),
-			("contact link", _customers_of_contacts([contact] if contact else []))):
+			("contact link", _customers_of_contacts([contact] if contact else [])),
+			("name only", _customers_by_name(_new_customer_values(deal, contact)["customer_name"]))):
 		for customer in customers:
 			if customer not in by_name and frappe.db.exists("Customer", customer):
 				row = frappe.db.get_value("Customer", customer, ["name", "customer_name", "customer_status"], as_dict=True)

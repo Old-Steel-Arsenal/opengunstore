@@ -562,6 +562,28 @@ class TestCustomerLink(DealPOSCase):
 		self.assertEqual([(m["name"], m["matched"]) for m in deal_customer.ensure_customer(deal)["matches"]],
 			[(customer, ["contact email"])])
 
+	def test_a_full_name_matches_as_a_guess(self):
+		last = "Name" + _token()
+		by_full = _customer(f"Pat {last}")   # no email, no phone, no first/last fields: an old customer
+		by_parts = _customer("Pat Q. " + last, ffl_first_name="Pat", ffl_last_name=last)
+		gone = _customer(f"Pat {last}", disabled=1)
+		contact = frappe.get_doc({"doctype": "Contact", "first_name": "pat", "last_name": f" {last.lower()} ",
+			"email_ids": [{"email_id": f"{_token()}@example.com", "is_primary": 1}]}).insert(ignore_permissions=True).name
+		deal = _deal(contact)
+		out = deal_customer.ensure_customer(deal)
+		self.assertIsNone(out["customer"], "a name is never linked by itself")
+		matched = {m["name"]: m["matched"] for m in out["matches"]}
+		self.assertEqual(matched, {by_full: ["name only"], by_parts: ["name only"]})
+		self.assertNotIn(gone, matched)
+		self.assertIn("name only", out["html"])
+		self.assertIsNone(frappe.db.get_value("CRM Deal", deal.name, "erpnext_customer"))
+
+	def test_one_word_is_no_name(self):
+		word = "Mono" + _token()
+		_customer(word)
+		deal = _deal(frappe.get_doc({"doctype": "Contact", "first_name": word}).insert(ignore_permissions=True).name)
+		self.assertEqual(deal_customer.ensure_customer(deal)["matches"], [])
+
 	def test_the_order_resolvers_still_ignore_contact_emails(self):
 		from ffl_core.customer_profile import find_customer_by_email
 
