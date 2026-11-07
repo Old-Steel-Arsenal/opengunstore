@@ -1115,14 +1115,21 @@ class OffBookAntiqueStaysOffBook(FrappeTestCase):
             self.assertTrue(reconcile.reconcile_record_to_fastbound(
                 "FFL Acquisition", a, "itm-guid-oba")["ok"])
 
-    def test_disposition_of_an_antique_cannot_be_cleared_or_linked(self):
+    def test_disposition_under_an_antique_item_can_still_be_cleared_and_linked(self):
+        # A disposition CLOSES a bound-book entry: refusing it would leave a sold gun open in
+        # FastBound. So an antique Item never blocks clearing or linking one.
         code, serial = "OBA-DISP", "OBA-DISP-1"
         d = ReconcileRecordToFastbound._disp(self, code, serial)
         reconcile.mark_not_in_bound_book("FFL Disposition", d, "antique")
-        self._set_antique(code, 1)
-        with self.assertRaisesRegex(frappe.ValidationError, "Antique"):
-            reconcile.clear_not_in_bound_book("FFL Disposition", d)
-        with _p.object(reconcile.FastBoundClient, "from_settings") as fs, \
-                self.assertRaisesRegex(frappe.ValidationError, "Antique"):
-            reconcile.reconcile_record_to_fastbound("FFL Disposition", d, "01173")
-        fs.assert_not_called()
+        _firearm_item("OBA-DISP-ANT", "Rifle")
+        self._set_antique("OBA-DISP-ANT", 1)
+        frappe.db.set_value("Serial No", serial, "item_code", "OBA-DISP-ANT", update_modified=False)
+        self.assertTrue(reconcile.clear_not_in_bound_book("FFL Disposition", d)["ok"])
+        item = {"id": "itm-guid-obd", "itemNumber": "01198", "serial": serial,
+            "disposed": True, "status": {"id": 3, "name": "Disposed"},
+            "dispositionId": "disp-guid-obd", "deleted": False}
+        fs, client = ReconcileRecordToFastbound._client_mock(self, item)
+        client.find_item_by_number.return_value = item
+        with _p.object(reconcile.FastBoundClient, "from_settings", fs):
+            self.assertTrue(reconcile.reconcile_record_to_fastbound("FFL Disposition", d, "01198")["ok"])
+        self.assertEqual(frappe.db.get_value("FFL Disposition", d, "fastbound_id"), "disp-guid-obd")

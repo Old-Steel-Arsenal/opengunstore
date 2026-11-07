@@ -377,9 +377,15 @@ def mark_not_in_bound_book(doctype: str, name: str, reason: str) -> dict:
 
 
 def _refuse_if_antique(doctype: str, name: str, action: str) -> None:
-	"""Refuse putting a record back on the bound book once its gun is antique — its Item
-	flagged, or its serial moved to an antique Item. An antique leaves without a 4473 or a
-	disposition, so a bound-book entry made for it could never be closed."""
+	"""Refuse putting an ACQUISITION back on the bound book once its gun is antique — its
+	Item flagged, or its serial moved to an antique Item. An antique leaves without a 4473
+	or a disposition, so a bound-book entry opened for it could never be closed.
+
+	Dispositions are never refused: a disposition CLOSES an entry, and refusing it would
+	leave a sold gun open in the book (its per-gun Item may be flagged antique once the
+	serial is sold, since a sold serial no longer locks the flag)."""
+	if doctype != "FFL Acquisition":
+		return
 	from ffl_core.firearm import is_antique_item
 
 	row = frappe.db.get_value(doctype, name, ["item", "serial"], as_dict=True) or {}
@@ -387,8 +393,8 @@ def _refuse_if_antique(doctype: str, name: str, action: str) -> None:
 	antique = next((i for i in (row.get("item"), current) if i and is_antique_item(i)), None)
 	if antique:
 		frappe.throw(_("Cannot {0} {1} {2}: its gun is under Antique Item {3}, and an antique stays "
-			"out of the bound book. Untick Antique on the Item, or move the serial back to a "
-			"regulated Item, first.").format(action, doctype, name, antique))
+			"out of the bound book. Move the serial back to a regulated Item first (Serial No > "
+			"Reassign Item).").format(action, doctype, name, antique))
 
 
 @frappe.whitelist()
