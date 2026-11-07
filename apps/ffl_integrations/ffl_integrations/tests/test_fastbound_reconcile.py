@@ -1053,3 +1053,83 @@ class NotInBoundBook(FrappeTestCase):
         self.assertIn(name, [r["name"] for r in tasks.unsynced_records()])
         with self.assertRaises(frappe.ValidationError):
             reconcile.clear_not_in_bound_book("FFL Disposition", name)  # nothing to clear now
+
+
+class OffBookAntiqueStaysOffBook(FrappeTestCase):
+    """Once a [NOT A&D] record's gun is antique (its Item flagged, or its serial moved to an
+    antique Item), clearing the mark or linking it to FastBound would put an antique back on
+    the books, with no 4473 or disposition ever to close it. Both are refused until the gun
+    is regulated again."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from ffl_core.setup import test_bootstrap
+        test_bootstrap.run()
+        cls.company = frappe.db.get_value("Company", {"company_name": "FFL Test"}, "name")
+
+    def _marked_acq(self, code, serial):
+        a = ReconcileRecordToFastbound._acq(self, code, serial)
+        reconcile.mark_not_in_bound_book("FFL Acquisition", a, "antique booked by mistake")
+        return a
+
+    def _set_antique(self, code, value):
+        frappe.db.set_value("Item", code, "is_antique", value, update_modified=False)
+        frappe.db.value_cache.clear()  # is_antique_item reads with cache=True
+
+    def test_clear_refused_while_item_antique_allowed_once_regulated(self):
+        code, serial = "OBA-ITEM", "OBA-ITEM-1"
+        a = self._marked_acq(code, serial)
+        self._set_antique(code, 1)
+        with self.assertRaisesRegex(frappe.ValidationError, "Antique"):
+            reconcile.clear_not_in_bound_book("FFL Acquisition", a)
+        self.assertTrue(frappe.db.get_value("FFL Acquisition", a, "fastbound_sync_error")
+            .startswith("[NOT A&D] "))
+        self._set_antique(code, 0)
+        self.assertTrue(reconcile.clear_not_in_bound_book("FFL Acquisition", a)["ok"])
+
+    def test_clear_refused_when_serial_moved_to_an_antique_item(self):
+        code, serial = "OBA-REG", "OBA-REG-1"
+        a = self._marked_acq(code, serial)
+        _firearm_item("OBA-ANT", "Rifle")
+        self._set_antique("OBA-ANT", 1)
+        frappe.db.set_value("Serial No", serial, "item_code", "OBA-ANT", update_modified=False)
+        with self.assertRaisesRegex(frappe.ValidationError, "Antique"):
+            reconcile.clear_not_in_bound_book("FFL Acquisition", a)
+
+    def test_link_refused_while_item_antique(self):
+        code, serial = "OBA-LINK", "OBA-LINK-1"
+        a = self._marked_acq(code, serial)
+        self._set_antique(code, 1)
+        with _p.object(reconcile.FastBoundClient, "from_settings") as fs, \
+                self.assertRaisesRegex(frappe.ValidationError, "Antique"):
+            reconcile.reconcile_record_to_fastbound("FFL Acquisition", a, "itm-guid-oba")
+        fs.assert_not_called()
+        self.assertFalse(frappe.db.get_value("FFL Acquisition", a, "fastbound_id"))
+        # Regulated again: the link goes through.
+        self._set_antique(code, 0)
+        item = {"id": "itm-guid-oba", "itemNumber": "01199", "serial": serial,
+            "disposed": False, "dispositionId": None, "deleted": False}
+        fs, _client_ = ReconcileRecordToFastbound._client_mock(self, item)
+        with _p.object(reconcile.FastBoundClient, "from_settings", fs):
+            self.assertTrue(reconcile.reconcile_record_to_fastbound(
+                "FFL Acquisition", a, "itm-guid-oba")["ok"])
+
+    def test_disposition_under_an_antique_item_can_still_be_cleared_and_linked(self):
+        # A disposition CLOSES a bound-book entry: refusing it would leave a sold gun open in
+        # FastBound. So an antique Item never blocks clearing or linking one.
+        code, serial = "OBA-DISP", "OBA-DISP-1"
+        d = ReconcileRecordToFastbound._disp(self, code, serial)
+        reconcile.mark_not_in_bound_book("FFL Disposition", d, "antique")
+        _firearm_item("OBA-DISP-ANT", "Rifle")
+        self._set_antique("OBA-DISP-ANT", 1)
+        frappe.db.set_value("Serial No", serial, "item_code", "OBA-DISP-ANT", update_modified=False)
+        self.assertTrue(reconcile.clear_not_in_bound_book("FFL Disposition", d)["ok"])
+        item = {"id": "itm-guid-obd", "itemNumber": "01198", "serial": serial,
+            "disposed": True, "status": {"id": 3, "name": "Disposed"},
+            "dispositionId": "disp-guid-obd", "deleted": False}
+        fs, client = ReconcileRecordToFastbound._client_mock(self, item)
+        client.find_item_by_number.return_value = item
+        with _p.object(reconcile.FastBoundClient, "from_settings", fs):
+            self.assertTrue(reconcile.reconcile_record_to_fastbound("FFL Disposition", d, "01198")["ok"])
+        self.assertEqual(frappe.db.get_value("FFL Disposition", d, "fastbound_id"), "disp-guid-obd")

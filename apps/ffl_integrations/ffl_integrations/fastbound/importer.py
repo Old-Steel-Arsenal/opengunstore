@@ -39,6 +39,7 @@ from ffl_core.firearm import (
 	ensure_brand as _ensure_brand,
 	ensure_caliber as _ensure_caliber,
 	is_antique_item,
+	on_book_acquisitions,
 	is_firearm_item,
 	issue_serial,
 	serialized_receipt_row,
@@ -371,12 +372,12 @@ def reassign_serial_to_item(serial: str, target_item: str) -> dict:
 	if not is_firearm_item(target_item):
 		frappe.throw(_("{0} is not a firearm Item.").format(target_item))
 	# A serial already in the bound book (a FastBound id, or a submitted FFL
-	# Acquisition) can't be re-bucketed under an antique (off-book) Item — that
-	# would orphan a live A&D entry under a GCA-exempt SKU. block_antique_on_booked_item
+	# Acquisition not marked [NOT A&D]) can't be re-bucketed under an antique (off-book)
+	# Item — that would orphan a live A&D entry under a GCA-exempt SKU. block_antique_on_booked_item
 	# can't catch this (is_antique doesn't change on reassign), so guard here.
 	if is_antique_item(target_item) and (
 		(sn.fastbound_item_id or "").strip()
-		or frappe.db.exists("FFL Acquisition", {"serial": serial, "docstatus": 1})
+		or on_book_acquisitions({"serial": serial}, ["name"])
 	):
 		frappe.throw(_("Cannot reassign {0} to antique Item {1}: the serial is in the bound book. "
 			"Antique items must have no bound-book entries.").format(serial, target_item))
