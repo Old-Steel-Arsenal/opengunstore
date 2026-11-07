@@ -24489,7 +24489,7 @@
           "webhooks"
         ],
         "summary": "Single WooCommerce webhook entry point (guest, HMAC-verified).",
-        "description": "**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\n**Payload:** WooCommerce's webhook JSON body; the X-WC-Webhook-Topic header selects the handler (order.created/updated, product.*, ...). The X-WC-Webhook-Signature header must carry a valid HMAC over the raw body (secret configured in Woo Sync Settings).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/webhook.py:2950`",
+        "description": "**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\n**Payload:** WooCommerce's webhook JSON body; the X-WC-Webhook-Topic header selects the handler (order.created/updated, product.*, ...). The X-WC-Webhook-Signature header must carry a valid HMAC over the raw body (secret configured in Woo Sync Settings).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/webhook.py:3012`",
         "operationId": "ffl_woo_sync.woocommerce.webhook.woo_event",
         "responses": {
           "200": {

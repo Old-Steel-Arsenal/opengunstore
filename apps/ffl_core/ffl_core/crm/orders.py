@@ -33,6 +33,7 @@ from frappe.utils import flt, fmt_money
 from ffl_core.crm import TITLE, installed, pos_link_on
 from ffl_core.crm.deal import WRITE_BACK_FLAG
 from ffl_core.crm.deals import DEAL, STATUS
+from ffl_core.crm.web_orders import close_payment_failed
 from ffl_core.utils import commit
 
 DEAL_FIELD = "ffl_crm_deal"
@@ -150,6 +151,9 @@ def _apply(doc, name: str, cancelled: bool) -> None:
 	if not cancelled and not is_return:
 		_mark_won(deal)
 	_save(deal)
+	if not cancelled and not is_return:
+		# The sale a failed web payment was a chance of is made.
+		close_payment_failed([name], _("Recovered by invoice {0}").format(doc.name))
 	if is_return or (cancelled and not doc.flags.get(EDIT_FLAG)):
 		_task_for_owner(deal, doc, cancelled)
 
