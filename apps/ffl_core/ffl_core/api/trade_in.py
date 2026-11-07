@@ -488,8 +488,8 @@ def _check_antique_match(item_code: str | None, antique: bool) -> None:
 	is_antique = frappe.utils.cint(frappe.db.get_value("Item", item_code, "is_antique"))
 	if antique and not is_antique:
 		frappe.throw(_("Item {0} is not an antique item. Leave Item blank (one is made for this antique) or pick an "
-			"antique item. If this serial was filed under {0} before, a stock manager has to move it to an antique item "
-			"first (Serial No > Reassign Item).").format(item_code))
+			"antique item. If this serial was filed under {0} before, a stock manager has to tick Antique on Item {0} "
+			"first (possible while none of its guns is in the bound book).").format(item_code))
 	if not antique and is_antique:
 		frappe.throw(_("Item {0} is an antique item. Tick Antique, or pick a non-antique item for this gun.").format(
 			item_code))
