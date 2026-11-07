@@ -326,6 +326,9 @@ scheduler_events = {
         # outbound webhook secret set.
         "15 * * * *": [
             "ffl_woo_sync.woocommerce.status_events.resend_status_events",
+            # In-store customers' emails to the shop's marketing list; no-op
+            # unless the store opted in (Send customer emails to the shop).
+            "ffl_woo_sync.woocommerce.customer_events.push_customer_changes",
         ],
         # One 2-hourly cron carries all three, and all three gate on the same
         # per-site auto_sync_enabled switch before touching a store.

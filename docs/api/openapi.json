@@ -5780,6 +5780,14 @@
             "type": "string",
             "description": "Outbound status webhook secret"
           },
+          "send_customer_events": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Send customer emails to the shop"
+          },
           "auto_sync_enabled": {
             "type": "integer",
             "enum": [

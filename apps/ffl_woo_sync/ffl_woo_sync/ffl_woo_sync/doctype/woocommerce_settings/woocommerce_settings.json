@@ -14,6 +14,7 @@
   "webhook_secret",
   "column_webhook",
   "outbound_webhook_secret",
+  "send_customer_events",
   "tab_sync",
   "section_sync",
   "auto_sync_enabled",
@@ -86,6 +87,13 @@
    "fieldname": "outbound_webhook_secret",
    "fieldtype": "Password",
    "label": "Outbound status webhook secret"
+  },
+  {
+   "default": "0",
+   "description": "Hourly, sends the email and name of customers added or changed in the POS to the shop's marketing list. The shop must answer POST /wp-json/osa-growth/v1/pos-customers (the OSA Growth plugin does); the request is signed with the outbound webhook secret above.",
+   "fieldname": "send_customer_events",
+   "fieldtype": "Check",
+   "label": "Send customer emails to the shop"
   },
   {
    "fieldname": "tab_sync",
@@ -175,7 +183,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-30 12:00:00.000000",
+ "modified": "2026-11-07 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Woo Sync",
  "name": "WooCommerce Settings",

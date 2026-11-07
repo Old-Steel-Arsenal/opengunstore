@@ -97,6 +97,7 @@ KEEP: dict[str, str] = {
 	"osa_no_underscore": "a test key that must NOT pass the _osa_ meta filter",
 	"osa-timestamp": "x-osa-timestamp webhook header: the storefront plugin's contract",
 	"osa-signature": "x-osa-signature webhook header: the storefront plugin's contract",
+	"osa-growth": "the storefront plugin's REST namespace (/wp-json/osa-growth/v1/pos-customers): the customer sync contract",
 	"osa-logo": "the retired logo's file name: a negative assertion checks that no receipt prints it",
 	"osa_tiers": "patch module migrate_condition_grade_to_osa_tiers (historical name), its test",
 	**dict.fromkeys(("osa_api_endpoint", "osa_api_client_id", "osa_api_secret"),
