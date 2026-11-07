@@ -140,22 +140,41 @@ class TestPushCustomerChanges(FrappeTestCase):
 		out, post = self._run()
 		post.assert_not_called()
 
-	def test_first_run_starts_from_the_settings_save(self):
-		# Before the box was ticked: backfilled by hand, not replayed.
-		self._customer("Before", "before@example.com", self.ts(2))
-		# After the box was ticked (later than the settings' last save): sent.
-		self._customer("After", "after@example.com", self.ts(5))
-		# The save that ticked the box, between the two (this test's own year, so
-		# rows other tests left behind fall before it).
-		frappe.db.sql("update tabSingles set value=%s where doctype=%s and field='modified'",
-			(self.ts(3), SETTINGS))
-		frappe.clear_document_cache(SETTINGS, SETTINGS)
+	def test_ticking_the_box_starts_the_sync_from_then(self):
 		frappe.db.set_global(ce.WATERMARK_KEY, None)
 		clear_defaults_cache()
+		frappe.db.set_single_value(SETTINGS, "send_customer_events", 0)
+		settings = frappe.get_single(SETTINGS)
+		settings.consumer_key = settings.consumer_key or "ck_test"
+		settings.consumer_secret = "cs_test"
+		settings.send_customer_events = 1
+		with patch.object(ce, "now_datetime", return_value=self.ts(3)):
+			settings.save(ignore_permissions=True)
+		self.assertEqual(str(frappe.db.get_global(ce.WATERMARK_KEY)), self.ts(3))
+		# A later save with the box already on does not move it.
+		settings.reload()
+		settings.consumer_secret = "cs_test"
+		settings.save(ignore_permissions=True)
+		self.assertEqual(str(frappe.db.get_global(ce.WATERMARK_KEY)), self.ts(3))
+		# Reset the test secret and the cached settings after the form saves.
+		set_encrypted_password(SETTINGS, SETTINGS, SECRET, "outbound_webhook_secret")
+		frappe.clear_document_cache(SETTINGS, SETTINGS)
+		# Before the tick: backfilled by hand, not replayed; after it: sent.
+		self._customer("Before", "before@example.com", self.ts(2))
+		self._customer("After", "after@example.com", self.ts(5))
 		out, post = self._run()
+		self.assertTrue(post.called, out)
 		(_, _, _, event), = self._sent(post)
 		self.assertEqual([c["email"] for c in event["customers"]], ["after@example.com"])
-		self.assertEqual(event["event_id"], f"customers:{self.ts(3)}:{self.ts(5)}")
+
+	def test_first_run_without_a_tick_starts_from_now(self):
+		self._customer("Old", "old@example.com", self.ts(2))
+		frappe.db.set_global(ce.WATERMARK_KEY, None)
+		clear_defaults_cache()
+		with patch.object(ce, "now_datetime", return_value=self.ts(4)):
+			out, post = self._run()
+		post.assert_not_called()
+		self.assertEqual(str(frappe.db.get_global(ce.WATERMARK_KEY)), self.ts(4))
 
 	def test_a_bulk_instant_is_capped_at_the_shop_limit(self):
 		with patch.object(ce, "BATCH_SIZE", 2), patch.object(ce, "MAX_BATCH_ROWS", 3):

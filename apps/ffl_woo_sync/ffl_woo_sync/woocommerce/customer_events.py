@@ -25,10 +25,11 @@ the watermark write) is harmless.
 
 The watermark is the change time of the last delivered batch, kept as a
 global default (``frappe.db.set_global``): database state, so it survives the
-cache flush every deployment runs. **The first run has no watermark: it starts from
-the settings' last save** (the save that ticked the box), so customers that
-existed before the feature was switched on are not replayed — they are
-backfilled by hand — while those added after the box was ticked are not lost.
+cache flush every deployment runs. **The start is the moment the box is ticked**
+(:func:`on_settings_update` records it), so customers that existed before the
+feature was switched on are not replayed — they are backfilled by hand — while
+those added after it are not lost. (Not the settings' ``modified``: the
+reconcile job's status writes bump that every two hours.)
 
 The watermark moves only after a 2xx. A failed run stops, keeps it, and logs
 the failure once: while the same batch (same ``event_id``) keeps failing the
@@ -195,6 +196,15 @@ def _enabled_config() -> tuple[str, str] | None:
 	return outbound_config(RETAIL_SITE)
 
 
+def on_settings_update(doc) -> None:
+	"""WooCommerce Settings saved: when *Send customer emails to the shop* goes
+	from off to on and no watermark exists yet, start the sync from now."""
+	before = doc.get_doc_before_save()
+	if doc.get("send_customer_events") and not (before and before.get("send_customer_events")) \
+			and not frappe.db.get_global(WATERMARK_KEY):
+		frappe.db.set_global(WATERMARK_KEY, str(now_datetime()))
+
+
 def push_customer_changes() -> dict:
 	"""Scheduled (hourly): deliver customers changed since the watermark, up to
 	:data:`MAX_BATCHES_PER_RUN` batches of :data:`BATCH_SIZE`. See the module
@@ -214,7 +224,8 @@ def _push() -> dict:
 	store_url, secret = config
 	watermark = frappe.db.get_global(WATERMARK_KEY)
 	if not watermark:
-		watermark = str(frappe.get_single(STORES[RETAIL_SITE]["settings"]).modified)
+		# Box set without a form save (e.g. a direct DB write): start from now.
+		watermark = str(now_datetime())
 		frappe.db.set_global(WATERMARK_KEY, watermark)
 		commit()
 	shop_host = store_host(store_url)
