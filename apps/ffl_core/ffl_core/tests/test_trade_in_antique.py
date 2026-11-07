@@ -87,6 +87,39 @@ class TradeInAntique(acc.TradeInAccessories):
 		self.assertEqual(frappe.db.get_value("Serial No", "TIANT-paynow", "status"), "Active")
 		self.assertEqual(flt(frappe.db.get_value("Cash Drawer Entry", res["payout"]["entry"], "amount")), 200.0)
 
+	def test_rerun_with_a_chosen_item_still_replaces_the_draft(self):
+		antique = _item("TIANT-ANT-RERUN", "Rifle", has_serial_no=1, is_firearm=1, is_antique=1)
+		trade_in_call(self._antique("chosen", apply_credit=1, item_code=antique))
+		second = trade_in_call(self._antique("chosen", apply_credit=1, item_code=antique, acquisition_cost=260))
+		drafts = frappe.get_all("Stock Entry Detail", filters={"serial_no": "TIANT-chosen", "docstatus": 0},
+			fields=["parent", "basic_rate"])
+		self.assertEqual([(d.parent, flt(d.basic_rate)) for d in drafts], [(second["antique_receipt"], 260.0)])
+
+	def test_regulated_pay_now_with_a_chosen_item_drops_the_credit_draft(self):
+		"""Credit run under a chosen Item, cart abandoned, then paid now under the same Item: one acquisition, booked."""
+		gun = _item("TIANT-REG-RERUN", "Rifle", has_serial_no=1, is_firearm=1)
+		serial = "TIANT-reg-chosen"
+		first = trade_in_call(self._payload("reg-chosen", accessories=[], serial_no=serial, item_code=gun, apply_credit=1))
+		self.assertEqual(frappe.db.get_value("FFL Acquisition", first["acquisition"], "docstatus"), 0)
+		trade_in_call(self._payload("reg-chosen", accessories=[], serial_no=serial, item_code=gun, payout_method="Cash"))
+		self.assertEqual(sorted(frappe.get_all("FFL Acquisition", {"serial": serial}, pluck="docstatus")), [1])
+
+	def test_pay_now_replaces_the_antique_draft(self):
+		first = self._as_counter(self._antique("paynow-after", apply_credit=1))
+		res = self._as_counter(self._antique("paynow-after", payout_method="Cash"))
+		self.assertFalse(frappe.db.exists("Stock Entry", {"name": first["antique_receipt"], "docstatus": 0,
+			"remarks": ("like", "Antique trade-in%")}))
+		self.assertEqual(res["item_code"], first["item_code"])
+		self.assertEqual(frappe.db.get_value("Serial No", "TIANT-paynow-after", "status"), "Active")
+
+	def test_a_draft_on_a_held_sale_is_not_replaced(self):
+		first = self._as_counter(self._antique("held", apply_credit=1))
+		self._credit_invoice(first["credits"])  # saved, not submitted: the sale is held
+		with self.assertRaisesRegex(frappe.ValidationError, "held sale"):
+			self._as_counter(self._antique("held", apply_credit=1, acquisition_cost=300))
+		with self.assertRaisesRegex(frappe.ValidationError, "held sale"):
+			self._as_counter(self._antique("held", payout_method="Cash"))
+
 	def test_item_must_match_antique(self):
 		regulated = _item("TIANT-REG-RIFLE", "Rifle", has_serial_no=1, is_firearm=1)
 		antique = _item("TIANT-ANT-RIFLE", "Rifle", has_serial_no=1, is_firearm=1, is_antique=1)

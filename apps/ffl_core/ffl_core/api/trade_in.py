@@ -433,7 +433,8 @@ def _buy_now(intake: dict, has_gun: bool, accessories: list[dict], method: str, 
 		# A credit run for this gun that was never checked out left a draft acquisition (or an antique's draft
 		# receipt): paying now replaces it, keeping the Item that run made for the gun. Rolled back with the rest if
 		# the buy fails.
-		intake["item_code"] = intake["item_code"] or _take_over_pending(intake["serial"], antique=antique)
+		reused = _take_over_pending(intake["serial"], antique=antique)  # always: a chosen Item must not skip it
+		intake["item_code"] = intake["item_code"] or reused
 		_check_serial_free(intake)
 		if flt(intake["acquisition_cost"], 2) <= 0:  # a receipt that pays nobody would still reach the bound book
 			frappe.throw(_("Enter what the store pays the seller."))
@@ -447,8 +448,9 @@ def _buy_now(intake: dict, has_gun: bool, accessories: list[dict], method: str, 
 			**{f: model.get(f) or intake.get(f) or "" for f in ("model_name", "firearm_type", "caliber")},
 			**{f: intake.get(f) or "" for f in ("manufacturer", "importer")},
 			"year_made": intake["year_made"],
-			# Receive Goods' own antique line: no bound-book acquisition when the receipt submits.
-			"is_antique": 1 if antique else 0,
+			# Receive Goods' own antique line: no bound-book acquisition when the receipt submits. A regulated line
+			# sends no key, so the receipt never writes the Item's flag (an explicit 0 would un-flag it).
+			**({"is_antique": 1} if antique else {}),
 		})
 	items.extend({"item_code": a["item_code"], "qty": a["qty"], "rate": a["rate"]} for a in accessories)
 	received = _create_receive({
@@ -486,7 +488,8 @@ def _check_antique_match(item_code: str | None, antique: bool) -> None:
 	is_antique = frappe.utils.cint(frappe.db.get_value("Item", item_code, "is_antique"))
 	if antique and not is_antique:
 		frappe.throw(_("Item {0} is not an antique item. Leave Item blank (one is made for this antique) or pick an "
-			"antique item.").format(item_code))
+			"antique item. If this serial was filed under {0} before, a stock manager has to move it to an antique item "
+			"first (Serial No > Reassign Item).").format(item_code))
 	if not antique and is_antique:
 		frappe.throw(_("Item {0} is an antique item. Tick Antique, or pick a non-antique item for this gun.").format(
 			item_code))
@@ -520,7 +523,8 @@ def _park_antique(p: dict, customer: str) -> dict:
 	_validate_required(p)
 	company = _company()
 	storage.validate_placements(_placements(p), company)
-	p["item_code"] = p["item_code"] or _take_over_pending(p["serial"], antique=True)
+	reused = _take_over_pending(p["serial"], antique=True)  # always: a chosen Item must not skip it
+	p["item_code"] = p["item_code"] or reused
 	item_code = _antique_item(p)
 	se = frappe.get_doc({
 		"doctype": "Stock Entry",
