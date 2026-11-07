@@ -637,7 +637,9 @@ def _judged(answer: dict) -> str:
 
 
 def _answer_category(answer: dict) -> str:
-	return (answer.get("category") or "other").capitalize()
+	"""The provider's category as the store spells it: "ffl" files under an existing "FFL"."""
+	category = answer.get("category") or "other"
+	return frappe.db.get_value(CATEGORY, category) or category.capitalize()
 
 
 def check_spam_folders():

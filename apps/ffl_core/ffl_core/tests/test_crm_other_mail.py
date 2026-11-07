@@ -151,6 +151,15 @@ class TestOtherMail(TeamMailCase):
 		self.assertTrue(frappe.db.exists("Comment", {"reference_name": _stored(raw)[0].name,
 			"content": ["like", mail.NOT_A_CUSTOMER + "%"]}))
 
+	def test_the_verdict_takes_the_stores_spelling_of_a_category(self):
+		mail._ensure_category("FFL")
+		_answer("ffl")
+		raw = _raw("transfers@dealer.example.org", SALES)
+		with hooks(mail.SCREEN_HOOK, [f"{HERE}.provider"]), patch("frappe.enqueue"):
+			_pull(INFO, (raw, 20))
+			mail.screen_new_sender(_stored(raw)[0].name)
+		self.assertEqual(_lead("transfers@dealer.example.org").get(mail.CATEGORY_FIELD), "FFL")
+
 	def test_a_lost_race_for_the_lead_number_keeps_the_verdict(self):
 		# Another sender's job took the lead number first: the database drops our transaction (1020).
 		_answer("notification")
