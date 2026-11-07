@@ -1601,6 +1601,7 @@ app: `ffl_woo_sync` · module: FFL Woo Sync · single · roles: System Manager
 | `consumer_secret` | Password | Consumer secret | ✓ |  |
 | `webhook_secret` | Password | Webhook secret |  |  |
 | `outbound_webhook_secret` | Password | Outbound status webhook secret |  |  |
+| `send_customer_events` | Check | Send customer emails to the shop |  |  |
 | `auto_sync_enabled` | Check | Enable sync |  |  |
 | `reconcile_frequency` | Select | Reconcile frequency |  | Every 2 Hours, Daily, Weekly, Disabled |
 | `request_timeout_seconds` | Int | Request Timeout (s) |  |  |
