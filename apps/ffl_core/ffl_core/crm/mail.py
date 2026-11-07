@@ -284,7 +284,9 @@ def _store_notice(doc, email: str) -> bool:
 	mail). Frappe files received mail under the Reply-To address (``InboundMail.set_from``), so it
 	reads as the customer writing, and Communication keeps no From header. What is left of the real
 	sender is the display name: a company's name of ours over an address outside our domains.
-	Kept as other mail it would make a lead under the customer's address that hides their real mail."""
+	Kept as other mail it would make a lead under the customer's address that hides their real mail.
+	lazy: matches the Company name only, so it misses a store whose website mails under another name;
+	upgrade path: a "website sender names" list in Lead Mail Settings."""
 	name = (doc.get("sender_full_name") or "").strip().lower()
 	if not name or _in(email.rsplit("@", 1)[-1], domain_lines(frappe.get_cached_doc(SETTINGS).own_domains)):
 		return False
@@ -560,6 +562,10 @@ def _screen(communication: str) -> None:
 	decision = decide(doc)
 	if decision and decision[0] == "lead" and not decision[1]:
 		answer = _ask_providers(_mail_for_providers(doc, decision[2].address))
+		# A provider can take seconds. Rows another job wrote meanwhile (the lead number) must not be
+		# locked from the snapshot taken before: MariaDB refuses that (1020) and drops the transaction.
+		# Only reads came before, so nothing of ours is committed early.
+		commit()
 		if answer and not answer["customer"]:
 			doc.add_comment("Info", _judged(answer))
 			_route_logged(doc, ("other", _answer_category(answer), decision[2]), screened=True)
@@ -623,10 +629,6 @@ def _ask_providers(mail: dict) -> dict | None:
 			break
 		if isinstance(answer, dict) and answer.get("customer") is True:
 			verdict = answer
-	# A provider can take seconds. Rows another job wrote meanwhile (the lead number) must not be
-	# locked from the snapshot taken before: MariaDB refuses that (1020) and drops the transaction.
-	# Only reads come before this, so nothing of ours is committed early.
-	commit()
 	return verdict
 
 
@@ -718,6 +720,7 @@ def _judge_spam_mail(raw: bytes, email_account) -> bool:
 		answer = _ask_providers({"communication": "", "sender": sender, "sender_name": mail.from_real_name or "",
 			"to": sorted(_addresses(data)), "subject": mail.subject or "",
 			"body": html_to_plain_text(mail.content or "")[:SCREEN_BODY_LIMIT], "team_address": email_account.email_id})
+		commit()   # a fresh snapshot after the slow call, as in _screen
 		if not answer:
 			return False
 		if not answer["customer"] and answer.get("category") == SPAM:
@@ -728,6 +731,10 @@ def _judge_spam_mail(raw: bytes, email_account) -> bool:
 		mail.process()
 	except SentEmailInInboxError:
 		frappe.db.rollback(save_point="ffl_crm_spam")
+	except frappe.QueryDeadlockError:
+		# The transaction is gone (the savepoint with it): not finished, the next run tries it again.
+		frappe.db.rollback()
+		return False
 	except Exception:
 		frappe.db.rollback(save_point="ffl_crm_spam")
 		raise

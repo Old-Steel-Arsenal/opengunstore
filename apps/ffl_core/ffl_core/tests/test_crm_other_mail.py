@@ -321,6 +321,23 @@ class TestSpamFolder(TeamMailCase):
 		self.assertTrue(_stored(first))
 		self.assertTrue(_stored(second))
 
+	def test_a_lost_race_keeps_the_mail_for_the_next_run(self):
+		_answer("customer")
+		raw = _raw("racer@example.org", SALES)
+		real_rollback = frappe.db.rollback
+
+		def rollback(*, save_point=None, chain=False):
+			# The database dropped the transaction; here that is the mail's own savepoint.
+			return real_rollback(save_point=save_point or "ffl_crm_spam")
+
+		with patch.object(mail, "route", side_effect=frappe.QueryDeadlockError("tabSeries")), \
+				patch.object(frappe.db, "rollback", side_effect=rollback):
+			_check(FakeIMAP({5: raw}))
+		self.assertFalse(_stored(raw))
+		self.assertNotEqual(frappe.db.get_global(mail.SPAM_PLACE + INFO), "7:5", "not passed over")
+		_check(FakeIMAP({5: raw}))
+		self.assertEqual(_stored(raw)[0].reference_name, _lead("racer@example.org").name)
+
 	def test_a_mail_that_cannot_be_kept_does_not_stop_the_rest(self):
 		_answer("customer")
 		first, second = _raw("a@example.org", SALES), _raw("b@example.org", SALES)
