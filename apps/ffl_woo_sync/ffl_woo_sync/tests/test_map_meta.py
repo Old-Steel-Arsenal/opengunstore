@@ -28,6 +28,10 @@ def email_mode(item_code, brand):
 	return "Email for price" if brand == "Glock" else None
 
 
+def always_mode(item_code, brand):
+	return {"Glock": "Email for price", "Anderson": mapping.MAP_MODE_ALWAYS_IN_CART}.get(brand)
+
+
 def _hooks(*paths, hook="map_mode_for_item"):
 	def fake(name=None, *args, **kwargs):
 		if name == hook:
@@ -63,6 +67,35 @@ class RetailPayload(FrappeTestCase):
 		with _hooks("email_mode"):
 			meta = _meta(self._payload(map_price=0, brand="Glock"))
 		self.assertEqual((meta["_osa_map_price"], meta["_osa_map_mode"]), ("", ""))
+
+	def test_a_no_map_item_in_an_always_show_in_cart_brand_carries_the_mode(self):
+		with _hooks("always_mode"):
+			meta = _meta(self._payload(map_price=0, brand="Anderson"))
+			by_manufacturer = _meta(self._payload(map_price=None, manufacturer="Anderson"))
+		self.assertEqual((meta["_osa_map_price"], meta["_osa_map_mode"], meta["_x"]),
+			("", "Always show in cart", "1"))
+		self.assertEqual(by_manufacturer["_osa_map_mode"], "Always show in cart")
+
+	def test_a_no_map_item_in_any_other_brand_stays_empty(self):
+		with _hooks("always_mode"):
+			for brand in ("Glock", "Ruger", None):
+				meta = _meta(self._payload(map_price=0, brand=brand))
+				self.assertEqual((meta["_osa_map_price"], meta["_osa_map_mode"]), ("", ""), brand)
+		with _hooks():
+			meta = _meta(self._payload(map_price=0, brand="Anderson"))
+		self.assertEqual((meta["_osa_map_price"], meta["_osa_map_mode"]), ("", ""),
+			"a site with no registrant behaves as before")
+
+	def test_a_used_gun_in_an_always_brand_carries_neither(self):
+		with _hooks("always_mode"):
+			for map_price in (0, 599):
+				meta = _meta(self._payload(map_price=map_price, brand="Anderson", is_used=1))
+				self.assertEqual((meta["_osa_map_price"], meta["_osa_map_mode"]), ("", ""))
+
+	def test_an_item_with_a_map_in_an_always_brand_carries_both(self):
+		with _hooks("always_mode"):
+			meta = _meta(self._payload(map_price=599, brand="Anderson"))
+		self.assertEqual((meta["_osa_map_price"], meta["_osa_map_mode"]), ("599.00", "Always show in cart"))
 
 	def test_a_used_gun_carries_no_new_product_map(self):
 		with _hooks("email_mode"):
@@ -159,6 +192,23 @@ class ReconcileHealsIt(FrappeTestCase):
 				wc(_osa_map_price="599.00", _osa_map_mode="Show in cart"), item))
 			self.assertTrue(tasks._map_meta_drifted(wc(), item))
 			self.assertFalse(tasks._map_meta_drifted(wc(), frappe._dict(name="I-2", map_price=0)))
+
+	def test_an_always_show_in_cart_item_with_no_map_is_not_drift_once_pushed(self):
+		"""Expected and pushed come from the one builder: the store's mode matches, an
+		absent key is drift for an Always brand only, and a no-MAP Item elsewhere
+		never counts."""
+		wc = lambda **m: {"meta_data": [{"key": k, "value": v} for k, v in m.items()]}
+		anderson = frappe._dict(name="I-3", map_price=0, brand="Anderson")
+		with _hooks("always_mode"):
+			self.assertFalse(tasks._map_meta_drifted(
+				wc(_osa_map_price="", _osa_map_mode="Always show in cart"), anderson))
+			self.assertTrue(tasks._map_meta_drifted(wc(), anderson), "not pushed yet: heals")
+			self.assertTrue(tasks._map_meta_drifted(
+				wc(_osa_map_mode="Always show in cart"), frappe._dict(name="I-4", map_price=0, brand="Ruger")),
+				"the brand left the mode: the store's stale mode heals")
+			self.assertFalse(tasks._map_meta_drifted(wc(), frappe._dict(name="I-4", map_price=0, brand="Ruger")))
+			self.assertFalse(tasks._map_meta_drifted(wc(), frappe._dict(
+				name="I-5", map_price=0, brand="Anderson", is_used=1)))
 
 	def test_both_passes_compare_it(self):
 		source = inspect.getsource(tasks._run_reconcile)
