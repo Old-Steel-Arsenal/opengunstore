@@ -92,9 +92,30 @@ def ensure() -> dict:
 					"allow_in_quick_entry": 1,
 					"module": "FFL Core",
 				},
+				# The primary Contact's email and mobile, editable here and kept equal to it
+				# (customer_contact.py). Not virtual: the Desk form never lets one be typed in.
+				{
+					"fieldname": "ffl_email",
+					"fieldtype": "Data",
+					"label": "Email",
+					"options": "Email",
+					"insert_after": "name_suffix",
+					"module": "FFL Core",
+				},
+				{
+					"fieldname": "ffl_phone",
+					"fieldtype": "Data",
+					"label": "Phone",
+					"options": "Phone",
+					"insert_after": "ffl_email",
+					"module": "FFL Core",
+				},
 			]
 		}, ignore_validate=True)
 		_seed_default_customer_type()
+		from ffl_core.customer_contact import backfill
+
+		backfill()
 		frappe.clear_cache(doctype="Customer")
 		return {"ok": 1}
 	except Exception:
