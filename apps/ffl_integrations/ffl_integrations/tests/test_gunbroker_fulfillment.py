@@ -748,6 +748,63 @@ class TestOrderStage(_FulfillmentCase):
 				fulfillment.STAGE_SHIPPED)
 
 
+class TestStageAfterEnteredTracking(_FulfillmentCase):
+	def test_tracking_on_gunbroker_is_shipped_without_a_pos_shipment(self):
+		# A label bought on an order built in ShipStation by hand and sent with
+		# Enter tracking: the POS never pushed a shipment, but the job is done.
+		order = self._order(payment_mode_used="GunBroker Check",
+			order_status="Transferred", sales_invoice="ACC-SINV-1",
+			tracking_pushed_at="2026-11-07 14:29:07")
+		with patch("frappe.db.get_value", return_value=frappe._dict(
+				{"name": "ACC-SINV-1", "shipstation_order_id": "",
+					"shipstation_status": "Not Requested"})):
+			self.assertEqual(fulfillment.order_stage(order),
+				fulfillment.STAGE_SHIPPED)
+
+
+class TestEnterGbTracking(_FulfillmentCase):
+	def _call(self, order, labels, other_order=None):
+		ss = MagicMock()
+		ss.labels_for_tracking.return_value = labels
+		push = MagicMock(return_value={"ok": True, "tracking_number": "879"})
+		writes = []
+		with patch("frappe.only_for"), patch("frappe.get_doc", return_value=order), \
+				patch.object(fulfillment, "_invoice_row", return_value={"docstatus": 1}), \
+				patch("frappe.db.get_value", return_value=other_order), \
+				patch("ffl_integrations.shipstation.client.ShipStationClient.from_settings",
+					return_value=ss), \
+				patch("frappe.db.set_value", side_effect=lambda *a, **k: writes.append(a)), \
+				patch("ffl_integrations.gunbroker.shipping.push_tracking", push):
+			result = fulfillment.enter_gb_tracking(order.name, " 879 ")
+		return result, ss, push, writes
+
+	def test_a_live_label_is_stored_and_sent(self):
+		order = self._order(order_status="Transferred", sales_invoice="ACC-SINV-1",
+			tracking_pushed_at=None)
+		result, ss, push, writes = self._call(order, [{"tracking_number": "879"}])
+		ss.labels_for_tracking.assert_called_once_with("879")
+		self.assertIn("879", writes[0])
+		push.assert_called_once_with(order.name)
+		self.assertTrue(result["ok"])
+
+	def test_a_number_with_no_live_label_is_refused_and_not_stored(self):
+		order = self._order(order_status="Transferred", sales_invoice="ACC-SINV-1",
+			tracking_pushed_at=None)
+		with self.assertRaises(frappe.ValidationError):
+			self._call(order, [])
+
+	def test_a_number_already_on_another_order_is_refused(self):
+		order = self._order(order_status="Transferred", sales_invoice="ACC-SINV-1",
+			tracking_pushed_at=None)
+		with self.assertRaises(frappe.ValidationError):
+			self._call(order, [{"tracking_number": "879"}], other_order="31848942")
+
+	def test_an_undisposed_order_is_refused(self):
+		order = self._order(order_status="Pending Fulfillment", tracking_pushed_at=None)
+		with self.assertRaises(frappe.ValidationError):
+			self._call(order, [{"tracking_number": "879"}])
+
+
 class TestPendingRow(_FulfillmentCase):
 	# The page reads every one of these unconditionally; a missing key renders
 	# as "undefined" on a card a cashier is working from, or worse renders a

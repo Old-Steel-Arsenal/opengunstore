@@ -164,7 +164,8 @@ def pending_writeback_orders() -> list[str]:
 		ORDER_DOCTYPE,
 		filters={"order_status": "Transferred", "sales_invoice": ("is", "set")},
 		fields=["name", "sales_invoice", "shipping_flag_pushed_at",
-			"tracking_pushed_at", "gb_ship_writeback_pending", "shipstation_order_id"])
+			"tracking_pushed_at", "gb_ship_writeback_pending", "shipstation_order_id",
+			"tracking_number"])
 	outstanding = [
 		row for row in rows
 		if not row.shipping_flag_pushed_at
@@ -174,9 +175,12 @@ def pending_writeback_orders() -> list[str]:
 	shipped = _invoices_with_a_shipment(
 		[row.sales_invoice for row in outstanding if row.sales_invoice])
 	# Or a shipment made before Dispose that the invoice missed (a Ship that
-	# landed while Dispose was building it): the order still carries it.
+	# landed while Dispose was building it): the order still carries it. Or a
+	# tracking number staff entered for a label bought on an order built in
+	# ShipStation by hand — _fetch_label checks it against a live label.
 	return [row.name for row in outstanding
-		if row.sales_invoice in shipped or (row.shipstation_order_id or "").strip()]
+		if row.sales_invoice in shipped or (row.shipstation_order_id or "").strip()
+		or (row.tracking_number or "").strip()]
 
 
 def _invoices_with_a_shipment(invoices: list[str]) -> set[str]:
@@ -335,22 +339,46 @@ def _readback_stuck(order) -> bool:
 def _fetch_label(order) -> tuple[str, str, str] | None:
 	"""(tracking, carrier_code, warning) off the first live label, or None.
 
-	Voided labels are dropped by the client, so a reprint can never win over the
-	label actually on the box.
+	The shipment the POS pushed comes first. When it has no label but the order
+	carries a tracking number staff entered (Enter tracking on the card), that
+	number is looked up in ShipStation instead: the label was bought on an
+	order built in ShipStation by hand, which the POS never hears about. The
+	lookup still has to find a live label, so a typo or a voided reprint sends
+	nothing. Voided labels are dropped by the client, so a reprint can never
+	win over the label actually on the box.
 	"""
 	from ffl_integrations.shipstation.client import (
 		ShipStationClient, ShipStationConfigError, ShipStationError)
 
 	shipment_id = frappe.db.get_value("Sales Invoice", order.sales_invoice,
 		"shipstation_order_id") or (order.get("shipstation_order_id") or "").strip()
-	if not shipment_id:
+	entered = (order.get("tracking_number") or "").strip()
+	if not shipment_id and not entered:
 		return None
 	try:
-		labels = ShipStationClient.from_settings().labels_for_shipment(shipment_id)
-	except (ShipStationConfigError, ShipStationError):
+		client = ShipStationClient.from_settings()
+	except ShipStationConfigError:
 		safe_log_error(f"GunBroker tracking: ShipStation unavailable for {order.name}",
 			frappe.get_traceback())
 		return None
+	# Each lookup on its own: a POS shipment ShipStation no longer knows must
+	# not stop the entered number from being tried.
+	for lookup, key in ((client.labels_for_shipment, shipment_id),
+			(client.labels_for_tracking, entered)):
+		if not key:
+			continue
+		try:
+			found = _first_tracked(lookup(key))
+		except ShipStationError:
+			safe_log_error(f"GunBroker tracking: ShipStation unavailable for {order.name}",
+				frappe.get_traceback())
+			continue
+		if found:
+			return found
+	return None
+
+
+def _first_tracked(labels: list[dict]) -> tuple[str, str, str] | None:
 	for label in labels:
 		tracking = (label.get("tracking_number") or "").strip()
 		if not tracking:
