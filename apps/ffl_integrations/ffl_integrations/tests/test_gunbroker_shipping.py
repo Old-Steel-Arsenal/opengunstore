@@ -433,3 +433,15 @@ class TestFetchLabel(_ShippingCase):
 		self.assertIsNone(found)
 		ss.labels_for_shipment.assert_not_called()
 		ss.labels_for_tracking.assert_not_called()
+
+	def test_a_shipment_shipstation_rejects_still_falls_back_to_the_entered_number(self):
+		from ffl_integrations.shipstation.client import ShipStationError
+		ss = MagicMock()
+		ss.labels_for_shipment.side_effect = ShipStationError("404", status_code=404)
+		ss.labels_for_tracking.return_value = [{"tracking_number": "879", "carrier_code": "fedex"}]
+		self._patch("frappe.db.get_value", return_value="se-gone")
+		self._patch("ffl_integrations.shipstation.client.ShipStationClient.from_settings",
+			return_value=ss)
+		self._patch_object(shipping, "safe_log_error")
+		self.assertEqual(shipping._fetch_label(self._order(tracking_number="879")),
+			("879", "fedex", ""))

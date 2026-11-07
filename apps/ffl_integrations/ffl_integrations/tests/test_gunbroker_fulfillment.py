@@ -763,13 +763,14 @@ class TestStageAfterEnteredTracking(_FulfillmentCase):
 
 
 class TestEnterGbTracking(_FulfillmentCase):
-	def _call(self, order, labels):
+	def _call(self, order, labels, other_order=None):
 		ss = MagicMock()
 		ss.labels_for_tracking.return_value = labels
 		push = MagicMock(return_value={"ok": True, "tracking_number": "879"})
 		writes = []
 		with patch("frappe.only_for"), patch("frappe.get_doc", return_value=order), \
 				patch.object(fulfillment, "_invoice_row", return_value={"docstatus": 1}), \
+				patch("frappe.db.get_value", return_value=other_order), \
 				patch("ffl_integrations.shipstation.client.ShipStationClient.from_settings",
 					return_value=ss), \
 				patch("frappe.db.set_value", side_effect=lambda *a, **k: writes.append(a)), \
@@ -791,6 +792,12 @@ class TestEnterGbTracking(_FulfillmentCase):
 			tracking_pushed_at=None)
 		with self.assertRaises(frappe.ValidationError):
 			self._call(order, [])
+
+	def test_a_number_already_on_another_order_is_refused(self):
+		order = self._order(order_status="Transferred", sales_invoice="ACC-SINV-1",
+			tracking_pushed_at=None)
+		with self.assertRaises(frappe.ValidationError):
+			self._call(order, [{"tracking_number": "879"}], other_order="31848942")
 
 	def test_an_undisposed_order_is_refused(self):
 		order = self._order(order_status="Pending Fulfillment", tracking_pushed_at=None)

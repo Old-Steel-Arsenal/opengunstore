@@ -1777,6 +1777,12 @@ def enter_gb_tracking(gunbroker_order: str, tracking_number: str) -> dict:
 	if order.tracking_pushed_at:
 		frappe.throw(_("GunBroker already has tracking {0} for this order.").format(
 			order.tracking_number))
+	# A live label proves a label was bought, not whose it is: the likeliest slip
+	# is pasting the next order's number, so refuse one another order already has.
+	other = frappe.db.get_value(shipping.ORDER_DOCTYPE,
+		{"tracking_number": tracking, "name": ("!=", order.name)}, "gb_order_id")
+	if other:
+		frappe.throw(_("Tracking {0} is already on GunBroker order {1}.").format(tracking, other))
 	try:
 		live = ShipStationClient.from_settings().labels_for_tracking(tracking)
 	except ShipStationError as exc:

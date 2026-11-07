@@ -357,14 +357,25 @@ def _fetch_label(order) -> tuple[str, str, str] | None:
 		return None
 	try:
 		client = ShipStationClient.from_settings()
-		found = _first_tracked(client.labels_for_shipment(shipment_id)) if shipment_id else None
-		if not found and entered:
-			found = _first_tracked(client.labels_for_tracking(entered))
-	except (ShipStationConfigError, ShipStationError):
+	except ShipStationConfigError:
 		safe_log_error(f"GunBroker tracking: ShipStation unavailable for {order.name}",
 			frappe.get_traceback())
 		return None
-	return found
+	# Each lookup on its own: a POS shipment ShipStation no longer knows must
+	# not stop the entered number from being tried.
+	for lookup, key in ((client.labels_for_shipment, shipment_id),
+			(client.labels_for_tracking, entered)):
+		if not key:
+			continue
+		try:
+			found = _first_tracked(lookup(key))
+		except ShipStationError:
+			safe_log_error(f"GunBroker tracking: ShipStation unavailable for {order.name}",
+				frappe.get_traceback())
+			continue
+		if found:
+			return found
+	return None
 
 
 def _first_tracked(labels: list[dict]) -> tuple[str, str, str] | None:
