@@ -30,6 +30,10 @@ class CatalogByUpc(_Base):
 		self.assertEqual(rows[0]["upc"], UPC)
 		self.assertEqual(rows[0]["cost"], 7.5)
 
+	def test_the_row_carries_the_product_title(self):
+		# Without it the promote dialog defaults the Item name to the manufacturer.
+		self.assertEqual(dist_api.catalog_by_upc(UPC)[0]["item_name"], "Test widget")
+
 	def test_an_unlisted_or_blank_upc_is_empty(self):
 		self.assertEqual(dist_api.catalog_by_upc("9999999999999"), [])
 		self.assertEqual(dist_api.catalog_by_upc(""), [])
@@ -41,3 +45,13 @@ class PickerFallsBackToTheCatalog(FrappeTestCase):
 		scan = block(src, "_scan() {", "\t")
 		self.assertIn("ffl_integrations.distributor.api.catalog_by_upc", scan)
 		self.assertLess(scan.index("catalog_by_upc"), scan.index("_openPromote"))
+
+	def test_promote_dialog_leaves_the_item_code_to_the_server_unless_changed(self):
+		# An explicit item_code skips the promoters' lookup of an Item already
+		# carrying the UPC as a barcode; the dialog shows the server's default
+		# (UPC, else SKU) and sends a code only when the operator changed it.
+		src = code_only(read("ffl_core", "public", "js", "ffl_core.bundle.js"))
+		promote = block(src, "_openPromote(row) {", "\t")
+		self.assertIn("const codeDefault = row.upc || row.sku;", promote)
+		self.assertIn("default: codeDefault", promote)
+		self.assertIn("item_code: values.item_code !== codeDefault ? values.item_code : undefined", promote)

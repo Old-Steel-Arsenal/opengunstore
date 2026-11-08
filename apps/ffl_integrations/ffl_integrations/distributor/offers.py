@@ -95,8 +95,11 @@ def offers_for(*, upc, houses=None) -> list:
 	found = {}
 	try:
 		product = catalog.product(upc, in_houses=[h for h in houses if h["name"] in covered])
+		# An offer carries no name of its own: the product's title rides on each,
+		# or the receive-time promote dialog names the Item after the manufacturer.
+		name = (product or {}).get("description") or ""
 		for offer in (product or {}).get("offers") or []:
-			found.setdefault(offer["distributor"], offer)
+			found.setdefault(offer["distributor"], {**offer, "item_name": name})
 	except remote_catalog.DataServiceUnavailable:
 		pass
 	except Exception:  # noqa: BLE001 — a malformed answer is logged, the scan goes on
