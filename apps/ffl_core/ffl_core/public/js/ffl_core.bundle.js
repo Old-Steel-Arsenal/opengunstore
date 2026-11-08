@@ -437,7 +437,7 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 			size: 'small',
 			fields: [
 				{ fieldtype: 'HTML', fieldname: 'preview' },
-				{ label: __('Item Code (SKU)'), fieldname: 'item_code', fieldtype: 'Data', reqd: 1, default: row.sku },
+				{ label: __('Item Code'), fieldname: 'item_code', fieldtype: 'Data', reqd: 1, default: row.upc || row.sku },
 				{ label: __('Item Name'), fieldname: 'item_name', fieldtype: 'Data', default: itemName },
 				{ label: __('Item Group'), fieldname: 'item_group', fieldtype: 'Link', options: 'Item Group',
 					description: __('Leave blank to use the catalog\'s category.') },
