@@ -46,8 +46,12 @@ class PickerFallsBackToTheCatalog(FrappeTestCase):
 		self.assertIn("ffl_integrations.distributor.api.catalog_by_upc", scan)
 		self.assertLess(scan.index("catalog_by_upc"), scan.index("_openPromote"))
 
-	def test_promote_dialog_defaults_the_item_code_to_the_upc(self):
-		# Same identity chain as the server promoters: UPC first, SKU for orphans.
+	def test_promote_dialog_leaves_the_item_code_to_the_server_unless_changed(self):
+		# An explicit item_code skips the promoters' lookup of an Item already
+		# carrying the UPC as a barcode; the dialog shows the server's default
+		# (UPC, else SKU) and sends a code only when the operator changed it.
 		src = code_only(read("ffl_core", "public", "js", "ffl_core.bundle.js"))
 		promote = block(src, "_openPromote(row) {", "\t")
-		self.assertIn("fieldname: 'item_code', fieldtype: 'Data', reqd: 1, default: row.upc || row.sku", promote)
+		self.assertIn("const codeDefault = row.upc || row.sku;", promote)
+		self.assertIn("default: codeDefault", promote)
+		self.assertIn("item_code: values.item_code !== codeDefault ? values.item_code : undefined", promote)
