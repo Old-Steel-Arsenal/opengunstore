@@ -14,6 +14,8 @@ For each received mail of an in-scope account, in order (:func:`decide`):
    To / Cc / Bcc only), so a group's mail is recognised by its To / Cc;
 3. team mail whose address another (enabled) Email Account collects: skipped, the collector keeps it;
 4. a reply in a thread Frappe already linked: kept as linked;
+   one of our own notices (a new-order mail from the store's website) that Frappe filed under the
+   customer in its Reply-To: skipped (:func:`_store_notice`);
    from a Customer's contact: on that contact's open deal (``crm.deals``; owned by the mailbox's user
    for direct mail, no owner for team mail);
    team mail from a domain in the category rules, a blocked domain, one of our own domains, or an
@@ -277,6 +279,20 @@ def _team_row(doc, account: str):
 	return None, False
 
 
+def _store_notice(doc, email: str) -> bool:
+	"""A notice our own website sent with the customer in Reply-To (a new-order or cancelled-order
+	mail). Frappe files received mail under the Reply-To address (``InboundMail.set_from``), so it
+	reads as the customer writing, and Communication keeps no From header. What is left of the real
+	sender is the display name: a company's name of ours over an address outside our domains.
+	Kept as other mail it would make a lead under the customer's address that hides their real mail.
+	lazy: matches the Company name only, so it misses a store whose website mails under another name;
+	upgrade path: a "website sender names" list in Lead Mail Settings."""
+	name = (doc.get("sender_full_name") or "").strip().lower()
+	if not name or _in(email.rsplit("@", 1)[-1], domain_lines(frappe.get_cached_doc(SETTINGS).own_domains)):
+		return False
+	return name in {(c or "").strip().lower() for c in frappe.get_all("Company", pluck="company_name")}
+
+
 def decide(doc) -> tuple | None:
 	"""What to do with a received mail: None (not ours to touch), ("skip", reason), ("keep", row) as
 	Frappe linked it, ("deal", contact, owner, row), ("lead", existing lead or None, row) or ("other",
@@ -299,6 +315,8 @@ def decide(doc) -> tuple | None:
 	email = (email or "").strip().lower()
 	if "@" not in email:
 		return (SKIP, "no sender address")
+	if _store_notice(doc, email):
+		return (SKIP, "our own notice")
 	contact = _customer_contact(email)
 	if contact:
 		return ("deal", contact, None if row else _mailbox_user(account), row)
@@ -485,6 +503,10 @@ def _route_logged(doc, decision, screened: bool = False) -> None:
 	frappe.db.savepoint(_SAVEPOINT)
 	try:
 		route(doc, decision, screened)
+	except frappe.QueryDeadlockError:
+		# The database dropped the whole transaction, the savepoint with it: the caller may try again.
+		frappe.db.rollback()
+		raise
 	except Exception:
 		frappe.db.rollback(save_point=_SAVEPOINT)
 		doc.reference_doctype = doc.reference_name = None   # as stored again
@@ -516,8 +538,16 @@ def screen_new_sender(communication: str) -> None:
 			return
 		email = parse_addr(sender)[1].strip().lower()
 		with filelock("ffl_crm_mail_screen_" + hashlib.md5(email.encode()).hexdigest(), timeout=120):
-			commit()   # a fresh snapshot: what the job that held the lock before us wrote is visible
-			_screen(communication)
+			for attempt in range(2):
+				commit()   # a fresh snapshot: what the job that held the lock before us wrote is visible
+				try:
+					_screen(communication)
+					break
+				except frappe.QueryDeadlockError:
+					# Another sender's job took the same row (the lead number) first; once more, so
+					# the verdict is not lost to the fallback below.
+					if attempt:
+						raise
 	except Exception:
 		frappe.log_error(title=f"[{TITLE}] Mail screening failed: {communication}", message=frappe.get_traceback())
 		try:
@@ -532,6 +562,10 @@ def _screen(communication: str) -> None:
 	decision = decide(doc)
 	if decision and decision[0] == "lead" and not decision[1]:
 		answer = _ask_providers(_mail_for_providers(doc, decision[2].address))
+		# A provider can take seconds. Rows another job wrote meanwhile (the lead number) must not be
+		# locked from the snapshot taken before: MariaDB refuses that (1020) and drops the transaction.
+		# Only reads came before, so nothing of ours is committed early.
+		commit()
 		if answer and not answer["customer"]:
 			doc.add_comment("Info", _judged(answer))
 			_route_logged(doc, ("other", _answer_category(answer), decision[2]), screened=True)
@@ -591,7 +625,8 @@ def _ask_providers(mail: dict) -> dict | None:
 			frappe.log_error(title=f"{SCREEN_HOOK} provider failed: {hook}")
 			continue
 		if isinstance(answer, dict) and answer.get("customer") is False:
-			return answer
+			verdict = answer
+			break
 		if isinstance(answer, dict) and answer.get("customer") is True:
 			verdict = answer
 	return verdict
@@ -602,7 +637,9 @@ def _judged(answer: dict) -> str:
 
 
 def _answer_category(answer: dict) -> str:
-	return (answer.get("category") or "other").capitalize()
+	"""The provider's category as the store spells it: "ffl" files under an existing "FFL"."""
+	category = answer.get("category") or "other"
+	return frappe.db.get_value(CATEGORY, category) or category.capitalize()
 
 
 def check_spam_folders():
@@ -685,6 +722,7 @@ def _judge_spam_mail(raw: bytes, email_account) -> bool:
 		answer = _ask_providers({"communication": "", "sender": sender, "sender_name": mail.from_real_name or "",
 			"to": sorted(_addresses(data)), "subject": mail.subject or "",
 			"body": html_to_plain_text(mail.content or "")[:SCREEN_BODY_LIMIT], "team_address": email_account.email_id})
+		commit()   # a fresh snapshot after the slow call, as in _screen
 		if not answer:
 			return False
 		if not answer["customer"] and answer.get("category") == SPAM:
@@ -695,6 +733,10 @@ def _judge_spam_mail(raw: bytes, email_account) -> bool:
 		mail.process()
 	except SentEmailInInboxError:
 		frappe.db.rollback(save_point="ffl_crm_spam")
+	except frappe.QueryDeadlockError:
+		# The transaction is gone (the savepoint with it): not finished, the next run tries it again.
+		frappe.db.rollback()
+		return False
 	except Exception:
 		frappe.db.rollback(save_point="ffl_crm_spam")
 		raise

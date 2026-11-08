@@ -58,3 +58,13 @@ A sale rung at the register does not reach the deal. Mark that deal **Won** by h
 ## Web orders on the deal
 
 While the link is on, a customer's web orders leave notes on their open deal, on the deal's **Notes** tab: placed, shipped or picked up, cancelled, and refunded, each with its amount. A note changes nothing on the deal: its value and status follow POS invoices only. A customer with no open deal gets no note and no new deal.
+
+## When a web order's payment fails
+
+While the link is on, a web order whose payment failed, or that was cancelled without ever being paid, goes on the customer's open deal. A customer with no open deal gets one.
+
+The deal's **Notes** tab gets a note with the amount, the items, and the link where the customer can pay the order. The deal gets one task, "Payment failed on web order", to contact the customer. If the deal has an owner, the task is theirs.
+
+A second failed payment adds to the same task. Nothing is emailed to the customer.
+
+The task is marked **Done**, with a note on the deal, when the customer's next web order is paid or an invoice is made from the deal.

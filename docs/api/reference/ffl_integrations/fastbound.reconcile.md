@@ -45,7 +45,7 @@ and the Dashboard lists it until it lands; a comment records who cleared it.
 
 **Returns:** {ok: True, doctype, name}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:380`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:401`</sub>
 
 ## `compute_serial_fb_diff`
 
@@ -138,7 +138,7 @@ the way a successful push would.
 
 **Returns:** {ok: True, fastbound_id, fb_item_id, fb_item_number, serial_repointed}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:408`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:430`</sub>
 
 ## `retry_disposition_push`
 
@@ -181,7 +181,7 @@ waiting, and the default four attempts with back-off can hold the desk for
 
 **Permissions:** Inventory roles (same gate as :func:`reconcile_record_to_fastbound`).
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:506`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:529`</sub>
 
 ## `scan_in_stock_fb_diffs`
 

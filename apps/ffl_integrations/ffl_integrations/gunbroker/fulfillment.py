@@ -319,7 +319,9 @@ def order_stage(order) -> str:
 		return STAGE_AWAITING_PAYMENT
 	if (order.order_status or "") != "Transferred":
 		return STAGE_READY_TO_DISPOSE
-	if not shipstation_pushed(*_shipment(order, _invoice_row(order.sales_invoice))):
+	# A label bought outside the POS shipment (Enter tracking) is shipped too.
+	if not order.get("tracking_pushed_at") and not shipstation_pushed(
+			*_shipment(order, _invoice_row(order.sales_invoice))):
 		return STAGE_AWAITING_SHIP
 	return STAGE_SHIPPED
 
@@ -1739,6 +1741,57 @@ def push_tracking_now(gunbroker_order: str) -> dict:
 	from ffl_integrations.gunbroker import shipping
 
 	return shipping.push_tracking(gunbroker_order)
+
+
+@frappe.whitelist()
+def enter_gb_tracking(gunbroker_order: str, tracking_number: str) -> dict:
+	"""Send GunBroker the tracking number of a label bought outside the POS shipment.
+
+	For a label bought on an order staff built in ShipStation by hand: the
+	POS's own shipment has no label, so the poll has nothing to find. The
+	number must belong to a live (not voided) ShipStation label — that is
+	still the "a label was bought" fact the write-back waits for — and it is
+	then sent the same way the poll sends one.
+
+	Args:
+	    gunbroker_order: GunBroker Order name (disposed, invoice posted).
+	    tracking_number: The tracking number on the label.
+
+	Returns:
+	    push_tracking's result: {ok, tracking_number, carrier, steps, ...}.
+
+	Permissions:
+	    Counter roles.
+	"""
+	frappe.only_for(_ROLES)
+	from ffl_integrations.gunbroker import shipping
+	from ffl_integrations.shipstation.client import ShipStationClient, ShipStationError
+
+	tracking = (tracking_number or "").strip()
+	if not tracking:
+		frappe.throw(_("Enter the tracking number."))
+	order = frappe.get_doc(shipping.ORDER_DOCTYPE, gunbroker_order)
+	if (order.order_status or "") != "Transferred" \
+			or _invoice_row(order.sales_invoice).get("docstatus") != 1:
+		frappe.throw(_("Dispose this order and post its invoice first."))
+	if order.tracking_pushed_at:
+		frappe.throw(_("GunBroker already has tracking {0} for this order.").format(
+			order.tracking_number))
+	# A live label proves a label was bought, not whose it is: the likeliest slip
+	# is pasting the next order's number, so refuse one another order already has.
+	other = frappe.db.get_value(shipping.ORDER_DOCTYPE,
+		{"tracking_number": tracking, "name": ("!=", order.name)}, "gb_order_id")
+	if other:
+		frappe.throw(_("Tracking {0} is already on GunBroker order {1}.").format(tracking, other))
+	try:
+		live = ShipStationClient.from_settings().labels_for_tracking(tracking)
+	except ShipStationError as exc:
+		frappe.throw(_("Could not check the label in ShipStation: {0}").format(exc))
+	if not live:
+		frappe.throw(_("ShipStation has no live label with tracking {0}. Check the number.").format(tracking))
+	frappe.db.set_value(shipping.ORDER_DOCTYPE, order.name, "tracking_number", tracking,
+		update_modified=False)
+	return shipping.push_tracking(order.name)
 
 
 @frappe.whitelist()

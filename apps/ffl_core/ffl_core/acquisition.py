@@ -150,16 +150,19 @@ def _existing(item_code: str, serial: str) -> str | None:
 	serial can't be cycle-judged at all (it would match other guns' blank-
 	serial dispositions), so it keeps the plain pre-cycle dedupe.
 	"""
-	row = frappe.db.get_value(
-		"FFL Acquisition",
-		{"item": item_code, "serial": serial, "docstatus": 1},
+	from ffl_core.firearm import on_book_acquisitions
+
+	# An acquisition marked [NOT A&D] (an antique booked by mistake) is no stay at all:
+	# an antique sale writes no disposition, so counting it would refuse the gun's
+	# return as a trade-in forever.
+	row = next(iter(on_book_acquisitions(
+		{"item": item_code, "serial": serial},
 		["name", "acquisition_date"],
-		as_dict=True,
 		# creation tiebreaks equal acquisition_dates (date-only backfills,
 		# same-second double-writes) — without it MariaDB picks a row at
 		# random and could hand back the CLOSED cycle's record.
 		order_by="acquisition_date desc, creation desc",
-	)
+	)), None)
 	if not row:
 		return None
 	if not (serial or "").strip():

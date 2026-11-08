@@ -22,7 +22,7 @@ Make a new accessory / ammo / parts Item from the Trade-in dialog, for something
 
 **Permissions:** roles.TRADE_IN_ROLES, like the trade-in itself: the counter takes in what the seller brings. Only a non-serialized, non-firearm stock Item can be made here; any other Item stays a stock job (receive_goods.create_item).
 
-<sub>`apps/ffl_core/ffl_core/api/trade_in.py:357`</sub>
+<sub>`apps/ffl_core/ffl_core/api/trade_in.py:370`</sub>
 
 ## `create_trade_in_intake`
 
@@ -44,6 +44,10 @@ unless Cash) is required. The gun is received on a Purchase Receipt from
 the seller, dated today, and the payment booked with it (Dr Stock Received
 But Not Billed / Cr Cash or the bank) so the cash drawer count includes it
 (_buy_now).
+
+An antique (payload.is_antique, a pre-1899 receiver) never enters the bound book: it is filed under an antique
+Item (a new one for this gun, or a chosen antique Item), with credit parked as a draft Material Receipt its credit
+line locks to (_park_antique), paid now as an antique line on the seller's receipt.
 
 Accessories / ammo (payload.accessories, [{item_code, qty, rate}] with
 rate the per-unit value) come in alone (has_firearm 0) or with the gun:
@@ -83,4 +87,4 @@ saves retyping.
 
 **Returns:** {source_first_name, source_middle_name, source_last_name, source_suffix, source_address_line1, ...} or {} when unknown.
 
-<sub>`apps/ffl_core/ffl_core/api/trade_in.py:511`</sub>
+<sub>`apps/ffl_core/ffl_core/api/trade_in.py:614`</sub>

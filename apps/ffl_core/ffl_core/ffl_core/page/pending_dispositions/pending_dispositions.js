@@ -763,7 +763,8 @@ class PendingDispositionsApp {
 						${isPickup && !pickupInvoice ? `<button class="btn btn-primary btn-sm btn-pickup" ${pickupBlock ? 'disabled' : ''}>${__('Pickup')}</button>` : ''}
 						${pickupInvoice ? `<a class="btn btn-default btn-sm" href="/app/pos-invoice/${encodeURIComponent(pickupInvoice)}">${__('Open counter order')}</a>` : ''}
 						${needsGbInvoice ? `<button class="btn btn-primary btn-sm btn-gb-invoice">${__('Create Invoice')}</button>
-							<div class="meta">${__('Disposed, but the invoice did not post. Create it to ship.')}</div>` : ''}
+							<div class="meta">${__('Disposed, but the invoice did not post. Create it, then Ship from here — a label bought on an order built in ShipStation by hand never reaches GunBroker.')}</div>` : ''}
+						${(isGb && row.disposed && !needsGbInvoice) ? `<button class="btn btn-default btn-sm btn-gb-tracking">${__('Enter tracking')}</button>` : ''}
 						${canShip ? `<button class="btn ${row.disposed ? 'btn-primary' : 'btn-default'} btn-sm btn-ship" ${shipDisabled ? 'disabled' : ''}>${__('Ship')}</button>` : ''}
 						${canMarkShipped ? `<button class="btn btn-default btn-sm btn-mark-shipped">${noAddress ? __('Mark Picked Up') : __('Mark Shipped (no ShipStation)')}</button>` : ''}
 						${(can.edit && !row.has_disposition && !row.ship_pushed) ? `<button class="btn btn-default btn-sm btn-edit-order">${__('Edit')}</button>` : ''}
@@ -786,6 +787,7 @@ class PendingDispositionsApp {
 			$card.find('.btn-pay').on('click', () => this._recordPayment(row));
 			$card.find('.btn-gb-paid').on('click', () => this._recordPayment(row));
 			$card.find('.btn-gb-invoice').on('click', () => this._createGbInvoice(row));
+			$card.find('.btn-gb-tracking').on('click', () => this._enterGbTracking(row));
 			$card.find('.btn-edit-order').on('click', () => frappe.set_route('create-order', 'edit', row.sales_invoice));
 			$card.find('.btn-cancel-order').on('click', () => this._confirmCancel(row));
 			// Model-level units (GunBroker): delegated, because there is one
@@ -1107,6 +1109,30 @@ class PendingDispositionsApp {
 				this._load();
 			},
 		});
+	}
+
+	// A label bought on an order built in ShipStation by hand: the POS shipment
+	// has none, so the poll never finds it. The server checks the number against
+	// a live ShipStation label before anything goes to GunBroker.
+	_enterGbTracking(row) {
+		frappe.prompt([{ fieldname: 'tracking_number', fieldtype: 'Data', reqd: 1,
+			label: __('Tracking number'),
+			description: __('From the label bought in ShipStation. It is sent to GunBroker.') }],
+		(v) => frappe.call({
+			method: 'ffl_integrations.gunbroker.fulfillment.enter_gb_tracking',
+			args: { gunbroker_order: row.gunbroker_order, tracking_number: v.tracking_number },
+			freeze: true, freeze_message: __('Sending tracking to GunBroker…'),
+			callback: (r) => {
+				const res = r.message || {};
+				frappe.show_alert({
+					message: res.ok
+						? __('Tracking {0} is on GunBroker.', [res.tracking_number])
+						: __('Not sent: {0}', [res.detail || res.reason || __('see the order')]),
+					indicator: res.ok ? 'green' : 'orange',
+				}, 7);
+				this._load();
+			},
+		}), __('Enter tracking — GunBroker #{0}', [row.gb_order_id]), __('Send'));
 	}
 
 	// GunBroker's own "payment received" flag is a click on their website, so it

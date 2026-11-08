@@ -231,6 +231,8 @@ doc_events = {
 	},
 	# Dealer parties: keep license fields synced from the linked ATF FFL
 	# Record (and backfill the link from a bare matching ffl_number).
+	# A primary Contact's email / mobile edited on the Contact reach its customers' form fields.
+	"Contact": {"on_update": "ffl_core.customer_contact.contact_changed"},
 	"Customer": {
 		# Individual name parts ↔ Customer Name (customer_name.py): compose
 		# before autoname takes the docname, and again on every save.
@@ -241,6 +243,8 @@ doc_events = {
 			# Status / ban reason, the Store Customer ID Numbers switch (blanks
 			# DOB + ID numbers when off), one-level family (customer_profile.py).
 			"ffl_core.customer_profile.validate_customer",
+			# Email / Phone typed on the form → the primary Contact (customer_contact.py).
+			"ffl_core.customer_contact.sync_email_phone",
 		],
 		# An ID document's attachment is always a private file.
 		"on_update": "ffl_core.customer_profile.privatize_id_attachments",

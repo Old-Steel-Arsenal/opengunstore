@@ -32,6 +32,9 @@ from ffl_core.utils import commit
 TRADE_IN_CREDIT_ITEM = "TRADE-IN-CREDIT"
 TRADE_IN_STOCK_ENTRY_FIELD = "ffl_trade_in_stock_entry"
 TRADE_IN_SELLER_FIELD = "ffl_trade_in_customer"
+# An antique gun taken in trade on credit is parked on such a receipt too (no bound book): its per-gun facts wait
+# here as JSON until checkout stamps them on the new Serial No (trade_in._park_antique, trade_in_credit._book_accessories).
+TRADE_IN_STAMP_FIELD = "ffl_trade_in_stamp"
 
 # Taxable leaf group from the canonical taxonomy (setup/item_groups.py) —
 # see module docstring for why this must NOT be "Service".
@@ -71,6 +74,9 @@ _STOCK_ENTRY_FIELDS = {
 	"Stock Entry": [{
 		"fieldname": TRADE_IN_SELLER_FIELD, "fieldtype": "Link", "options": "Customer",
 		"label": "Trade-in From", "read_only": 1, "no_copy": 1, "insert_after": "stock_entry_type",
+	}, {
+		"fieldname": TRADE_IN_STAMP_FIELD, "fieldtype": "Long Text", "label": "Trade-in Antique Details",
+		"read_only": 1, "hidden": 1, "no_copy": 1, "insert_after": TRADE_IN_SELLER_FIELD,
 	}],
 }
 

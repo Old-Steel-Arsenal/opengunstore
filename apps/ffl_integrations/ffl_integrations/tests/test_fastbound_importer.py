@@ -456,6 +456,43 @@ class FastBoundImporter(FrappeTestCase):
 		self.assertEqual(frappe.db.get_value("FFL Acquisition", acq_before, "item"), target)
 		self.assertEqual(frappe.db.get_value("Serial No", gun["serial"], "fastbound_item_id"), fbid_before)
 
+	def test_reassign_to_antique_item_skips_off_book_acquisitions(self):
+		"""A serial whose only A&D record is marked [NOT A&D] (an antique booked by
+		mistake, its FastBound record deleted) can move to an antique Item. A normal
+		submitted acquisition, or a FastBound id on the serial, still blocks it."""
+		from ffl_core.firearm import NOT_IN_BOOK_PREFIX
+		sfx = self._testMethodName
+		gun = {
+			"id": f"fb-ob-{sfx}", "serial": f"OB-{sfx}", "manufacturer": "Loewe",
+			"model": "Gew88", "caliber": "8MM", "type": "Rifle",
+			"acquireType": "Individual", "acquireDate": "2026-04-01T10:00:00Z",
+			"acquisitionCost": 300.0,
+		}
+		with self._patch_client([[gun]]):
+			importer.import_bound_book(commit_each=0, aggregate_by="model")
+		target = f"OB-ANT-{sfx}"
+		if not frappe.db.exists("Item", target):
+			frappe.get_doc({
+				"doctype": "Item", "item_code": target, "item_name": target,
+				"item_group": "Used Firearm", "stock_uom": "Nos",
+				"is_stock_item": 1, "has_serial_no": 1, "is_firearm": 1, "is_antique": 1,
+			}).insert(ignore_permissions=True)
+		acq = frappe.db.get_value("FFL Acquisition", {"fastbound_id": gun["id"], "docstatus": 1}, "name")
+
+		# FastBound id on the serial: on the books, blocked.
+		with self.assertRaisesRegex(frappe.ValidationError, "bound book"):
+			importer.reassign_serial_to_item(gun["serial"], target)
+		# FastBound record deleted, acquisition still live: blocked.
+		frappe.db.set_value("Serial No", gun["serial"], "fastbound_item_id", "", update_modified=False)
+		with self.assertRaisesRegex(frappe.ValidationError, "bound book"):
+			importer.reassign_serial_to_item(gun["serial"], target)
+		# Acquisition marked off the bound book: allowed.
+		frappe.db.set_value("FFL Acquisition", acq, "fastbound_sync_error",
+			NOT_IN_BOOK_PREFIX + "antique booked by mistake", update_modified=False)
+		result = importer.reassign_serial_to_item(gun["serial"], target)
+		self.assertEqual(result["to"], target)
+		self.assertEqual(frappe.db.get_value("Serial No", gun["serial"], "item_code"), target)
+
 	def test_reassign_receives_the_gun_at_the_value_it_left_at(self):
 		"""A cost typed on the Serial No form after the receipt leaves purchase_rate off the
 		ledger. Reassign must carry the gun across at its ledger value, so the two legs net to

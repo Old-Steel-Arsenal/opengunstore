@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenGunstore API",
-    "version": "0.7.1",
+    "version": "0.7.2",
     "description": "RPC API of the OpenGunstore custom apps (Frappe/ERPNext v16): ffl_core, ffl_integrations, ffl_woo_sync.\n\nAll endpoints are Frappe *whitelisted methods* invoked as `/api/method/<dotted.path>`. Unless an endpoint declares explicit HTTP verbs, it is documented here as POST (Frappe also accepts GET for read-only calls; always POST mutations). Arguments may be sent as JSON body, form data, or query string — JSON body is recommended.\n\nEvery operation carries an **Auth (derived from code)** line statically resolved from the role gate the function actually executes; the prose Permissions note adds semantics the machine can't infer.\n\nStandard CRUD on DocTypes is served by Frappe's REST layer (`/api/resource/<DocType>`) — see docs/api/frappe-rest.md; the custom DocTypes are modelled under components.schemas and listed in reference/doctypes.md."
   },
   "servers": [
@@ -5779,6 +5779,14 @@
           "outbound_webhook_secret": {
             "type": "string",
             "description": "Outbound status webhook secret"
+          },
+          "send_customer_events": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Send customer emails to the shop"
           },
           "auto_sync_enabled": {
             "type": "integer",
@@ -13138,7 +13146,7 @@
           "ffl_core"
         ],
         "summary": "Make a new accessory / ammo / parts Item from the Trade-in dialog, for something the store has never stocked.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Stock Manager / System Manager\n\n**Permissions:** roles.TRADE_IN_ROLES, like the trade-in itself: the counter takes in what the seller brings. Only a non-serialized, non-firearm stock Item can be made here; any other Item stays a stock job (receive_goods.create_item).\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:357`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Stock Manager / System Manager\n\n**Permissions:** roles.TRADE_IN_ROLES, like the trade-in itself: the counter takes in what the seller brings. Only a non-serialized, non-firearm stock Item can be made here; any other Item stays a stock job (receive_goods.create_item).\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:370`",
         "operationId": "ffl_core.api.trade_in.create_accessory_item",
         "responses": {
           "200": {
@@ -13198,7 +13206,7 @@
           "ffl_core"
         ],
         "summary": "Create a Used Firearm Item + FFL Acquisition for an individual trade-in.",
-        "description": "With payload.apply_credit truthy, the acquisition is parked as a DRAFT\n(booked at checkout submit) and the result carries `credit` — a locked\nnegative TRADE-IN-CREDIT line payload for the POS cart. Re-running the\ndialog for a serial that already has a pending draft refreshes that\ndraft (new cost honoured) instead of duplicating it.\n\nWithout apply_credit the store buys the gun and pays the seller now:\npayload.payout_method (Cash / Zelle / Check / ACH, and payout_reference\nunless Cash) is required. The gun is received on a Purchase Receipt from\nthe seller, dated today, and the payment booked with it (Dr Stock Received\nBut Not Billed / Cr Cash or the bank) so the cash drawer count includes it\n(_buy_now).\n\nAccessories / ammo (payload.accessories, [{item_code, qty, rate}] with\nrate the per-unit value) come in alone (has_firearm 0) or with the gun:\nwith apply_credit a draft Material Receipt and a credit line of their own\n(_park_accessories), without it lines on the same paid receipt.\n\n**Auth (derived from code):** Roles: Sales User / Stock Manager / System Manager\n\n**Permissions:** roles.TRADE_IN_ROLES: the counter's sales role plus the stock roles; holding only the sales manager role is refused. Gated at entry, covering BOTH branches — the refresh branch (_refresh_pending_draft) rewrites A&D draft seller identity/cost and historically ran ungated (endpoint-gates hardening, 2026-08-07). A caller without a stock role files the gun under no Item (one is made for this gun) or an existing per-gun priced firearm Item (_check_counter_item); making or choosing any other Item stays a stock job. Everything behind the gate runs gate-free (firearm_intake.create_intake, receive_goods._create_receive), each of our writes with ignore_permissions; the ERPNext-internal checks against the session user (the gun's stock bundle) rest on the DocPerm setup/pos_compat.ROLE_GRANTS gives the counter.\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:116`",
+        "description": "With payload.apply_credit truthy, the acquisition is parked as a DRAFT\n(booked at checkout submit) and the result carries `credit` — a locked\nnegative TRADE-IN-CREDIT line payload for the POS cart. Re-running the\ndialog for a serial that already has a pending draft refreshes that\ndraft (new cost honoured) instead of duplicating it.\n\nWithout apply_credit the store buys the gun and pays the seller now:\npayload.payout_method (Cash / Zelle / Check / ACH, and payout_reference\nunless Cash) is required. The gun is received on a Purchase Receipt from\nthe seller, dated today, and the payment booked with it (Dr Stock Received\nBut Not Billed / Cr Cash or the bank) so the cash drawer count includes it\n(_buy_now).\n\nAn antique (payload.is_antique, a pre-1899 receiver) never enters the bound book: it is filed under an antique\nItem (a new one for this gun, or a chosen antique Item), with credit parked as a draft Material Receipt its credit\nline locks to (_park_antique), paid now as an antique line on the seller's receipt.\n\nAccessories / ammo (payload.accessories, [{item_code, qty, rate}] with\nrate the per-unit value) come in alone (has_firearm 0) or with the gun:\nwith apply_credit a draft Material Receipt and a credit line of their own\n(_park_accessories), without it lines on the same paid receipt.\n\n**Auth (derived from code):** Roles: Sales User / Stock Manager / System Manager\n\n**Permissions:** roles.TRADE_IN_ROLES: the counter's sales role plus the stock roles; holding only the sales manager role is refused. Gated at entry, covering BOTH branches — the refresh branch (_refresh_pending_draft) rewrites A&D draft seller identity/cost and historically ran ungated (endpoint-gates hardening, 2026-08-07). A caller without a stock role files the gun under no Item (one is made for this gun) or an existing per-gun priced firearm Item (_check_counter_item); making or choosing any other Item stays a stock job. Everything behind the gate runs gate-free (firearm_intake.create_intake, receive_goods._create_receive), each of our writes with ignore_permissions; the ERPNext-internal checks against the session user (the gun's stock bundle) rest on the DocPerm setup/pos_compat.ROLE_GRANTS gives the counter.\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:116`",
         "operationId": "ffl_core.api.trade_in.create_trade_in_intake",
         "responses": {
           "200": {
@@ -13245,7 +13253,7 @@
           "ffl_core"
         ],
         "summary": "Prefill for the POS Trade-in dialog's seller section.",
-        "description": "A best-effort structured-name split of the Customer (generational\nsuffix pulled out even mid-name — 'pat lee IV Sampleton' →\nfirst pat, middle lee, last Sampleton, suffix IV) plus their\nprimary address as a single line ('addr1, City ST zip' — the shape the\nFastBound push parses). Everything is editable in the dialog; this only\nsaves retyping.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:511`",
+        "description": "A best-effort structured-name split of the Customer (generational\nsuffix pulled out even mid-name — 'pat lee IV Sampleton' →\nfirst pat, middle lee, last Sampleton, suffix IV) plus their\nprimary address as a single line ('addr1, City ST zip' — the shape the\nFastBound push parses). Everything is editable in the dialog; this only\nsaves retyping.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:614`",
         "operationId": "ffl_core.api.trade_in.seller_defaults",
         "responses": {
           "200": {
@@ -13293,7 +13301,7 @@
           "ffl_core"
         ],
         "summary": "Which Pending Order rows belong to a Banned customer, for the page's red badge.",
-        "description": "A web or GunBroker order is booked to a customer only once it has shipped, so\nits buyer is looked up the way that booking will: a Woo order by its billing\nemail (customer email, then merged-email alias); a GunBroker order by its linked\ncustomer, then the buyer's GunBroker id (field, then alias), then email.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:358`",
+        "description": "A web or GunBroker order is booked to a customer only once it has shipped, so\nits buyer is looked up the way that booking will: a Woo order by its billing\nemail (customer email, then merged-email alias); a GunBroker order by its linked\ncustomer, then the buyer's GunBroker id (field, then alias), then email.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:376`",
         "operationId": "ffl_core.customer_flags.banned_order_rows",
         "responses": {
           "200": {
@@ -13453,7 +13461,7 @@
           "ffl_core"
         ],
         "summary": "Existing customers a new one may duplicate, for the New Customer dialog.",
-        "description": "Matches the customer's email (or an email merged into it), mobile number\n(last 10 digits) and — while the store keeps ID numbers — an ID number.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:303`",
+        "description": "Matches the customer's email (or an email merged into it), mobile number\n(last 10 digits) and — while the store keeps ID numbers — an ID number.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:321`",
         "operationId": "ffl_core.customer_flags.find_possible_duplicates",
         "responses": {
           "200": {
@@ -13747,7 +13755,7 @@
           "ffl_core"
         ],
         "summary": "Return {item_code: [in-stock serial, ...]} so the POS 4473 dialog can offer",
-        "description": "a pick-list of real on-hand serials instead of free-typing one.\n\nEvery firearm has has_serial_no=1 and its serials live in the Serial No\ntable — Item.firearm_serial fallback was removed when the Used Firearm\npath was unified. Codes with nothing on hand map to [] so the caller can\nwarn + block the sale.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:599`",
+        "description": "a pick-list of real on-hand serials instead of free-typing one.\n\nEvery firearm has has_serial_no=1 and its serials live in the Serial No\ntable — Item.firearm_serial fallback was removed when the Used Firearm\npath was unified. Codes with nothing on hand map to [] so the caller can\nwarn + block the sale.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:611`",
         "operationId": "ffl_core.firearm.available_serials_for_items",
         "responses": {
           "200": {
@@ -13806,7 +13814,7 @@
           "ffl_core"
         ],
         "summary": "Like available_serials_for_items but enriches each serial with sell_price",
-        "description": "and purchase_rate (cost), sorted by sell_price ascending so the POS picks\nthe cheapest in-stock unit by default. Used by the POS Item Details serial\npicker to render a price-first dropdown.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1337`",
+        "description": "and purchase_rate (cost), sorted by sell_price ascending so the POS picks\nthe cheapest in-stock unit by default. Used by the POS Item Details serial\npicker to render a price-first dropdown.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1349`",
         "operationId": "ffl_core.firearm.available_serials_with_prices",
         "responses": {
           "200": {
@@ -13865,7 +13873,7 @@
           "ffl_core"
         ],
         "summary": "Return the subset of item_codes that are REGULATED firearms (antiques excluded).",
-        "description": "Called from POS JS to decide whether to surface the 4473 button / whether\nthe submit gate applies. Antique firearms (GCA-exempt) need no 4473, so\nthey are filtered out here — an antique-only cart looks like an accessories\ncart to the POS and completes without the charge-then-hold flow.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:413`",
+        "description": "Called from POS JS to decide whether to surface the 4473 button / whether\nthe submit gate applies. Antique firearms (GCA-exempt) need no 4473, so\nthey are filtered out here — an antique-only cart looks like an accessories\ncart to the POS and completes without the charge-then-hold flow.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:425`",
         "operationId": "ffl_core.firearm.firearm_items_in",
         "responses": {
           "200": {
@@ -13913,7 +13921,7 @@
           "ffl_core"
         ],
         "summary": "POS transfer-dialog config: the fee item + default per-firearm fee.",
-        "description": "Lazily creates the TRANSFER-FEE service item on first use — by the time the POS\nis live the site's UOM/Item-Group masters exist, unlike at install/migrate time\n(a fresh install runs hooks/patches before ERPNext's setup wizard). Mirrors\nreceive_goods.get_receive_sources for reading FFL Settings.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1473`",
+        "description": "Lazily creates the TRANSFER-FEE service item on first use — by the time the POS\nis live the site's UOM/Item-Group masters exist, unlike at install/migrate time\n(a fresh install runs hooks/patches before ERPNext's setup wizard). Mirrors\nreceive_goods.get_receive_sources for reading FFL Settings.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1485`",
         "operationId": "ffl_core.firearm.get_transfer_config",
         "responses": {
           "200": {
@@ -13943,7 +13951,7 @@
           "ffl_core"
         ],
         "summary": "Every in-stock firearm serial, for the POS customer-transfer picker.",
-        "description": "The two cart-driven pickers (available_serials_for_items, firearm_items_in)\nneed item_codes up front; a transfer starts before any gun is in the cart,\nso this returns the whole in-stock firearm set instead. Price is informational\n(picker label) — reuses the uniform/per-serial logic of\navailable_serials_with_prices; the transfer always adds the gun at $0.\n\nCustody guns are deliberately NOT excluded here (exclude_custody=False),\nunlike in the two SALE pickers. This dialog is how a customer's gun goes\nhome: hiding custody guns from it would strand every gun the custody\nwarehouse receives, which is the opposite of the point.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1532`",
+        "description": "The two cart-driven pickers (available_serials_for_items, firearm_items_in)\nneed item_codes up front; a transfer starts before any gun is in the cart,\nso this returns the whole in-stock firearm set instead. Price is informational\n(picker label) — reuses the uniform/per-serial logic of\navailable_serials_with_prices; the transfer always adds the gun at $0.\n\nCustody guns are deliberately NOT excluded here (exclude_custody=False),\nunlike in the two SALE pickers. This dialog is how a customer's gun goes\nhome: hiding custody guns from it would strand every gun the custody\nwarehouse receives, which is the opposite of the point.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1544`",
         "operationId": "ffl_core.firearm.in_stock_firearm_serials",
         "responses": {
           "200": {
@@ -13988,7 +13996,7 @@
           "ffl_core"
         ],
         "summary": "Per-item POS pricing summary — the single data source for the POS card",
-        "description": "price range, the add-to-cart rate seed, the picker's auto-pick decision and\nthe checkout gate.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1425`",
+        "description": "price range, the add-to-cart rate seed, the picker's auto-pick decision and\nthe checkout gate.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1437`",
         "operationId": "ffl_core.firearm.pos_pricing_summary",
         "responses": {
           "200": {
@@ -14036,7 +14044,7 @@
           "ffl_core"
         ],
         "summary": "Flip Serial No.needs_service AND keep the gunsmith ToDo queue in sync.",
-        "description": "Used by the Service Needed pill on the Item form's Serial Numbers tab.\nGoes through this single helper (instead of raw db.set_value on the client)\nso the ToDo create/close stays glued to the flag — toggling on creates a\nToDo, toggling off closes the matching Open ones.\n\nPermission gate: the helpers below elevate via flags.ignore_permissions /\nraw db.set_value to bypass ToDo/Serial No DocPerms (managers vs cashiers).\nWithout this gate, any logged-in user could flip needs_service on any\nserial — including silently closing a gunsmith's Open ToDo queue. Restrict\nto roles that already own Serial No writes.\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\n**Permissions:** Frappe write permission on Serial No (a DocType permission check, not a fixed role list — whichever roles carry Serial No write).\n\nSource: `apps/ffl_core/ffl_core/firearm.py:691`",
+        "description": "Used by the Service Needed pill on the Item form's Serial Numbers tab.\nGoes through this single helper (instead of raw db.set_value on the client)\nso the ToDo create/close stays glued to the flag — toggling on creates a\nToDo, toggling off closes the matching Open ones.\n\nPermission gate: the helpers below elevate via flags.ignore_permissions /\nraw db.set_value to bypass ToDo/Serial No DocPerms (managers vs cashiers).\nWithout this gate, any logged-in user could flip needs_service on any\nserial — including silently closing a gunsmith's Open ToDo queue. Restrict\nto roles that already own Serial No writes.\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\n**Permissions:** Frappe write permission on Serial No (a DocType permission check, not a fixed role list — whichever roles carry Serial No write).\n\nSource: `apps/ffl_core/ffl_core/firearm.py:703`",
         "operationId": "ffl_core.firearm.toggle_serial_service_need",
         "responses": {
           "200": {
@@ -18171,7 +18179,7 @@
           "ffl_integrations"
         ],
         "summary": "Import / re-sync the FastBound bound book into ERPNext.",
-        "description": "Re-running is a SYNC: already-imported guns (matched by FastBound id) are re-synced\nfrom FastBound, which stays authoritative. A corrected maker/importer re-stamps the\nSerial No; a corrected serial renames it (stock + A&D follow); a corrected\nmodel/caliber re-keys the gun onto the right Item (reverse + re-create). Every\nstructural fix is listed in `corrected`; a gun that can't be safely auto-moved\n(sold/transferred — not a clean in-stock import) is listed in `regroup_needed`.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/importer.py:93`",
+        "description": "Re-running is a SYNC: already-imported guns (matched by FastBound id) are re-synced\nfrom FastBound, which stays authoritative. A corrected maker/importer re-stamps the\nSerial No; a corrected serial renames it (stock + A&D follow); a corrected\nmodel/caliber re-keys the gun onto the right Item (reverse + re-create). Every\nstructural fix is listed in `corrected`; a gun that can't be safely auto-moved\n(sold/transferred — not a clean in-stock import) is listed in `regroup_needed`.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/importer.py:94`",
         "operationId": "ffl_integrations.fastbound.importer.import_bound_book",
         "responses": {
           "200": {
@@ -18236,7 +18244,7 @@
           "ffl_integrations"
         ],
         "summary": "Move one in-stock firearm serial from its current Item to `target_item`,",
-        "description": "keeping the SAME Serial No and FFL Acquisition records — so the gun's price,\nphotos, condition, maker/importer/model/caliber, A&D history and FastBound\nlinkage all survive (nothing is deleted, so nothing can be dropped).\n\nERPNext ties a serial to one Item, so the stock moves with two ledger legs:\nissue the serial out of the old Item, flip the serial's item_code, then receive\nit into the target. The A&D record's `item` is re-pointed in place. FastBound is\nNOT touched — reassign is a POS-internal re-bucketing; the bound book only changes\non an explicit serial edit. A per-gun WooCommerce listing, where the gun has one,\nIS delisted: it belonged to the old Item, and leaving it live sells the same rifle\ntwice. Whitelisted for the Serial No form's \"Reassign Item\" action, for resolving\nthe sync's `regroup_needed` list, and for the Woo webhook's declared cross-Item\npick (`ffl_woo_sync.woocommerce.tasks.rebucket_and_apply_serial_task`).\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/importer.py:330`",
+        "description": "keeping the SAME Serial No and FFL Acquisition records — so the gun's price,\nphotos, condition, maker/importer/model/caliber, A&D history and FastBound\nlinkage all survive (nothing is deleted, so nothing can be dropped).\n\nERPNext ties a serial to one Item, so the stock moves with two ledger legs:\nissue the serial out of the old Item, flip the serial's item_code, then receive\nit into the target. The A&D record's `item` is re-pointed in place. FastBound is\nNOT touched — reassign is a POS-internal re-bucketing; the bound book only changes\non an explicit serial edit. A per-gun WooCommerce listing, where the gun has one,\nIS delisted: it belonged to the old Item, and leaving it live sells the same rifle\ntwice. Whitelisted for the Serial No form's \"Reassign Item\" action, for resolving\nthe sync's `regroup_needed` list, and for the Woo webhook's declared cross-Item\npick (`ffl_woo_sync.woocommerce.tasks.rebucket_and_apply_serial_task`).\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/importer.py:331`",
         "operationId": "ffl_integrations.fastbound.importer.reassign_serial_to_item",
         "responses": {
           "200": {
@@ -18843,7 +18851,7 @@
           "ffl_integrations"
         ],
         "summary": "Undo :func:`mark_not_in_bound_book` — the record turned out to belong in the",
-        "description": "bound book after all. Its sync error is emptied, so the daily retry pushes it again\nand the Dashboard lists it until it lands; a comment records who cleared it.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:380`",
+        "description": "bound book after all. Its sync error is emptied, so the daily retry pushes it again\nand the Dashboard lists it until it lands; a comment records who cleared it.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:401`",
         "operationId": "ffl_integrations.fastbound.reconcile.clear_not_in_bound_book",
         "responses": {
           "200": {
@@ -19050,7 +19058,7 @@
           "ffl_integrations"
         ],
         "summary": "Link an already-booked POS record to an EXISTING FastBound record.",
-        "description": "For the divergence class where the bound book already carries the event\n(entered directly in FastBound, or a push that landed but lost its id) and\nthe POS record is stuck with a sync error: re-pushing would double-book, so\nthe fix is to adopt the FastBound record's id. fastbound_id is locked after\nsubmit on both doctypes — this endpoint is the sanctioned entrance (the\n2026-08-21 JV-return incident had to do all of this through a bench\nconsole).\n\nEverything is verified against FastBound LIVE before anything is written\n(fail-closed): the ref must resolve to a real item whose serial matches the\nrecord's, and a Disposition additionally requires the item to actually be\ndisposed. An acquisition reconcile also repoints Serial No.fastbound_item_id\nthe way a successful push would.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:408`",
+        "description": "For the divergence class where the bound book already carries the event\n(entered directly in FastBound, or a push that landed but lost its id) and\nthe POS record is stuck with a sync error: re-pushing would double-book, so\nthe fix is to adopt the FastBound record's id. fastbound_id is locked after\nsubmit on both doctypes — this endpoint is the sanctioned entrance (the\n2026-08-21 JV-return incident had to do all of this through a bench\nconsole).\n\nEverything is verified against FastBound LIVE before anything is written\n(fail-closed): the ref must resolve to a real item whose serial matches the\nrecord's, and a Disposition additionally requires the item to actually be\ndisposed. An acquisition reconcile also repoints Serial No.fastbound_item_id\nthe way a successful push would.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:430`",
         "operationId": "ffl_integrations.fastbound.reconcile.reconcile_record_to_fastbound",
         "responses": {
           "200": {
@@ -19108,7 +19116,7 @@
           "ffl_integrations"
         ],
         "summary": "Re-run the FastBound push for a submitted FFL Disposition that failed.",
-        "description": "``push_disposition_to_fastbound`` is a ``@frappe.task`` and nothing else —\nthere was no way to re-run one. A push that failed sat in\n``fastbound_sync_error`` until the next daily ``reconcile_failed_pushes``,\nwhich is up to 24 hours with a firearm out of the building and no bound-book\nentry for it. DISP-2026-02000 spent a day in exactly that state while the\nobstacle that caused the 400 had already been cleared by hand.\n\nA thin wrapper on purpose: it re-checks who may press it and what may be\npressed, then calls the task unchanged. Run INLINE rather than enqueued so\nthe operator sees the outcome — the task is already idempotent (it no-ops on\nan already-linked record) and carries its own retry/back-off.\n\nThe ``PUSHABLE_DISPOSITION_TYPES`` check is not decoration. A Retail Sale is\na 4473 disposition that FastBound's own wizard owns; pushing one from here\nwould book a to-individual transfer as a plain bound-book entry — a\ncompliance defect, not a sync error. The task would refuse it silently, so\nthis refuses it loudly instead of pretending to have done something. So does\nFastBound being switched off, for the same reason: the task returns silently\non a disabled integration, which behind a button reads as \"it failed again,\nreason unknown\".\n\nThe task's retry ladder is turned OFF here (``_retries=0``): an operator is\nwaiting, and the default four attempts with back-off can hold the desk for\n~80 seconds before showing anything.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\n**Permissions:** Inventory roles (same gate as :func:`reconcile_record_to_fastbound`).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:506`",
+        "description": "``push_disposition_to_fastbound`` is a ``@frappe.task`` and nothing else —\nthere was no way to re-run one. A push that failed sat in\n``fastbound_sync_error`` until the next daily ``reconcile_failed_pushes``,\nwhich is up to 24 hours with a firearm out of the building and no bound-book\nentry for it. DISP-2026-02000 spent a day in exactly that state while the\nobstacle that caused the 400 had already been cleared by hand.\n\nA thin wrapper on purpose: it re-checks who may press it and what may be\npressed, then calls the task unchanged. Run INLINE rather than enqueued so\nthe operator sees the outcome — the task is already idempotent (it no-ops on\nan already-linked record) and carries its own retry/back-off.\n\nThe ``PUSHABLE_DISPOSITION_TYPES`` check is not decoration. A Retail Sale is\na 4473 disposition that FastBound's own wizard owns; pushing one from here\nwould book a to-individual transfer as a plain bound-book entry — a\ncompliance defect, not a sync error. The task would refuse it silently, so\nthis refuses it loudly instead of pretending to have done something. So does\nFastBound being switched off, for the same reason: the task returns silently\non a disabled integration, which behind a button reads as \"it failed again,\nreason unknown\".\n\nThe task's retry ladder is turned OFF here (``_retries=0``): an operator is\nwaiting, and the default four attempts with back-off can hold the desk for\n~80 seconds before showing anything.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\n**Permissions:** Inventory roles (same gate as :func:`reconcile_record_to_fastbound`).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:529`",
         "operationId": "ffl_integrations.fastbound.reconcile.retry_disposition_push",
         "responses": {
           "200": {
@@ -19186,7 +19194,7 @@
           "ffl_integrations"
         ],
         "summary": "Push a post-acquisition manufacturer / importer correction for ONE",
-        "description": "firearm to FastBound, editing the bound-book item in place (PUT /Items/{id})\n— no delete/recreate, FastBound audit-logs the edit.\n\nCalled synchronously from the Serial No form's \"sync to FastBound?\" confirm\nafter an operator edits a per-unit manufacturer / importer.\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/tasks.py:657`",
+        "description": "firearm to FastBound, editing the bound-book item in place (PUT /Items/{id})\n— no delete/recreate, FastBound audit-logs the edit.\n\nCalled synchronously from the Serial No form's \"sync to FastBound?\" confirm\nafter an operator edits a per-unit manufacturer / importer.\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/tasks.py:659`",
         "operationId": "ffl_integrations.fastbound.tasks.push_serial_to_fastbound",
         "responses": {
           "200": {
@@ -20200,7 +20208,7 @@
           "ffl_integrations"
         ],
         "summary": "Name the gun that fills one unit of a model-level GunBroker order.",
-        "description": "Reserves the gun for the order (the claim becomes a hold), tells the other\nstorefronts it is gone, and records who assigned it and when. Naming a\ndifferent gun for a unit that already has one swaps them: the old gun is\nreleased only if this order holds it. An empty ``serial_no`` unassigns the\nunit, which makes it an open claim again. Calling it again with the gun the\nunit already has changes nothing.\n\nRefused: a gun of another model (a model pooled under this one must be filed\nunder it first), a customer's consignment or transfer gun, one in custody,\none the order already holds for another unit, one that is not free (held by a\ncounter order or another channel, out on consignment, possibly already sold on\nGunBroker), and, on a Type 03 collector order, a gun not old enough to be a\ncurio or relic. Nothing is changed on a refusal.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1021`",
+        "description": "Reserves the gun for the order (the claim becomes a hold), tells the other\nstorefronts it is gone, and records who assigned it and when. Naming a\ndifferent gun for a unit that already has one swaps them: the old gun is\nreleased only if this order holds it. An empty ``serial_no`` unassigns the\nunit, which makes it an open claim again. Calling it again with the gun the\nunit already has changes nothing.\n\nRefused: a gun of another model (a model pooled under this one must be filed\nunder it first), a customer's consignment or transfer gun, one in custody,\none the order already holds for another unit, one that is not free (held by a\ncounter order or another channel, out on consignment, possibly already sold on\nGunBroker), and, on a Type 03 collector order, a gun not old enough to be a\ncurio or relic. Nothing is changed on a refusal.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1023`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.assign_gb_unit_serial",
         "responses": {
           "200": {
@@ -20258,7 +20266,7 @@
           "ffl_integrations"
         ],
         "summary": "Repair the deposit date (and cheque number) recorded on a GunBroker order.",
-        "description": "For the row that cannot otherwise be fixed. The four payment fields are\nread-only on the form — they are a record of what was banked, not something\nto retype — and the document refuses to save when a mode is recorded with no\ndeposit date. A row in that state (a direct database write, an import, a\nhalf-finished edit) is reported by the daily audit and then cannot be\ncorrected through the Desk at all: the field will not accept typing and\nopening the form and saving throws.\n\nDeliberately narrow: the date and the reference number, nothing else. The\namount, the mode and whether the order is paid are what was banked — those\nare mark_payment_received's, and once a receipt is posted they are an\naccounting correction rather than an edit.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:728`",
+        "description": "For the row that cannot otherwise be fixed. The four payment fields are\nread-only on the form — they are a record of what was banked, not something\nto retype — and the document refuses to save when a mode is recorded with no\ndeposit date. A row in that state (a direct database write, an import, a\nhalf-finished edit) is reported by the daily audit and then cannot be\ncorrected through the Desk at all: the field will not accept typing and\nopening the form and saving throws.\n\nDeliberately narrow: the date and the reference number, nothing else. The\namount, the mode and whether the order is paid are what was banked — those\nare mark_payment_received's, and once a receipt is posted they are an\naccounting correction rather than an edit.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:730`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.correct_payment_details",
         "responses": {
           "200": {
@@ -20318,7 +20326,7 @@
           "ffl_integrations"
         ],
         "summary": "Book the bound-book exit for a paid GunBroker order (the Dispose action).",
-        "description": "One submitted \"FFL Transfer\" disposition per regulated gun, each of which\nissues its own stock-out and queues its own FastBound push. Idempotent on\n{serial, gunbroker_order}. An ANTIQUE on the order gets no disposition —\nit is GCA-exempt, so it is issued straight out of stock instead\n(``_retire_antique_units``). Whether a dealer is involved at all is\n``needs_dealer``: an order that is all antiques and names no licence ships\nto the buyer, and that decision is written to ``ships_direct`` for the\ninvoice and the card to read. A serialized unit that is neither a\nregulated firearm nor an antique is refused outright. The revenue invoice\nis raised at the end and a failure there does not roll back the\ndispositions — create_gb_invoice_now retries.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1203`",
+        "description": "One submitted \"FFL Transfer\" disposition per regulated gun, each of which\nissues its own stock-out and queues its own FastBound push. Idempotent on\n{serial, gunbroker_order}. An ANTIQUE on the order gets no disposition —\nit is GCA-exempt, so it is issued straight out of stock instead\n(``_retire_antique_units``). Whether a dealer is involved at all is\n``needs_dealer``: an order that is all antiques and names no licence ships\nto the buyer, and that decision is written to ``ships_direct`` for the\ninvoice and the card to read. A serialized unit that is neither a\nregulated firearm nor an antique is refused outright. The revenue invoice\nis raised at the end and a failure there does not roll back the\ndispositions — create_gb_invoice_now retries.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1205`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.dispose_gb_order",
         "responses": {
           "200": {
@@ -20366,13 +20374,66 @@
         }
       }
     },
+    "/api/method/ffl_integrations.gunbroker.fulfillment.enter_gb_tracking": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Send GunBroker the tracking number of a label bought outside the POS shipment.",
+        "description": "For a label bought on an order staff built in ShipStation by hand: the\nPOS's own shipment has no label, so the poll has nothing to find. The\nnumber must belong to a live (not voided) ShipStation label — that is\nstill the \"a label was bought\" fact the write-back waits for — and it is\nthen sent the same way the poll sends one.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1747`",
+        "operationId": "ffl_integrations.gunbroker.fulfillment.enter_gb_tracking",
+        "responses": {
+          "200": {
+            "description": "push_tracking's result: {ok, tracking_number, carrier, steps, ...}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "gunbroker_order": {
+                    "type": "string",
+                    "description": "GunBroker Order name (disposed, invoice posted)."
+                  },
+                  "tracking_number": {
+                    "type": "string",
+                    "description": "The tracking number on the label."
+                  }
+                },
+                "required": [
+                  "gunbroker_order",
+                  "tracking_number"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_integrations.gunbroker.fulfillment.get_dispose_stock_lines": {
       "post": {
         "tags": [
           "ffl_integrations"
         ],
         "summary": "The loose-stock lines of a GunBroker order and where in the store each can be",
-        "description": "taken from, for the \"where did these come from?\" step of Dispose.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1179`",
+        "description": "taken from, for the \"where did these come from?\" step of Dispose.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1181`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.get_dispose_stock_lines",
         "responses": {
           "200": {
@@ -20450,7 +20511,7 @@
           "ffl_integrations"
         ],
         "summary": "Mark one unit of a model-level order as refunded on GunBroker.",
-        "description": "For an oversold order: the buyer paid for N, only N-1 guns exist, and the\nbuyer is refunded for the missing one on GunBroker's side. A unit marked\nrefunded stops counting as a claim, gets no gun, no bound-book entry and no\ninvoice line; the seller fee is still accrued on the whole GunBroker line,\nbecause GunBroker does not reduce it for a refund. The invoice then no longer\nagrees with what GunBroker charged and stays in Draft for a person to check\nthe refund against the statement.\n\nMarking a unit that already has a gun releases the gun (if this order holds\nit). ``refunded=0`` undoes the mark.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1130`",
+        "description": "For an oversold order: the buyer paid for N, only N-1 guns exist, and the\nbuyer is refunded for the missing one on GunBroker's side. A unit marked\nrefunded stops counting as a claim, gets no gun, no bound-book entry and no\ninvoice line; the seller fee is still accrued on the whole GunBroker line,\nbecause GunBroker does not reduce it for a refund. The invoice then no longer\nagrees with what GunBroker charged and stays in Draft for a person to check\nthe refund against the statement.\n\nMarking a unit that already has a gun releases the gun (if this order holds\nit). ``refunded=0`` undoes the mark.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1132`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.mark_gb_unit_refunded",
         "responses": {
           "200": {
@@ -20508,7 +20569,7 @@
           "ffl_integrations"
         ],
         "summary": "Record that a GunBroker buyer's payment has been banked.",
-        "description": "This is the fact the Dispose gate opens on, and it is deliberately not\nGunBroker's own \"payment received\" flag: that flag is a click on their\nwebsite, and a gun must not leave the building on the strength of it.\n\nNo Payment Entry is created here. GunBroker orders are paid before they are\ninvoiced, and the invoice does not exist until the guns are disposed — so\nthere is nothing to book the receipt against yet. The values recorded here\nare replayed onto a Payment Entry the moment the invoice is raised, against\nthe account of the Mode of Payment recorded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:461`",
+        "description": "This is the fact the Dispose gate opens on, and it is deliberately not\nGunBroker's own \"payment received\" flag: that flag is a click on their\nwebsite, and a gun must not leave the building on the strength of it.\n\nNo Payment Entry is created here. GunBroker orders are paid before they are\ninvoiced, and the invoice does not exist until the guns are disposed — so\nthere is nothing to book the receipt against yet. The values recorded here\nare replayed onto a Payment Entry the moment the invoice is raised, against\nthe account of the Mode of Payment recorded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:463`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.mark_payment_received",
         "responses": {
           "200": {
@@ -20585,7 +20646,7 @@
           "ffl_integrations"
         ],
         "summary": "Push a paid GunBroker order to ShipStation (the Pending Order Ship action).",
-        "description": "Same as a counter or web order: Ship does not wait for Dispose. Before\nDispose there is no invoice, so the shipment is built off the order itself\nand its id is kept on the order; revenue copies it onto the invoice when\nDispose raises one, which is where the tracking write-back reads it. After\nDispose this is the invoice's own push_shipment.\n\nThe gates are Dispose's (paid, FFL received, every unit named, no\nunresolved line) plus a valid destination, so nothing reaches ShipStation\nthat Dispose would then refuse. A C&R licence is only verified in the\nDispose dialog, so a C&R order not yet verified must Dispose first.\nTracking still goes back to GunBroker only after Dispose.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1745`",
+        "description": "Same as a counter or web order: Ship does not wait for Dispose. Before\nDispose there is no invoice, so the shipment is built off the order itself\nand its id is kept on the order; revenue copies it onto the invoice when\nDispose raises one, which is where the tracking write-back reads it. After\nDispose this is the invoice's own push_shipment.\n\nThe gates are Dispose's (paid, FFL received, every unit named, no\nunresolved line) plus a valid destination, so nothing reaches ShipStation\nthat Dispose would then refuse. A C&R licence is only verified in the\nDispose dialog, so a C&R order not yet verified must Dispose first.\nTracking still goes back to GunBroker only after Dispose.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1798`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.push_gb_shipment",
         "responses": {
           "200": {
@@ -20633,7 +20694,7 @@
           "ffl_integrations"
         ],
         "summary": "Write this order's tracking number back to GunBroker now.",
-        "description": "The scheduled poll does this on its own every ten minutes; this is for the\noperator who has just bought the label and wants the buyer to see it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1721`",
+        "description": "The scheduled poll does this on its own every ten minutes; this is for the\noperator who has just bought the label and wants the buyer to see it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1723`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.push_tracking_now",
         "responses": {
           "200": {
@@ -24489,7 +24550,7 @@
           "webhooks"
         ],
         "summary": "Single WooCommerce webhook entry point (guest, HMAC-verified).",
-        "description": "**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\n**Payload:** WooCommerce's webhook JSON body; the X-WC-Webhook-Topic header selects the handler (order.created/updated, product.*, ...). The X-WC-Webhook-Signature header must carry a valid HMAC over the raw body (secret configured in Woo Sync Settings).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/webhook.py:2950`",
+        "description": "**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\n**Payload:** WooCommerce's webhook JSON body; the X-WC-Webhook-Topic header selects the handler (order.created/updated, product.*, ...). The X-WC-Webhook-Signature header must carry a valid HMAC over the raw body (secret configured in Woo Sync Settings).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/webhook.py:3040`",
         "operationId": "ffl_woo_sync.woocommerce.webhook.woo_event",
         "responses": {
           "200": {

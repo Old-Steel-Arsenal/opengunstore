@@ -26,7 +26,8 @@ import frappe
 from frappe import _
 from frappe.utils import flt
 
-from ffl_core.setup.trade_in_credit import TRADE_IN_CREDIT_ITEM, TRADE_IN_SELLER_FIELD, TRADE_IN_STOCK_ENTRY_FIELD
+from ffl_core.setup.trade_in_credit import (
+	TRADE_IN_CREDIT_ITEM, TRADE_IN_SELLER_FIELD, TRADE_IN_STAMP_FIELD, TRADE_IN_STOCK_ENTRY_FIELD)
 
 
 def accessory_receipt_value(stock_entry: str) -> float | None:
@@ -207,6 +208,16 @@ def _book_accessories(stock_entry: str) -> None:
 			"dialog.").format(stock_entry))
 	se.flags.ignore_permissions = True
 	se.submit()
+	# An antique gun parked by the Trade-in dialog (trade_in._park_antique): the receipt made its Serial No, now
+	# stamp the gun's own facts on it, as a gun's acquisition does (firearm_intake.complete_intake).
+	parked = se.get(TRADE_IN_STAMP_FIELD)
+	if parked:
+		import json
+
+		from ffl_core.api.firearm_intake import settle_received_serial
+		row = se.items[0]
+		settle_received_serial({**json.loads(parked), "item_code": row.item_code, "serial": row.serial_no,
+			"acquisition_cost": flt(row.basic_rate)})
 
 
 def _require_unspent(acq_name: str, doc, field: str = "ffl_trade_in_acquisition") -> None:

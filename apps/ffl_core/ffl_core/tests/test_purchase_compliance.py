@@ -248,6 +248,41 @@ class PurchaseValidate(FrappeTestCase):
 		frappe.db.set_value("Serial No", "BB-SOLD-1", "status", "Delivered")
 		self.assertFalse(item_has_boundbook_presence("PR-NEW-FIREARM"))  # cycled out
 
+	def test_off_book_acquisition_does_not_lock_antique_flag(self):
+		"""A gun booked by mistake and marked [NOT A&D] (an antique taken in as regulated)
+		is NOT in the bound book: its Item can be flagged antique. A normal submitted
+		acquisition still locks it, and so does a FastBound id on the serial."""
+		from ffl_core.firearm import NOT_IN_BOOK_PREFIX, item_has_boundbook_presence
+		self._ensure_item("PR-OFFBOOK", item_group="Pistol", has_serial_no=1)
+		self._make_real_pr("ACME-FFL", [("PR-OFFBOOK", 1, ["OFFBOOK-1"])])
+		self.assertTrue(item_has_boundbook_presence("PR-OFFBOOK"))  # normal acquisition locks
+		acq = frappe.db.get_value("FFL Acquisition", {"serial": "OFFBOOK-1", "docstatus": 1}, "name")
+		frappe.db.set_value("FFL Acquisition", acq, "fastbound_sync_error",
+			NOT_IN_BOOK_PREFIX + "antique booked by mistake")
+		self.assertFalse(item_has_boundbook_presence("PR-OFFBOOK"))
+		# A FastBound id on the serial is still a hard "on the books" signal.
+		frappe.db.set_value("Serial No", "OFFBOOK-1", "fastbound_item_id", "fb-offbook")
+		self.assertTrue(item_has_boundbook_presence("PR-OFFBOOK"))
+		frappe.db.set_value("Serial No", "OFFBOOK-1", "fastbound_item_id", "")
+		item = frappe.get_doc("Item", "PR-OFFBOOK")
+		item.is_antique = 1
+		item.save(ignore_permissions=True)  # must not raise
+		self.assertEqual(frappe.db.get_value("Item", "PR-OFFBOOK", "is_antique"), 1)
+
+	def test_off_book_acquisition_is_not_an_open_stay(self):
+		"""acquisition._existing (the dedupe and the trade-in "store still holds it" check)
+		ignores an acquisition marked [NOT A&D]: a mis-booked antique sold without a
+		disposition can come back as a trade-in."""
+		from ffl_core.acquisition import _existing
+		from ffl_core.firearm import NOT_IN_BOOK_PREFIX
+		self._ensure_item("PR-OFFBOOK-STAY", item_group="Pistol", has_serial_no=1)
+		self._make_real_pr("ACME-FFL", [("PR-OFFBOOK-STAY", 1, ["OFFBOOK-STAY-1"])])
+		acq = frappe.db.get_value("FFL Acquisition", {"serial": "OFFBOOK-STAY-1", "docstatus": 1}, "name")
+		self.assertEqual(_existing("PR-OFFBOOK-STAY", "OFFBOOK-STAY-1"), acq)
+		frappe.db.set_value("FFL Acquisition", acq, "fastbound_sync_error",
+			NOT_IN_BOOK_PREFIX + "antique booked by mistake")
+		self.assertIsNone(_existing("PR-OFFBOOK-STAY", "OFFBOOK-STAY-1"))
+
 	def test_antique_flag_cleared_on_non_firearm(self):
 		"""is_antique is meaningless on a non-firearm — the Item validate hook clears it."""
 		self._ensure_item("PR-NONFA-ANT", item_group="Ammunition", has_serial_no=0)

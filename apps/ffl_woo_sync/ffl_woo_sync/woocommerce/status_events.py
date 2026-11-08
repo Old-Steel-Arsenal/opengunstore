@@ -181,8 +181,9 @@ def is_permanent(response) -> bool:
 		return False
 
 
-def deliver(store_url: str, secret: str, event: dict) -> int:
-	"""POST one signed event. Returns the HTTP status; raises on transport error."""
+def deliver(store_url: str, secret: str, event: dict, path: str = WEBHOOK_PATH) -> int:
+	"""POST one signed event to ``path`` on the shop. Returns the HTTP status;
+	raises on a transport error or a non-2xx."""
 	body = frappe.as_json(event, indent=None).encode()
 	ts = str(int(time.time()))
 	headers = {
@@ -190,7 +191,7 @@ def deliver(store_url: str, secret: str, event: dict) -> int:
 		"x-osa-timestamp": ts,
 		"x-osa-signature": sign(secret, ts, body),
 	}
-	response = requests.post(store_url + WEBHOOK_PATH, data=body, headers=headers,
+	response = requests.post(store_url + path, data=body, headers=headers,
 		timeout=TIMEOUT_SECONDS)
 	response.raise_for_status()
 	return response.status_code
