@@ -429,6 +429,10 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 			|| row.sku;
 		// The law's answer (the service class), not RSR's dealer-only shipping flag.
 		const serialDefault = (row.is_firearm ?? row.ffl_required) ? 1 : 0;
+		// What the promoter names the Item when not told (UPC, else SKU). Sent only
+		// when the operator changes it: an explicit code skips the server's lookup
+		// of an Item already carrying this UPC as a barcode.
+		const codeDefault = row.upc || row.sku;
 		// The house whose SKU this is: a named row's tag, or an unnamed (product) row's
 		// best offer — row.sku is that offer's SKU (distributor.api.product_search).
 		const house = row.distributor || ((row.offers || [])[0] || {}).distributor || '';
@@ -437,7 +441,7 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 			size: 'small',
 			fields: [
 				{ fieldtype: 'HTML', fieldname: 'preview' },
-				{ label: __('Item Code (SKU)'), fieldname: 'item_code', fieldtype: 'Data', reqd: 1, default: row.sku },
+				{ label: __('Item Code'), fieldname: 'item_code', fieldtype: 'Data', reqd: 1, default: codeDefault },
 				{ label: __('Item Name'), fieldname: 'item_name', fieldtype: 'Data', default: itemName },
 				{ label: __('Item Group'), fieldname: 'item_group', fieldtype: 'Link', options: 'Item Group',
 					description: __('Leave blank to use the catalog\'s category.') },
@@ -461,7 +465,7 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 						rsr_stock_number: row.sku,
 						// The house that offered this row: a non-RSR SKU promotes through it.
 						distributor: house || undefined,
-						item_code: values.item_code,
+						item_code: values.item_code !== codeDefault ? values.item_code : undefined,
 						item_name: values.item_name,
 						item_group: values.item_group || undefined,
 						// Only an operator's change overrides the server's own inference.
