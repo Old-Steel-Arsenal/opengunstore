@@ -19194,7 +19194,7 @@
           "ffl_integrations"
         ],
         "summary": "Push a post-acquisition manufacturer / importer correction for ONE",
-        "description": "firearm to FastBound, editing the bound-book item in place (PUT /Items/{id})\n— no delete/recreate, FastBound audit-logs the edit.\n\nCalled synchronously from the Serial No form's \"sync to FastBound?\" confirm\nafter an operator edits a per-unit manufacturer / importer.\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/tasks.py:689`",
+        "description": "firearm to FastBound, editing the bound-book item in place (PUT /Items/{id})\n— no delete/recreate, FastBound audit-logs the edit.\n\nCalled synchronously from the Serial No form's \"sync to FastBound?\" confirm\nafter an operator edits a per-unit manufacturer / importer.\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/tasks.py:703`",
         "operationId": "ffl_integrations.fastbound.tasks.push_serial_to_fastbound",
         "responses": {
           "200": {

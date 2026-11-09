@@ -318,6 +318,7 @@ def reconcile_failed_deletes() -> None:
 		frappe.enqueue(
 			"ffl_integrations.fastbound.tasks.delete_acquisition_from_fastbound",
 			queue="long", acquisition_name=row.name, fastbound_id=row.fastbound_id,
+			_notify=True,
 		)
 	stale_disp = frappe.get_all(
 		"FFL Disposition",
@@ -462,13 +463,19 @@ def delete_acquisition_from_fastbound(
 	*,
 	_retries: int = 3,
 	_commit: bool = True,
+	_notify: bool = False,
 ) -> None:
 	"""DELETE the cancelled acquisition on FastBound, then confirm its firearm
 	really left the book (_ensure_out_of_book). Retries on FastBoundError
 	(transient 5xx / network blip); persisting failures land in
 	fastbound_sync_error AND are retried daily by reconcile_failed_deletes() —
 	which is also what clears a "still in the book" row once a person has
-	deleted the item in FastBound."""
+	deleted the item in FastBound.
+
+	``_notify``: ring the managers when the gun is still in the book. Off for the
+	run right after a cancel — an amendment or a re-receive is usually minutes
+	away and takes the entry over — and on for the daily reconcile, when a row
+	still standing is one nobody has dealt with."""
 	if not fastbound_enabled():
 		return  # switched off — the record stays local (see module header)
 	last_error: str | None = None
@@ -493,10 +500,14 @@ def delete_acquisition_from_fastbound(
 				time.sleep(2 ** attempt)
 				continue
 			break
-	changed = _record_push_error("FFL Acquisition", acquisition_name,
+	_record_push_error("FFL Acquisition", acquisition_name,
 		f"DELETE failed: {last_error or 'unknown error'}")
-	if terminal and changed:
-		_notify_terminal("FFL Acquisition", acquisition_name, last_error or "")
+	if terminal and _notify:
+		from ffl_core.alerts import ALERT_ROLES, notify_staff
+		# Once per record: notify_staff dedupes on (document, subject).
+		notify_staff("FFL Acquisition", acquisition_name,
+			f"A&D book: {acquisition_name} is cancelled but its gun is still in FastBound "
+			"— delete the item there (Duplicate / Error)", ALERT_ROLES)
 	if _commit:
 		frappe.db.commit()
 
@@ -510,13 +521,16 @@ def _ensure_out_of_book(client, acquisition_name: str) -> None:
 	permanent bound-book edit with a stated reason — a person's call, in
 	FastBound. So: look at the item and raise a terminal error while it is there.
 
-	A live acquisition for the same serial (the amendment, or a re-receive) owns
-	the book entry — nothing to remove then."""
-	serial = frappe.db.get_value("FFL Acquisition", acquisition_name, "serial")
-	if not serial:
+	A NEWER live acquisition for the same serial (the amendment, or a re-receive)
+	owns the book entry — nothing to remove then. An older one is a previous
+	ownership cycle of a gun that came back, and says nothing about this entry."""
+	acq = frappe.db.get_value("FFL Acquisition", acquisition_name,
+		["serial", "creation"], as_dict=True)
+	if not acq or not acq.serial:
 		return
+	serial = acq.serial
 	if frappe.db.exists("FFL Acquisition",
-			{"serial": serial, "docstatus": 1, "name": ("!=", acquisition_name)}):
+			{"serial": serial, "docstatus": 1, "creation": (">", acq.creation)}):
 		return
 	item_id = frappe.db.get_value("Serial No", serial, "fastbound_item_id") \
 		or client.get_item_id_by_serial(serial)
@@ -524,9 +538,9 @@ def _ensure_out_of_book(client, acquisition_name: str) -> None:
 	if item and not item.get("deleted"):
 		raise FastBoundError(
 			f"serial {serial} is still in FastBound's book (item "
-			f"{item.get('itemNumber') or item_id}). Receiving it again? Nothing to "
-			f"do — the new record links it. Otherwise delete the item in FastBound "
-			f"(reason Duplicate or Error).",
+			f"{item.get('itemNumber') or item_id}). Delete the item in FastBound "
+			f"(reason Duplicate or Error) — unless it is being amended or received "
+			f"again, which links it.",
 			terminal=True)
 
 

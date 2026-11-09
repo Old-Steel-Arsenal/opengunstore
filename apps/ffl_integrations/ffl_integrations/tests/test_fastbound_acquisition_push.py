@@ -390,16 +390,16 @@ class FBAcquisitionPush(FrappeTestCase):
 
 	# ------------------------------------------------- cancelled-acquisition delete
 
-	def _run_delete(self, acq, item):
+	def _run_delete(self, acq, item, **kw):
 		"""delete_acquisition_from_fastbound against a book holding `item`."""
 		from ffl_integrations.fastbound import tasks
 		frappe.db.set_value("FFL Acquisition", acq, "fastbound_id", "fb-acq", update_modified=False)
 		with patch.object(FastBoundClient, "from_settings") as factory, \
-				patch.object(tasks, "_notify_terminal") as bell:
+				patch("ffl_core.alerts.notify_staff") as bell:
 			client = factory.return_value
 			client.get_item_id_by_serial.return_value = "fb-item"
 			client.get_item.return_value = item
-			tasks.delete_acquisition_from_fastbound(acq, "fb-acq", _commit=False)
+			tasks.delete_acquisition_from_fastbound(acq, "fb-acq", _commit=False, **kw)
 		return client, bell
 
 	def test_delete_keeps_id_while_item_is_still_in_the_book(self):
@@ -413,7 +413,34 @@ class FBAcquisitionPush(FrappeTestCase):
 		self.assertTrue(row.fastbound_sync_error.startswith("DELETE failed:"))  # daily retry picks it up
 		self.assertIn("00042", row.fastbound_sync_error)
 		self.assertEqual(client.delete_acquisition.call_count, 1)  # terminal: no back-off retries
+		bell.assert_not_called()  # right after a cancel an amendment may be minutes away
+		# The daily reconcile is the run that rings, and the subject says what to do.
+		_client, bell = self._run_delete(acq, {"itemNumber": "00042", "deleted": False}, _notify=True)
 		bell.assert_called_once()
+		subject = bell.call_args.args[2]
+		self.assertIn("delete the item", subject)
+		self.assertLessEqual(len(subject), 140)
+
+	def test_reconcile_retries_failed_deletes_with_the_bell_on(self):
+		from ffl_integrations.fastbound import tasks
+		acq = self._make_acquisition(self._testMethodName)
+		frappe.db.set_value("FFL Acquisition", acq, {"docstatus": 2, "fastbound_id": "fb-acq",
+			"fastbound_sync_error": "DELETE failed: still in the book"}, update_modified=False)
+		with patch.object(tasks.frappe, "enqueue") as enqueue:
+			tasks.reconcile_failed_deletes()
+		mine = [c for c in enqueue.call_args_list if c.kwargs.get("acquisition_name") == acq]
+		self.assertEqual(len(mine), 1)
+		self.assertTrue(mine[0].kwargs["_notify"])
+
+	def test_delete_is_not_fooled_by_an_older_cycle_of_the_same_serial(self):
+		"""A gun that was sold and came back has an OLDER submitted acquisition for
+		the same serial. That one does not own the entry being cancelled."""
+		older = self._make_acquisition(self._testMethodName + "old")
+		acq = self._make_acquisition(self._testMethodName + "new")
+		frappe.db.set_value("FFL Acquisition", older, "serial",
+			frappe.db.get_value("FFL Acquisition", acq, "serial"), update_modified=False)
+		self._run_delete(acq, {"itemNumber": "00042", "deleted": False})
+		self.assertEqual(frappe.db.get_value("FFL Acquisition", acq, "fastbound_id"), "fb-acq")
 
 	def test_delete_clears_id_once_item_is_gone(self):
 		for label, item in (("deleted", {"deleted": True}), ("absent", None)):
