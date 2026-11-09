@@ -551,6 +551,8 @@ def cancel_acquisitions_for_firearm_lines(doc, method: str | None = None) -> Non
 				queue="long",
 				acquisition_name=row.name,
 				fastbound_id=row.fastbound_id,
+				# A cancel that rolls back must not leave a delete job behind.
+				enqueue_after_commit=True,
 			)
 
 
