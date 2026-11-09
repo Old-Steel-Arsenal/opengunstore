@@ -335,10 +335,10 @@ class FBAcquisitionPush(FrappeTestCase):
 			push_receipt_acquisitions_sync("PR-SYNC-OK")
 		self.assertEqual(frappe.db.get_value("FFL Acquisition", a, "fastbound_id"), "fb-sync-1")
 
-	def test_sync_push_deletes_siblings_and_raises_on_failure(self):
-		"""Atomic receive: when one gun's push fails, the siblings already
-		committed to FastBound are deleted and the call raises, so the caller's
-		rollback leaves no orphan bound-book records."""
+	def test_sync_push_names_committed_siblings_and_raises_on_failure(self):
+		"""Atomic receive: when one gun's push fails the call raises (rolling the
+		receipt back). The siblings FastBound already committed cannot be deleted
+		through the API, so the operator is told which serials are in the book."""
 		from ffl_integrations.fastbound.tasks import push_receipt_acquisitions_sync
 		a1 = self._make_acquisition(self._testMethodName + "A")
 		a2 = self._make_acquisition(self._testMethodName + "B")
@@ -347,20 +347,25 @@ class FBAcquisitionPush(FrappeTestCase):
 				update_modified=False)
 		with patch.object(FastBoundClient, "from_settings") as factory:
 			client = factory.return_value
-			# First gun is accepted; the second is rejected (hard 400 → no retry).
-			client.post_acquisition.side_effect = [
-				{"acquisitionId": "fb-ok-1", "items": []},
-				FastBoundError("contact rejected", status_code=400),
-			]
-			with self.assertRaises(frappe.ValidationError):
-				push_receipt_acquisitions_sync("PR-SYNC-FAIL")
-			client.delete_acquisition.assert_called_once_with("fb-ok-1")
+			# First gun pushed is accepted; the second is rejected (hard 400 → no
+			# retry). Keyed on call order, whichever acquisition comes up first.
+			seen: list[str] = []
 
-	def test_sync_push_never_deletes_adopted_acquisition(self):
-		"""Atomic receive: a gun whose serial was already in the book is ADOPTED
-		into a pre-existing FastBound acquisition (which can hold other guns).
-		When a later gun fails, compensation must delete only what this call
-		created — never the adopted acquisition."""
+			def post(doc):
+				seen.append(doc.serial)
+				if len(seen) == 2:
+					raise FastBoundError("contact rejected", status_code=400)
+				return {"acquisitionId": "fb-ok-1", "items": []}
+			client.post_acquisition.side_effect = post
+			with self.assertRaises(frappe.ValidationError) as caught:
+				push_receipt_acquisitions_sync("PR-SYNC-FAIL")
+			self.assertIn(seen[0], str(caught.exception))
+			self.assertNotIn(seen[1], str(caught.exception))
+			client.delete_acquisition.assert_not_called()
+
+	def test_sync_push_failure_lists_only_serials_this_call_committed(self):
+		"""Atomic receive: a gun whose serial was already in the book is ADOPTED,
+		not committed by this call — it is not listed as newly entered."""
 		from ffl_integrations.fastbound.tasks import push_receipt_acquisitions_sync
 		names = [self._make_acquisition(self._testMethodName + s) for s in "ABC"]
 		for a in names:
@@ -368,14 +373,65 @@ class FBAcquisitionPush(FrappeTestCase):
 				update_modified=False)
 		with patch.object(FastBoundClient, "from_settings") as factory:
 			client = factory.return_value
-			client.post_acquisition.side_effect = [
-				{"acquisitionId": "fb-new-1", "items": []},
-				{"acquisitionId": "fb-shared", "adopted": True, "items": []},
-				FastBoundError("contact rejected", status_code=400),
-			]
-			with self.assertRaises(frappe.ValidationError):
+			seen: list[str] = []
+
+			def post(doc):  # 1st created, 2nd adopted, 3rd rejected
+				seen.append(doc.serial)
+				if len(seen) == 3:
+					raise FastBoundError("contact rejected", status_code=400)
+				return {"acquisitionId": f"fb-{len(seen)}", "adopted": len(seen) == 2, "items": []}
+			client.post_acquisition.side_effect = post
+			with self.assertRaises(frappe.ValidationError) as caught:
 				push_receipt_acquisitions_sync("PR-SYNC-ADOPT")
-			client.delete_acquisition.assert_called_once_with("fb-new-1")
+			listed = str(caught.exception).split("Already entered in FastBound")[1]
+			self.assertIn(seen[0], listed)
+			self.assertNotIn(seen[1], listed)
+			self.assertNotIn(seen[2], listed)
+
+	# ------------------------------------------------- cancelled-acquisition delete
+
+	def _run_delete(self, acq, item):
+		"""delete_acquisition_from_fastbound against a book holding `item`."""
+		from ffl_integrations.fastbound import tasks
+		frappe.db.set_value("FFL Acquisition", acq, "fastbound_id", "fb-acq", update_modified=False)
+		with patch.object(FastBoundClient, "from_settings") as factory, \
+				patch.object(tasks, "_notify_terminal") as bell:
+			client = factory.return_value
+			client.get_item_id_by_serial.return_value = "fb-item"
+			client.get_item.return_value = item
+			tasks.delete_acquisition_from_fastbound(acq, "fb-acq", _commit=False)
+		return client, bell
+
+	def test_delete_keeps_id_while_item_is_still_in_the_book(self):
+		"""DELETE on a committed acquisition answers 404 and removes nothing. The
+		row must keep its fastbound_id and ring the bell, not claim the gun left."""
+		acq = self._make_acquisition(self._testMethodName)
+		client, bell = self._run_delete(acq, {"itemNumber": "00042", "deleted": False})
+		row = frappe.db.get_value("FFL Acquisition", acq,
+			["fastbound_id", "fastbound_sync_error"], as_dict=True)
+		self.assertEqual(row.fastbound_id, "fb-acq")
+		self.assertTrue(row.fastbound_sync_error.startswith("DELETE failed:"))  # daily retry picks it up
+		self.assertIn("00042", row.fastbound_sync_error)
+		self.assertEqual(client.delete_acquisition.call_count, 1)  # terminal: no back-off retries
+		bell.assert_called_once()
+
+	def test_delete_clears_id_once_item_is_gone(self):
+		for label, item in (("deleted", {"deleted": True}), ("absent", None)):
+			acq = self._make_acquisition(self._testMethodName + label)
+			_client, bell = self._run_delete(acq, item)
+			self.assertFalse(frappe.db.get_value("FFL Acquisition", acq, "fastbound_id"), label)
+			bell.assert_not_called()
+
+	def test_delete_clears_id_when_a_live_acquisition_owns_the_serial(self):
+		"""Amend / re-receive: the book entry belongs to the live record."""
+		acq = self._make_acquisition(self._testMethodName + "old")
+		live = self._make_acquisition(self._testMethodName + "new")
+		frappe.db.set_value("FFL Acquisition", live, "serial",
+			frappe.db.get_value("FFL Acquisition", acq, "serial"), update_modified=False)
+		client, bell = self._run_delete(acq, {"itemNumber": "00042", "deleted": False})
+		self.assertFalse(frappe.db.get_value("FFL Acquisition", acq, "fastbound_id"))
+		client.get_item.assert_not_called()
+		bell.assert_not_called()
 
 	def test_payload_prefers_structured_name_with_optional_middle(self):
 		"""The FastBound contact uses the structured first/middle/last captured at

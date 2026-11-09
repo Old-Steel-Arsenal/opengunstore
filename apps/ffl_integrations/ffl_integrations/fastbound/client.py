@@ -559,11 +559,14 @@ class FastBoundClient:
 		return {"acquisitionId": fb_id, "items": items}
 
 	def delete_acquisition(self, fastbound_id: str) -> None:
-		"""DELETE /api/Acquisitions/{id}. 404 (already gone) is a no-op."""
+		"""DELETE /api/Acquisitions/{id}. 404 is a no-op — and it does NOT mean the
+		firearm left the book: committing consumes the pending acquisition, so the
+		id of anything pushed through CreateAndCommit answers 404 from then on while
+		its item stays in inventory. Callers that need the gun out of the book must
+		check the item (tasks._ensure_out_of_book)."""
 		try:
 			self._request("DELETE", f"Acquisitions/{fastbound_id}")
 		except FastBoundError as exc:
-			# 404 in the message means the record is already absent.
 			if exc.status_code == 404:
 				return
 			raise

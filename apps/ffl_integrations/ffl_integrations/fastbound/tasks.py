@@ -195,11 +195,11 @@ def push_receipt_acquisitions_sync(purchase_receipt: str) -> None:
 	"""Push every not-yet-synced FFL Acquisition for a Purchase Receipt to
 	FastBound SYNCHRONOUSLY, inside the caller's (Receive Goods) transaction.
 
-	This is the atomic intake path: a firearm ends up in FastBound AND our
-	system, or in neither. On any rejection it deletes the sibling acquisitions
-	already committed to FastBound this call (so the caller's rollback leaves no
-	orphan bound-book records) and raises — which rolls back the Purchase
-	Receipt + Serial Nos + stock + Acquisitions together. Wired as the
+	On any rejection it raises — which rolls back the Purchase Receipt + Serial
+	Nos + stock + Acquisitions together. The guns FastBound already accepted this
+	call CANNOT be taken back out (a committed acquisition's id answers 404 to
+	DELETE and the item stays in the book), so the operator is told which serials
+	are already there; receiving again adopts them by serial. Wired as the
 	`ffl_acquisition_sync_push` hook so ffl_core triggers it without importing
 	ffl_integrations.
 
@@ -220,30 +220,22 @@ def push_receipt_acquisitions_sync(purchase_receipt: str) -> None:
 	except FastBoundConfigError:
 		return  # FastBound not set up — don't block receiving.
 
-	# FastBound acquisition ids CREATED this call. Adopted ones (serial already
-	# in the book) are pre-existing records that may hold other guns, so they
-	# are never compensated; worst case an adopt after our own retried POST is
-	# left as an orphan the next receive re-adopts.
+	# Serials FastBound committed this call (adopted ones were in the book already).
 	pushed: list[str] = []
 	for name in to_push:
 		doc = frappe.get_doc("FFL Acquisition", name)
 		try:
 			result = _post_acquisition_with_retry(client, doc)
 		except FastBoundError as exc:
-			for fb_id in pushed:
-				try:
-					client.delete_acquisition(fb_id)
-				except FastBoundError:
-					frappe.log_error(
-						title="push_receipt_acquisitions_sync: orphan cleanup failed",
-						message=f"{fb_id}\n\n{frappe.get_traceback()}")
-			frappe.throw(
-				_("FastBound rejected this firearm, so nothing was received — fix "
-					"the issue and receive again.\n\n{0}").format(exc),
-				title=_("FastBound Acquisition Failed"))
+			msg = _("FastBound rejected this firearm, so nothing was received — fix "
+				"the issue and receive again.\n\n{0}").format(exc)
+			if pushed:
+				msg += "\n\n" + _("Already entered in FastBound from this receipt: {0}. "
+					"Leave them there — receiving again links them.").format(", ".join(pushed))
+			frappe.throw(msg, title=_("FastBound Acquisition Failed"))
 		_record_acquisition_push(name, result)
 		if not result.get("adopted"):
-			pushed.append(result["acquisitionId"])
+			pushed.append(doc.serial or name)
 
 
 def enqueue_push_on_submit(doc, method: str | None = None) -> None:
@@ -354,9 +346,10 @@ def enqueue_delete_on_cancel(doc, method: str | None = None) -> None:
 	here to avoid a double DELETE).
 
 	The DELETE is enqueued after commit (idempotent task; a failure lands in
-	fastbound_sync_error and the daily stuck digest — including FastBound's
-	refusal to delete a committed acquisition, which then needs a human in
-	FastBound's UI). Amend flows stay safe: the cancel's DELETE is enqueued
+	fastbound_sync_error and the daily stuck digest). FastBound has no API to
+	take a committed acquisition back out, so when the item is still in the book
+	the task says so and rings the managers — a person deletes the item in
+	FastBound's UI. Amend flows stay safe: the cancel's DELETE is enqueued
 	before the amendment's push, and _delete_amended_predecessor remains as
 	belt-and-braces; if the record still survives, the push's adopt path
 	links the existing item rather than failing.
@@ -470,15 +463,21 @@ def delete_acquisition_from_fastbound(
 	_retries: int = 3,
 	_commit: bool = True,
 ) -> None:
-	"""DELETE the cancelled acquisition on FastBound. Retries on FastBoundError
+	"""DELETE the cancelled acquisition on FastBound, then confirm its firearm
+	really left the book (_ensure_out_of_book). Retries on FastBoundError
 	(transient 5xx / network blip); persisting failures land in
-	fastbound_sync_error AND are retried daily by reconcile_failed_deletes()."""
+	fastbound_sync_error AND are retried daily by reconcile_failed_deletes() —
+	which is also what clears a "still in the book" row once a person has
+	deleted the item in FastBound."""
 	if not fastbound_enabled():
 		return  # switched off — the record stays local (see module header)
 	last_error: str | None = None
+	terminal = False
 	for attempt in range(max(1, _retries) + 1):
 		try:
-			FastBoundClient.from_settings().delete_acquisition(fastbound_id)
+			client = FastBoundClient.from_settings()
+			client.delete_acquisition(fastbound_id)
+			_ensure_out_of_book(client, acquisition_name)
 			# Clear the id so the row no longer claims a remote counterpart.
 			frappe.db.set_value("FFL Acquisition", acquisition_name, {
 				"fastbound_id": "",
@@ -489,15 +488,46 @@ def delete_acquisition_from_fastbound(
 			return
 		except FastBoundError as exc:
 			last_error = str(exc)
-			if attempt < _retries:
+			terminal = bool(getattr(exc, "terminal", False))
+			if not terminal and attempt < _retries:
 				time.sleep(2 ** attempt)
 				continue
 			break
-	frappe.db.set_value("FFL Acquisition", acquisition_name,
-		"fastbound_sync_error", f"DELETE failed: {last_error or 'unknown error'}",
-		update_modified=False)
+	changed = _record_push_error("FFL Acquisition", acquisition_name,
+		f"DELETE failed: {last_error or 'unknown error'}")
+	if terminal and changed:
+		_notify_terminal("FFL Acquisition", acquisition_name, last_error or "")
 	if _commit:
 		frappe.db.commit()
+
+
+def _ensure_out_of_book(client, acquisition_name: str) -> None:
+	"""A cancelled acquisition's firearm must be gone from FastBound before the
+	row may drop its fastbound_id. DELETE /Acquisitions/{id} cannot do that for
+	anything we pushed: CreateAndCommit leaves no addressable acquisition, the
+	DELETE answers 404 and the item stays in inventory (verified on a test
+	account, 2026-11-09). Only deleting the ITEM removes it, and that is a
+	permanent bound-book edit with a stated reason — a person's call, in
+	FastBound. So: look at the item and raise a terminal error while it is there.
+
+	A live acquisition for the same serial (the amendment, or a re-receive) owns
+	the book entry — nothing to remove then."""
+	serial = frappe.db.get_value("FFL Acquisition", acquisition_name, "serial")
+	if not serial:
+		return
+	if frappe.db.exists("FFL Acquisition",
+			{"serial": serial, "docstatus": 1, "name": ("!=", acquisition_name)}):
+		return
+	item_id = frappe.db.get_value("Serial No", serial, "fastbound_item_id") \
+		or client.get_item_id_by_serial(serial)
+	item = client.get_item(item_id) if item_id else None
+	if item and not item.get("deleted"):
+		raise FastBoundError(
+			f"serial {serial} is still in FastBound's book (item "
+			f"{item.get('itemNumber') or item_id}). Receiving it again? Nothing to "
+			f"do — the new record links it. Otherwise delete the item in FastBound "
+			f"(reason Duplicate or Error).",
+			terminal=True)
 
 
 # ==================================================== Disposition push (non-4473)
