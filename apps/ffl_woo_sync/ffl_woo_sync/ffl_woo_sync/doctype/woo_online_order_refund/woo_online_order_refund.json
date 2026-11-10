@@ -11,6 +11,7 @@
   "tax_refunded",
   "shipping_refunded",
   "breakdown_status",
+  "returned_lines",
   "reason",
   "recorded_on"
  ],
@@ -56,6 +57,13 @@
    "read_only": 1
   },
   {
+   "description": "The order lines this refund gave money back on, as WooCommerce reported them (JSON). A line refunded in full is taken off the Sales Invoice instead of discounted.",
+   "fieldname": "returned_lines",
+   "fieldtype": "Small Text",
+   "label": "Returned Lines",
+   "read_only": 1
+  },
+  {
    "fieldname": "reason",
    "fieldtype": "Data",
    "in_list_view": 1,
@@ -70,7 +78,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-26 00:00:00",
+ "modified": "2026-11-10 00:00:00",
  "modified_by": "Administrator",
  "module": "FFL Woo Sync",
  "name": "Woo Online Order Refund",

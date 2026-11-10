@@ -240,8 +240,8 @@ class TestRefundBreakdown(FrappeTestCase):
 			("Fetched", 3.43, 41.57))
 		# Written on the child row, the parent order is never saved
 		self.set_value.assert_called_once_with("Woo Online Order Refund", "row-7001",
-			{"breakdown_status": "Fetched", "tax_refunded": 3.43, "shipping_refunded": 41.57},
-			update_modified=False)
+			{"breakdown_status": "Fetched", "tax_refunded": 3.43, "shipping_refunded": 41.57,
+				"returned_lines": "[]"}, update_modified=False)
 		self.assertFalse(order.saved)
 		self.assertEqual(refunds.refund_split(order), (3.43, 41.57))
 		alert.assert_not_called()
@@ -1006,6 +1006,120 @@ class TestRefundTaxSplitReal(_RealWebOrder, FrappeTestCase):
 			{"woo_tax": 54.37, "shipping": 0.0, "discount": 0.0, "grand": 713.36})
 		fresh.reload()
 		self.assertEqual(fresh.refunds[0].breakdown_status, "Pending")
+
+
+def _line_refund(refund_id, line_id, qty, total):
+	"""A WooCommerce refund of order line ``line_id`` (``quantity`` units, ``total``
+	money): Woo names the refunded line in the ``_refunded_item_id`` meta."""
+	return {"id": refund_id, "amount": f"{total:.2f}", "shipping_lines": [], "fee_lines": [],
+		"line_items": [{"id": 900 + int(line_id), "quantity": -qty, "total": f"{-total:.2f}",
+			"total_tax": "0.00", "meta_data": [{"key": "_refunded_item_id", "value": str(line_id)}]}]}
+
+
+class TestLineRefundReal(_RealWebOrder, FrappeTestCase):
+	"""A refund of a WHOLE order line is goods that never stayed with the buyer: the
+	line leaves the invoice (with its serial, so the Sales Report stops costing it)
+	instead of hiding under a goods discount. Order: line 1 $495 + line 2 $599."""
+
+	def _two_line_order(self):
+		from ffl_woo_sync.woocommerce import revenue
+
+		item = self._web_item()
+		order = frappe.get_doc({
+			"doctype": "Woo Online Order",
+			"woo_order_id": f"RT-{frappe.generate_hash(length=8)}",
+			"order_status": "Transferred", "woo_status": "completed", "site": "retail",
+			"customer_name": "QA Buyer", "customer_email": "qa-buyer@example.com",
+			"customer_phone": "555-0100", "currency": "USD",
+			"order_total": 1094.0, "total_tax": 0.0, "shipping_total": 0.0, "discount_total": 0.0,
+			"lines": [
+				{"item_code": item, "qty": 1, "line_total": 495.0, "unit_price": 495.0, "woo_line_id": "1"},
+				{"item_code": item, "qty": 1, "line_total": 599.0, "unit_price": 599.0, "woo_line_id": "2"},
+			],
+		})
+		order.flags.ignore_permissions = True
+		order.insert()
+		si = revenue._build_invoice(order, revenue._default_company())
+		si.submit()
+		revenue._ensure_paid(si, order)
+		return order
+
+	def _record(self, order, refund_id, total):
+		refunds.record_order_refunds(order, {"refunds": [{"id": refund_id, "total": total}]})
+		order.save(ignore_permissions=True)
+
+	def _reconcile(self, order, woo):
+		with woo_refunds_http(woo), patch.object(frappe, "in_test", False):
+			result = refunds._reconcile(order.name)
+		order.reload()
+		return result
+
+	def _rows(self, result):
+		si = frappe.get_doc("Sales Invoice", result["sales_invoice"])
+		return [flt(i.rate) for i in si.items], flt(si.discount_amount), flt(si.grand_total)
+
+	def test_a_whole_line_refund_takes_the_line_off_the_invoice(self):
+		order = self._two_line_order()
+		self._record(order, 7101, "-599.00")
+		result = self._reconcile(order, [_line_refund(7101, 2, 1, 599.0)])
+		self.assertEqual(result["status"], "adjusted")
+		self.assertEqual(self._rows(result), ([495.0], 0.0, 495.0))
+		self.assertEqual(self._reconcile(order, [])["status"], "already_net")
+
+	def test_a_refund_read_before_lines_were_read_is_re_read_and_corrected(self):
+		"""An invoice already netted by a discount (its refund row Fetched before the
+		returned line was recorded) is amended again once, the line coming off."""
+		order = self._two_line_order()
+		self._record(order, 7102, "-599.00")
+		with patch.object(refunds, "_returned_lines", return_value=None):
+			first = self._reconcile(order, [_line_refund(7102, 2, 1, 599.0)])
+		self.assertEqual(self._rows(first), ([495.0, 599.0], 599.0, 495.0))
+		frappe.db.set_value("Woo Online Order Refund", order.refunds[0].name,
+			"returned_lines", None, update_modified=False)
+		result = self._reconcile(order, [_line_refund(7102, 2, 1, 599.0)])
+		self.assertEqual(result["status"], "adjusted")
+		self.assertEqual(self._rows(result), ([495.0], 0.0, 495.0))
+
+	def test_a_line_refunded_for_less_than_it_cost_is_held_for_a_person(self):
+		"""Quantity back but less money than the line: a restocking fee or a mistyped
+		quantity — code cannot tell, so nothing is amended."""
+		order = self._two_line_order()
+		self._record(order, 7103, "-100.00")
+		result = self._reconcile(order, [_line_refund(7103, 2, 1, 100.0)])
+		self.assertEqual(result["status"], "held")
+		self.assertIn("less than its 599.00", " ".join(result["reasons"]))
+		self.assertEqual(self._rows(result), ([495.0, 599.0], 0.0, 1094.0))
+
+	def test_a_price_allowance_on_a_line_stays_a_discount(self):
+		order = self._two_line_order()
+		self._record(order, 7104, "-30.00")
+		result = self._reconcile(order, [_line_refund(7104, 2, 0, 30.0)])
+		self.assertEqual(result["status"], "adjusted")
+		self.assertEqual(self._rows(result), ([495.0, 599.0], 30.0, 1064.0))
+
+	def test_a_gun_already_transferred_on_the_order_is_held(self):
+		"""Shipped and came back is a return, not a cancelled line: held, not removed.
+		A gun never dispositioned on the order is removed."""
+		order = frappe._dict(name="WOO-ORD-T", lines=[
+			frappe._dict(woo_line_id="1", item_code="GUN-B", qty=1, line_total=495.0),
+			frappe._dict(woo_line_id="2", item_code="GUN-A", qty=1, line_total=599.0)],
+			serials=[frappe._dict(woo_line_id="1", confirmed_serial="SN-B"),
+				frappe._dict(woo_line_id="2", confirmed_serial="SN-A")],
+			refunds=[frappe._dict(woo_refund_id="7105", breakdown_status="Fetched",
+				returned_lines='[{"line_id": "2", "qty": 1, "total": 599.0, "refund": "7105"}]')])
+		items = [{"item_code": "GUN-B", "qty": 1, "rate": 495.0, "serial_no": "SN-B"},
+			{"item_code": "GUN-A", "qty": 1, "rate": 599.0, "serial_no": "SN-A"}]
+		real_exists = frappe.db.exists
+
+		def plan(disposed):
+			with patch.object(frappe.db, "exists", side_effect=lambda dt, *a, **k: disposed
+					if dt == "FFL Disposition" else real_exists(dt, *a, **k)):
+				return refunds._line_plan(items, order)
+
+		remove, value, _absent, held = plan(True)
+		self.assertEqual((remove, value), ([], 0.0))
+		self.assertIn("SN-A was transferred on this order", held[0])
+		self.assertEqual(plan(False), ([items[1]], 599.0, 0.0, []))
 
 
 class TestRefundReadConcurrency(_RealWebOrder, FrappeTestCase):
