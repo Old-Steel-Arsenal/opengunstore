@@ -414,14 +414,30 @@ jobs:
           pip install frappe-bench
           npm install -g yarn
 
-      # No apt packages, hosted or self-hosted. wkhtmltopdf (and the libcups2/libxrender1 it
-      # needs) is not in Ubuntu 26.04's repos at all, and ubuntu-latest is 26.04 since
-      # 2026-11. Nothing needs it: the only PDF touchpoint in our suites (test_sale_receipt)
-      # mocks frappe.attach_print and never invokes the binary. If a future test needs real
-      # PDFs, install the official wkhtmltox .deb.
+      # GitHub-hosted only. wkhtmltopdf is not in Ubuntu 26.04's repos (ubuntu-latest is
+      # 26.04 since 2026-11), so install the upstream wkhtmltox .deb (patched-Qt build,
+      # what Frappe's get_pdf expects); apt resolves its runtime libraries. test_agreements
+      # renders real signed PDFs through it.
       - name: Install system deps
         if: runner.environment == 'github-hosted'
         run: |
+          # A slow mirror (35 MB at 60 kB/s) once held one shard here ~10 min while the others
+          # ran their tests. Each try is bounded; the second reconnects (often to another
+          # mirror node) after finishing any half-done dpkg run.
+          DEB=wkhtmltox_0.12.6.1-3.jammy_amd64.deb
+          curl -fsSL --retry 3 -o "/tmp/$DEB" \
+            "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/$DEB"
+          APT=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          for try in 1 2; do
+            if timeout 300 sudo apt-get "${APT[@]}" update -y \
+                && timeout 300 sudo apt-get "${APT[@]}" install -y "/tmp/$DEB"; then
+              break
+            fi
+            [ "$try" = 2 ] && exit 1
+            echo "::warning::apt-get failed or timed out (try $try); trying again"
+            sudo dpkg --configure -a || true
+          done
+          wkhtmltopdf --version
           # The hosted image carries the MySQL 8 client, not MariaDB's. scripts/ci/parallel_tests.py
           # falls back to its `mysql`/`mysqldump`, and mysqldump 8 asks the server for
           # information_schema.COLUMN_STATISTICS, which MariaDB lacks (the dump of the base site
