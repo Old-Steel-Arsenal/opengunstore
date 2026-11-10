@@ -1573,6 +1573,7 @@ app: `ffl_woo_sync` · module: FFL Woo Sync · child table
 | `tax_refunded` | Currency | Tax Refunded |  |  |
 | `shipping_refunded` | Currency | Shipping Refunded |  |  |
 | `breakdown_status` | Select | Breakdown |  | , Fetched, Pending, Not in Woo, Rejected |
+| `returned_lines` | Small Text | Returned Lines |  |  |
 | `reason` | Data | Reason |  |  |
 | `recorded_on` | Datetime | Recorded On |  |  |
 

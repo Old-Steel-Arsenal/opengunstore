@@ -126,7 +126,8 @@ def add_stock(item_code: str, qty, warehouse: str | None = None,
 	    item_code: Non-serialized stock Item to receive.
 	    qty: Units to add, > 0.
 	    warehouse: Optional target; defaults to the configured warehouse.
-	    rate: Optional per-unit valuation; non-numeric or <= 0 is ignored.
+	    rate: Optional per-unit cost; non-numeric or <= 0 is ignored and the
+	        cost on file is used instead (never the selling price).
 	    remarks: Optional Stock Entry remarks.
 
 	Returns:
@@ -134,7 +135,8 @@ def add_stock(item_code: str, qty, warehouse: str | None = None,
 
 	Raises:
 	    ValidationError: qty <= 0, missing item, non-stock item,
-	        serial-tracked item, or no warehouse available.
+	        serial-tracked item, no warehouse available, or no rate given
+	        and no cost on file.
 
 	Permissions:
 	    Stock Manager / System Manager.
@@ -164,6 +166,14 @@ def add_stock(item_code: str, qty, warehouse: str | None = None,
 				rate_f = None
 		except (TypeError, ValueError):
 			rate_f = None
+	# No rate given: take the cost on file. Never leave it to ERPNext, whose
+	# fallback values the receipt at Item.standard_rate — the SELLING price —
+	# which every later sale then books as COGS.
+	if rate_f is None:
+		rate_f = local_unit_cost(item_code)
+	if not rate_f:
+		frappe.throw(_("No cost on file for {0}: enter its unit cost. A service has no stock "
+			"to add — untick Maintain Stock on the item instead.").format(item_code))
 
 	se = frappe.get_doc({
 		"doctype": "Stock Entry",

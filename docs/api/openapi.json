@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenGunstore API",
-    "version": "0.7.5",
+    "version": "0.7.6",
     "description": "RPC API of the OpenGunstore custom apps (Frappe/ERPNext v16): ffl_core, ffl_integrations, ffl_woo_sync.\n\nAll endpoints are Frappe *whitelisted methods* invoked as `/api/method/<dotted.path>`. Unless an endpoint declares explicit HTTP verbs, it is documented here as POST (Frappe also accepts GET for read-only calls; always POST mutations). Arguments may be sent as JSON body, form data, or query string — JSON body is recommended.\n\nEvery operation carries an **Auth (derived from code)** line statically resolved from the role gate the function actually executes; the prose Permissions note adds semantics the machine can't infer.\n\nStandard CRUD on DocTypes is served by Frappe's REST layer (`/api/resource/<DocType>`) — see docs/api/frappe-rest.md; the custom DocTypes are modelled under components.schemas and listed in reference/doctypes.md."
   },
   "servers": [
@@ -5703,6 +5703,10 @@
             ],
             "description": "Breakdown"
           },
+          "returned_lines": {
+            "type": "string",
+            "description": "Returned Lines"
+          },
           "reason": {
             "type": "string",
             "description": "Reason"
@@ -9025,7 +9029,7 @@
                     "description": "Optional target; defaults to the configured warehouse."
                   },
                   "rate": {
-                    "description": "Optional per-unit valuation; non-numeric or <= 0 is ignored."
+                    "description": "Optional per-unit cost; non-numeric or <= 0 is ignored and the cost on file is used instead (never the selling price)."
                   },
                   "remarks": {
                     "type": [
@@ -9051,7 +9055,7 @@
           "ffl_core"
         ],
         "summary": "DESTRUCTIVE: cancel referencing docs, drop links, delete Items outright.",
-        "description": "Cancels referencing submitted docs, deletes referencing drafts, wipes\nsimple linked rows (Stock Ledger, Serial No, Bin, Batch, Item Price,\nFFL Acquisition/Disposition), then deletes the Items. Cancelled-doc\nhistory rows are left alone — they're audit trail.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager only (destructive).\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:587`",
+        "description": "Cancels referencing submitted docs, deletes referencing drafts, wipes\nsimple linked rows (Stock Ledger, Serial No, Bin, Batch, Item Price,\nFFL Acquisition/Disposition), then deletes the Items. Cancelled-doc\nhistory rows are left alone — they're audit trail.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager only (destructive).\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:597`",
         "operationId": "ffl_core.api.item_admin.force_delete",
         "responses": {
           "200": {
@@ -9102,7 +9106,7 @@
           "ffl_core"
         ],
         "summary": "Return {item_code: total_actual_qty} summed across all warehouses.",
-        "description": "Reads from `tabBin` (the per-warehouse stock-on-hand cache). Items with\nno Bin row return 0. Designed for the Item list view + Item form to\nshow a stock badge without forcing the user to open Stock Balance.\n\n**Auth (derived from code):** Requires read permission on Item (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:423`",
+        "description": "Reads from `tabBin` (the per-warehouse stock-on-hand cache). Items with\nno Bin row return 0. Designed for the Item list view + Item form to\nshow a stock badge without forcing the user to open Stock Balance.\n\n**Auth (derived from code):** Requires read permission on Item (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:433`",
         "operationId": "ffl_core.api.item_admin.get_item_stock",
         "responses": {
           "200": {
@@ -9149,7 +9153,7 @@
           "ffl_core"
         ],
         "summary": "Preview a force_delete: per-doctype counts of rows that would be touched.",
-        "description": "**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:511`",
+        "description": "**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:521`",
         "operationId": "ffl_core.api.item_admin.preview_delete",
         "responses": {
           "200": {
@@ -9196,7 +9200,7 @@
           "ffl_core"
         ],
         "summary": "One-shot reconciliation: refresh Item.actual_qty for every Item from",
-        "description": "current Bin sums in a single bulk UPDATE. Useful after migrate to backfill\nthe new field, or after data imports / direct-DB tweaks.\n\nTwo statements:\n1. UPDATE Item JOIN (SUM Bin) — set qty for items that have Bin rows\n2. UPDATE Item — zero out items with no Bin rows (e.g. after Force Delete)\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:382`",
+        "description": "current Bin sums in a single bulk UPDATE. Useful after migrate to backfill\nthe new field, or after data imports / direct-DB tweaks.\n\nTwo statements:\n1. UPDATE Item JOIN (SUM Bin) — set qty for items that have Bin rows\n2. UPDATE Item — zero out items with no Bin rows (e.g. after Force Delete)\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:392`",
         "operationId": "ffl_core.api.item_admin.recompute_all_item_actual_qty",
         "responses": {
           "200": {
@@ -9226,7 +9230,7 @@
           "ffl_core"
         ],
         "summary": "Adjust stock to an absolute quantity via Stock Reconciliation.",
-        "description": "Used by the \"Adjust Quantity\" button on the Item form when the user\nwants to set on-hand to a specific number (post-physical-count, found\ninventory correction, write-off). For positive deltas a Material\nReceipt is faster (see add_stock); set_stock is the right primitive\nwhen the user already knows the absolute target.\n\nThe quantity entered is what is on the shelf now. A register sale not yet\nclosed has left the shelf but is still in the Bin (ERPNext posts it at the\nregister close), so the reconciliation sets the Bin to the entered quantity\nplus those units; once the close posts them the Bin reads the entered figure.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\n**Permissions:** Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:193`",
+        "description": "Used by the \"Adjust Quantity\" button on the Item form when the user\nwants to set on-hand to a specific number (post-physical-count, found\ninventory correction, write-off). For positive deltas a Material\nReceipt is faster (see add_stock); set_stock is the right primitive\nwhen the user already knows the absolute target.\n\nThe quantity entered is what is on the shelf now. A register sale not yet\nclosed has left the shelf but is still in the Bin (ERPNext posts it at the\nregister close), so the reconciliation sets the Bin to the entered quantity\nplus those units; once the close posts them the Bin reads the entered figure.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\n**Permissions:** Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:203`",
         "operationId": "ffl_core.api.item_admin.set_stock",
         "responses": {
           "200": {
@@ -24429,7 +24433,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Reconcile a web order's Sales Invoice to its Woo refunds.",
-        "description": "Manual/enqueued entry point.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (same as the other web-order accounting actions).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/refunds.py:497`",
+        "description": "Manual/enqueued entry point.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (same as the other web-order accounting actions).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/refunds.py:622`",
         "operationId": "ffl_woo_sync.woocommerce.refunds.reconcile_web_order_refund",
         "responses": {
           "200": {

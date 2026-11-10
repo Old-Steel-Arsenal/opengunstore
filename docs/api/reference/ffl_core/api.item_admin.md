@@ -22,12 +22,12 @@ compliance flow runs.
 | `item_code` | string | yes | — | Non-serialized stock Item to receive. |
 | `qty` | — | yes | — | Units to add, > 0. |
 | `warehouse` | string \| null | no | `None` | Optional target; defaults to the configured warehouse. |
-| `rate` | — | no | `None` | Optional per-unit valuation; non-numeric or <= 0 is ignored. |
+| `rate` | — | no | `None` | Optional per-unit cost; non-numeric or <= 0 is ignored and the cost on file is used instead (never the selling price). |
 | `remarks` | string \| null | no | `None` | Optional Stock Entry remarks. |
 
 **Returns:** {ok, name, qty, warehouse}.
 
-**Raises:** ValidationError: qty <= 0, missing item, non-stock item, serial-tracked item, or no warehouse available.
+**Raises:** ValidationError: qty <= 0, missing item, non-stock item, serial-tracked item, no warehouse available, or no rate given and no cost on file.
 
 **Permissions:** Stock Manager / System Manager.
 
@@ -57,7 +57,7 @@ history rows are left alone — they're audit trail.
 
 **Permissions:** System Manager only (destructive).
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:587`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:597`</sub>
 
 ## `get_item_stock`
 
@@ -77,7 +77,7 @@ show a stock badge without forcing the user to open Stock Balance.
 
 **Returns:** {item_code: total_actual_qty} — every requested code is present.
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:423`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:433`</sub>
 
 ## `preview_delete`
 
@@ -95,7 +95,7 @@ Preview a force_delete: per-doctype counts of rows that would be touched.
 
 **Permissions:** System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:511`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:521`</sub>
 
 ## `recompute_all_item_actual_qty`
 
@@ -116,7 +116,7 @@ Two statements:
 
 **Permissions:** System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:382`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:392`</sub>
 
 ## `set_stock`
 
@@ -150,4 +150,4 @@ plus those units; once the close posts them the Bin reads the entered figure.
 
 **Permissions:** Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/item_admin.py:193`</sub>
+<sub>`apps/ffl_core/ffl_core/api/item_admin.py:203`</sub>

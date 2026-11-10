@@ -37,13 +37,15 @@ Idempotency is layered:
 """
 from __future__ import annotations
 
+import json
+
 import frappe
 from frappe import _
 from frappe.utils import flt, now_datetime
 
 # _TOTAL_TOLERANCE: the amended SI must also mirror the Woo net to the cent.
 from ffl_woo_sync.woocommerce.revenue import _TOTAL_TOLERANCE, _ensure_paid
-from ffl_core.utils import guest_job_elevated
+from ffl_core.utils import guest_job_elevated, split_serials
 
 
 # ------------------------------------------------------------ parse + record
@@ -103,7 +105,7 @@ def record_order_refunds(order_doc, body: dict) -> bool:
 # the other two are terminal.
 _FETCHED, _PENDING, _NOT_IN_WOO, _REJECTED = "Fetched", "Pending", "Not in Woo", "Rejected"
 _CENT = 0.01  # slack when checking a breakdown against the refund / the order
-_BREAKDOWN_FIELDS = ("breakdown_status", "tax_refunded", "shipping_refunded")
+_BREAKDOWN_FIELDS = ("breakdown_status", "tax_refunded", "shipping_refunded", "returned_lines")
 
 
 def has_pending_breakdown(order_doc) -> bool:
@@ -113,6 +115,13 @@ def has_pending_breakdown(order_doc) -> bool:
 def _pending_ids(order_doc) -> set[str]:
 	return {str(r.woo_refund_id) for r in (order_doc.refunds or [])
 		if r.get("breakdown_status") == _PENDING}
+
+
+def _lines_unread_ids(order_doc) -> set[str]:
+	"""Refunds whose breakdown was accepted before the refunded order lines were
+	recorded (``returned_lines`` never set): read once more, for the lines only."""
+	return {str(r.woo_refund_id) for r in (order_doc.refunds or [])
+		if r.get("breakdown_status") == _FETCHED and r.get("returned_lines") is None}
 
 
 def _refresh_breakdown_fields(order_doc) -> None:
@@ -131,10 +140,12 @@ def _refresh_breakdown_fields(order_doc) -> None:
 				setattr(row, field, current[row.name].get(field))
 
 
-def _settle_row(row, status: str, tax: float = 0.0, shipping: float = 0.0) -> None:
+def _settle_row(row, status: str, tax: float = 0.0, shipping: float = 0.0,
+		lines: list | None = None) -> None:
 	"""Write a refund row's breakdown straight onto the child row — never a save
 	of the parent order, whose ``modified`` a concurrent webhook save checks."""
-	values = {"breakdown_status": status, "tax_refunded": tax, "shipping_refunded": shipping}
+	values = {"breakdown_status": status, "tax_refunded": tax, "shipping_refunded": shipping,
+		"returned_lines": json.dumps(lines or [])}
 	for field, value in values.items():
 		setattr(row, field, value)
 	frappe.db.set_value("Woo Online Order Refund", row.name, values, update_modified=False)
@@ -209,6 +220,15 @@ def _apply_refund_breakdowns(order_doc, listed: dict, ids: set[str]) -> bool:
 
 	changed = False
 	for row in [r for r in (order_doc.refunds or [])
+			if r.get("breakdown_status") == _FETCHED and r.get("returned_lines") is None
+			and str(r.woo_refund_id) in ids]:
+		# Accepted before its lines were recorded: only the lines are read now.
+		changed = True
+		lines = _refund_lines(listed.get(str(row.woo_refund_id)) or {})
+		row.returned_lines = json.dumps(lines)
+		frappe.db.set_value("Woo Online Order Refund", row.name, "returned_lines",
+			row.returned_lines, update_modified=False)
+	for row in [r for r in (order_doc.refunds or [])
 			if r.get("breakdown_status") == _PENDING and str(r.woo_refund_id) in ids]:
 		changed = True
 		refund = listed.get(str(row.woo_refund_id))
@@ -219,7 +239,7 @@ def _apply_refund_breakdowns(order_doc, listed: dict, ids: set[str]) -> bool:
 			tax, shipping = _refund_breakdown(refund)
 			why = _breakdown_problems(order_doc, flt(row.refund_amount), tax, shipping)
 			if not why:
-				_settle_row(row, _FETCHED, tax, shipping)
+				_settle_row(row, _FETCHED, tax, shipping, _refund_lines(refund))
 				continue
 			_settle_row(row, _REJECTED)
 			why += f" (Woo reported tax {tax:.2f}, shipping {shipping:.2f})"
@@ -265,6 +285,92 @@ def _refund_breakdown(refund: dict) -> tuple[float, float]:
 		for line in (refund.get(key) or []))
 	shipping = sum(abs(flt(line.get("total"))) for line in (refund.get("shipping_lines") or []))
 	return round(tax, 2), round(shipping, 2)  # cents from Woo's own strings
+
+
+def _refund_lines(refund: dict) -> list[dict]:
+	"""The order lines one WC refund gives money back on: [{line_id, qty, total}],
+	magnitudes, goods only (``total`` is before tax). WooCommerce names the order
+	line it refunds in the ``_refunded_item_id`` meta; a line item without it
+	cannot be tied to a line and stays part of the goods discount."""
+	out = []
+	for line in (refund.get("line_items") or []):
+		line_id = next((str(m.get("value")) for m in (line.get("meta_data") or [])
+			if m.get("key") == "_refunded_item_id" and m.get("value") not in (None, "")), None)
+		if line_id:
+			out.append({"line_id": line_id, "qty": abs(flt(line.get("quantity"))),
+				"total": round(abs(flt(line.get("total"))), 2), "refund": str(refund.get("id") or "")})
+	return out
+
+
+def _returned_lines(order_doc) -> dict[str, dict]:
+	"""{woo_line_id: {qty, total, refunds}} summed over the accepted refunds."""
+	out: dict[str, dict] = {}
+	for row in (order_doc.refunds or []):
+		if row.get("breakdown_status") != _FETCHED or not row.get("returned_lines"):
+			continue
+		for line in json.loads(row.returned_lines):
+			agg = out.setdefault(str(line["line_id"]), {"qty": 0.0, "total": 0.0, "refunds": []})
+			agg["qty"] += flt(line.get("qty"))
+			agg["total"] = round(agg["total"] + flt(line.get("total")), 2)
+			agg["refunds"].append(str(row.woo_refund_id))
+	return out
+
+
+def _line_plan(si_items, order_doc) -> tuple[list, float, float, list[str]]:
+	"""(rows to take off the invoice, value of every line refunded in full, the part
+	of that value already off this invoice, reasons to hold) for the order lines
+	WooCommerce refunded. A fully refunded line no longer on the invoice was taken
+	off by an earlier amend: settled, but its value still stays out of the discount.
+
+	A line refunded in FULL (its whole quantity, at least its net) is goods the
+	buyer never kept: it leaves the invoice with its serial, so revenue and the
+	Sales Report's cost both drop it; money above the line's net stays a goods
+	discount. Quantity 0 is a price allowance — the line stays, the money is a
+	discount. Anything a person must judge is held, never guessed: quantity back
+	but less money than the line (a restocking fee, or a mistyped quantity), part
+	of a multi-unit line, a serial this order already dispositioned (shipped and
+	came back — a return), or a refund that would leave no goods on the invoice."""
+	from ffl_woo_sync.woocommerce.revenue import _line_serials
+
+	returned = _returned_lines(order_doc) or {}
+	if not returned:
+		return [], 0.0, 0.0, []
+	lines = {str(l.woo_line_id): l for l in (order_doc.lines or [])}
+	serials_by_line = _line_serials(order_doc)
+	remove, value, absent, held, taken = [], 0.0, 0.0, [], set()
+	for line_id, ret in returned.items():
+		line = lines.get(line_id)
+		if not line or ret["qty"] <= 0:
+			continue
+		line_qty, line_net = flt(line.qty) or 1, flt(line.line_total)
+		label = f"{line.item_code} (Woo refund {', '.join(ret['refunds'])})"
+		if ret["qty"] < line_qty:
+			# lazy: part of a multi-unit line is held; reduce qty when that shows up for real
+			held.append(f"{label}: {ret['qty']:g} of {line_qty:g} units refunded")
+			continue
+		if ret["total"] < line_net - _CENT:
+			held.append(f"{label}: the whole line was refunded for {ret['total']:.2f}, "
+				f"less than its {line_net:.2f}")
+			continue
+		expected = set(serials_by_line.get(line_id) or [])
+		if expected and frappe.db.exists("FFL Disposition", {"serial": ["in", sorted(expected)],
+				"woo_online_order": order_doc.name, "docstatus": 1}):
+			held.append(f"{label}: {', '.join(sorted(expected))} was transferred on this order — "
+				"a return, book a credit note")
+			continue
+		value += line_net
+		row = next((r for i, r in enumerate(si_items) if i not in taken
+			and r.get("item_code") == line.item_code
+			and set(split_serials(r.get("serial_no"))) == expected
+			and abs(flt(r.get("rate")) * flt(r.get("qty")) - line_net) <= _CENT), None)
+		if row is None:
+			absent += line_net
+			continue
+		taken.add(next(i for i, r in enumerate(si_items) if r is row))
+		remove.append(row)
+	if remove and len(remove) >= len(si_items):
+		return [], 0.0, 0.0, held + ["the refund would leave no goods on the invoice"]
+	return remove, round(value, 2), round(absent, 2), held
 
 
 def refund_split(order_doc) -> tuple[float, float] | None:
@@ -338,6 +444,20 @@ def apply_refund_discount(si, order_doc) -> None:
 	if total_refunded(order_doc) <= _TOTAL_TOLERANCE:
 		return
 	rows, new_tax, new_ship, goods = _refund_split_targets(si, order_doc)
+	# Whole lines refunded leave the invoice; a line that is held stays under the
+	# discount (the old way) until a person settles it.
+	remove, value = [], 0.0
+	if _returned_lines(order_doc):
+		remove, value, _absent, _held = _line_plan(list(si.items), order_doc)
+	for row in remove:
+		si.remarks = (si.remarks or "") + _(
+			" Refunded on WooCommerce, taken off this invoice: {0}{1}.").format(
+			row.item_code, f" ({', '.join(split_serials(row.serial_no))})" if row.serial_no else "")
+		si.remove(row)
+	if remove:
+		for idx, row in enumerate(si.items, start=1):
+			row.idx = idx
+	goods = max(0.0, round(goods - value, 2))
 	if new_tax is not None:
 		rows[0].tax_amount = new_tax
 		for extra in rows[1:]:
@@ -387,7 +507,7 @@ def _reconcile(order) -> dict:
 		order = frappe.get_doc("Woo Online Order", order)
 	# Snapshot which rows the read below is FOR: a refund recorded while Woo is
 	# being read must not be judged against a listing taken before it existed.
-	ids = _pending_ids(order)
+	ids = _pending_ids(order) | _lines_unread_ids(order)
 	outcome, listed = _fetch_woo_refunds(order) if ids else (None, None)
 	# Serialise concurrent reconciles for the same order — a double order.updated
 	# enqueues two jobs; the loser blocks on this row lock until the winner commits,
@@ -432,9 +552,13 @@ def _reconcile(order) -> dict:
 		if split and split[0] > 0 else []))
 	tax_rows, new_tax, new_ship, goods_refund = _refund_split_targets(light, order)
 	tax_move = 0.0 if new_tax is None else flt(sum(flt(t.tax_amount) for t in tax_rows)) - new_tax
+	remove, _value, absent, line_held = _line_plan(frappe.get_all("Sales Invoice Item",
+		filters={"parent": existing.get("name"), "parenttype": "Sales Invoice"},
+		fields=["item_code", "qty", "rate", "serial_no"], order_by="idx asc"), order)
 	ship_move = 0.0 if new_ship is None else flt(existing.get("ffl_shipping_amount")) - new_ship
 	if (abs(flt(existing.get("grand_total")) - target) <= _TOTAL_TOLERANCE
-			and abs(tax_move) <= _TOTAL_TOLERANCE and abs(ship_move) <= _TOTAL_TOLERANCE):
+			and abs(tax_move) <= _TOTAL_TOLERANCE and abs(ship_move) <= _TOTAL_TOLERANCE
+			and not remove and not line_held):
 		# Never "already_net" while a breakdown is unread: the net is right but the
 		# split may not be — a later read re-amends it.
 		return {"status": "pending_breakdown" if pending else "already_net",
@@ -448,7 +572,7 @@ def _reconcile(order) -> dict:
 	from ffl_core.alerts import alert_once
 	from ffl_woo_sync.woocommerce.revenue import stock_leg_cancel_blockers
 
-	held = stock_leg_cancel_blockers(existing.get("name"))
+	held = stock_leg_cancel_blockers(existing.get("name")) + line_held
 	# The amend re-posts the invoice through an ABSOLUTE Net-Total discount equal
 	# to all refunds (apply_refund_discount replaces ``discount_amount``). On a
 	# second partial refund the current invoice is already net of the first one,
@@ -463,6 +587,7 @@ def _reconcile(order) -> dict:
 	projected = (
 		flt(existing.get("grand_total"))
 		+ flt(existing.get("discount_amount"))
+		+ absent  # lines an earlier amend already took off
 		- tax_move - ship_move
 		- goods_refund
 	)
