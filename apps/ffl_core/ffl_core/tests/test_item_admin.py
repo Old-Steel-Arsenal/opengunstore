@@ -492,6 +492,26 @@ class ItemAdminAddStock(FrappeTestCase):
 		self.assertAlmostEqual(
 			float(frappe.db.get_value("Stock Reconciliation", out["name"], "difference_amount")), -14.0)
 
+	def test_add_stock_without_a_rate_never_values_at_the_selling_price(self):
+		"""No rate given and no cost on file: ERPNext's own fallback would value the
+		receipt at Item.standard_rate (the SELLING price), and every later sale would
+		book that price as COGS. Refuse instead; nothing is posted."""
+		warehouse = self._clean_item(standard_rate=50)
+		with self.assertRaises(frappe.ValidationError) as ctx:
+			add_stock("ADDSTOCK-CLEAN", 5, warehouse=warehouse)
+		self.assertIn("no cost on file", str(ctx.exception).lower())
+		self.assertFalse(frappe.db.exists("Stock Ledger Entry", {"item_code": "ADDSTOCK-CLEAN"}))
+
+	def test_add_stock_without_a_rate_uses_the_cost_on_file(self):
+		"""A top-up with the rate left blank takes what the stock already cost,
+		not the selling price."""
+		warehouse = self._clean_item(standard_rate=50)
+		add_stock("ADDSTOCK-CLEAN", 2, warehouse=warehouse, rate=12)
+		add_stock("ADDSTOCK-CLEAN", 3, warehouse=warehouse)
+		bin_rate = frappe.db.get_value("Bin",
+			{"item_code": "ADDSTOCK-CLEAN", "warehouse": warehouse}, "valuation_rate")
+		self.assertAlmostEqual(float(bin_rate), 12.0)
+
 	def test_set_stock_increase_with_no_cost_on_file_is_refused(self):
 		warehouse = self._clean_item()
 		with self.assertRaises(frappe.ValidationError) as ctx:
