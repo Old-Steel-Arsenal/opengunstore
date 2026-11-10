@@ -1126,6 +1126,10 @@ extend_doctype_class = {
 override_whitelisted_methods = {
 	"erpnext.selling.page.point_of_sale.point_of_sale.check_opening_entry":
 		"ffl_core.api.pos_session.check_opening_entry",
+	# Upstream counts consolidated POS tickets as still reserving their serials, so a
+	# gun sold at the register and later bought back can never be rung up again.
+	"erpnext.stock.doctype.serial_no.serial_no.get_pos_reserved_serial_nos":
+		"ffl_core.api.pos_serial.get_pos_reserved_serial_nos",
 	# MCP clients that sign in from a terminal (Claude Code) register an
 	# http://localhost callback, which Frappe's registration refuses (api/oauth_dcr.py).
 	"frappe.integrations.oauth2.register_client": "ffl_core.api.oauth_dcr.register_client",
