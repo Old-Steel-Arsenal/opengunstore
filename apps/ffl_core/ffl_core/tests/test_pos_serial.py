@@ -52,11 +52,15 @@ class PosReservedSerials(FrappeTestCase):
 		out = get_pos_reserved_serial_nos(frappe.as_json({"item_code": ITEM, "warehouse": WH}))
 		self.assertIn("PRS-JSON", out)
 
-	def test_hook_wires_override(self):
-		from ffl_core import hooks
-		self.assertEqual(
-			hooks.override_whitelisted_methods[
-				"erpnext.stock.doctype.serial_no.serial_no.get_pos_reserved_serial_nos"
-			],
-			"ffl_core.api.pos_serial.get_pos_reserved_serial_nos",
-		)
+	def test_pos_page_call_resolves_to_override(self):
+		# The exact path pos_controller.js calls, resolved the way frappe.handler
+		# does: the last registered override must be ours, and it must behave as ours.
+		upstream = "erpnext.stock.doctype.serial_no.serial_no.get_pos_reserved_serial_nos"
+		resolved = frappe.override_whitelisted_method(upstream)
+		self.assertEqual(resolved, "ffl_core.api.pos_serial.get_pos_reserved_serial_nos")
+		_ticket("PRS-DISPATCH", consolidated="SINV-TEST-2")
+		fn = frappe.get_attr(resolved)
+		self.assertNotIn("PRS-DISPATCH", fn({"item_code": ITEM, "warehouse": WH}))
+		pos_js = frappe.get_app_path("erpnext", "selling", "page", "point_of_sale", "pos_controller.js")
+		with open(pos_js) as f:
+			self.assertIn(upstream, f.read())
