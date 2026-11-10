@@ -28,6 +28,10 @@ OPEN_BY_DESIGN = {
 	# ERPNext's own check_opening_entry override keeps upstream's gateless
 	# semantics — the shared-register fix must stay callable by any clerk.
 	"ffl_core.api.pos_session.check_opening_entry",
+	# Reviewed 2026-11-10: override of ERPNext's gateless
+	# serial_no.get_pos_reserved_serial_nos, called by the POS page for every
+	# serialized item a clerk adds; returns serial numbers only.
+	"ffl_core.api.pos_serial.get_pos_reserved_serial_nos",
 	# Reviewed 2026-09-11: release notes are static files shipped
 	# with the code, meant for every desk user; Guest is stopped by the
 	# whitelist itself (no allow_guest). Nothing store-specific to gate.
