@@ -5703,6 +5703,10 @@
             ],
             "description": "Breakdown"
           },
+          "returned_lines": {
+            "type": "string",
+            "description": "Returned Lines"
+          },
           "reason": {
             "type": "string",
             "description": "Reason"
@@ -24429,7 +24433,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Reconcile a web order's Sales Invoice to its Woo refunds.",
-        "description": "Manual/enqueued entry point.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (same as the other web-order accounting actions).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/refunds.py:497`",
+        "description": "Manual/enqueued entry point.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (same as the other web-order accounting actions).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/refunds.py:622`",
         "operationId": "ffl_woo_sync.woocommerce.refunds.reconcile_web_order_refund",
         "responses": {
           "200": {
