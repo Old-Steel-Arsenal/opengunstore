@@ -449,9 +449,10 @@ jobs:
       # (stale-venv) restore. Bump the epoch (v2→v3…) to force a clean rebuild.
       # Gated on use_cache so the daily drift-check (ci.yml) still builds fresh.
       # GitHub-hosted only (kept intact for the one-line rollback to
-      # ubuntu-latest). NOTE the key's env.ImageOS has always evaluated empty —
-      # image-set process env vars never enter the `env` expression context —
-      # which is exactly how a self-hosted run once got an exact hit on a
+      # ubuntu-latest). The key's image part comes from the refs step: it used to be
+      # env.ImageOS, which always evaluated empty — image-set process env vars never
+      # enter the `env` expression context — so a 24.04 bench was restored on 26.04
+      # (ImportError libmysqlclient.so.21). That empty key is also how a self-hosted run once got an exact hit on a
       # GitHub-built bench whose venv pointed at /opt/hostedtoolcache (exit
       # 126). Self-hosted therefore never touches this cache in either
       # direction; it reuses the bench persisted in the runner workspace below.
@@ -498,6 +499,11 @@ jobs:
           # bench carries the release under test's CRM from the start (and the upgrade installs it).
           echo "crm=${CRM_REF}" >> "$GITHUB_OUTPUT"
           echo "bench refs: frappe ${FRAPPE_REF}, erpnext ${ERPNEXT_REF}, hrms ${HRMS_REF}, crm ${CRM_REF}"
+          # The bench cache key's OS part. ImageOS is a process env var of the hosted image
+          # (ubuntu24, ubuntu26, …), invisible to the `env` expression context, so it is read
+          # here. A bench built on another image carries native wheels linked to that image's
+          # libraries (mysqlclient → libmysqlclient.so.21 on 24.04, gone on 26.04).
+          echo "image=${ImageOS:-none}" >> "$GITHUB_OUTPUT"
 
       - name: Restore bench cache
         id: bench-cache
@@ -505,7 +511,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: frappe-bench
-          key: bench-v3-${{ runner.os }}-${{ env.ImageOS }}-py${{ steps.setup-python.outputs.python-version }}-frappe-${{ steps.refs.outputs.frappe }}-erpnext-${{ steps.refs.outputs.erpnext }}-hrms-${{ steps.refs.outputs.hrms }}-crm-${{ steps.refs.outputs.crm }}
+          key: bench-v3-${{ runner.os }}-${{ steps.refs.outputs.image }}-py${{ steps.setup-python.outputs.python-version }}-frappe-${{ steps.refs.outputs.frappe }}-erpnext-${{ steps.refs.outputs.erpnext }}-hrms-${{ steps.refs.outputs.hrms }}-crm-${{ steps.refs.outputs.crm }}
 
       # Self-hosted: the runner workspace survives runs, so last run's bench is
       # already on local disk — no network cache transfer at all. Reuse it only
