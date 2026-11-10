@@ -414,28 +414,30 @@ jobs:
           pip install frappe-bench
           npm install -g yarn
 
-      # GitHub-hosted only. On the self-hosted runners (Ubuntu 26.04): libcups2/libxrender1
-      # ship with the OS (as t64 renames), and wkhtmltopdf is not in 26.04's
-      # repos at all — deliberately not installed, since the only PDF touchpoint
-      # in our suites (test_sale_receipt) mocks frappe.attach_print and never
-      # invokes the binary. If a future test needs real PDFs, install the
-      # official wkhtmltox .deb on the runner machine.
+      # GitHub-hosted only. wkhtmltopdf is not in Ubuntu 26.04's repos (ubuntu-latest is
+      # 26.04 since 2026-11), so install the upstream wkhtmltox .deb (patched-Qt build,
+      # what Frappe's get_pdf expects); apt resolves its runtime libraries. test_agreements
+      # renders real signed PDFs through it.
       - name: Install system deps
         if: runner.environment == 'github-hosted'
         run: |
           # A slow mirror (35 MB at 60 kB/s) once held one shard here ~10 min while the others
           # ran their tests. Each try is bounded; the second reconnects (often to another
           # mirror node) after finishing any half-done dpkg run.
+          DEB=wkhtmltox_0.12.6.1-3.jammy_amd64.deb
+          curl -fsSL --retry 3 -o "/tmp/$DEB" \
+            "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/$DEB"
           APT=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
           for try in 1 2; do
             if timeout 300 sudo apt-get "${APT[@]}" update -y \
-                && timeout 300 sudo apt-get "${APT[@]}" install -y wkhtmltopdf libcups2 libxrender1; then
+                && timeout 300 sudo apt-get "${APT[@]}" install -y "/tmp/$DEB"; then
               break
             fi
             [ "$try" = 2 ] && exit 1
             echo "::warning::apt-get failed or timed out (try $try); trying again"
             sudo dpkg --configure -a || true
           done
+          wkhtmltopdf --version
           # The hosted image carries the MySQL 8 client, not MariaDB's. scripts/ci/parallel_tests.py
           # falls back to its `mysql`/`mysqldump`, and mysqldump 8 asks the server for
           # information_schema.COLUMN_STATISTICS, which MariaDB lacks (the dump of the base site
@@ -463,9 +465,10 @@ jobs:
       # (stale-venv) restore. Bump the epoch (v2→v3…) to force a clean rebuild.
       # Gated on use_cache so the daily drift-check (ci.yml) still builds fresh.
       # GitHub-hosted only (kept intact for the one-line rollback to
-      # ubuntu-latest). NOTE the key's env.ImageOS has always evaluated empty —
-      # image-set process env vars never enter the `env` expression context —
-      # which is exactly how a self-hosted run once got an exact hit on a
+      # ubuntu-latest). The key's image part comes from the refs step: it used to be
+      # env.ImageOS, which always evaluated empty — image-set process env vars never
+      # enter the `env` expression context — so a 24.04 bench was restored on 26.04
+      # (ImportError libmysqlclient.so.21). That empty key is also how a self-hosted run once got an exact hit on a
       # GitHub-built bench whose venv pointed at /opt/hostedtoolcache (exit
       # 126). Self-hosted therefore never touches this cache in either
       # direction; it reuses the bench persisted in the runner workspace below.
@@ -512,6 +515,11 @@ jobs:
           # bench carries the release under test's CRM from the start (and the upgrade installs it).
           echo "crm=${CRM_REF}" >> "$GITHUB_OUTPUT"
           echo "bench refs: frappe ${FRAPPE_REF}, erpnext ${ERPNEXT_REF}, hrms ${HRMS_REF}, crm ${CRM_REF}"
+          # The bench cache key's OS part. ImageOS is a process env var of the hosted image
+          # (ubuntu24, ubuntu26, …), invisible to the `env` expression context, so it is read
+          # here. A bench built on another image carries native wheels linked to that image's
+          # libraries (mysqlclient → libmysqlclient.so.21 on 24.04, gone on 26.04).
+          echo "image=${ImageOS:-none}" >> "$GITHUB_OUTPUT"
 
       - name: Restore bench cache
         id: bench-cache
@@ -519,7 +527,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: frappe-bench
-          key: bench-v3-${{ runner.os }}-${{ env.ImageOS }}-py${{ steps.setup-python.outputs.python-version }}-frappe-${{ steps.refs.outputs.frappe }}-erpnext-${{ steps.refs.outputs.erpnext }}-hrms-${{ steps.refs.outputs.hrms }}-crm-${{ steps.refs.outputs.crm }}
+          key: bench-v3-${{ runner.os }}-${{ steps.refs.outputs.image }}-py${{ steps.setup-python.outputs.python-version }}-frappe-${{ steps.refs.outputs.frappe }}-erpnext-${{ steps.refs.outputs.erpnext }}-hrms-${{ steps.refs.outputs.hrms }}-crm-${{ steps.refs.outputs.crm }}
 
       # Self-hosted: the runner workspace survives runs, so last run's bench is
       # already on local disk — no network cache transfer at all. Reuse it only

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenGunstore API",
-    "version": "0.7.4",
+    "version": "0.7.5",
     "description": "RPC API of the OpenGunstore custom apps (Frappe/ERPNext v16): ffl_core, ffl_integrations, ffl_woo_sync.\n\nAll endpoints are Frappe *whitelisted methods* invoked as `/api/method/<dotted.path>`. Unless an endpoint declares explicit HTTP verbs, it is documented here as POST (Frappe also accepts GET for read-only calls; always POST mutations). Arguments may be sent as JSON body, form data, or query string — JSON body is recommended.\n\nEvery operation carries an **Auth (derived from code)** line statically resolved from the role gate the function actually executes; the prose Permissions note adds semantics the machine can't infer.\n\nStandard CRUD on DocTypes is served by Frappe's REST layer (`/api/resource/<DocType>`) — see docs/api/frappe-rest.md; the custom DocTypes are modelled under components.schemas and listed in reference/doctypes.md."
   },
   "servers": [
@@ -11519,6 +11519,41 @@
                 },
                 "required": [
                   "name"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.api.pos_serial.get_pos_reserved_serial_nos": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Serials held by submitted, not-yet-consolidated POS Invoices (override).",
+        "description": "Replaces ERPNext's serial_no.get_pos_reserved_serial_nos for the POS\npage's add-to-cart check. Same result as upstream, except a POS Invoice\nthat has been consolidated into a Sales Invoice no longer reserves its\nserials: the stock ledger already reflects that sale.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\n**Permissions:** Open by design: upstream's method is gateless and the POS page calls it for every serialized item a clerk adds.\n\nSource: `apps/ffl_core/ffl_core/api/pos_serial.py:23`",
+        "operationId": "ffl_core.api.pos_serial.get_pos_reserved_serial_nos",
+        "responses": {
+          "200": {
+            "description": "List of serial numbers reserved by open POS tickets, net of open return tickets."
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "filters": {
+                    "description": "Dict (or JSON string) with item_code and warehouse."
+                  }
+                },
+                "required": [
+                  "filters"
                 ]
               }
             }
