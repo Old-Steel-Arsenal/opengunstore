@@ -31,6 +31,12 @@ For each received mail of an in-scope account, in order (:func:`decide`):
    so it is team mail and shares the record (by design: whoever answers next can take it over);
    direct mail from someone new: skipped (a staff member's own mail never enters the POS).
 
+GunBroker questions: team mail from GunBroker's member-to-member address with a ``MsgId`` in the subject is
+one conversation per MsgId (``crm.gunbroker``) when its listing is a gun of this store: a lead named after
+the member with source GunBroker and that gun, every later mail of it on that lead (on its deal once
+converted). The rule comes before the category rules, so these are not other mail; mail from that address
+without a MsgId, or about a listing that is not ours (the store buys there too), is.
+
 Other mail: team mail that is not a customer inquiry is kept, not dropped. Each sender has one CRM Lead
 with the status ``Other mail`` and a category (``ffl_mail_category``: a category rule's, else what made
 it other mail). The Leads list leaves those out (``api.crm.crm_list_data``), the Other mail view shows
@@ -93,8 +99,9 @@ from frappe.utils import cint, get_datetime, now, now_datetime, nowdate, parse_a
 from frappe.utils.background_jobs import enqueue, get_jobs
 from frappe.utils.synchronization import filelock
 
-from ffl_core.crm import TITLE, installed, team
-from ffl_core.crm.deals import open_deal_for
+from ffl_core.crm import TITLE, gunbroker, installed, team
+from ffl_core.crm.deal import add_product_row
+from ffl_core.crm.deals import DEAL, open_deal_for
 from ffl_core.utils import commit
 
 SETTINGS = team.SETTINGS
@@ -295,8 +302,8 @@ def _store_notice(doc, email: str) -> bool:
 
 def decide(doc) -> tuple | None:
 	"""What to do with a received mail: None (not ours to touch), ("skip", reason), ("keep", row) as
-	Frappe linked it, ("deal", contact, owner, row), ("lead", existing lead or None, row) or ("other",
-	category, row); *row* is the team address it counts for, None for direct mail."""
+	Frappe linked it, ("deal", contact, owner, row), ("lead", existing lead or None, row), ("other",
+	category, row) or ("gunbroker", facts, row); *row* is the team address it counts for, None for direct mail."""
 	if doc.get("communication_type") != "Communication" or doc.get("sent_or_received") != "Received":
 		return None
 	account = doc.get("email_account")
@@ -317,6 +324,11 @@ def decide(doc) -> tuple | None:
 		return (SKIP, "no sender address")
 	if _store_notice(doc, email):
 		return (SKIP, "our own notice")
+	gb = row and gunbroker.conversation(email, doc.get("subject"), _body_of(doc))
+	# Ours when the conversation has its lead, or the listing is a gun of this store: the store also
+	# buys on GunBroker, and a seller's answer to its own question is other mail.
+	if gb and (frappe.db.exists(LEAD, {gunbroker.MSGID_FIELD: gb["msgid"]}) or (gunbroker.gun(gb) or (None,))[0]):
+		return ("gunbroker", gb, row)
 	contact = _customer_contact(email)
 	if contact:
 		return ("deal", contact, None if row else _mailbox_user(account), row)
@@ -338,9 +350,12 @@ def _split_name(full_name: str | None) -> tuple[str, str]:
 	return (parts[0], " ".join(parts[1:])) if parts else ("", "")
 
 
-def _new_lead(email: str, full_name: str | None, category: str | None = None) -> str:
+def _new_lead(email: str, full_name: str | None, category: str | None = None, source: str = "Email",
+		**fields) -> str:
+	"""A new CRM Lead named *full_name* (the local part of *email* when blank); *fields* are set as given."""
 	lead = frappe.new_doc(LEAD)
 	lead.email = email
+	lead.update(fields)
 	if category:
 		lead.status = OTHER_MAIL
 		lead.set(CATEGORY_FIELD, _ensure_category(category))
@@ -348,12 +363,12 @@ def _new_lead(email: str, full_name: str | None, category: str | None = None) ->
 	named = bool(first) and (full_name or "").strip().lower() != email
 	lead.first_name = first or email.split("@", 1)[0]
 	lead.last_name = last
-	if frappe.db.exists("CRM Lead Source", "Email"):
-		lead.source = "Email"
+	if frappe.db.exists("CRM Lead Source", source):
+		lead.source = source
 	# No owner: a pool lead waits for its first reply, a round robin one for CRM's Assignment Rule.
 	# The mail pull runs as the system, not as a CRM user; CRM's own lead creation inserts the same way.
 	lead.insert(ignore_permissions=True)
-	if named:
+	if named and email:
 		_name_auto_contact(email, first, last)
 	return lead.name
 
@@ -391,7 +406,7 @@ def route(doc, decision=None, screened: bool = False) -> tuple[str, str] | None:
 	waits for :func:`screen_new_sender` when a screening provider is installed, unless *screened*."""
 	if decision is None:
 		decision = decide(doc)
-	if not decision or decision[0] not in ("keep", "deal", "lead", "other"):
+	if not decision or decision[0] not in ("keep", "deal", "lead", "other", "gunbroker"):
 		return None
 	if decision[0] == "keep":
 		target = (doc.reference_doctype, doc.reference_name)
@@ -399,6 +414,10 @@ def route(doc, decision=None, screened: bool = False) -> tuple[str, str] | None:
 	elif decision[0] == "deal":
 		target = ("CRM Deal", open_deal_for(decision[1], owner=decision[2]))
 		row = decision[3]
+		_link(doc, *target)
+	elif decision[0] == "gunbroker":
+		row = decision[2]
+		target = _gunbroker_target(doc, decision[1])
 		_link(doc, *target)
 	elif decision[0] == "other":
 		name, email = parse_addr(doc.get("sender") or "")
@@ -426,6 +445,32 @@ def route(doc, decision=None, screened: bool = False) -> tuple[str, str] | None:
 			frappe.log_error(title=f"[{TITLE}] Team mail not shared: {target[0]} {target[1]}",
 				message=frappe.get_traceback())
 	return target if decision[0] != "keep" else None
+
+
+def _body_of(doc) -> str:
+	"""A received mail's text. Frappe stores ``content`` on the mail after it is inserted, so while the
+	rules run on the insert it is ``text_content`` (plain text mail) that holds the body."""
+	return doc.get("content") or doc.get("text_content") or ""
+
+
+def _gunbroker_target(doc, facts: dict) -> tuple[str, str]:
+	"""Where a GunBroker member's mail goes: the lead of its conversation (the deal that lead became,
+	once converted); a new conversation gets a lead named after the member, with the gun they asked
+	about. The lead has no email address: the member's real one is hidden, and the sender is
+	GunBroker's relay, which must not be where a lead's own mail or the lookups by email land.
+	lazy: two mails of one new conversation pulled in the same second make two leads; upgrade path:
+	``GET_LOCK`` on the MsgId."""
+	found = frappe.db.get_value(LEAD, {gunbroker.MSGID_FIELD: facts["msgid"]}, ["name", "converted"], as_dict=True)
+	if found:
+		deal = found.converted and frappe.db.get_value(DEAL, {"lead": found.name}, "name")
+		return (DEAL, deal) if deal else (LEAD, found.name)
+	name = (doc.get("sender_full_name") or parse_addr(doc.get("sender") or "")[0] or "").strip()
+	lead = _new_lead("", name if name and "@" not in name else "GunBroker member", source="GunBroker",
+		**{gunbroker.MSGID_FIELD: facts["msgid"]})
+	found = gunbroker.gun(facts)
+	if found and found[0]:
+		add_product_row(LEAD, lead, *found)
+	return LEAD, lead
 
 
 def _is_other_mail(doctype: str, name: str) -> bool:
