@@ -1674,6 +1674,7 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		// The register may still be opening (POS Opening Entry dialog, first load).
 		(function whenReady(left) {
 			const pos = window.cur_pos;
+			if (!isPosRoute()) return;   // the clerk left the register: the job goes with them
 			if (pos && pos.frm && pos.cart && pos.recent_order_list) return runRouteJob(job);
 			if (left > 0) setTimeout(() => whenReady(left - 1), 500);
 		})(240);
@@ -1689,8 +1690,11 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 	}
 	// Only a ticket still open goes into the cart: the name came in on a URL.
 	async function openRouteTicket(name) {
-		const r = await frappe.db.get_value('POS Invoice', name, 'docstatus');
-		const status = r && r.message ? r.message.docstatus : null;
+		let status = null;
+		try {
+			const r = await frappe.db.get_value('POS Invoice', name, 'docstatus');
+			status = r && r.message ? r.message.docstatus : null;
+		} catch (e) { /* not readable = not opened; the notice below says so */ }
 		if (status === 0 || status === '0') return openInRegister(name);
 		frappe.show_alert({ indicator: 'orange', message: __('{0} is not an open ticket.', [name]) });
 		return false;
