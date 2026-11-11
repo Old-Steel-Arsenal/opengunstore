@@ -91,3 +91,5 @@ ffl_core.patches.seed_price_approval_off
 ffl_core.patches.backfill_agreement_firearms
 # Frappe CRM on the POS: the Lead Mail Settings link (which incoming mail never becomes a lead) in the Settings workspace.
 ffl_core.patches.add_lead_mail_settings_workspace_entry
+# Frappe CRM mail: mail already on a lead or deal keeps its line breaks (plain text) and its links open in a new tab.
+ffl_core.patches.tidy_received_crm_mail
