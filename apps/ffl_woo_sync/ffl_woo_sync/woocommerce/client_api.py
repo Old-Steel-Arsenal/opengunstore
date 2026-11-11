@@ -486,3 +486,38 @@ def pull_product_from_woo(sku: str, site: str = "retail") -> dict:
 	except WooCommerceError as exc:
 		frappe.throw(_("WooCommerce API error: {0}").format(str(exc)))
 	return {"ok": True, **result}
+
+
+@frappe.whitelist(methods=["POST"])
+def web_inquiry(kind: str, event_id: str, email: str, full_name: str = "", phone: str = "", message: str = "",
+		sku: str = "", url: str = "", details=None, photos=None) -> dict:
+	"""File a website form submission in CRM: a price request, a sell-your-gun form or a question.
+
+	The email decides where it goes, as for incoming mail: a customer's open deal (one is opened when
+	they have none), else their existing lead, else a new lead. The text goes on it as a note, and the
+	gun asked about as a product line. Nothing is emailed to the customer. A repeat of the same
+	``event_id`` files nothing more. Does nothing when CRM is not installed.
+
+	Args:
+	    kind: ``map_price``, ``sell_gun`` or ``ask``; anything else is refused.
+	    event_id: The website's id for this submission; makes a retry harmless.
+	    email: The sender's email address (required, validated).
+	    full_name: The sender's name.
+	    phone: The sender's phone number.
+	    message: What they wrote.
+	    sku: The gun asked about, ``item_code`` or ``item_code::serial_no``; unknown ones are only noted.
+	    url: The product page, shown as a link in the note.
+	    details: A flat object of label -> value (the sell-your-gun form's fields), as JSON or a dict.
+	    photos: A list of https photo URLs, as JSON or a list.
+
+	Returns:
+	    {"filed": True, "doctype": "CRM Lead" | "CRM Deal", "name": ..., "created": bool}, or
+	    {"filed": False, "reason": ...} when CRM is not installed. Fields are length-capped and
+	    stored escaped.
+	"""
+	frappe.only_for(STOCK_ROLES)
+	from ffl_core.crm.inquiries import file_inquiry
+
+	return file_inquiry(kind, event_id, email, full_name=full_name, phone=phone, message=message, sku=sku,
+		url=url, details=frappe.parse_json(details) if details else None,
+		photos=frappe.parse_json(photos) if photos else None)

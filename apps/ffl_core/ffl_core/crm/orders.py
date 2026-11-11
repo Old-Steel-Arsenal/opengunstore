@@ -27,12 +27,11 @@ from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.desk.form.assign_to import _add as assign
 from frappe.utils import flt, fmt_money
 
 from ffl_core.crm import TITLE, installed, pos_link_on
 from ffl_core.crm.deal import WRITE_BACK_FLAG
-from ffl_core.crm.deals import DEAL, STATUS
+from ffl_core.crm.deals import DEAL, STATUS, new_task
 from ffl_core.crm.web_orders import close_payment_failed
 from ffl_core.utils import commit
 
@@ -163,18 +162,5 @@ def _task_for_owner(deal, doc, cancelled: bool) -> None:
 		title = _("{0} was cancelled: check deal {1}").format(doc.name, deal.name)
 	else:
 		title = _("Return {0}: check deal {1}").format(doc.name, deal.name)
-	task = frappe.get_doc({
-		"doctype": "CRM Task",
-		"title": title,
-		"description": _("The deal's value is now {0}. Its status did not change.").format(
-			fmt_money(deal.deal_value, currency=deal.get("currency"))),
-		"priority": "High",
-		"status": "Todo",
-		"reference_doctype": DEAL,
-		"reference_docname": deal.name,
-	}).insert(ignore_permissions=True)
-	# Not by assigned_to on the insert: CRM's after_insert checks the session user's rights on the
-	# task, and a Stock Manager cancelling an order has none.
-	if deal.deal_owner:
-		assign({"assign_to": [deal.deal_owner], "doctype": "CRM Task", "name": task.name, "description": title},
-			ignore_permissions=True)
+	new_task(title, _("The deal's value is now {0}. Its status did not change.").format(
+		fmt_money(deal.deal_value, currency=deal.get("currency"))), deal.deal_owner, deal.name, priority="High")

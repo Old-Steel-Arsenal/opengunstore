@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenGunstore API",
-    "version": "0.7.6",
+    "version": "0.8.0",
     "description": "RPC API of the OpenGunstore custom apps (Frappe/ERPNext v16): ffl_core, ffl_integrations, ffl_woo_sync.\n\nAll endpoints are Frappe *whitelisted methods* invoked as `/api/method/<dotted.path>`. Unless an endpoint declares explicit HTTP verbs, it is documented here as POST (Frappe also accepts GET for read-only calls; always POST mutations). Arguments may be sent as JSON body, form data, or query string — JSON body is recommended.\n\nEvery operation carries an **Auth (derived from code)** line statically resolved from the role gate the function actually executes; the prose Permissions note adds semantics the machine can't infer.\n\nStandard CRUD on DocTypes is served by Frappe's REST layer (`/api/resource/<DocType>`) — see docs/api/frappe-rest.md; the custom DocTypes are modelled under components.schemas and listed in reference/doctypes.md."
   },
   "servers": [
@@ -227,6 +227,73 @@
         "required": [
           "domain",
           "category"
+        ]
+      },
+      "CRM_Want": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/CRM%20Want — see docs/api/frappe-rest.md.",
+        "properties": {
+          "contact": {
+            "type": "string",
+            "description": "Contact (Link: Contact)"
+          },
+          "customer": {
+            "type": "string",
+            "description": "Customer (Link: Customer)"
+          },
+          "deal": {
+            "type": "string",
+            "description": "Deal (Link: CRM Deal)"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Open",
+              "Matched",
+              "Closed"
+            ],
+            "description": "Status"
+          },
+          "want_owner": {
+            "type": "string",
+            "description": "Owner (Link: User)"
+          },
+          "keywords": {
+            "type": "string",
+            "description": "Keywords"
+          },
+          "item": {
+            "type": "string",
+            "description": "Item (Link: Item)"
+          },
+          "budget": {
+            "type": "number",
+            "description": "Budget"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Notes"
+          },
+          "matched_item": {
+            "type": "string",
+            "description": "Matched item (Link: Item)"
+          },
+          "matched_serial": {
+            "type": "string",
+            "description": "Matched serial"
+          },
+          "matched_on": {
+            "type": "string",
+            "description": "Matched on"
+          },
+          "arrival_task": {
+            "type": "string",
+            "description": "Arrival task"
+          }
+        },
+        "required": [
+          "contact",
+          "status"
         ]
       },
       "Caliber": {
@@ -7489,6 +7556,82 @@
         }
       }
     },
+    "/api/method/ffl_core.api.crm.add_want": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Add a want to a deal's primary contact: when stock that fits arrives, you get a task.",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:161`",
+        "operationId": "ffl_core.api.crm.add_want",
+        "responses": {
+          "200": {
+            "description": "str: The CRM Want's name. The owner is the caller. Refused for a deal with no contact, and when neither keywords nor an item is given.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "deal": {
+                    "type": "string",
+                    "description": "The CRM Deal's name."
+                  },
+                  "keywords": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "What they are after, for example \"P228\" or \"Mosin 91/30\". Every word must appear in the arriving gun's name, brand, model, caliber or description."
+                  },
+                  "item": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "An Item to alert on, instead of or as well as keywords."
+                  },
+                  "budget": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "What they want to spend. Shown on the task; arrivals are not filtered by price."
+                  },
+                  "notes": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Anything else worth knowing."
+                  }
+                },
+                "required": [
+                  "deal"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.api.crm.connect_my_mailbox": {
       "post": {
         "tags": [
@@ -7550,7 +7693,7 @@
           "ffl_core"
         ],
         "summary": "CRM's list data for its Leads and Deals pages (hooks.py overrides ``crm.api.doc.get_data``), with",
-        "description": "two changes: a Leads list leaves out other mail unless it filters on the status or category, and\n``@me`` inside a filter's list of values is the caller (CRM's page replaces only a plain ``@me``, and\n**My follow-ups** asks for \"mine or nobody's\").\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:161`",
+        "description": "two changes: a Leads list leaves out other mail unless it filters on the status or category, and\n``@me`` inside a filter's list of values is the caller (CRM's page replaces only a plain ``@me``, and\n**My follow-ups** asks for \"mine or nobody's\").\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:192`",
         "operationId": "ffl_core.api.crm.crm_list_data",
         "responses": {
           "200": {
@@ -7628,7 +7771,7 @@
           "ffl_core"
         ],
         "summary": "Stands in for CRM's quotation gates (hooks.py): the Deal page shows no Quotations tab and no",
-        "description": "**Create Quotation** button, since a deal closes through **Open order**.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:193`",
+        "description": "**Create Quotation** button, since a deal closes through **Open order**.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:224`",
         "operationId": "ffl_core.api.crm.deals_use_no_quotes",
         "responses": {
           "200": {
@@ -23962,6 +24105,95 @@
                     "default": "retail"
                   }
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_woo_sync.woocommerce.client_api.web_inquiry": {
+      "post": {
+        "tags": [
+          "ffl_woo_sync"
+        ],
+        "summary": "File a website form submission in CRM: a price request, a sell-your-gun form or a question.",
+        "description": "The email decides where it goes, as for incoming mail: a customer's open deal (one is opened when\nthey have none), else their existing lead, else a new lead. The text goes on it as a note, and the\ngun asked about as a product line. Nothing is emailed to the customer. A repeat of the same\n``event_id`` files nothing more. Does nothing when CRM is not installed.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:492`",
+        "operationId": "ffl_woo_sync.woocommerce.client_api.web_inquiry",
+        "responses": {
+          "200": {
+            "description": "{\"filed\": True, \"doctype\": \"CRM Lead\" | \"CRM Deal\", \"name\": ..., \"created\": bool}, or {\"filed\": False, \"reason\": ...} when CRM is not installed. Fields are length-capped and stored escaped.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "description": "``map_price``, ``sell_gun`` or ``ask``; anything else is refused."
+                  },
+                  "event_id": {
+                    "type": "string",
+                    "description": "The website's id for this submission; makes a retry harmless."
+                  },
+                  "email": {
+                    "type": "string",
+                    "description": "The sender's email address (required, validated)."
+                  },
+                  "full_name": {
+                    "type": "string",
+                    "description": "The sender's name.",
+                    "default": ""
+                  },
+                  "phone": {
+                    "type": "string",
+                    "description": "The sender's phone number.",
+                    "default": ""
+                  },
+                  "message": {
+                    "type": "string",
+                    "description": "What they wrote.",
+                    "default": ""
+                  },
+                  "sku": {
+                    "type": "string",
+                    "description": "The gun asked about, ``item_code`` or ``item_code::serial_no``; unknown ones are only noted.",
+                    "default": ""
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "The product page, shown as a link in the note.",
+                    "default": ""
+                  },
+                  "details": {
+                    "description": "A flat object of label -> value (the sell-your-gun form's fields), as JSON or a dict."
+                  },
+                  "photos": {
+                    "description": "A list of https photo URLs, as JSON or a list."
+                  }
+                },
+                "required": [
+                  "kind",
+                  "event_id",
+                  "email"
+                ]
               }
             }
           }

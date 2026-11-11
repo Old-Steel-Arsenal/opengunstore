@@ -62,6 +62,28 @@ app: `ffl_core` · module: FFL Core · child table
 | `domain` | Data | Domain | ✓ |  |
 | `category` | Link | Category | ✓ | CRM Mail Category |
 
+## CRM Want
+
+app: `ffl_core` · module: FFL Core · roles: Sales Manager, Sales User, System Manager
+
+A customer who wants a gun or product the store does not have in stock. A matching arrival gives the owner a CRM task.
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `contact` | Link | Contact | ✓ | Contact |
+| `customer` | Link | Customer |  | Customer |
+| `deal` | Link | Deal |  | CRM Deal |
+| `status` | Select | Status | ✓ | Open, Matched, Closed |
+| `want_owner` | Link | Owner |  | User |
+| `keywords` | Data | Keywords |  |  |
+| `item` | Link | Item |  | Item |
+| `budget` | Currency | Budget |  |  |
+| `notes` | Small Text | Notes |  |  |
+| `matched_item` | Link | Matched item |  | Item |
+| `matched_serial` | Data | Matched serial |  |  |
+| `matched_on` | Datetime | Matched on |  |  |
+| `arrival_task` | Data | Arrival task |  |  |
+
 ## Caliber
 
 app: `ffl_core` · module: FFL Core · roles: Sales User, Stock User, System Manager

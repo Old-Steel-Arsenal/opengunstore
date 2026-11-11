@@ -2,7 +2,7 @@
 opens the contact's deal to write to them, since CRM shows and sends mail only on a lead or a deal;
 **Connect my mailbox** on a staff member's own My Settings (``public/js/user_form.js``) starts the
 sign-in that connects their own mailbox; **Make lead** on a Communication (``public/js/communication_form.js``)
-files a mail the AI screening left without a lead; the Deal page's customer card and **Open order**
+files a mail the AI screening left without a lead; the Deal page's customer card, **Open order** and **Add want**
 (``ffl_core.crm.setup.DEAL_SCRIPT``), behind Lead Mail Settings' switch; the stand-ins that take quotes off the Deal page and other mail off the Leads list."""
 from __future__ import annotations
 
@@ -155,6 +155,37 @@ def open_deal_order(deal: str) -> dict:
 	"""
 	frappe.only_for(CRM_ROLES)
 	return deal_customer.open_order(_deal_for_pos_link(deal, "write"))
+
+
+@frappe.whitelist(methods=["POST"])
+def add_want(deal: str, keywords: str | None = None, item: str | None = None, budget: float | None = None,
+		notes: str | None = None) -> str:
+	"""Add a want to a deal's primary contact: when stock that fits arrives, you get a task.
+
+	Args:
+	    deal: The CRM Deal's name.
+	    keywords: What they are after, for example "P228" or "Mosin 91/30". Every word must appear in
+	        the arriving gun's name, brand, model, caliber or description.
+	    item: An Item to alert on, instead of or as well as keywords.
+	    budget: What they want to spend. Shown on the task; arrivals are not filtered by price.
+	    notes: Anything else worth knowing.
+
+	Returns:
+	    str: The CRM Want's name. The owner is the caller. Refused for a deal with no contact, and
+	    when neither keywords nor an item is given.
+	"""
+	frappe.only_for(CRM_ROLES)
+	if not isinstance(deal, str) or not frappe.db.exists(deals.DEAL, deal):
+		frappe.throw(_("This deal no longer exists."), frappe.DoesNotExistError)
+	frappe.has_permission(deals.DEAL, "read", doc=deal, throw=True)
+	doc = frappe.get_doc(deals.DEAL, deal)
+	contact = deal_customer._primary_contact(doc)
+	if not contact:
+		frappe.throw(_("This deal has no contact. Add one first."), title=_("No contact"))
+	# As the caller: a Sales User may create wants (the DocType's own permission).
+	return frappe.get_doc({"doctype": "CRM Want", "contact": contact, "deal": deal,
+		"customer": doc.get("erpnext_customer") or None, "keywords": keywords, "item": item or None,
+		"budget": budget or None, "notes": notes, "want_owner": frappe.session.user}).insert().name
 
 
 @frappe.whitelist()

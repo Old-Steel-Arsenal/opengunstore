@@ -1,10 +1,10 @@
 """Frappe CRM on the POS — install / migrate plumbing.
 
-Owns: the two custom fields (``CUSTOM_FIELDS``), the Lead Mail Settings default, the team mail
+Owns: the custom fields (``CUSTOM_FIELDS``), the Lead Mail Settings default, the team mail
 setup (``crm.team.apply``: staff Reply-To, team mailboxes in User Emails), the same-site
 ERPNext CRM Settings (on, this site, ``sync_products`` off), CRM's currency, the deal stages, moving CRM's own
 "create lead from incoming email" switch to ours, the Contact page's Email button, the Deal page's customer card and
-Open order button (:func:`apply_pos_link`, following Lead Mail Settings › crm_pos_link), and the
+Open order and Add want buttons (:func:`apply_pos_link`, following Lead Mail Settings › crm_pos_link), and the
 one-off backfill that makes every Item a CRM Product.
 
 Runs at ffl_core's after_install and after_migrate, and when ``crm`` is installed on a site that
@@ -30,6 +30,7 @@ from ffl_core.crm import TITLE, installed, pos_link_on, team
 from ffl_core.crm.customer import CARD_FIELD
 from ffl_core.crm.deal import SERIAL_FIELD
 from ffl_core.crm.deals import DEAL, STATUS
+from ffl_core.crm.gunbroker import MSGID_FIELD
 from ffl_core.crm.mail import AUTO_LEAD, CATEGORY, CATEGORY_FIELD, LEAD, OTHER_MAIL, SETTINGS
 from ffl_core.crm.orders import DEAL_FIELD
 
@@ -45,6 +46,7 @@ DEAL_STAGES = ("New", "Talking", "Quoted", "Won", "Lost")
 MAIL_CATEGORIES = ("Automated", "Blocked", "Distributor", "Dealer", "GunBroker", "Marketing", "Notification",
 	"Our store", "Vendor", "Other")
 CATEGORY_RULES = {"gunbroker.com": "GunBroker", "rsrgroup.com": "Distributor"}
+LEAD_SOURCES = ("Website", "GunBroker")
 MAIL_SETUP_FLAG = "ffl_crm_other_mail_seeded"
 VIEWS_FLAG = "ffl_crm_views_seeded"
 FOLLOW_UPS = "My follow-ups"
@@ -63,12 +65,13 @@ CONTACT_SCRIPT_JS = """function setupForm({ doc, call, router }) {
 	}
 }
 """
-# The Deal page's customer card and Open order button: a CRM Form Script, on while the switch is.
+# The Deal page's customer card, Open order and Add want buttons: a CRM Form Script, on while the switch is.
 DEAL_SCRIPT = "OpenGunstore: Deal to POS"
 DEAL_SCRIPT_JS = """class CRMDeal {
 	onLoad() {
 		if (this.doc.__newDocument) return
 		this.actions.push({ label: __("Open order"), onClick: () => this.fflOpenOrder() })
+		this.actions.push({ label: __("Add want"), onClick: () => this.fflAddWant() })
 		this.fflLoadCard()
 	}
 	fflError(e) {
@@ -113,6 +116,27 @@ DEAL_SCRIPT_JS = """class CRMDeal {
 			this.fflError(e)
 		}
 	}
+	fflAddWant() {
+		formDialog({
+			title: __("Add want"),
+			fields: [
+				{ fieldname: "keywords", fieldtype: "Data", label: __("Keywords"), placeholder: __("P228, Mosin 91/30") },
+				{ fieldname: "item", fieldtype: "Link", options: "Item", label: __("Item (optional)") },
+				{ fieldname: "budget", fieldtype: "Currency", label: __("Budget") },
+				{ fieldname: "notes", fieldtype: "Small Text", label: __("Notes") },
+			],
+			submitLabel: __("Add want"),
+			onSubmit: async (data) => {
+				if (!data.keywords && !data.item) throw new Error(__("Fill in keywords or an item."))
+				try {
+					await call("ffl_core.api.crm.add_want", { deal: this.doc.name, ...data })
+				} catch (e) {
+					throw new Error(e.messages?.[0] || e.message)
+				}
+				toast.success(__("Added. You get a task when something that fits arrives."))
+			},
+		})
+	}
 	async fflGoToOrder() {
 		const order = await call("ffl_core.api.crm.open_deal_order", { deal: this.doc.name })
 		window.location.href = order.route
@@ -156,6 +180,15 @@ CUSTOM_FIELDS = {
 		"label": "Mail category",
 		"insert_after": "status",
 		"in_standard_filter": 1,
+	}, {
+		# The MsgId of a GunBroker member's conversation: its mail all goes to the one lead (crm.gunbroker).
+		"fieldname": MSGID_FIELD,
+		"fieldtype": "Data",
+		"label": "GunBroker message id",
+		"read_only": 1,
+		"no_copy": 1,
+		"search_index": 1,
+		"insert_after": CATEGORY_FIELD,
 	}],
 	"Email Account": [{
 		"fieldname": AUTO_LEAD,
@@ -192,6 +225,7 @@ def ensure(backfill: bool = True) -> dict:
 		_as_administrator(ensure_crm_currency)
 		_as_administrator(ensure_deal_stages)
 		_as_administrator(ensure_other_mail)
+		_as_administrator(ensure_lead_sources)
 		_as_administrator(ensure_crm_views)
 		_as_administrator(take_over_lead_flags)
 		_as_administrator(ensure_contact_script)
@@ -328,6 +362,14 @@ def ensure_other_mail() -> None:
 			settings.append("category_rules", {"domain": domain, "category": category})
 	settings.save(ignore_permissions=True)   # our own Single, written by install/migrate as Administrator
 	frappe.db.set_global(MAIL_SETUP_FLAG, "1")
+
+
+def ensure_lead_sources() -> None:
+	"""The sources a lead made by the system carries: the website's inquiry form and GunBroker's
+	member questions. Each is made when missing, as a lead cannot name a source that is not there."""
+	for source in LEAD_SOURCES:
+		if not frappe.db.exists("CRM Lead Source", source):
+			frappe.get_doc({"doctype": "CRM Lead Source", "source_name": source}).insert(ignore_permissions=True)
 
 
 def ensure_crm_views() -> None:

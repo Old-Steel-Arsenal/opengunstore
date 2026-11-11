@@ -60,6 +60,7 @@ class CRMTestCase(FrappeTestCase):
 		from ffl_core.crm import setup
 
 		setup.ensure_custom_fields()
+		setup.ensure_lead_sources()
 		setup.ensure_crm_settings()
 		make_item(AMMO, standard_rate=22.49, woo_product_id="990101")
 		set_item_price(AMMO, 24.99)
