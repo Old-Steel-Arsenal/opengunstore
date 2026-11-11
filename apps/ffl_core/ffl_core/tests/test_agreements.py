@@ -599,6 +599,40 @@ class SaleGate(_Base):
 		frappe.db.set_single_value("FFL Settings", "used_item_agreement_template", None)   # empty: off
 		self.assertIsNone(agreements.required_for_item(self.item.name))
 
+	def test_a_manager_skips_the_agreements_for_one_sale(self):
+		from frappe.utils.password import update_password
+
+		from ffl_core import staff_switch
+
+		clerk, manager = "agr-skip-clerk@example.com", "agr-skip-manager@example.com"
+		_user(clerk, "Sales User")
+		_user(manager, "Sales Manager", "Sales User")
+		update_password(manager, "5713", fieldname=staff_switch.PIN_FIELD)
+		frappe.cache.delete(staff_switch._pin_fail_key(manager))
+		si = self.invoice()
+		si.insert()
+		with _as(clerk):
+			with self.assertRaises(staff_switch.WrongPassword):
+				agreements.skip_for_sale(self.cust.name, approver=clerk, pin="5713")   # a clerk is no approver
+			with self.assertRaises(agreements.AgreementRequired):
+				agreements.refuse_missing_required(si)
+			agreements.skip_for_sale(self.cust.name, approver=manager, pin="5713", reason="Signed tablet down")
+			agreements.refuse_missing_required(si)
+			with self.assertRaises(agreements.AgreementRequired, msg="used once"):
+				agreements.refuse_missing_required(si)
+		note = frappe.get_all("Comment", filters={"reference_doctype": si.doctype, "reference_name": si.name,
+			"comment_type": "Comment"}, pluck="content")
+		self.assertTrue(any(self.tpl.name in n and "Signed tablet down" in n for n in note), note)
+		# Another user's sale, or another customer's, is not covered by it.
+		with _as(clerk):
+			agreements.skip_for_sale(self.cust.name, approver=manager, pin="5713")
+		with _as(manager), self.assertRaises(agreements.AgreementRequired):
+			agreements.refuse_missing_required(si)
+		with _as(manager):   # a manager signed in approves their own, no PIN
+			self.assertEqual(agreements.skip_for_sale(self.cust.name)["approver"], manager)
+			agreements.refuse_missing_required(si)
+		frappe.cache.delete_value(f"{agreements._SKIP_KEY}{clerk}:{self.cust.name}")
+
 	def test_extension_hook_adds_and_a_broken_one_is_logged(self):
 		other = _template()
 		_PROVIDED.append(other.name)
