@@ -498,11 +498,18 @@ def mail_body_html(body: str | None) -> str | None:
 	return _LINK_HERE.sub('<a target="_blank"', body)
 
 
+def one_line(subject: str | None) -> str | None:
+	return " ".join(subject.split()) if subject else subject
+
+
 def tidy_received_mail(doc, method=None):
-	"""Communication validate: a received mail's body (:func:`mail_body_html`). On validate, not on
+	"""Communication validate: a received mail's body (:func:`mail_body_html`) and subject. On validate, not on
 	the insert: a mail pull writes the body again right after the insert, and saves."""
 	if doc.sent_or_received == "Received" and doc.communication_medium == "Email":
 		doc.content = mail_body_html(doc.content)
+		# A long subject arrives folded over two lines; the copy Frappe sends the owner has it on one,
+		# so :func:`_system_copy` would not know the two as the same mail.
+		doc.subject = one_line(doc.subject)
 
 
 def skip_unwanted(doc, method=None):

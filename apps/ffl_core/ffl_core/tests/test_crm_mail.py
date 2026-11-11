@@ -88,6 +88,10 @@ class TestIncomingMail(CRMTestCase):
 		self.assertEqual(content, "Old Steel, <br><br>Is it &lt; $500 &amp; &lt;in stock&gt;?<br>line two<br><br>Thanks")
 		self.assertEqual(mail.mail_body_html(content), content)
 
+	def test_a_folded_subject_is_stored_on_one_line(self):
+		doc = _receive("folded@buyer.test", recipients=TEAM, subject="A long subject folded\r\n over two lines")
+		self.assertEqual(frappe.db.get_value("Communication", doc.name, "subject"), "A long subject folded over two lines")
+
 	def test_a_sent_mails_body_is_left_alone(self):
 		doc = _receive("staff@store.test", sent_or_received="Sent", content='line\n\n<a href="https://a.test/1">one</a>')
 		content = frappe.db.get_value("Communication", doc.name, "content")
