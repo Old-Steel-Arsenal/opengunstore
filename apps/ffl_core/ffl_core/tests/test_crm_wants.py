@@ -75,6 +75,14 @@ class TestKeywordRules(WantCase):
 		for missed in ("Mosin 44", "P229", "mosin sig p229", "-"):
 			self.assertFalse(wants._fits(frappe._dict(item=None, keywords=missed), arrival), missed)
 
+	def test_a_purchase_return_is_not_an_arrival(self):
+		self._want(keywords="p228")
+		with patch("frappe.enqueue") as enqueue:
+			wants.on_stock_receipt(frappe._dict(doctype="Purchase Receipt", name="PR-x", is_return=1))
+			enqueue.assert_not_called()
+			wants.on_stock_receipt(frappe._dict(doctype="Purchase Receipt", name="PR-x", is_return=0))
+			enqueue.assert_called_once()
+
 	def test_a_want_needs_keywords_or_an_item(self):
 		for fields in ({}, {"keywords": " / "}):
 			with self.assertRaises(frappe.ValidationError):

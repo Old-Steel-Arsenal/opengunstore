@@ -93,6 +93,8 @@ def on_stock_receipt(doc, method=None):
 	try:
 		if doc.doctype == "Stock Entry" and doc.stock_entry_type != "Material Receipt":
 			return
+		if doc.get("is_return"):
+			return   # goods going back to the supplier, not arriving
 		# Most days nobody wants anything: no job for a stock document then.
 		if not installed() or not frappe.db.exists(WANT, {"status": ["in", ACTIVE]}):
 			return
