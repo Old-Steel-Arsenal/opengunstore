@@ -661,7 +661,8 @@ def check_spam_folder(account: str) -> None:
 	folder = frappe.get_cached_doc(SETTINGS).get("spam_folder")
 	email_account = frappe.get_doc("Email Account", account)
 	try:
-		server = email_account.get_incoming_server()
+		# in_receive: without it Frappe logs the connection out before returning it.
+		server = email_account.get_incoming_server(in_receive=True)
 	except Exception:
 		frappe.log_error(title=f"[{TITLE}] Spam folder not reached: {account}", message=frappe.get_traceback())
 		return
