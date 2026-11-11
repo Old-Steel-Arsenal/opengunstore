@@ -32,9 +32,10 @@ For each received mail of an in-scope account, in order (:func:`decide`):
    direct mail from someone new: skipped (a staff member's own mail never enters the POS).
 
 GunBroker questions: team mail from GunBroker's member-to-member address with a ``MsgId`` in the subject is
-one conversation per MsgId (``crm.gunbroker``): a lead named after the member with source GunBroker and
-the gun they asked about, every later mail of it on that lead (on its deal once converted). The rule comes
-before the category rules, so these are not other mail; mail from that address without a MsgId is.
+one conversation per MsgId (``crm.gunbroker``) when its listing is a gun of this store: a lead named after
+the member with source GunBroker and that gun, every later mail of it on that lead (on its deal once
+converted). The rule comes before the category rules, so these are not other mail; mail from that address
+without a MsgId, or about a listing that is not ours (the store buys there too), is.
 
 Other mail: team mail that is not a customer inquiry is kept, not dropped. Each sender has one CRM Lead
 with the status ``Other mail`` and a category (``ffl_mail_category``: a category rule's, else what made
@@ -324,7 +325,9 @@ def decide(doc) -> tuple | None:
 	if _store_notice(doc, email):
 		return (SKIP, "our own notice")
 	gb = row and gunbroker.conversation(email, doc.get("subject"), _body_of(doc))
-	if gb:
+	# Ours when the conversation has its lead, or the listing is a gun of this store: the store also
+	# buys on GunBroker, and a seller's answer to its own question is other mail.
+	if gb and (frappe.db.exists(LEAD, {gunbroker.MSGID_FIELD: gb["msgid"]}) or (gunbroker.gun(gb) or (None,))[0]):
 		return ("gunbroker", gb, row)
 	contact = _customer_contact(email)
 	if contact:
@@ -464,7 +467,7 @@ def _gunbroker_target(doc, facts: dict) -> tuple[str, str]:
 	name = (doc.get("sender_full_name") or parse_addr(doc.get("sender") or "")[0] or "").strip()
 	lead = _new_lead("", name if name and "@" not in name else "GunBroker member", source="GunBroker",
 		**{gunbroker.MSGID_FIELD: facts["msgid"]})
-	found = gunbroker.gun(gunbroker.conversation(_sender(doc), doc.get("subject"), _body_of(doc)) or facts)
+	found = gunbroker.gun(facts)
 	if found and found[0]:
 		add_product_row(LEAD, lead, *found)
 	return LEAD, lead

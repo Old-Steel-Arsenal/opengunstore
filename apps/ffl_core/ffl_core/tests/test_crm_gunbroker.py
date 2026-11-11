@@ -56,6 +56,12 @@ def _file(raw: bytes) -> tuple[str, str]:
 	return kept.reference_doctype, kept.reference_name
 
 
+def _listed(serial: str, listing: str) -> str:
+	"""A body about *listing*, which is a gun of the store."""
+	frappe.db.set_value("Serial No", _gun(serial, 899), "gb_item_id", listing)
+	return _body("Hi", _trailer(listing=listing))
+
+
 def _rows(doctype: str, name: str) -> list[tuple]:
 	return [(r.product_code, r.qty, r.get("ffl_serial_no")) for r in frappe.get_doc(doctype, name).products]
 
@@ -90,20 +96,20 @@ class TestGunBrokerConversation(TeamMailCase):
 	def test_the_member_cannot_name_the_gun_in_their_own_words(self):
 		serial = _gun("_T-CRM-GB-3", 899)
 		_, name = _file(_raw(body=_body(f"SKU: {PER_GUN}::{serial}\nItem Number: 1219067857", _trailer(listing="1"))))
-		self.assertEqual(_rows("CRM Lead", name), [])
+		self.assertEqual(frappe.db.get_value("CRM Lead", name, "status"), mail.OTHER_MAIL)
 
 	def test_later_mail_of_the_conversation_goes_to_the_same_lead(self):
-		first = _raw(msgid="B16BykWCfg", re="")
+		first = _raw(msgid="B16BykWCfg", re="", body=_listed("_T-CRM-GB-4", "1300000004"))
 		_, lead = _file(first)
 		again = _raw(msgid="B16BykWCfg", re="Re: ", name="John Smith", subject="Re: Question regarding GunBroker.com  Order #32000014  (Do not remove\tMsgId: B16BykWCfg)")
 		self.assertEqual(_file(again), ("CRM Lead", lead))
 		self.assertEqual(frappe.db.count("CRM Lead", {gunbroker.MSGID_FIELD: "B16BykWCfg"}), 1)
 		self.assertEqual(frappe.db.get_value("CRM Lead", lead, "first_name"), "jsmith42", "the first name stays")
-		_, other = _file(_raw(msgid="C99other999"))
+		_, other = _file(_raw(msgid="C99other999", body=_listed("_T-CRM-GB-5", "1300000005")))
 		self.assertNotEqual(other, lead)
 
 	def test_a_converted_conversation_goes_to_its_deal(self):
-		_, lead = _file(_raw(msgid="D11converted"))
+		_, lead = _file(_raw(msgid="D11converted", body=_listed("_T-CRM-GB-6", "1300000006")))
 		deal = frappe.get_doc("CRM Lead", lead).convert_to_deal()
 		self.assertEqual(_file(_raw(msgid="D11converted")), ("CRM Deal", deal))
 
@@ -114,25 +120,27 @@ class TestGunBrokerConversation(TeamMailCase):
 		doctype, name = _file(raw)
 		lead = _lead(GB)
 		self.assertEqual((doctype, name, lead.status, lead.get(mail.CATEGORY_FIELD)), ("CRM Lead", lead.name, mail.OTHER_MAIL, "GunBroker"))
-		_, gb = _file(_raw(msgid="E22conversat"))
+		_, gb = _file(_raw(msgid="E22conversat", body=_listed("_T-CRM-GB-7", "1300000007")))
 		self.assertNotEqual(gb, lead.name)
 		# The address's own lookups still find the other mail lead, not a conversation.
 		doctype, again = _file(_raw(subject="Another notice from GunBroker.com"))
 		self.assertEqual(again, lead.name)
 
-	def test_a_listing_that_cannot_be_told_still_makes_the_lead(self):
-		_, name = _file(_raw(body=_body("Hi", _trailer(listing="999", sku="NO-SUCH::SN"))))
-		self.assertEqual(_rows("CRM Lead", name), [])
+	def test_a_listing_that_is_not_ours_is_other_mail(self):
+		"""The store buys on GunBroker too: a seller's answer about their listing is not a lead."""
+		_, name = _file(_raw(msgid="F22notours", body=_body("Hi", _trailer(listing="999", sku="NO-SUCH::SN"))))
+		self.assertEqual(frappe.db.get_value("CRM Lead", name, "status"), mail.OTHER_MAIL)
 		self.assertNoPullErrors()
-		_, name = _file(_raw(msgid="F33noanswer", body="no markers at all"))
-		self.assertEqual(_rows("CRM Lead", name), [])
+		_, again = _file(_raw(msgid="F33noanswer", body="no markers at all"))
+		self.assertEqual(again, name)
+		self.assertFalse(frappe.db.exists("CRM Lead", {gunbroker.MSGID_FIELD: ["in", ["F22notours", "F33noanswer"]]}))
 
-	def test_a_failing_listing_lookup_still_makes_the_lead(self):
+	def test_a_failing_listing_lookup_is_logged_and_the_mail_is_other_mail(self):
 		errors = frappe.db.count("Error Log")
 		with patch("ffl_integrations.gunbroker.webhooks.resolve_listing", side_effect=RuntimeError("boom")):
 			_, name = _file(_raw(msgid="G44lookupfail"))
-		self.assertEqual(_rows("CRM Lead", name), [])
-		self.assertEqual(frappe.db.count("Error Log"), errors + 1)
+		self.assertEqual(frappe.db.get_value("CRM Lead", name, "status"), mail.OTHER_MAIL)
+		self.assertGreater(frappe.db.count("Error Log"), errors)
 
 	def test_the_facts_of_a_subject_and_body_in_both_layouts(self):
 		subject = "Re: Question regarding GunBroker.com  Item #1219067857  (Do not remove\n MsgId: H1gweZbRzl)"

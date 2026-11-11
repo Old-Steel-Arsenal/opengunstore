@@ -120,4 +120,5 @@ def file_inquiry(kind: str, event_id: str, email: str, full_name: str = "", phon
 		item, serial = _gun_of(sku)
 		if item:
 			add_product_row(doctype, name, item, serial)
+		commit()   # before the lock goes: the repeat waiting on it must see this note
 	return {"filed": True, "doctype": doctype, "name": name, "created": created}

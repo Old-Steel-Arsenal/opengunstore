@@ -43,7 +43,7 @@ def conversation(email: str, subject: str | None, content: str | None) -> dict |
 def gun(facts: dict) -> tuple[str, str | None] | None:
 	"""(item code, serial number or None) of the gun the listing is, or None when it cannot be told.
 	The listing lookup belongs to ffl_integrations, which this app does not import; it may be absent
-	and it may fail, and the lead is made anyway."""
+	and it may fail (logged): the mail is then other mail, as one about a listing that is not ours."""
 	if "ffl_integrations" not in frappe.get_installed_apps():
 		return None
 	try:
