@@ -171,6 +171,13 @@ class TestInquiryFiling(CRMTestCase):
 		self.assertEqual(_rows("CRM Deal", deal), [(product_of(PER_GUN), 1, serial)])
 		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "total"), 899, "priced by the register on the way")
 
+	def test_a_lead_that_became_a_deal_takes_the_next_inquiry_on_the_deal(self):
+		email = _email()
+		lead = _file(email=email)["name"]
+		deal = frappe.get_doc("CRM Lead", lead).convert_to_deal()
+		out = _file(email=email, kind="map_price")
+		self.assertEqual((out["doctype"], out["name"], out["created"]), ("CRM Deal", deal, False))
+
 	def test_the_lead_sources_are_made_once_and_the_msgid_field_is_there(self):
 		for source in setup.LEAD_SOURCES:
 			frappe.delete_doc("CRM Lead Source", source, force=True, ignore_permissions=True)

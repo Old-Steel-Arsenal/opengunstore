@@ -1,9 +1,8 @@
 """A website inquiry on CRM: a price request on a hidden-price gun, a sell-your-gun form, a question.
 
 The website relays public form input through ``ffl_woo_sync``'s ``web_inquiry`` endpoint. It is filed
-the way incoming mail is (``crm.mail``): an email that belongs to a Contact of a Customer goes on that
-contact's newest open deal (one is opened when there is none); anyone else goes on their existing CRM
-Lead (not converted, not other mail), or a new one. What a new lead or deal makes is shared with the
+on the newest open deal a contact with that email is on; with none, a Contact of a Customer gets a new
+deal, and anyone else goes on their existing CRM Lead (not converted, not other mail), or a new one. What a new lead or deal makes is shared with the
 team (``share_with_team``); an existing record keeps its owner, status and sharing. The inquiry is an
 FCRM Note, and the gun asked about (a SKU of an Item the POS knows) a line of the record's products.
 Nothing is emailed to the customer.
@@ -69,11 +68,11 @@ def _gun_of(sku: str) -> tuple[str, str | None]:
 
 def _target(email: str, full_name: str) -> tuple[str, str, bool]:
 	"""(doctype, name, created): where this address's inquiry goes."""
+	deal = _open_deal(email)   # a customer's, or the one a lead of theirs became
+	if deal:
+		return DEAL, deal, False
 	contact = _customer_contact(email)
 	if contact:
-		deal = _open_deal(email)
-		if deal:
-			return DEAL, deal, False
 		deal = open_deal_for(contact)
 		share_with_team(DEAL, deal)
 		return DEAL, deal, True
