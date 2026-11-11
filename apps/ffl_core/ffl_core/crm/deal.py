@@ -15,7 +15,8 @@ from frappe.utils import flt
 
 from ffl_core import pricing
 from ffl_core.crm.deals import is_closed
-from ffl_core.crm.item import PRODUCT
+from ffl_core.crm import TITLE
+from ffl_core.crm.item import PRODUCT, upsert_product
 
 SERIAL_FIELD = "ffl_serial_no"
 # Set by crm.orders on its own save of a deal: an invoice's write-back never re-prices the quote.
@@ -58,3 +59,32 @@ def price_lines(doc, method=None):
 	doc.total = total
 	# CRM's form script: net total falls back to the total unless discounts took it to 0.
 	doc.net_total = net_total or (0 if any(flt(r.discount_percentage) > 0 for r in rows) else total)
+
+
+def add_product_row(doctype: str, name: str, item_code: str, serial_no: str | None = None) -> bool:
+	"""A line for *item_code* on a CRM Lead or Deal (qty 1), for a gun someone asked about. True when
+	a row was added. A lead's line carries the price the register charges now. Nothing is added for an Item that does not exist, or when the record already has
+	a line for the same Item and gun. The gun goes on the line only while it is in stock and the
+	Item's own: a deal refuses to save a line for any other (``price_lines``). Never raises: a save
+	that fails is rolled back and logged, and the caller goes on without the line."""
+	if not frappe.db.exists("Item", item_code):
+		return False
+	if serial_no and frappe.db.get_value("Serial No", serial_no, ["item_code", "status"]) != (item_code, "Active"):
+		serial_no = None
+	product = frappe.db.get_value(PRODUCT, {"erpnext_item_code": item_code}, "name") \
+		or upsert_product(frappe.get_doc("Item", item_code))
+	doc = frappe.get_doc(doctype, name)
+	if any(r.product_code == product and (r.get(SERIAL_FIELD) or None) == serial_no for r in doc.get("products") or []):
+		return False
+	frappe.db.savepoint("ffl_crm_add_product")
+	try:
+		rate = flt(pricing.counter_price_for(item_code, serial_no))
+		doc.append("products", {"product_code": product, "product_name": frappe.db.get_value(PRODUCT, product, "product_name"),
+			"qty": 1, "rate": rate, "amount": rate, "net_amount": rate, SERIAL_FIELD: serial_no})
+		doc.total = doc.net_total = flt(sum(flt(r.amount) for r in doc.products))   # a deal prices itself again on save
+		doc.save(ignore_permissions=True)   # the system files what a customer or a mail asked about
+	except Exception:
+		frappe.db.rollback(save_point="ffl_crm_add_product")
+		frappe.log_error(title=f"[{TITLE}] Gun not added to {doctype} {name}: {item_code}", message=frappe.get_traceback())
+		return False
+	return True
