@@ -24111,6 +24111,95 @@
         }
       }
     },
+    "/api/method/ffl_woo_sync.woocommerce.client_api.web_inquiry": {
+      "post": {
+        "tags": [
+          "ffl_woo_sync"
+        ],
+        "summary": "File a website form submission in CRM: a price request, a sell-your-gun form or a question.",
+        "description": "The email decides where it goes, as for incoming mail: a customer's open deal (one is opened when\nthey have none), else their existing lead, else a new lead. The text goes on it as a note, and the\ngun asked about as a product line. Nothing is emailed to the customer. A repeat of the same\n``event_id`` files nothing more. Does nothing when CRM is not installed.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:492`",
+        "operationId": "ffl_woo_sync.woocommerce.client_api.web_inquiry",
+        "responses": {
+          "200": {
+            "description": "{\"filed\": True, \"doctype\": \"CRM Lead\" | \"CRM Deal\", \"name\": ..., \"created\": bool}, or {\"filed\": False, \"reason\": ...} when CRM is not installed. Fields are length-capped and stored escaped.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "description": "``map_price``, ``sell_gun`` or ``ask``; anything else is refused."
+                  },
+                  "event_id": {
+                    "type": "string",
+                    "description": "The website's id for this submission; makes a retry harmless."
+                  },
+                  "email": {
+                    "type": "string",
+                    "description": "The sender's email address (required, validated)."
+                  },
+                  "full_name": {
+                    "type": "string",
+                    "description": "The sender's name.",
+                    "default": ""
+                  },
+                  "phone": {
+                    "type": "string",
+                    "description": "The sender's phone number.",
+                    "default": ""
+                  },
+                  "message": {
+                    "type": "string",
+                    "description": "What they wrote.",
+                    "default": ""
+                  },
+                  "sku": {
+                    "type": "string",
+                    "description": "The gun asked about, ``item_code`` or ``item_code::serial_no``; unknown ones are only noted.",
+                    "default": ""
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "The product page, shown as a link in the note.",
+                    "default": ""
+                  },
+                  "details": {
+                    "description": "A flat object of label -> value (the sell-your-gun form's fields), as JSON or a dict."
+                  },
+                  "photos": {
+                    "description": "A list of https photo URLs, as JSON or a list."
+                  }
+                },
+                "required": [
+                  "kind",
+                  "event_id",
+                  "email"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_woo_sync.woocommerce.condition_backfill.backfill_condition_attributes": {
       "post": {
         "tags": [
