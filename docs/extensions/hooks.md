@@ -220,6 +220,17 @@ gunstore.extensions.register('acme_layaway', {
 | `settingsLinks` | **Settings** on the extension's card | One per Settings Single. |
 | `onDeskReady()` | — | Once after the desk is ready, per effective extension. A throw is logged to the console and does not stop the others. |
 
+**Send a ticket to the register from your own page.** Build the draft on the server with `ffl_core.api.pos_ticket.open_ticket` (the caller's open shift; your rates are the ticket's), then:
+
+```js
+frappe.route_options = { ffl_pos_invoice: name };   // the draft POS Invoice
+frappe.set_route('point-of-sale');
+```
+
+The register opens it in the cart the way Recent Orders › Draft does (a sale already in the cart is parked first, after asking); the clerk adds lines and takes payment as usual. A name that is not an open draft is refused with a notice.
+
+A rate you put on the ticket is your code's price: the register does not ask a manager to approve it afterwards. When a person chose a price below list on your page, take the manager's approval in your own flow before you build the ticket.
+
 Also available: `gunstore.extensions.isEnabled(id, boot)`, `ffl.featureOffPage(page, featureTitle, whereToTurnOn)` for your own Desk pages, `gunstore.renderReleaseNotes(entries)`.
 
 ## Desk pages, sidebar, shortcuts
