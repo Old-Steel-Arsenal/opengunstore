@@ -88,6 +88,7 @@ from __future__ import annotations
 import hashlib
 import re
 from functools import partial
+from html import escape
 
 import frappe
 from frappe import _
@@ -475,6 +476,33 @@ def _gunbroker_target(doc, facts: dict) -> tuple[str, str]:
 
 def _is_other_mail(doctype: str, name: str) -> bool:
 	return doctype == LEAD and frappe.db.get_value(LEAD, name, "status") == OTHER_MAIL
+
+
+_LINK_HERE = re.compile(r"<a\b(?![^>]*\btarget\s*=)", re.I)
+_MARKUP = re.compile(r"<\s*(?:br|p|div|span|a|table|html|body|img|blockquote|pre|ul|ol|h[1-6])\b", re.I)
+
+
+def mail_body_html(body: str | None) -> str | None:
+	"""A received mail's body as CRM can show it. CRM puts the stored body into a frame as HTML:
+
+	* a plain text mail (Frappe stores its text, every line break doubled) would run together into
+	  one paragraph, so its text is escaped and each line break becomes a ``<br>``;
+	* a link followed inside the frame loads the other site there, and most sites refuse a frame, so
+	  every link that names no target opens in a new tab.
+
+	Running it on its own result changes nothing."""
+	if not body:
+		return body
+	if not _MARKUP.search(body):
+		body = escape(body.replace("\r\n", "\n").replace("\n\n", "\n").strip(), quote=False).replace("\n", "<br>")
+	return _LINK_HERE.sub('<a target="_blank"', body)
+
+
+def tidy_received_mail(doc, method=None):
+	"""Communication validate: a received mail's body (:func:`mail_body_html`). On validate, not on
+	the insert: a mail pull writes the body again right after the insert, and saves."""
+	if doc.sent_or_received == "Received" and doc.communication_medium == "Email":
+		doc.content = mail_body_html(doc.content)
 
 
 def skip_unwanted(doc, method=None):

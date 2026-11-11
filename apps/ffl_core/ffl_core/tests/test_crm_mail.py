@@ -65,6 +65,33 @@ class TestIncomingMail(CRMTestCase):
 		# The rollback takes the settings back; the cached copy the save left does not go with it.
 		frappe.clear_document_cache(mail.SETTINGS, mail.SETTINGS)
 
+	def test_a_received_mails_links_open_in_a_new_tab(self):
+		body = ('<a href="https://a.test/1" rel="noopener noreferrer">one</a> <A class="x" href="https://a.test/2">two</A> '
+			'<a href="https://a.test/3" target="_self">three</a> <abbr>not a link</abbr>')
+		doc = _receive("links@buyer.test", recipients=TEAM, content=body)
+		content = frappe.db.get_value("Communication", doc.name, "content")
+		self.assertEqual(content.count('target="_blank"'), 2)
+		self.assertIn('target="_self"', content)
+		self.assertNotIn("<abbr target", content)
+		# A mail pull writes the body again after the insert and saves: the links are tidied again.
+		doc.reload()
+		doc.content = body
+		doc.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("Communication", doc.name, "content"), content)
+		self.assertEqual(mail.mail_body_html(content), content)
+
+	def test_a_plain_text_mail_keeps_its_line_breaks(self):
+		# As Frappe stores a text/plain mail: each line break doubled.
+		body = "Old Steel, \n\n\n\nIs it < $500 & <in stock>?\n\nline two\n\n\n\nThanks\n\n\n\n"
+		doc = _receive("plain@buyer.test", recipients=TEAM, content=body)
+		content = frappe.db.get_value("Communication", doc.name, "content")
+		self.assertEqual(content, "Old Steel, <br><br>Is it &lt; $500 &amp; &lt;in stock&gt;?<br>line two<br><br>Thanks")
+		self.assertEqual(mail.mail_body_html(content), content)
+
+	def test_a_sent_mails_body_is_left_alone(self):
+		doc = _receive("staff@store.test", sent_or_received="Sent", content='line\n\n<a href="https://a.test/1">one</a>')
+		self.assertEqual(frappe.db.get_value("Communication", doc.name, "content"), 'line\n\n<a href="https://a.test/1">one</a>')
+
 	def test_an_unknown_sender_to_a_team_address_becomes_one_lead(self):
 		comm = _receive("Jane Q Public <Jane@Buyer.test>", "Jane Q Public", recipients=TEAM)
 		leads = _leads("jane@buyer.test")

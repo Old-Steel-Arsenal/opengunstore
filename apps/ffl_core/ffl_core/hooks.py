@@ -306,6 +306,8 @@ doc_events = {
 	# Pulled mail: the copy CRM keeps and where it goes; the first reply owns the lead (ffl_core.crm.mail).
 	"Communication": {
 		"before_insert": "ffl_core.crm.mail.skip_unwanted",
+		# A received mail's body as CRM can show it: plain text keeps its lines, links open in a new tab.
+		"validate": "ffl_core.crm.mail.tidy_received_mail",
 		"after_insert": ["ffl_core.crm.mail.on_incoming", "ffl_core.crm.mail.claim_on_reply"],
 		"onload": "ffl_core.crm.mail.mark_screened_out",   # Make lead button (public/js/communication_form.js)
 	},
