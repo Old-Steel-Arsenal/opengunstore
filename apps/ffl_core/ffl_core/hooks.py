@@ -674,6 +674,8 @@ doc_events = {
 			# An amendment takes over the private seller's payment its cancelled
 			# original still carries (after its own acquisitions exist).
 			"ffl_core.cash_drawer.take_over_goods_payout_on_amend",
+			# Stock in that fits a customer's want: a task for its owner, queued after the commit (crm/wants.py).
+			"ffl_core.crm.wants.on_stock_receipt",
 		],
 		"on_cancel": [
 			# Units this receipt put in a location come out again with it.
@@ -701,7 +703,8 @@ doc_events = {
 	# posts its outgoing leg first): guns really off our shelves lose their storage location.
 	# Cancelling one also replays the location moves it made (a GunBroker stock issue, say).
 	"Stock Entry": {
-		"on_submit": "ffl_core.storage.stock_entry_posted",
+		# A Material Receipt that fits a customer's want gives its owner a task (crm/wants.py).
+		"on_submit": ["ffl_core.storage.stock_entry_posted", "ffl_core.crm.wants.on_stock_receipt"],
 		"on_cancel": [
 			"ffl_core.storage.stock_entry_posted",
 			"ffl_core.storage.stock_document_cancelled",
