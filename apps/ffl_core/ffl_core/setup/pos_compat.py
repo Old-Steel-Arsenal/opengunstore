@@ -166,6 +166,12 @@ _REGISTER_GRANTS_KEY = "ffl_register_grants_done"  # same record as _ROLE_GRANTS
 #   POS Profile read                 -- the opening dialog fills its payment rows with frappe.client.get and the
 #                                       item grid waits on get_value("selling_price_list"); the select
 #                                       CASHIER_GRANTS gave only passes the server-side checks
+#   Item Price read                  -- typing or scanning a serial number or barcode in the item search:
+#                                       point_of_sale.search_by_term reads the price with frappe.get_list, which
+#                                       checks the session user, and ERPNext gives Item Price to the two Master
+#                                       Manager roles only. (The item grid reads prices with a raw query, so a
+#                                       name search always worked.) select is not enough: get_list then returns
+#                                       the row without price_list_rate.
 # Not given, on purpose: what Sales User already has from ERPNext (Item, Account, POS Settings, Stock Settings,
 # Serial and Batch Bundle) is not copied to Sales Manager, which would turn those doctypes into Custom DocPerm on
 # every site. A Sales Manager runs the register as Sales Manager + Sales User, as for the trade-in
@@ -182,6 +188,7 @@ REGISTER_GRANTS = (
 	("POS Profile", "Sales Manager", ("read",), False),
 	("Sales Invoice", "Sales User", ("read", "write", "create", "submit"), True),
 	("Sales Invoice", "Sales Manager", ("read", "write", "create", "submit"), True),
+	("Item Price", "Sales User", ("read",), True),
 )
 
 
@@ -234,7 +241,7 @@ def _apply_grants(grants: tuple, record_key: str) -> None:
 # The doctypes check_perm_drift compares: the ones this module turns into Custom DocPerm for a real need (the
 # counter's POS Profile select, the trade-in's stock bundle, the register's loop). FFL Acquisition grants predate it.
 _DRIFT_DOCTYPES = ("POS Profile", "Serial and Batch Bundle", "POS Invoice", "POS Opening Entry",
-	"POS Closing Entry", "Sales Invoice")
+	"POS Closing Entry", "Sales Invoice", "Item Price")
 
 
 def _our_grants() -> dict[tuple[str, str], set[str]]:
