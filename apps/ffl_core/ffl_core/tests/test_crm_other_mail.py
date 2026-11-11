@@ -68,8 +68,11 @@ def _server(imap: FakeIMAP):
 
 def _check(imap: FakeIMAP) -> None:
 	with patch("frappe.email.doctype.email_account.email_account.EmailAccount.get_incoming_server",
-			return_value=_server(imap)), patch.object(mail, "commit"), hooks(mail.SCREEN_HOOK, [f"{HERE}.provider"]):
+			return_value=_server(imap)) as connect, patch.object(mail, "commit"), \
+			hooks(mail.SCREEN_HOOK, [f"{HERE}.provider"]):
 		mail.check_spam_folder(INFO)
+	# Frappe hands back a logged-out connection unless it is asked for one to receive with.
+	connect.assert_called_once_with(in_receive=True)
 
 
 class TestOtherMail(TeamMailCase):
