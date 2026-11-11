@@ -7,6 +7,7 @@ there is none, so the conversation sits where CRM lets staff read and reply to i
 from __future__ import annotations
 
 import frappe
+from frappe.desk.form.assign_to import _add as assign
 
 DEAL = "CRM Deal"
 STATUS = "CRM Deal Status"
@@ -51,3 +52,19 @@ def open_deal_for(contact: str, owner: str | None = None) -> str:
 	# read right on the Contact is checked by the endpoint); CRM's own lead-from-mail inserts so too.
 	deal.insert(ignore_permissions=True)
 	return deal.name
+
+
+def new_task(title: str, description: str, assignee: str | None = None, deal: str | None = None, **fields) -> str:
+	"""A CRM Task (Todo unless *fields* say otherwise), on *deal* when given, assigned to *assignee* when
+	given. Returns its name. For a mail, a web order or a stock arrival the system reacts to: the caller
+	need hold no CRM rights."""
+	if deal:
+		fields.update(reference_doctype=DEAL, reference_docname=deal)
+	task = frappe.get_doc({"doctype": "CRM Task", "title": title, "description": description,
+		"status": "Todo", **fields}).insert(ignore_permissions=True)
+	# Not by assigned_to on the insert: CRM's after_insert checks the session user's rights on the
+	# task, and a Stock Manager cancelling an order has none.
+	if assignee:
+		assign({"assign_to": [assignee], "doctype": "CRM Task", "name": task.name, "description": title},
+			ignore_permissions=True)
+	return task.name

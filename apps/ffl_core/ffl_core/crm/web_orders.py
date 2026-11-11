@@ -18,12 +18,11 @@ from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.desk.form.assign_to import _add as assign
 from frappe.desk.form.assign_to import close_all_assignments
 from frappe.utils import escape_html, fmt_money, now_datetime
 
 from ffl_core.crm import TITLE, installed, pos_link_on
-from ffl_core.crm.deals import DEAL, _statuses, open_deal_for
+from ffl_core.crm.deals import DEAL, _statuses, new_task, open_deal_for
 from ffl_core.crm.mail import _customer_contact, _split_name, contacts_with_email, share_with_team
 
 NOTE = "FCRM Note"
@@ -119,14 +118,9 @@ def _add_to_task(deal: str, order_id: str, html: str) -> None:
 	if task:
 		frappe.db.set_value(TASK, task.name, "description", (task.description or "") + html)
 		return
-	title = _(_TASK_TITLE).format(order_id)
-	task = frappe.get_doc({"doctype": TASK, "title": title, "description": html, "priority": "High", "status": "Todo",
-		"due_date": now_datetime(), "reference_doctype": DEAL, "reference_docname": deal}).insert(ignore_permissions=True)
-	# Not by assigned_to on the insert: CRM's after_insert checks the session user's rights on the task.
 	# A deal nobody owns is the team's (shared on creation): its task is readable by every Sales User.
-	owner = frappe.db.get_value(DEAL, deal, "deal_owner")
-	if owner:
-		assign({"assign_to": [owner], "doctype": TASK, "name": task.name, "description": title}, ignore_permissions=True)
+	new_task(_(_TASK_TITLE).format(order_id), html, frappe.db.get_value(DEAL, deal, "deal_owner"), deal,
+		priority="High", due_date=now_datetime())
 
 
 def payment_failed(order_id: str, email: str, full_name: str = "", phone: str = "", total: float = 0,
