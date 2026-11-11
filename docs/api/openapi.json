@@ -229,6 +229,73 @@
           "category"
         ]
       },
+      "CRM_Want": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/CRM%20Want — see docs/api/frappe-rest.md.",
+        "properties": {
+          "contact": {
+            "type": "string",
+            "description": "Contact (Link: Contact)"
+          },
+          "customer": {
+            "type": "string",
+            "description": "Customer (Link: Customer)"
+          },
+          "deal": {
+            "type": "string",
+            "description": "Deal (Link: CRM Deal)"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Open",
+              "Matched",
+              "Closed"
+            ],
+            "description": "Status"
+          },
+          "want_owner": {
+            "type": "string",
+            "description": "Owner (Link: User)"
+          },
+          "keywords": {
+            "type": "string",
+            "description": "Keywords"
+          },
+          "item": {
+            "type": "string",
+            "description": "Item (Link: Item)"
+          },
+          "budget": {
+            "type": "number",
+            "description": "Budget"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Notes"
+          },
+          "matched_item": {
+            "type": "string",
+            "description": "Matched item (Link: Item)"
+          },
+          "matched_serial": {
+            "type": "string",
+            "description": "Matched serial"
+          },
+          "matched_on": {
+            "type": "string",
+            "description": "Matched on"
+          },
+          "arrival_task": {
+            "type": "string",
+            "description": "Arrival task"
+          }
+        },
+        "required": [
+          "contact",
+          "status"
+        ]
+      },
       "Caliber": {
         "type": "object",
         "description": "Custom DocType (ffl_core); CRUD via /api/resource/Caliber — see docs/api/frappe-rest.md.",
@@ -7489,6 +7556,82 @@
         }
       }
     },
+    "/api/method/ffl_core.api.crm.add_want": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Add a want to a deal's primary contact: when stock that fits arrives, you get a task.",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:161`",
+        "operationId": "ffl_core.api.crm.add_want",
+        "responses": {
+          "200": {
+            "description": "str: The CRM Want's name. The owner is the caller. Refused for a deal with no contact, and when neither keywords nor an item is given.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "deal": {
+                    "type": "string",
+                    "description": "The CRM Deal's name."
+                  },
+                  "keywords": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "What they are after, for example \"P228\" or \"Mosin 91/30\". Every word must appear in the arriving gun's name, brand, model, caliber or description."
+                  },
+                  "item": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "An Item to alert on, instead of or as well as keywords."
+                  },
+                  "budget": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "What they want to spend. Shown on the task; arrivals are not filtered by price."
+                  },
+                  "notes": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Anything else worth knowing."
+                  }
+                },
+                "required": [
+                  "deal"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.api.crm.connect_my_mailbox": {
       "post": {
         "tags": [
@@ -7550,7 +7693,7 @@
           "ffl_core"
         ],
         "summary": "CRM's list data for its Leads and Deals pages (hooks.py overrides ``crm.api.doc.get_data``), with",
-        "description": "two changes: a Leads list leaves out other mail unless it filters on the status or category, and\n``@me`` inside a filter's list of values is the caller (CRM's page replaces only a plain ``@me``, and\n**My follow-ups** asks for \"mine or nobody's\").\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:161`",
+        "description": "two changes: a Leads list leaves out other mail unless it filters on the status or category, and\n``@me`` inside a filter's list of values is the caller (CRM's page replaces only a plain ``@me``, and\n**My follow-ups** asks for \"mine or nobody's\").\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:192`",
         "operationId": "ffl_core.api.crm.crm_list_data",
         "responses": {
           "200": {
@@ -7628,7 +7771,7 @@
           "ffl_core"
         ],
         "summary": "Stands in for CRM's quotation gates (hooks.py): the Deal page shows no Quotations tab and no",
-        "description": "**Create Quotation** button, since a deal closes through **Open order**.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:193`",
+        "description": "**Create Quotation** button, since a deal closes through **Open order**.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:224`",
         "operationId": "ffl_core.api.crm.deals_use_no_quotes",
         "responses": {
           "200": {

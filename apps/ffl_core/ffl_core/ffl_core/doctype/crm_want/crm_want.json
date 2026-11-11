@@ -1,0 +1,197 @@
+{
+ "actions": [],
+ "autoname": "format:WANT-{#####}",
+ "naming_rule": "Expression",
+ "creation": "2026-11-10 12:00:00.000000",
+ "description": "A customer who wants a gun or product the store does not have in stock. A matching arrival gives the owner a CRM task.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "contact",
+  "customer",
+  "deal",
+  "column_break_wanted",
+  "status",
+  "want_owner",
+  "section_wanted",
+  "keywords",
+  "item",
+  "column_break_budget",
+  "budget",
+  "notes",
+  "section_match",
+  "matched_item",
+  "matched_serial",
+  "column_break_match",
+  "matched_on",
+  "arrival_task"
+ ],
+ "fields": [
+  {
+   "fieldname": "contact",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Contact",
+   "options": "Contact",
+   "reqd": 1
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer",
+   "description": "Filled in from the contact when it belongs to one customer."
+  },
+  {
+   "fieldname": "deal",
+   "fieldtype": "Link",
+   "label": "Deal",
+   "options": "CRM Deal"
+  },
+  {
+   "fieldname": "column_break_wanted",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Open",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Open\nMatched\nClosed",
+   "reqd": 1
+  },
+  {
+   "fieldname": "want_owner",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Owner",
+   "options": "User",
+   "description": "Gets the task when a match arrives. The person who adds the want, if left blank."
+  },
+  {
+   "fieldname": "section_wanted",
+   "fieldtype": "Section Break",
+   "label": "What they want"
+  },
+  {
+   "fieldname": "keywords",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Keywords",
+   "description": "For example P228 or Mosin 91/30. Every word must appear in the arriving gun's name, brand, model, caliber or description."
+  },
+  {
+   "fieldname": "item",
+   "fieldtype": "Link",
+   "label": "Item",
+   "options": "Item",
+   "description": "Optional: alert when this exact item arrives. Fill in keywords, an item, or both."
+  },
+  {
+   "fieldname": "column_break_budget",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "budget",
+   "fieldtype": "Currency",
+   "label": "Budget",
+   "description": "Shown on the task. Arrivals are not filtered by price."
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_match",
+   "fieldtype": "Section Break",
+   "label": "Latest match"
+  },
+  {
+   "fieldname": "matched_item",
+   "fieldtype": "Link",
+   "label": "Matched item",
+   "options": "Item",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "matched_serial",
+   "fieldtype": "Data",
+   "label": "Matched serial",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Data, not a link: cancelling the receipt may delete the serial number."
+  },
+  {
+   "fieldname": "column_break_match",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "matched_on",
+   "fieldtype": "Datetime",
+   "label": "Matched on",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "arrival_task",
+   "fieldtype": "Data",
+   "label": "Arrival task",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "The CRM task that new arrivals are added to while it is open."
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-10 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FFL Core",
+ "name": "CRM Want",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 0,
+   "print": 0,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 0,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 0,
+   "print": 0,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 0,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 0,
+   "print": 0,
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "share": 0,
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "keywords",
+ "track_changes": 1
+}

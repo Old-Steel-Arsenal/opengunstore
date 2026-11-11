@@ -4,7 +4,7 @@ Owns: the two custom fields (``CUSTOM_FIELDS``), the Lead Mail Settings default,
 setup (``crm.team.apply``: staff Reply-To, team mailboxes in User Emails), the same-site
 ERPNext CRM Settings (on, this site, ``sync_products`` off), CRM's currency, the deal stages, moving CRM's own
 "create lead from incoming email" switch to ours, the Contact page's Email button, the Deal page's customer card and
-Open order button (:func:`apply_pos_link`, following Lead Mail Settings › crm_pos_link), and the
+Open order and Add want buttons (:func:`apply_pos_link`, following Lead Mail Settings › crm_pos_link), and the
 one-off backfill that makes every Item a CRM Product.
 
 Runs at ffl_core's after_install and after_migrate, and when ``crm`` is installed on a site that
@@ -63,12 +63,13 @@ CONTACT_SCRIPT_JS = """function setupForm({ doc, call, router }) {
 	}
 }
 """
-# The Deal page's customer card and Open order button: a CRM Form Script, on while the switch is.
+# The Deal page's customer card, Open order and Add want buttons: a CRM Form Script, on while the switch is.
 DEAL_SCRIPT = "OpenGunstore: Deal to POS"
 DEAL_SCRIPT_JS = """class CRMDeal {
 	onLoad() {
 		if (this.doc.__newDocument) return
 		this.actions.push({ label: __("Open order"), onClick: () => this.fflOpenOrder() })
+		this.actions.push({ label: __("Add want"), onClick: () => this.fflAddWant() })
 		this.fflLoadCard()
 	}
 	fflError(e) {
@@ -112,6 +113,27 @@ DEAL_SCRIPT_JS = """class CRMDeal {
 		} catch (e) {
 			this.fflError(e)
 		}
+	}
+	fflAddWant() {
+		formDialog({
+			title: __("Add want"),
+			fields: [
+				{ fieldname: "keywords", fieldtype: "Data", label: __("Keywords"), placeholder: __("P228, Mosin 91/30") },
+				{ fieldname: "item", fieldtype: "Link", options: "Item", label: __("Item (optional)") },
+				{ fieldname: "budget", fieldtype: "Currency", label: __("Budget") },
+				{ fieldname: "notes", fieldtype: "Small Text", label: __("Notes") },
+			],
+			submitLabel: __("Add want"),
+			onSubmit: async (data) => {
+				if (!data.keywords && !data.item) throw new Error(__("Fill in keywords or an item."))
+				try {
+					await call("ffl_core.api.crm.add_want", { deal: this.doc.name, ...data })
+				} catch (e) {
+					throw new Error(e.messages?.[0] || e.message)
+				}
+				toast.success(__("Added. You get a task when something that fits arrives."))
+			},
+		})
 	}
 	async fflGoToOrder() {
 		const order = await call("ffl_core.api.crm.open_deal_order", { deal: this.doc.name })
