@@ -288,7 +288,7 @@ class RoleGrantDoctypesDrift(FrappeTestCase):
 
 	def test_covers_pos_profile_and_the_bundle_and_our_grants_come_from_the_data(self):
 		self.assertEqual(pos_compat._DRIFT_DOCTYPES, ("POS Profile", "Serial and Batch Bundle", "POS Invoice",
-			"POS Opening Entry", "POS Closing Entry", "Sales Invoice"))
+			"POS Opening Entry", "POS Closing Entry", "Sales Invoice", "Item Price"))
 		counter = {"write", "create", "delete", "submit"}
 		entry = {"read", "write", "create", "submit"}
 		self.assertEqual(pos_compat._our_grants(), {
@@ -304,6 +304,7 @@ class RoleGrantDoctypesDrift(FrappeTestCase):
 			("POS Closing Entry", "Sales User"): entry,
 			("Sales Invoice", "Sales User"): entry,
 			("Sales Invoice", "Sales Manager"): entry,
+			("Item Price", "Sales User"): {"read"},
 		})
 
 	def test_our_own_grant_rows_are_no_drift(self):
