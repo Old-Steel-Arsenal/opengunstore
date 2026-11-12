@@ -150,9 +150,7 @@ function pickCustomer(rows) {
 
 // The New Customer dialog, filled from the same scan (its own Scan ID reads it).
 function newCustomer(frm, raw) {
-	frappe.ui.form.make_quick_entry('Customer', (doc) => useCustomer(frm, doc.name, null), (qe) => {
-		if (qe && qe.__fflApplyScan) qe.__fflApplyScan(raw);
-	}, { doctype: 'Customer', customer_type: 'Individual' });
+	ffl.customerQuickEntry.newFromScan(raw).then((name) => { if (name) useCustomer(frm, name, null); });
 }
 
 // Pick the customer, let their contact load, then settle the address against the licence

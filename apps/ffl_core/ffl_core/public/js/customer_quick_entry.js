@@ -481,6 +481,54 @@
 		if (F && F.CustomerQuickEntryForm) { applyPatch(F.CustomerQuickEntryForm); return; }
 		if (left > 0) setTimeout(function () { fallbackRetry(left - 1); }, 250);
 	}
+	// ffl.customerQuickEntry.newFromScan(raw) → Promise<customer name | null>: the New Customer
+	// dialog, filled from a license scan by the dialog's own Scan ID (so the store's Store Customer
+	// ID Numbers switch decides, as always, whether the license number and birth date are read).
+	// Resolves the customer's name once the clerk saves (or picks an existing customer at the
+	// duplicate check); null when the dialog closes without one, including "Edit in full page"
+	// and a site where Customer has no quick entry. Called again while its dialog is still open,
+	// it re-fills that same dialog from the new scan and returns the same promise.
+	var open = null;   // {qe, promise} while a newFromScan dialog is up
+	function newFromScan(raw) {
+		if (open && open.qe) {
+			open.qe.__fflApplyScan(raw);
+			return open.promise;
+		}
+		var settled = false, settle;
+		var promise = new Promise(function (resolve) {
+			settle = function (name) {
+				if (settled) return;
+				settled = true;
+				open = null;
+				resolve(name || null);
+			};
+		});
+		open = { qe: null, promise: promise };
+		// A "Create a new Customer" from a Link the clerk left earlier would take the saved
+		// customer instead of our callback (frappe._from_link outlives a dialog closed unsaved).
+		delete frappe._from_link;
+		var shown = false;
+		var setup = frappe.ui.form.make_quick_entry('Customer', function (doc) {
+			settle(doc && (doc.name || (doc.doc && doc.doc.name)));
+		}, function (qe) {
+			if (!qe || typeof qe.__fflApplyScan !== 'function') return;   // full form instead of the dialog
+			shown = true;
+			open.qe = qe;
+			var stockOnHide = qe.onhide;
+			qe.onhide = function () {
+				var out = stockOnHide && stockOnHide.apply(qe, arguments);
+				// "Use this customer" (duplicate check) hides the dialog just before answering: wait a tick.
+				setTimeout(function () { settle(null); }, 0);
+				return out;
+			};
+			qe.__fflApplyScan(raw);
+		}, { doctype: 'Customer', customer_type: 'Individual' });
+		// No dialog came up (Customer opens its full form on this site): nothing to wait for.
+		Promise.resolve(setup).then(function () { if (!shown) settle(null); }, function () { settle(null); });
+		return promise;
+	}
+	api.newFromScan = newFromScan;
+
 	function wire() {
 		if (!window.frappe || typeof frappe.provide !== 'function') return;
 		frappe.provide('frappe.ui.form');
