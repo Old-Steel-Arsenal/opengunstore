@@ -371,7 +371,7 @@ def _totals(docs, filters) -> frappe._dict:
 
 def _summary_columns():
 	return [
-		{"label": _("Line"), "fieldname": "line", "fieldtype": "Data", "width": 340},
+		{"label": _("Line"), "fieldname": "line", "fieldtype": "Data", "width": 460},
 		{"label": _("Amount"), "fieldname": "amount", "fieldtype": "Currency", "width": 140},
 		{"label": _("Count"), "fieldname": "count", "fieldtype": "Int", "width": 80},
 	]
@@ -385,7 +385,7 @@ def _summary_view(ctx):
 		rows.append({"line": label, "amount": None, "is_section": 1, "bold": 1})
 
 	def line(label, amount, count=None, indent=0, bold=0, alert=0):
-		rows.append({"line": label, "amount": flt(amount, 2), "count": count, "indent": indent,
+		rows.append({"line": label, "amount": flt(amount, 2), "count": count, "sub": indent,
 			"bold": bold, "is_alert": alert})
 
 	def n(pred):

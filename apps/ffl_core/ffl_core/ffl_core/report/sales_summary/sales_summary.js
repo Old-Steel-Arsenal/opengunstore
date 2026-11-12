@@ -40,7 +40,7 @@ frappe.query_reports["Sales Summary"] = {
 		value = default_formatter(value, row, column, data);
 		if (!data) return value;
 		if (data.is_note) return `<span class="text-muted">${value}</span>`;
-		if (column.fieldname === "line" && data.indent) value = `<span style="padding-left:18px">${value}</span>`;
+		if (column.fieldname === "line" && data.sub) value = `<span style="padding-left:18px">${value}</span>`;
 		if (data.is_alert) return `<span style="color:var(--red-600);font-weight:600">${value}</span>`;
 		if (data.bold || data.is_section) return `<b>${value}</b>`;
 		return value;
