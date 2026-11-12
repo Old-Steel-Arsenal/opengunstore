@@ -347,6 +347,24 @@ class Cases:
 		self._checks_clear(s)
 		self._views_agree(s)
 
+	def test_lines_a_store_does_not_use_are_left_out(self):
+		"""A plain taxed sale: no excise, marketplace, trade-in, deposit, shipping, rounding or non-taxable lines;
+		the always-shown lines are there, and the notes are in the message above the table, whole."""
+		self._paid_sale([(GOODS, 100)])
+		_c, rows, message = _run(self.company)
+		labels = [r["line"] for r in rows]
+		for hidden in ("Excise (CFET)", "Marketplace-collected tax (memo)", "Marketplace fee collected (memo)",
+				"Trade-in allowance", "Deposits taken", "Deposits applied", "Shipping", "of which on shipping",
+				"Unclassified charges", "Non-taxable sales", "CFET-exempt (LE)", "Rounding",
+				"of which Memberships (billed)", "Memberships recognized (GL)", "Credit notes applied", "Write-off",
+				"Unpaid / on account", "Notes"):
+			self.assertNotIn(hidden, labels)
+		for shown in ("Gross sales", "Recorded discounts", "Returns", "Net sales", "Sales tax", "Tax owed",
+				"Total of tickets", "Cash", "Total", "E1: tickets less sales and charges", "E2: tickets less payments"):
+			self.assertIn(shown, labels)
+		for note in ss._notes():
+			self.assertIn(frappe.utils.escape_html(note), message)
+
 	def test_filters_are_checked(self):
 		with self.assertRaises(frappe.ValidationError):
 			ss.execute({"company": self.company, "from_date": nowdate(), "to_date": nowdate(), "view": "Bogus"})
@@ -381,6 +399,11 @@ class ExciseStoreSalesSummary(ExciseStoreFixtures):
 		self.assertEqual(flt(si.grand_total, 2), 698.75)
 		self.assertEqual(_amount(s, "E1: tickets less sales and charges"), 0)
 		self.assertEqual(_amount(s, "E2: tickets less payments"), 0)
+
+	def test_the_excise_line_shows_when_excise_was_collected(self):
+		self._si((GUN, 500))
+		_c, rows, *_ = _run(self.company)
+		self.assertIn("Excise (CFET)", [r["line"] for r in rows])
 
 	def test_the_gl_memo_matches_on_sales_invoices(self):
 		self._si((GUN, 500))

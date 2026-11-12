@@ -375,7 +375,7 @@ def _totals(docs, filters) -> frappe._dict:
 
 def _summary_columns():
 	return [
-		{"label": _("Line"), "fieldname": "line", "fieldtype": "Data", "width": 460},
+		{"label": _("Line"), "fieldname": "line", "fieldtype": "Data", "width": 340},
 		{"label": _("Amount"), "fieldname": "amount", "fieldtype": "Currency", "width": 140},
 		{"label": _("Count"), "fieldname": "count", "fieldtype": "Int", "width": 80},
 	]
@@ -388,7 +388,10 @@ def _summary_view(ctx):
 	def head(label):
 		rows.append({"line": label, "amount": None, "is_section": 1, "bold": 1})
 
-	def line(label, amount, count=None, indent=0, bold=0, alert=0):
+	def line(label, amount, count=None, indent=0, bold=0, alert=0, optional=False):
+		"""optional: a line most stores never use, left out while it is 0.00."""
+		if optional and not flt(amount, 2):
+			return
 		rows.append({"line": label, "amount": flt(amount, 2), "count": count, "sub": indent,
 			"bold": bold, "is_alert": alert})
 
@@ -400,26 +403,32 @@ def _summary_view(ctx):
 	line(_("Recorded discounts"), t.discounts, n(lambda d: flt(d.discounts, 2)))
 	line(_("Returns"), t.returns, n(lambda d: flt(d.returns, 2)))
 	line(_("Net sales"), t.net, len(docs), bold=1)
-	line(_("of which Memberships (billed)"), t.membership, n(lambda d: flt(d.membership, 2)), indent=1)
-	line(_("Memberships recognized (GL)"), t.membership_recognized, indent=1)
+	line(_("of which Memberships (billed)"), t.membership, n(lambda d: flt(d.membership, 2)), indent=1,
+		optional=True)
+	line(_("Memberships recognized (GL)"), t.membership_recognized, indent=1, optional=True)
 
 	head(_("Other amounts on tickets"))
-	line(_("Trade-in allowance"), t.trade_in_allowance, n(lambda d: flt(d.trade_in_allowance, 2)))
-	line(_("Deposits taken"), t.deposit_taken, n(lambda d: flt(d.deposit_taken, 2)))
-	line(_("Deposits applied"), t.deposit_applied, n(lambda d: flt(d.deposit_applied, 2)))
-	line(_("Shipping"), t.shipping, n(lambda d: flt(d.shipping, 2)))
+	line(_("Trade-in allowance"), t.trade_in_allowance, n(lambda d: flt(d.trade_in_allowance, 2)), optional=True)
+	line(_("Deposits taken"), t.deposit_taken, n(lambda d: flt(d.deposit_taken, 2)), optional=True)
+	line(_("Deposits applied"), t.deposit_applied, n(lambda d: flt(d.deposit_applied, 2)), optional=True)
+	line(_("Shipping"), t.shipping, n(lambda d: flt(d.shipping, 2)), optional=True)
 	line(_("Sales tax"), t.sales_tax, n(lambda d: flt(d.sales_tax, 2)))
-	line(_("of which on shipping"), t.freight_tax, n(lambda d: flt(d.freight_tax, 2)), indent=1)
-	line(_("Excise (CFET)"), t.excise, n(lambda d: flt(d.excise, 2)))
+	line(_("of which on shipping"), t.freight_tax, n(lambda d: flt(d.freight_tax, 2)), indent=1, optional=True)
+	line(_("Excise (CFET)"), t.excise, n(lambda d: flt(d.excise, 2)), optional=True)
 	line(_("Tax owed"), t.sales_tax + t.excise, bold=1)
-	line(_("Marketplace-collected tax (memo)"), t.marketplace_tax, n(lambda d: flt(d.marketplace_tax, 2)))
-	line(_("Marketplace fee collected (memo)"), t.marketplace_fee, n(lambda d: flt(d.marketplace_fee, 2)))
-	line(_("Unclassified charges"), t.unclassified, n(lambda d: flt(d.unclassified, 2)), alert=bool(t.unclassified))
-	head(_("Non-taxable sales"))
-	for reason, amount in sorted(t.non_taxable.items()):
-		line(reason, amount, n(lambda d, r=reason: flt(d.non_taxable.get(r), 2)), indent=1)
-	line(_("CFET-exempt (LE)"), t.le_exempt, n(lambda d: flt(d.le_exempt, 2)), indent=1)
-	line(_("Rounding"), t.rounding)
+	line(_("Marketplace-collected tax (memo)"), t.marketplace_tax, n(lambda d: flt(d.marketplace_tax, 2)),
+		optional=True)
+	line(_("Marketplace fee collected (memo)"), t.marketplace_fee, n(lambda d: flt(d.marketplace_fee, 2)),
+		optional=True)
+	line(_("Unclassified charges"), t.unclassified, n(lambda d: flt(d.unclassified, 2)), alert=bool(t.unclassified),
+		optional=True)
+	exempt = [(r, a) for r, a in sorted(t.non_taxable.items()) if flt(a, 2)]
+	if exempt or flt(t.le_exempt, 2):
+		head(_("Non-taxable sales"))
+		for reason, amount in exempt:
+			line(reason, amount, n(lambda d, r=reason: flt(d.non_taxable.get(r), 2)), indent=1)
+		line(_("CFET-exempt (LE)"), t.le_exempt, n(lambda d: flt(d.le_exempt, 2)), indent=1, optional=True)
+	line(_("Rounding"), t.rounding, optional=True)
 	line(_("Total of tickets"), t.total, len(docs), bold=1)
 
 	head(_("Payments on these sales"))
@@ -430,10 +439,6 @@ def _summary_view(ctx):
 	head(_("Checks"))
 	line(_("E1: tickets less sales and charges"), t.e1, bold=1, alert=bool(t.e1))
 	line(_("E2: tickets less payments"), t.e2, bold=1, alert=bool(t.e2))
-
-	head(_("Notes"))
-	for note in _notes():
-		rows.append({"line": note, "amount": None, "is_note": 1})
 	return _summary_columns(), rows
 
 
@@ -564,6 +569,9 @@ def _message(ctx, view) -> str:
 		alerts.append(_("{0} of charges are on an account that is neither tax nor shipping.").format(
 			frappe.format_value(t.unclassified, {"fieldtype": "Currency"})))
 	parts = [f'<div class="text-danger" style="font-weight:600">{frappe.utils.escape_html(a)}</div>' for a in alerts]
+	if view == "Summary":
+		parts.append('<ul class="text-muted" style="margin:4px 0 0;padding-left:18px">{0}</ul>'.format(
+			"".join(f"<li>{frappe.utils.escape_html(note)}</li>" for note in _notes())))
 	if view in ("Register", "Employee"):
 		parts.append('<span class="text-muted">{0}</span>'.format(
 			_("Register = the ticket's POS profile. Employee = who opened the ticket.")))
