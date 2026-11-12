@@ -232,8 +232,9 @@ def listing_block_reason(serial_no: str | None) -> str | None:
 
 
 def refuse_tagged_serial_sale(doc, method: str | None = None) -> None:
-	"""validate hook (POS Invoice / Sales Invoice / Sales Order): refuse selling a
-	tagged gun. Returns pass, and so do documents that merely move stock."""
+	"""validate hook (POS Invoice / Sales Invoice / Delivery Note): refuse selling or
+	shipping out a tagged gun. Returns pass, and so do stock moves that are not a sale
+	or shipment (Stock Entry). Sales Order lines carry no serial, so it is not hooked there."""
 	if doc.get("is_return"):
 		return
 	keys = [k for line in serials_for_lines(doc.get("items") or []) for k in line]

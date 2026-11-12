@@ -248,9 +248,25 @@ class Gates(_Guns):
 		serials.refuse_tagged_serial_sale(doc(plain))
 		serials.refuse_tagged_serial_sale(doc(tagged, is_return=1))
 
+	def test_delivery_note_gate(self):
+		"""A shipment's paperwork goes to the receiving dealer: a tagged gun's key must
+		not leave on it. A return DN and a DN of ordinary guns pass."""
+		tagged = self._gun(f"NSN (FB D{self._testMethodName[-6:]})", "NSN")
+		plain = self._gun(f"GD-{self._testMethodName[-8:]}", None)
+
+		def dn(*serial_nos, is_return=0):
+			return frappe._dict(doctype="Delivery Note", is_return=is_return, items=[
+				frappe._dict(item_code=self.ITEM, serial_no=s, serial_and_batch_bundle=None)
+				for s in serial_nos])
+
+		with self.assertRaisesRegex(frappe.ValidationError, "can't be sold yet"):
+			serials.refuse_tagged_serial_sale(dn(plain, tagged))
+		serials.refuse_tagged_serial_sale(dn(plain))
+		serials.refuse_tagged_serial_sale(dn(tagged, is_return=1))
+
 	def test_sale_gate_is_wired_on_both_sales_doctypes(self):
 		hooks = Path(frappe.get_app_path("ffl_core", "hooks.py")).read_text(encoding="utf-8")
-		for doctype in ("Sales Invoice", "POS Invoice"):
+		for doctype in ("Sales Invoice", "POS Invoice", "Delivery Note"):
 			block = re.search(rf'\n\t"{doctype}": \{{(.*?)\n\t\}},', hooks, re.S)
 			self.assertIsNotNone(block, doctype)
 			self.assertIn("ffl_core.serials.refuse_tagged_serial_sale", block.group(1), doctype)
