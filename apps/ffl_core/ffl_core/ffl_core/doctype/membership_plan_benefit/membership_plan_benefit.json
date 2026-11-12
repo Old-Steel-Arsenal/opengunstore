@@ -1,7 +1,7 @@
 {
  "actions": [],
  "creation": "2026-11-12 12:00:00.000000",
- "modified": "2026-11-12 12:00:00.000000",
+ "modified": "2026-11-12 18:00:00.000000",
  "modified_by": "Administrator",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -46,22 +46,20 @@
   {
    "fieldname": "item_group",
    "fieldtype": "Link",
-   "label": "Item Group",
+   "label": "Item Group (with Sub-groups)",
    "options": "Item Group",
    "depends_on": "eval:doc.applies_to=='Item Group'",
    "mandatory_depends_on": "eval:doc.applies_to=='Item Group'",
-   "description": "Its sub-groups too.",
    "in_list_view": 1,
    "columns": 2
   },
   {
    "fieldname": "price_list",
    "fieldtype": "Link",
-   "label": "Price List",
+   "label": "Items Priced in Price List",
    "options": "Price List",
    "depends_on": "eval:doc.applies_to=='Price List'",
    "mandatory_depends_on": "eval:doc.applies_to=='Price List'",
-   "description": "Items with a price in this list.",
    "in_list_view": 1,
    "columns": 1
   },
@@ -77,41 +75,36 @@
    "default": "Percent off",
    "reqd": 1,
    "in_list_view": 1,
-   "columns": 1,
-   "description": "Price-list price: the item's price in the price list above (Applies To = Price List only)."
+   "columns": 1
   },
   {
    "fieldname": "value",
    "fieldtype": "Float",
-   "label": "Value",
+   "label": "Percent, Amount or Price",
    "depends_on": "eval:doc.benefit_type!='Price-list price'",
-   "description": "Percent off: the percentage. Amount off: the amount off each unit. Fixed price: the price of each unit.",
    "in_list_view": 1,
    "columns": 1
   },
   {
    "fieldname": "uses_per_day",
    "fieldtype": "Int",
-   "label": "Uses per Day",
+   "label": "Daily Limit per Member (0 = None)",
    "default": "0",
    "non_negative": 1,
-   "description": "Units at this price per member per day. 0 = no limit.",
    "in_list_view": 1,
    "columns": 1
   },
   {
    "fieldname": "days",
    "fieldtype": "Data",
-   "label": "Days",
-   "description": "Blank = every day. Otherwise the days, separated by commas: Mon, Tue, Wed, Thu, Fri, Sat, Sun.",
+   "label": "Only on Days",
    "in_list_view": 1,
    "columns": 1
   },
   {
    "fieldname": "label",
    "fieldtype": "Data",
-   "label": "Label",
-   "description": "Shown on the sale line. Blank = made from the benefit and the plan, e.g. Member 50% (Basic)."
+   "label": "Reason Shown on the Sale"
   }
  ],
  "states": [],

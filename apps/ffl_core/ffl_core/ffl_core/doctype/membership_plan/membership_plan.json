@@ -141,8 +141,7 @@
   {
    "fieldname": "section_benefits",
    "fieldtype": "Section Break",
-   "label": "Member Benefits",
-   "description": "Member prices at the register. A line takes the lowest price it qualifies for: a member price, or the item's own price when that is lower (a sale)."
+   "label": "Member Benefits"
   },
   {
    "fieldname": "benefits",
