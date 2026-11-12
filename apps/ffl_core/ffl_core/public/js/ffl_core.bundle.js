@@ -1659,29 +1659,45 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 	window.ffl.gunsmithRegister = { complete: completeAtRegister, takePayment: takePaymentAtRegister,
 		refund: refundAtRegister, authorize: authorizeAtRegister };
 
-	// The Desk form's Pick up: route options {ffl_work_order, ffl_work_order_action:
-	// 'complete'} (the router also keeps them in the URL — dropped once read, so a reload
-	// does not run them again).
+	// What another page sends the register through route options (the router also keeps them
+	// in the URL — dropped once read, so a reload does not run them again):
+	// {ffl_work_order, ffl_work_order_action: 'complete' | 'refund'} — the Desk form's Pick up;
+	// {ffl_pos_invoice} — a draft ticket a page or an extension built (pos_ticket.open_ticket),
+	// opened in the cart as Recent Orders › Draft would.
 	function takeRouteJob() {
 		const ro = frappe.route_options;
-		if (!ro || !ro.ffl_work_order) return;
-		const job = { name: ro.ffl_work_order, action: ro.ffl_work_order_action };
+		if (!ro || !(ro.ffl_work_order || ro.ffl_pos_invoice)) return;
+		const job = ro.ffl_pos_invoice ? { ticket: String(ro.ffl_pos_invoice) }
+			: { name: ro.ffl_work_order, action: ro.ffl_work_order_action };
 		frappe.route_options = null;
-		if (location.search.includes('ffl_work_order')) history.replaceState(history.state, '', location.pathname + location.hash);
+		if (/ffl_work_order|ffl_pos_invoice/.test(location.search)) history.replaceState(history.state, '', location.pathname + location.hash);
 		// The register may still be opening (POS Opening Entry dialog, first load).
 		(function whenReady(left) {
 			const pos = window.cur_pos;
+			if (!isPosRoute()) return;   // the clerk left the register: the job goes with them
 			if (pos && pos.frm && pos.cart && pos.recent_order_list) return runRouteJob(job);
 			if (left > 0) setTimeout(() => whenReady(left - 1), 500);
 		})(240);
 	}
 	async function runRouteJob(job) {
+		if (job.ticket) return openRouteTicket(job.ticket);
 		if (job.action !== 'complete' && job.action !== 'refund') return;
 		const r = await frappe.call({ method: GW + 'register_work_orders', args: { name: job.name } });
 		const out = (r && r.message) || {};
 		const row = (out.orders || [])[0];
 		if (!row) return frappe.show_alert({ indicator: 'orange', message: __('{0} has nothing to do at the register.', [job.name]) });
 		return job.action === 'refund' ? refundAtRegister(row) : completeAtRegister(row, out.labor_item);
+	}
+	// Only a ticket still open goes into the cart: the name came in on a URL.
+	async function openRouteTicket(name) {
+		let status = null;
+		try {
+			const r = await frappe.db.get_value('POS Invoice', name, 'docstatus');
+			status = r && r.message ? r.message.docstatus : null;
+		} catch (e) { /* not readable = not opened; the notice below says so */ }
+		if (status === 0 || status === '0') return openInRegister(name);
+		frappe.show_alert({ indicator: 'orange', message: __('{0} is not an open ticket.', [name]) });
+		return false;
 	}
 
 	function openWorkOrderDialog() {

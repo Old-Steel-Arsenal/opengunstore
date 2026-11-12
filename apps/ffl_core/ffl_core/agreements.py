@@ -322,6 +322,25 @@ def _row_serials(row) -> list[str]:
 	return [s.strip() for s in (row.get("serial_no") or "").replace(",", "\n").splitlines() if s.strip()]
 
 
+def _transfer_serials(rows) -> set[str]:
+	"""The serials on *rows* that are customers' guns in for an FFL transfer: sitting in a customer
+	custody warehouse, or flagged ``Serial No.is_transfer_gun`` and already handed over (in no
+	warehouse: an on_submit pass after the stock moved). The flag alone is not enough: it is reset
+	only on a Purchase Receipt, so a gun the store later took back another way (a trade-in) may
+	still carry it while it sits in the store's stock — and the store's own used gun is asked for.
+	Raw SQL, as ``custody_warehouse_names``: no meta machinery on the submit path."""
+	from ffl_core.warehouses import custody_warehouse_names
+
+	serials = {s for r in rows or [] if r.get("item_code") for s in _row_serials(r)}
+	if not serials:
+		return set()
+	flag = "is_transfer_gun" if frappe.db.has_column("Serial No", "is_transfer_gun") else "0"
+	whs = custody_warehouse_names()
+	found = frappe.db.sql(f"select name, warehouse, {flag} from `tabSerial No` where name in %(s)s",
+		{"s": tuple(serials)})
+	return {name for name, wh, flagged in found if (wh and wh in whs) or (not wh and flagged)}
+
+
 def sale_agreements_enforced() -> bool:
 	"""FFL Settings › Require Agreements at Sale (on unless a store turned it off).
 	Only the sale gate: requesting, signing, paper copies, Per document agreements and
@@ -329,9 +348,11 @@ def sale_agreements_enforced() -> bool:
 	return single_flag("FFL Settings", "enforce_sale_agreements", default=1)
 
 
-def sale_requirements(doc) -> list[dict]:
+def sale_requirements(doc, transfer: set[str] | None = None) -> list[dict]:
 	"""What a counter sale's customer must have signed: [{"template", "serial_no",
-	"item_code"}] (serial_no only for an Each firearm sold template, one entry per gun).
+	"item_code", "skippable"}] (serial_no only for an Each firearm sold template, one entry per
+	gun; skippable: a Required by item template only the sale's Items name, which a manager may
+	let one sale go without — :func:`skip_for_sale` — never an every-sale or extension one).
 
 	* Required for every sale — every sale (an Each firearm sold one: every gun in it),
 	  except an FFL dealer's;
@@ -341,17 +362,24 @@ def sale_requirements(doc) -> list[dict]:
 	* Optional — never; it is offered from the Agreements button only.
 
 	An Each firearm sold template applies to the sale's serial-numbered lines only; a
-	Per document one never applies to a sale. With FFL Settings › Require Agreements
+	Per document one never applies to a sale. A customer's own gun handed over on an FFL
+	transfer (in a customer custody warehouse, :func:`_transfer_serials`) is not a sale of the store's:
+	nothing is asked for it (a transfer fee line still counts as a sale line). With FFL Settings › Require Agreements
 	at Sale off, nothing does (providers are not even asked): the sale gate, a counter
 	order's emails, Dispose's check and the register's "required" marks all read this.
+	*transfer*: the sale's transfer serials when the caller already has them.
 	"""
 	if not sale_agreements_enforced():
 		return []
-	rows = [r for r in doc.get("items") or [] if r.get("item_code")]
+	if transfer is None:
+		transfer = _transfer_serials(doc.get("items"))
+	rows = [r for r in doc.get("items") or [] if r.get("item_code")
+		and not (_row_serials(r) and set(_row_serials(r)) <= transfer)]
 	# An FFL dealer buying wholesale is not who a store-wide waiver or a retail buyer's
 	# acknowledgment (a used gun's, say) is for.
 	dealer = bool(doc.get("customer") and frappe.db.get_value("Customer", doc.get("customer"), "is_ffl_dealer"))
 	named: dict[str, list] = {}
+	hooked: set[str] = set()
 	for r in [] if dealer else rows:
 		t = required_for_item(r.item_code)
 		if t:
@@ -361,6 +389,7 @@ def sale_requirements(doc) -> list[dict]:
 			for t in frappe.get_attr(hook)(doc) or []:
 				if isinstance(t, str):
 					named.setdefault(t, []).extend(rows)
+					hooked.add(t)
 		except Exception:
 			frappe.log_error(title=f"gunshop_required_agreements provider failed: {hook}")
 	templates = _template_rows()
@@ -370,7 +399,8 @@ def sale_requirements(doc) -> list[dict]:
 		key = (t, serial)
 		if key not in seen:
 			seen.add(key)
-			out.append({"template": t, "serial_no": serial, "item_code": item})
+			out.append({"template": t, "serial_no": serial, "item_code": item,
+				"skippable": templates[t].requirement == BY_ITEM and t not in hooked})
 
 	for t, row in templates.items():
 		if row.scope == PER_DOCUMENT:
@@ -386,7 +416,8 @@ def sale_requirements(doc) -> list[dict]:
 		if row.scope == PER_FIREARM:
 			for r in lines:
 				for serial in _row_serials(r):
-					add(t, serial, r.item_code)
+					if serial not in transfer:
+						add(t, serial, r.item_code)
 		else:
 			add(t, None, None)
 	return out
@@ -420,7 +451,8 @@ def agreements_for_sale(customer: str, items: list | str | None = None, sale: st
 
 	Returns:
 	    {"rows": [{"template", "scope", "requirement", "required": whether this
-	    sale needs it, "state", "expires_on", "agreement", "firearms"}]} — every
+	    sale needs it, "skippable": whether a manager may let this sale go without
+	    it (:func:`skip_for_sale`), "state", "expires_on", "agreement", "firearms"}]} — every
 	    template once, except an Each firearm sold one with One copy per gun, once
 	    per gun. An Each firearm sold row lists the guns one copy is signed for in
 	    "firearms": [{"serial_no", "item_code", "item_name", "rate", "state"}] (the
@@ -431,8 +463,10 @@ def agreements_for_sale(customer: str, items: list | str | None = None, sale: st
 	frappe.has_permission("Customer", "read", doc=customer, throw=True)
 	cart = frappe.parse_json(items) if isinstance(items, str) else (items or [])
 	cart = [frappe._dict(r) for r in cart if isinstance(r, dict) and isinstance(r.get("item_code"), str)][:200]
-	needed = {(n["template"], n["serial_no"]) for n in sale_requirements(frappe._dict(items=cart, customer=customer))}
-	guns = [(serial, r) for r in cart for serial in _row_serials(r)]
+	transfer = _transfer_serials(cart)
+	needed = {(n["template"], n["serial_no"]): n["skippable"]
+		for n in sale_requirements(frappe._dict(items=cart, customer=customer), transfer)}
+	guns = [(serial, r) for r in cart for serial in _row_serials(r) if serial not in transfer]
 	names = {r.item_code: r for r in frappe.get_all("Item", filters={"name": ("in", [g[1].item_code for g in guns] or [""])},
 		fields=["name as item_code", "item_name"])}
 	out = []
@@ -442,7 +476,8 @@ def agreements_for_sale(customer: str, items: list | str | None = None, sale: st
 		base = {"template": t, "scope": row.scope, "requirement": row.requirement, "firearms": []}
 		if row.scope != PER_FIREARM:
 			st = agreement_status(customer, t)
-			out.append({**base, "required": (t, None) in needed, "state": st["state"],
+			out.append({**base, "required": (t, None) in needed, "skippable": bool(needed.get((t, None))),
+				"state": st["state"],
 				"expires_on": st["expires_on"], "agreement": st["agreement"]})
 			continue
 		mine = [(serial, r) for serial, r in guns if (t, serial) in needed] or guns
@@ -453,7 +488,8 @@ def agreements_for_sale(customer: str, items: list | str | None = None, sale: st
 			unsigned = [g for g in copy if g["state"] != "signed"]
 			state = "signed" if copy and not unsigned else \
 				"pending" if unsigned and all(g["state"] == "pending" for g in unsigned) else "missing"
-			out.append({**base, "required": any((t, g["serial_no"]) in needed for g in copy), "state": state,
+			out.append({**base, "required": any((t, g["serial_no"]) in needed for g in copy),
+				"skippable": any(needed.get((t, g["serial_no"])) for g in copy), "state": state,
 				"expires_on": None, "agreement": None, "firearms": copy})
 	out.sort(key=lambda x: (not x["required"], x["template"]))
 	return {"rows": out}
@@ -462,9 +498,10 @@ def agreements_for_sale(customer: str, items: list | str | None = None, sale: st
 def refuse_missing_required(doc, method=None) -> None:
 	"""POS Invoice / Sales Invoice before_submit: the customer must have signed what the sale needs.
 
-	There is no override: the customer signs (the Agreements button at the register,
-	or Request agreement on the customer), or a manager records a copy signed on paper.
-	The one exception is a counter order built by ``manual_order.create_order``
+	The customer signs (the Agreements button at the register, or Request agreement on
+	the customer), or a manager records a copy signed on paper — or, for a case that
+	cannot wait, a manager lets this one sale go without them (:func:`skip_for_sale`):
+	what was unsigned, who approved and why go on the sale's timeline. The other exception is a counter order built by ``manual_order.create_order``
 	(``doc.flags.ffl_defer_agreements``): a phone or ship-to-FFL sale where the customer
 	is not here to sign. It is booked, the links are emailed (:func:`email_sale_agreements`)
 	and the gun waits on Pending Order, whose Dispose checks again.
@@ -481,19 +518,126 @@ def refuse_missing_required(doc, method=None) -> None:
 	missing = missing_requirements(doc)
 	if not missing:
 		return
+	skip = _take_skip(customer, missing)
+	if skip:
+		# Written on_submit (mark_firearm_agreements_used): a sale submitted straight from new has no row yet.
+		doc.flags.ffl_agreement_skip = _("Sold without the signed agreement: {0}. Approved by {1}. Reason: {2}").format(
+			_missing_text(missing), escape_html(get_fullname(skip["approver"])),
+			escape_html(skip["reason"]) if skip["reason"] else _("none given"))
+		return
 	name = frappe.db.get_value("Customer", customer, "customer_name") or customer
-	what = ", ".join(frappe.bold(escape_html(n["template"] + (f" ({n['serial_no']})" if n["serial_no"] else "")))
-		for n in missing)
 	frappe.throw(_("{0} must sign {1} before this sale. At the register, click Agreements under the "
 		"customer's name to send it to the tablet, show a QR code or email a link; or a manager records a "
-		"copy signed on paper.").format(frappe.bold(escape_html(name)), what),
+		"copy signed on paper, or skips it for this sale from Agreements.").format(
+		frappe.bold(escape_html(name)), _missing_text(missing)),
 		AgreementRequired, title=_("Agreement needed"))
+
+
+def _missing_text(missing: list[dict]) -> str:
+	return ", ".join(frappe.bold(escape_html(n["template"] + (f" ({n['serial_no']})" if n["serial_no"] else "")))
+		for n in missing)
+
+
+_SKIP_KEY = "ffl-agreement-skip:"
+SKIP_MINUTES = 15
+
+
+def _skip_key(customer: str) -> str:
+	return f"{_SKIP_KEY}{frappe.session.user}:{customer}"
+
+
+@frappe.whitelist(methods=["POST"])
+def skip_for_sale(customer: str, items: list | str | None = None, sale: str | None = None,
+		approver: str | None = None, pin: str | None = None, password: str | None = None,
+		reason: str | None = None) -> dict:
+	"""A manager lets the next sale to *customer* from this screen go without the agreements its cart needs.
+
+	Only what the cart's Items ask for (a Required by item template, the used-gun one say) can be
+	skipped — never one every sale needs or one an extension asks for. The approval covers the
+	agreements unsigned for this cart now: a sale that turns out to need anything else is refused
+	as usual and does not use it up. A Sales / System Manager signed in approves their own; anyone
+	else names a manager, who types their counter PIN (or password) — the price approval's list
+	and checks, lockouts included. Good for :data:`SKIP_MINUTES` minutes, once, for the user who
+	asked and this customer: the sale gate (:func:`refuse_missing_required`) takes it, and on
+	submit what was unsigned, who approved and why go on the sale's timeline.
+
+	Args:
+	    customer: Customer name (document id).
+	    items: The cart, as :func:`agreements_for_sale` reads it.
+	    sale: The POS Invoice, once saved.
+	    approver: The manager's user id (from :func:`skip_approvers`); ignored for a manager signed in.
+	    pin: The approver's counter PIN.
+	    password: Or their password.
+	    reason: Why (optional).
+
+	Returns:
+	    {"approver", "approver_name", "expires_in": seconds, "skipped": [{"template", "serial_no"}]}.
+	"""
+	from ffl_core import price_approval
+
+	frappe.only_for(COUNTER_ROLES)
+	frappe.has_permission("Customer", "read", doc=customer, throw=True)
+	cart = frappe.parse_json(items) if isinstance(items, str) else (items or [])
+	cart = [frappe._dict(r) for r in cart if isinstance(r, dict) and isinstance(r.get("item_code"), str)][:200]
+	unsigned = [n for n in sale_requirements(frappe._dict(items=cart, customer=customer)) if not _satisfied(
+		agreement_status(customer, n["template"], serial_no=n["serial_no"], sale=sale))]
+	skipped = [[n["template"], n["serial_no"]] for n in unsigned if n["skippable"]]
+	if not skipped:
+		frappe.throw(_("Nothing this sale needs can be skipped: only an agreement the items ask for can be."))
+	if _is_manager():
+		approver = frappe.session.user
+	else:
+		price_approval._check_approver(approver, pin, password)
+	expires = now_datetime() + timedelta(minutes=SKIP_MINUTES)
+	_keep_skip(_skip_key(customer), {"approver": approver, "reason": (reason or "").strip()[:140],
+		"skipped": skipped, "expires": str(expires)})
+	return {"approver": approver, "approver_name": get_fullname(approver), "expires_in": SKIP_MINUTES * 60,
+		"skipped": [{"template": t, "serial_no": s} for t, s in skipped]}
+
+
+@frappe.whitelist()
+def skip_approvers() -> dict:
+	"""Who can approve :func:`skip_for_sale` for this user.
+
+	Returns:
+	    {"self": whether a manager is signed in (they approve their own), "approvers": the
+	    managers to pick from otherwise: [{"user", "full_name", "has_pin", "pin_off"}]}.
+	"""
+	from ffl_core import price_approval
+
+	frappe.only_for(COUNTER_ROLES)
+	return {"self": _is_manager(), "approvers": [] if _is_manager() else price_approval.approvers()}
+
+
+def _take_skip(customer: str, missing: list[dict]) -> dict | None:
+	"""The manager's skip for this user's sale to *customer*, used up — only when it covers every
+	one of *missing*; else None and it stays. It comes back if the submit rolls back."""
+	key = _skip_key(customer)
+	data = frappe.cache.get_value(key, expires=True)
+	if not data or get_datetime(data["expires"]) <= now_datetime():
+		return None
+	approved = {tuple(x) for x in data["skipped"]}
+	if any((n["template"], n["serial_no"]) not in approved for n in missing):
+		return None
+	frappe.cache.delete_value(key)
+	frappe.db.after_rollback.add(lambda: _keep_skip(key, data))
+	return data
+
+
+def _keep_skip(key: str, data: dict) -> None:
+	"""Store a skip until its own expiry (a restored one keeps only the time it had left)."""
+	left = int((get_datetime(data["expires"]) - now_datetime()).total_seconds())
+	if left > 0:
+		frappe.cache.set_value(key, data, expires_in_sec=left)
 
 
 def mark_firearm_agreements_used(doc, method=None) -> None:
 	"""POS Invoice / Sales Invoice on_submit: the Each firearm sold copies this sale
 	relied on now belong to it (``reference_*``), so selling the same gun again —
-	after a return, say — needs a new one."""
+	after a return, say — needs a new one. A sale a manager let go without its agreements
+	(:func:`skip_for_sale`) gets that note on its timeline."""
+	if doc.flags.get("ffl_agreement_skip"):
+		doc.add_comment("Comment", doc.flags.pop("ffl_agreement_skip"))
 	if doc.get("is_return") or doc.get("is_consolidated") or is_channel_mirrored_invoice(doc):
 		return
 	for n in sale_requirements(doc):

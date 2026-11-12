@@ -22,6 +22,7 @@ from ffl_core.tests.test_cash_drawer_pos import ShiftFixtures
 from ffl_core.tests.test_pos_profile_cashier_perm import _drop_global_defaults, _isolate
 
 ITEM = "CRP-AMMO"
+BARCODE = "CRP-AMMO-BARCODE"  # a scan resolves like a serial number: search_by_term, which reads Item Price
 DOCTYPES = tuple(sorted({d for d, *_ in pos_compat.CASHIER_GRANTS + pos_compat.ROLE_GRANTS + pos_compat.REGISTER_GRANTS}))
 
 
@@ -39,6 +40,13 @@ class CounterRegisterLoop(ShiftFixtures):
 		if not frappe.db.exists("Item", ITEM):
 			frappe.get_doc({"doctype": "Item", "item_code": ITEM, "item_name": ITEM, "item_group": "All Item Groups",
 				"stock_uom": "Nos", "is_stock_item": 1, "valuation_rate": 5}).insert(ignore_permissions=True)
+		if not frappe.db.exists("Item Barcode", {"barcode": BARCODE}):
+			item = frappe.get_doc("Item", ITEM)
+			item.append("barcodes", {"barcode": BARCODE})
+			item.save(ignore_permissions=True)
+		if not frappe.db.exists("Item Price", {"item_code": ITEM, "price_list": "Standard Selling"}):
+			frappe.get_doc({"doctype": "Item Price", "item_code": ITEM, "price_list": "Standard Selling",
+				"price_list_rate": 10}).insert(ignore_permissions=True)
 		cls.stock_up()
 
 	@classmethod
@@ -103,6 +111,13 @@ class CounterRegisterLoop(ShiftFixtures):
 			self.assertEqual(price_list["selling_price_list"], "Standard Selling")
 		items = get_items(0, 40, "Standard Selling", get_parent_item_group(self.profile), self.profile, ITEM)
 		self.assertIn(ITEM, [i["item_code"] for i in items["items"]])
+		# a scanned barcode or a typed serial number takes search_by_term, which reads the price as the session user
+		with self.subTest(search="by barcode / serial number"):
+			frappe.cache().delete_value(f"erpnext:barcode_scan:{BARCODE}")
+			found = get_items(0, 40, "Standard Selling", get_parent_item_group(self.profile), self.profile, BARCODE)["items"]
+			self.assertEqual([(i["item_code"], i["barcode"]) for i in found], [(ITEM, BARCODE)])
+			self.assertEqual(found[0]["price_list_rate"], frappe.db.get_value("Item Price",
+				{"item_code": ITEM, "price_list": "Standard Selling"}, "price_list_rate"))
 
 	def _sell(self, user: str, qty: int = 2, rate: int = 10) -> str:
 		"""Checkout: a draft saved, then submitted with cash (frm.savesubmit), as ``user`` -- no ignore_permissions."""

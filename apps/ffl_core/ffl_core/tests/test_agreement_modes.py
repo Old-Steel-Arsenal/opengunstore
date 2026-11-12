@@ -303,3 +303,48 @@ class EachFirearmSold(_Base):
 		frappe.db.set_value("Customer Agreement", r["name"], "expires_on", add_days(nowdate(), -5))
 		self.assertEqual(agreements.agreement_status(self.cust.name, self.tpl.name, serial_no=self.serial)["state"],
 			"signed")
+
+
+class FflTransfer(_Base):
+	"""A customer's own gun handed over on an FFL transfer is not asked for (owner, 2026-11-11)."""
+
+	def setUp(self):
+		super().setUp()
+		prev = frappe.db.get_single_value("FFL Settings", "used_item_agreement_template")
+		self.addCleanup(frappe.db.set_single_value, "FFL Settings", "used_item_agreement_template", prev)
+		self.tpl = _template(scope="Each firearm sold", body=_NO_RETURN)
+		frappe.db.set_single_value("FFL Settings", "used_item_agreement_template", self.tpl.name)
+		self.code, self.serial = _gun()
+		self.t_code, self.t_serial = _gun()
+		from ffl_core.warehouses import ensure_custody_warehouse
+
+		custody = ensure_custody_warehouse(frappe.defaults.get_global_default("company"))
+		frappe.db.set_value("Serial No", self.t_serial, {"is_transfer_gun": 1, "warehouse": custody})
+
+	def sale(self, *rows):
+		si = frappe.new_doc("Sales Invoice")
+		si.customer = self.cust.name
+		for code, serial in rows:
+			si.append("items", {"item_code": code, "qty": 1, "rate": 0, "serial_no": serial})
+		return si
+
+	def test_a_transfer_gun_needs_no_used_gun_agreement(self):
+		agreements.refuse_missing_required(self.sale((self.t_code, self.t_serial)))
+		with self.assertRaisesRegex(agreements.AgreementRequired, self.serial) as cm:
+			agreements.refuse_missing_required(self.sale((self.t_code, self.t_serial), (self.code, self.serial)))
+		self.assertNotIn(self.t_serial, str(cm.exception), "only the store's own used gun is asked for")
+		rows = agreements.agreements_for_sale(self.cust.name, [{"item_code": self.t_code, "serial_no": self.t_serial}])["rows"]
+		row = [r for r in rows if r["template"] == self.tpl.name]
+		self.assertEqual([(r["required"], r["firearms"]) for r in row], [(False, [])])
+
+	def test_a_stale_transfer_flag_on_the_stores_own_gun_is_still_asked_for(self):
+		# Taken back in a way that did not reset the flag (a trade-in): it sits in the store's stock now.
+		store = frappe.get_all("Warehouse", filters={"is_group": 0, "is_custody_warehouse": 0}, pluck="name", limit=1)[0]
+		frappe.db.set_value("Serial No", self.t_serial, "warehouse", store)
+		with self.assertRaisesRegex(agreements.AgreementRequired, self.t_serial):
+			agreements.refuse_missing_required(self.sale((self.t_code, self.t_serial)))
+
+	def test_a_flagged_transfer_gun_already_handed_over_still_counts(self):
+		# on_submit, after the stock moved: no warehouse, flag still on.
+		frappe.db.set_value("Serial No", self.t_serial, "warehouse", None)
+		self.assertEqual(agreements.sale_requirements(self.sale((self.t_code, self.t_serial))), [])
