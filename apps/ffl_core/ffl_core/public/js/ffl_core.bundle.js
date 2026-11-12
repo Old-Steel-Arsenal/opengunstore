@@ -3533,7 +3533,8 @@ frappe.provide('frappe.ui.form');
 			hideDialog(dlg);
 			switching = (async () => {
 				const m = await giveUp();
-				if (m.ok) { await frm.reload_doc(); return { skip: false, ok: true }; }
+				// A plain cancel answers ok too; only a reconciled approval is money taken.
+				if (m.reconciled && m.ok) { await frm.reload_doc(); return { skip: false, ok: true }; }
 				if (!(await window.ffl.cardReader.pick())) return { skip: false, ok: false };
 				return runSingleCharge(frm, amount, saveCard, keyed);
 			})();
@@ -3749,7 +3750,8 @@ frappe.provide('frappe.ui.form');
 			hideDialog(dlg);
 			switching = (async () => {
 				const m = await cancelIt();
-				if (m.ok) return Object.assign({ skip: false }, m);
+				// A plain cancel answers ok too; only a reconciled approval is money taken.
+				if (m.reconciled && m.ok) return Object.assign({ skip: false }, m);
 				if (!(await window.ffl.cardReader.pick())) return { skip: false, ok: false };
 				return window.ffl.terminalCharge(spec);
 			})();

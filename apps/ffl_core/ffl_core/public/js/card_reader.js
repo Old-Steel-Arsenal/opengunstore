@@ -102,7 +102,7 @@
 		if (!name) return '';
 		var esc = frappe.utils.escape_html;
 		return list().length > 1
-			? '<a href="#" class="ffl-card-reader-switch" style="font-weight:600">' + esc(name) + '</a>'
+			? '<a href="#" class="ffl-card-reader-switch" style="font-weight:600;text-decoration:underline">' + esc(name) + '</a>'
 			: '<span style="font-weight:600">' + esc(name) + '</span>';
 	}
 
