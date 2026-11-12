@@ -11865,7 +11865,7 @@
           "ffl_core"
         ],
         "summary": "Open a draft register ticket (POS Invoice) on the open POS shift.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/pos_ticket.py:72`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/pos_ticket.py:101`",
         "operationId": "ffl_core.api.pos_ticket.open_ticket",
         "responses": {
           "200": {

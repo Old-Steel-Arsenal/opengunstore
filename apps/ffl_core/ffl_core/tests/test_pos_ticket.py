@@ -63,3 +63,119 @@ class OpenTicket(gw._Base):
 		self.addCleanup(frappe.set_user, "Administrator")
 		with self.assertRaises(frappe.PermissionError):
 			self._open([{"item_code": PART}])
+
+
+# Priced items for the discount tests: code -> (list price, Item.max_discount).
+_PRICED = {"_Test Ticket Disc 20": (20, 0), "_Test Ticket Disc 1999": (19.99, 0),
+	"_Test Ticket Disc 1234": (1234.56, 0), "_Test Ticket Disc Cap": (20, 10)}
+
+
+class OpenTicketDiscount(gw._Base):
+	"""A caller's rate under the list price is the line's discount off it, and the rate it saves."""
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		for code, (price, cap) in _PRICED.items():
+			if not frappe.db.exists("Item", code):
+				frappe.get_doc({"doctype": "Item", "item_code": code, "item_name": code, "item_group": "Parts",
+					"stock_uom": "Nos", "is_stock_item": 0}).insert(ignore_permissions=True)
+			frappe.db.set_value("Item", code, "max_discount", cap)
+			name = frappe.db.get_value("Item Price", {"item_code": code, "price_list": "Standard Selling"})
+			if name:
+				frappe.db.set_value("Item Price", name, "price_list_rate", price)
+			else:
+				frappe.get_doc({"doctype": "Item Price", "item_code": code, "price_list": "Standard Selling",
+					"selling": 1, "price_list_rate": price}).insert(ignore_permissions=True)
+		frappe.clear_cache(doctype="Item")
+
+	def _ticket(self, items):
+		out = pos_ticket.open_ticket(self.cust.name, frappe.as_json(items), company=gw.COMPANY)
+		return out, frappe.get_doc("POS Invoice", out["pos_invoice"])
+
+	def _row(self, row):
+		return (row.item_code, flt(row.price_list_rate), flt(row.rate), flt(row.discount_percentage),
+			flt(row.discount_amount))
+
+	def test_rate_below_list_shows_its_discount(self):
+		_out, inv = self._ticket([{"item_code": "_Test Ticket Disc 20", "rate": 17}])
+		self.assertEqual(self._row(inv.items[0]), ("_Test Ticket Disc 20", 20, 17, 15, 3))
+
+	def test_mixed_lines(self):
+		out, inv = self._ticket([
+			{"item_code": "_Test Ticket Disc 20", "qty": 2, "rate": 15},     # 25% off
+			{"item_code": "_Test Ticket Disc 1999", "rate": 16.99},          # 15% off $19.99, to the cent
+			{"item_code": "_Test Ticket Disc 20"},                           # list price
+			{"item_code": "_Test Ticket Disc 20", "rate": 20},               # list price, typed
+		])
+		self.assertEqual([self._row(r) for r in inv.items], [
+			("_Test Ticket Disc 20", 20, 15, 25, 5),
+			("_Test Ticket Disc 1999", 19.99, 16.99, 15.01, 3),
+			("_Test Ticket Disc 20", 20, 20, 0, 0),
+			("_Test Ticket Disc 20", 20, 20, 0, 0),
+		])
+		# Totals are the rates': 30 + 16.99 + 20 + 20 = 86.99, plus the profile's 6% (5.22).
+		self.assertEqual(flt(inv.net_total), 86.99)
+		self.assertEqual(flt(inv.total_taxes_and_charges), 5.22)
+		self.assertEqual(flt(inv.grand_total), 92.21)
+		self.assertEqual(out["grand_total"], flt(inv.rounded_total) or flt(inv.grand_total))
+
+	def test_rounding_edge_keeps_the_rate(self):
+		# 15% off $19.99 is $16.9915: the caller's cent rate stays, the shown % is the one that gives it.
+		_out, inv = self._ticket([{"item_code": "_Test Ticket Disc 1999", "rate": 16.99},
+			{"item_code": "_Test Ticket Disc 1999", "rate": 0.01}])
+		self.assertEqual(self._row(inv.items[0]), ("_Test Ticket Disc 1999", 19.99, 16.99, 15.01, 3))
+		self.assertEqual(self._row(inv.items[1]), ("_Test Ticket Disc 1999", 19.99, 0.01, 99.95, 19.98))
+
+	def test_zero_rate_is_all_off(self):
+		# ERPNext prices a line with no rate from its list price: a caller's $0 is 100% off, not $20.
+		_out, inv = self._ticket([{"item_code": "_Test Ticket Disc 20", "rate": 0}])
+		self.assertEqual(self._row(inv.items[0]), ("_Test Ticket Disc 20", 20, 0, 100, 20))
+
+	def test_percentage_that_cannot_give_the_rate_back(self):
+		# 1000 off 1234.56 is 18.9995%: at two places 19% would save 999.99, so the rate wins and the
+		# discount is the amount alone (what ERPNext saves for a typed rate).
+		_out, inv = self._ticket([{"item_code": "_Test Ticket Disc 1234", "rate": 1000}])
+		self.assertEqual(self._row(inv.items[0]), ("_Test Ticket Disc 1234", 1234.56, 1000, 0, 234.56))
+
+	def test_over_the_items_max_discount_still_opens(self):
+		_out, inv = self._ticket([{"item_code": "_Test Ticket Disc Cap", "rate": 15}])
+		self.assertEqual(self._row(inv.items[0]), ("_Test Ticket Disc Cap", 20, 15, 0, 5))
+
+	def test_rate_above_list(self):
+		_out, inv = self._ticket([{"item_code": "_Test Ticket Disc 20", "rate": 25}])
+		row = inv.items[0]
+		self.assertEqual(self._row(row), ("_Test Ticket Disc 20", 20, 25, 0, 0))
+		self.assertEqual((row.margin_type, flt(row.margin_rate_or_amount)), ("Amount", 5))
+
+	def test_no_list_price(self):
+		_out, inv = self._ticket([{"item_code": PART, "rate": 12.34}])
+		self.assertEqual((flt(inv.items[0].price_list_rate), flt(inv.items[0].rate),
+			flt(inv.items[0].discount_percentage), flt(inv.items[0].discount_amount)), (0, 12.34, 0, 0))
+
+	def test_saving_again_keeps_rates(self):
+		_out, inv = self._ticket([{"item_code": "_Test Ticket Disc 20", "rate": 17},
+			{"item_code": "_Test Ticket Disc 1999", "rate": 16.99},
+			{"item_code": "_Test Ticket Disc 1234", "rate": 1000}])
+		first = [self._row(r) for r in inv.items]
+		for _ in range(2):
+			inv = frappe.get_doc("POS Invoice", inv.name)
+			inv.save()
+			self.assertEqual([self._row(r) for r in frappe.get_doc("POS Invoice", inv.name).items], first)
+
+	def test_price_approval_reads_the_same(self):
+		"""What the register's submit would ask: nothing for the rates the ticket was saved at; below
+		list (the approval record's test) every discounted line, at the caller's rate."""
+		from ffl_core import price_approval
+
+		_out, inv = self._ticket([{"item_code": "_Test Ticket Disc 20", "rate": 17},
+			{"item_code": "_Test Ticket Disc 1999", "rate": 16.99},
+			{"item_code": "_Test Ticket Disc 20"}])
+		stored = frappe.get_doc("POS Invoice", inv.name)
+		self.assertEqual(price_approval.reductions(inv, stored)["lines"], [])
+		self.assertEqual([(l["item_code"], l["list_rate"], l["rate"])
+			for l in price_approval.reductions(inv, against_list=True)["lines"]],
+			[("_Test Ticket Disc 20", 20, 17), ("_Test Ticket Disc 1999", 19.99, 16.99)])
+		# A new ticket judged as unsaved (the register's own first save) asks for the same two lines.
+		self.assertEqual([l["item_code"] for l in price_approval.reductions(inv)["lines"]],
+			["_Test Ticket Disc 20", "_Test Ticket Disc 1999"])

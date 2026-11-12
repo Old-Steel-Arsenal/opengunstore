@@ -68,6 +68,35 @@ def _lines(items) -> list[dict]:
 	return rows
 
 
+def _set_rate(row, rate: float) -> None:
+	"""Put the caller's *rate* on a priced *row* so that ERPNext's save keeps it to the cent.
+
+	A rate under the line's list price is a discount off it: the row carries it as a percentage
+	and an amount (what the register's past-order summary shows as "x% off") when the percentage,
+	at its field precision, gives back exactly this rate under ERPNext's own arithmetic
+	(``calculate_item_rate``: rate = list - round(list * % / 100)). Otherwise — or when it would
+	pass the item's Max Discount — the percentage stays 0 and the amount is the difference, which is
+	what ERPNext itself would save. A rate at or above the list price, or a line with no list
+	price, carries no discount (ERPNext keeps the rate and sets a margin where it is above).
+	Price approval reads the rate against the list price, never these fields.
+	# lazy: one rounded percentage is tried; on a list price over ~$100 a cent rate it cannot
+	# reproduce shows 0% with the amount still right (the register's own typed rate does the same).
+	"""
+	row.rate = rate
+	row.discount_amount = row.discount_percentage = 0
+	listed = flt(row.get("price_list_rate"))
+	if listed <= 0 or rate >= listed:
+		return
+	row.margin_type, row.margin_rate_or_amount = None, 0
+	pct = flt((1 - rate / listed) * 100, row.precision("discount_percentage"))
+	amount = flt(listed * pct / 100, row.precision("discount_amount"))
+	cap = flt(frappe.get_cached_value("Item", row.item_code, "max_discount"))
+	if pct > 0 and flt(listed - amount, row.precision("rate")) == rate and not (cap and pct > cap):
+		row.discount_percentage, row.discount_amount = pct, amount
+	else:
+		row.discount_amount = flt(listed - rate, row.precision("discount_amount"))
+
+
 @frappe.whitelist(methods=["POST"])
 def open_ticket(customer: str, items, company: str | None = None) -> dict:
 	"""Open a draft register ticket (POS Invoice) on the open POS shift.
@@ -96,14 +125,18 @@ def open_ticket(customer: str, items, company: str | None = None) -> dict:
 	})
 	inv.flags.ignore_permissions = True
 	inv.set_missing_values()
+	# A rate under the list price goes in as its discount off it (ERPNext keeps a bare typed rate
+	# but shows it as 0% off, and prices a bare $0 at the list price); others go in as sent.
+	for row, line in zip(inv.items, lines):
+		if "rate" in line and line["rate"] < flt(row.price_list_rate):
+			_set_rate(row, line["rate"])
 	inv.insert()
-	# Pricing may move a typed rate on the way in; the caller's rate is the ticket's
-	# (a price below list still needs its approval at submit, like the register's).
+	# Pricing may move a typed rate on the way in; the caller's rate is the ticket's. (Price
+	# approval judges a register save against the rate saved here, so it does not ask again.)
 	moved = False
 	for row, line in zip(inv.items, lines):
 		if "rate" in line and flt(row.rate) != line["rate"]:
-			row.rate = line["rate"]
-			row.discount_amount = row.discount_percentage = 0
+			_set_rate(row, line["rate"])
 			moved = True
 	if moved:
 		inv.save()

@@ -20,4 +20,4 @@ Open a draft register ticket (POS Invoice) on the open POS shift.
 
 **Returns:** {"pos_invoice", "grand_total", "payment_modes": the profile's modes of payment on the ticket}. Refused when no shift is open.
 
-<sub>`apps/ffl_core/ffl_core/api/pos_ticket.py:72`</sub>
+<sub>`apps/ffl_core/ffl_core/api/pos_ticket.py:101`</sub>
