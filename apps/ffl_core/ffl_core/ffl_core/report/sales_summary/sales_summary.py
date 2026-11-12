@@ -49,10 +49,14 @@ UNCATEGORIZED = "Uncategorized"
 # (ffl_woo_sync refunds.apply_refund_discount) books what Woo refunded as a Net Total discount on
 # the amended invoice. A GunBroker partial refund is a person's cancel + amend with a lower price,
 # so it stays a recorded discount until the store says otherwise.
+# lazy: by channel, not by document; add "GunBroker" here if the store books its partial refunds as
+# refunds.
 REFUND_DISCOUNT_CHANNELS = frozenset({"Web"})
 # Legacy root-level leaves that are firearms (setup.item_groups.LEGACY_LEAVES).
 _LEGACY_TOP = {"New Firearm": "Firearm", "Used Firearm": "Firearm", "Long Gun": "Firearm"}
 # Users that are not a person at the counter.
+# lazy: Administrator / Guest and non-desk users only; an integration that runs as its own desk
+# user shows under that user's name. Upgrade: a per-site list of service users.
 _SYSTEM_USERS = frozenset({"Administrator", "Guest"})
 CREDIT_NOTES_APPLIED = "Credit notes applied"
 TRADE_IN_PAYOUTS = "Trade-in payouts"
