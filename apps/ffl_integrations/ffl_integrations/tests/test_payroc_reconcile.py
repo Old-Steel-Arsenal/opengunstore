@@ -374,3 +374,31 @@ class TestReconcileRun(FrappeTestCase):
 			dict(name="RA", docstatus=2, card_refunded_amount=50.0),
 			dict(name="RA-1", docstatus=1, amended_from="RA", card_refunded_amount=50.0)]),
 			50.0)
+
+
+class TestReconcileJob(FrappeTestCase):
+	"""The daily reconcile runs on the long queue (one gateway read per charge would outlive the
+	default queue's 300 s timeout) and reads at most MAX_CHECKS charges a run."""
+
+	def test_the_scheduler_queues_it_on_the_long_queue(self):
+		self.assertIn("ffl_integrations.payroc.reconcile.schedule_reconcile",
+			frappe.get_hooks("scheduler_events", app_name="ffl_integrations")["daily"])
+		with patch.object(rec, "payroc_ready", return_value=True), \
+				patch.object(rec.frappe, "enqueue") as enqueue:
+			rec.schedule_reconcile()
+		enqueue.assert_called_once_with("ffl_integrations.payroc.reconcile.reconcile_payroc_charges",
+			queue="long", timeout=rec.RECONCILE_TIMEOUT, job_name=rec.RECONCILE_JOB,
+			job_id=rec.RECONCILE_JOB, deduplicate=True)
+		self.assertGreater(rec.RECONCILE_TIMEOUT, 300)
+		with patch.object(rec, "payroc_ready", return_value=False), \
+				patch.object(rec.frappe, "enqueue") as enqueue:
+			rec.schedule_reconcile()
+		enqueue.assert_not_called()
+
+	def test_one_run_reads_at_most_max_checks(self):
+		charges = [frappe._dict(ref=f"R{i}") for i in range(5)]
+		with patch.object(rec, "MAX_CHECKS", 3), patch.object(rec, "safe_log_error") as logged:
+			self.assertEqual([c.ref for c in rec._to_check(charges)], ["R0", "R1", "R2"])
+			logged.assert_called_once()
+			self.assertEqual(rec._to_check(charges[:3]), charges[:3])
+			logged.assert_called_once()

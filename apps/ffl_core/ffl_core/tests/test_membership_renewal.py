@@ -77,6 +77,19 @@ class RenewalJob(_Base):
 	def _invoices(self, m):
 		return frappe.db.count(ms.INVOICE_ROW, {"parent": m, "parenttype": ms.DOCTYPE})
 
+	def test_the_scheduler_queues_the_run_on_the_long_queue(self):
+		self.assertIn("ffl_core.membership.schedule_renewals",
+			frappe.get_hooks("scheduler_events", app_name="ffl_core")["cron"]["0 7 * * *"])
+		with patch("ffl_core.membership.frappe.enqueue") as enqueue:
+			ms.schedule_renewals()
+		enqueue.assert_called_once_with("ffl_core.membership.run_renewals", queue="long",
+			timeout=ms.RENEWAL_TIMEOUT, job_name=ms.RENEWAL_JOB, job_id=ms.RENEWAL_JOB, deduplicate=True)
+		self.assertGreater(ms.RENEWAL_TIMEOUT, ms.RENEWAL_BUDGET_SECONDS)   # a batch ends before it is killed
+		with patch("ffl_core.membership.renewals_enabled", return_value=False), \
+				patch("ffl_core.membership.frappe.enqueue") as enqueue:
+			ms.schedule_renewals()
+		enqueue.assert_not_called()
+
 	def test_no_card_no_invoice_suspends_without_grace(self):
 		m = self._active()
 		with _on("2026-12-15"):

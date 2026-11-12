@@ -564,7 +564,8 @@ scheduler_events = {
 		"ffl_integrations.gunbroker.audit.daily_gb_audit",
 		# Card charges voided/refunded on the terminal or Payroc portal never
 		# reach the POS; read the last week's captures back from the gateway.
-		"ffl_integrations.payroc.reconcile.reconcile_payroc_charges",
+		# The gate only queues the run on the long queue (one gateway read per charge).
+		"ffl_integrations.payroc.reconcile.schedule_reconcile",
 	],
 	# Hourly, not daily: a parked trade-in draft has a next-business-day
 	# bound-book deadline (478.125(e)) — staff need the nudge the same day,

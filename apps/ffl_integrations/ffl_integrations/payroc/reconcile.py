@@ -38,6 +38,15 @@ PROCESSOR = "payroc"
 # Draft-invoice flags carry this after the reference, so a draft flagged while
 # held is flagged again (books wording) once it is submitted.
 DRAFT_TAG = "(draft)"
+# The daily run is a long-queue job: one gateway read per charge outlives the default queue's
+# 300 s timeout once a store takes a few hundred cards a week.
+RECONCILE_JOB = "ffl_integrations.payroc.reconcile"
+RECONCILE_QUEUE = "long"
+RECONCILE_TIMEOUT = 3600
+# lazy: at most this many gateway reads a run (~1 s each fits the timeout; any beyond it go unread);
+# page Payroc's transaction search by date (client.search_transactions) when a week of card sales
+# outgrows it.
+MAX_CHECKS = 2500
 
 
 def _captured_charges(since, until=None) -> list[frappe._dict]:
@@ -199,17 +208,35 @@ def _alert_row(f: dict) -> str:
 		f"{f['problem']} (operator {f['operator']}){tail}</li>")
 
 
+def schedule_reconcile() -> None:
+	"""Scheduler gate (daily): queue the reconcile on the long queue. Nothing with Payroc off."""
+	if not payroc_ready():
+		return
+	frappe.enqueue("ffl_integrations.payroc.reconcile.reconcile_payroc_charges",
+		queue=RECONCILE_QUEUE, timeout=RECONCILE_TIMEOUT, job_name=RECONCILE_JOB,
+		job_id=RECONCILE_JOB, deduplicate=True)
+
+
+def _to_check(charges: list) -> list:
+	"""The charges this run reads back: all of them, or the first MAX_CHECKS (logged)."""
+	if len(charges) <= MAX_CHECKS:
+		return charges
+	safe_log_error("Payroc reconcile: too many charges for one run",
+		f"{len(charges)} card charges in the window; {MAX_CHECKS} were checked.")
+	return charges[:MAX_CHECKS]
+
+
 def reconcile_payroc_charges(days: int = 7) -> list[dict]:
-	"""Scheduler entry (daily). Returns the NEW mismatches found this run.
+	"""The daily reconcile (queued by :func:`schedule_reconcile`). Returns the NEW mismatches
+	found this run. Read-only on the ledger, so a run killed halfway and run again only reads
+	again: an invoice is commented only after its alert went out.
 	Backfill: bench execute ffl_integrations.payroc.reconcile.reconcile_payroc_charges --kwargs "{'days': 90}"
 	"""
 	if not payroc_ready():
 		return []
-	# lazy: one GET per charge in the window (~a week of card sales); page by
-	# date or use a Payroc batch/settlement report if the volume ever grows.
 	client = PayrocClient.from_settings()
 	found = []
-	for charge in _captured_charges(add_days(now_datetime(), -int(days))):
+	for charge in _to_check(_captured_charges(add_days(now_datetime(), -int(days)))):
 		if _already_flagged(charge):
 			continue
 		try:
