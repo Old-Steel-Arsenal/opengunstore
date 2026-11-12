@@ -20,6 +20,7 @@
   "section_item",
   "item",
   "serial",
+  "ledger_serial",
   "column_break_2",
   "sales_invoice",
   "sales_order",
@@ -140,6 +141,13 @@
    "label": "Serial"
   },
   {
+   "description": "The serial exactly as the bound book records it. Differs from Serial only for a gun with no serial number or one that shares its number with another gun.",
+   "fieldname": "ledger_serial",
+   "fieldtype": "Data",
+   "label": "Ledger Serial",
+   "read_only": 1
+  },
+  {
    "fieldname": "column_break_2",
    "fieldtype": "Column Break"
   },
@@ -240,7 +248,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-30 19:00:00",
+ "modified": "2026-11-12 12:00:00",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "FFL Disposition",

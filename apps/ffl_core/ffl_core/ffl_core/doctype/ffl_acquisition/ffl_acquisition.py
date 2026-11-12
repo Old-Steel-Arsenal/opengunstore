@@ -9,13 +9,16 @@ from frappe import _
 from frappe.model.document import Document
 
 from ffl_core.acquisition import INDIVIDUAL_SOURCES
-from ffl_core.serials import only_active_serial
+from ffl_core.serials import ledger_serial, only_active_serial
 
 
 class FFLAcquisition(Document):
 	def validate(self) -> None:
 		if not self.serial:
 			self.serial = only_active_serial(self.item) or self.serial
+		if self.serial and not (self.ledger_serial or "").strip():
+			# The bound-book serial of the gun this record names (= the name for an untagged gun).
+			self.ledger_serial = ledger_serial(self.serial)
 		self._reject_dealer_source_without_ffl()
 		self._reject_individual_source_without_id()
 

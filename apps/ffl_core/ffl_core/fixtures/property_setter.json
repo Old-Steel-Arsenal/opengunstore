@@ -1598,5 +1598,18 @@
   "property_type": "Text",
   "row_name": null,
   "value": "Printed on every receipt; attach it as a public file, or the receipt shows a broken image."
+ },
+ {
+  "doc_type": "Serial No",
+  "docstatus": 0,
+  "doctype": "Property Setter",
+  "doctype_or_field": "DocType",
+  "is_system_generated": 0,
+  "modified": "2026-11-12 12:00:00",
+  "module": "FFL Core",
+  "name": "Serial No-main-search_fields",
+  "property": "search_fields",
+  "property_type": "Data",
+  "value": "item_code,ledger_serial"
  }
 ]
