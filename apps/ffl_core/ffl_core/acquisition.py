@@ -59,6 +59,7 @@ def record_firearm_acquisition(
 	fastbound_id: str | None = None,
 	submit_now: bool = True,
 	pending_intake_payload: str | None = None,
+	ledger_serial: str | None = None,
 ) -> str:
 	"""Validate, insert, and (by default) submit one FFL Acquisition. Returns its name.
 
@@ -73,11 +74,32 @@ def record_firearm_acquisition(
 	path: the gun must not hit the bound book (submit triggers the FastBound
 	push) until the POS checkout actually completes. `pending_intake_payload`
 	carries the per-unit stamp data (JSON) the booking step needs then.
+
+	`serial` is the gun's KEY (its Serial No name); `ledger_serial` is the serial
+	as the bound book writes it, defaulting to the key's own ledger serial. A bare
+	"no serial" spelling (NONE, NSN, ...) is refused as a key: two such guns would
+	collapse into one record here. Keys come from ffl_core.serials.allocate_serial_key.
 	"""
+	from ffl_core import serials as _serials
+
 	_validate_source_matrix(source_type, source_ffl, source_id_type, source_id_number)
+	key = (serial or "").strip()
+	if key and _serials.is_placeholder(key):
+		frappe.throw(_("{0} is a \"no serial number\" entry, not a serial. Each such gun "
+			"needs its own key (for example \"{0} (POS 0001)\") so two of them are never "
+			"booked as one gun.").format(key), title=_("Serial Key Needed"))
+	ledger = (ledger_serial or "").strip() or (_serials.ledger_serial(key) if key else "")
 
 	existing = _existing(item_code, serial)
 	if existing:
+		other_fb = (frappe.db.get_value("FFL Acquisition", existing, "fastbound_id") or "").strip()
+		if (fastbound_id or "").strip() and other_fb and other_fb != fastbound_id.strip():
+			# Two different bound-book entries arriving on one key is a key-allocation
+			# bug upstream; collapsing them would lose a gun from the book.
+			frappe.throw(_("{0} {1} already records serial {2} for FastBound entry {3}; a second "
+				"entry ({4}) can't be booked on the same gun. Nothing was recorded.").format(
+				_("FFL Acquisition"), existing, serial, other_fb, fastbound_id),
+				title=_("Two Bound-Book Entries, One Gun"))
 		return existing
 
 	doc = frappe.get_doc({
@@ -101,6 +123,7 @@ def record_firearm_acquisition(
 		"company": company,
 		"item": item_code,
 		"serial": serial,
+		"ledger_serial": ledger or None,
 		"cost": cost,
 		"purchase_receipt": purchase_receipt,
 		"purchase_order": purchase_order,
@@ -113,6 +136,11 @@ def record_firearm_acquisition(
 	doc.insert()
 	if submit_now:
 		doc.submit()
+	if key and ledger and frappe.db.exists("Serial No", key) and not (
+			frappe.db.get_value("Serial No", key, "ledger_serial") or "").strip():
+		# Receipts create Serial Nos by bulk insert (no hooks), so the first record
+		# of a new gun stamps its bound-book serial.
+		frappe.db.set_value("Serial No", key, "ledger_serial", ledger, update_modified=False)
 	return doc.name
 
 
