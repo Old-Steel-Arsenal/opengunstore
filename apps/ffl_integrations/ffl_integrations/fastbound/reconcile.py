@@ -10,10 +10,13 @@ from __future__ import annotations
 import frappe
 from frappe import _
 
+from ffl_core import serials as _serials
+
 from ffl_integrations.fastbound import normalize as _normalize
 from ffl_integrations.fastbound.client import (
 	FastBoundClient,
 	FastBoundConfigError,
+	_held_by_another_serial,
 )
 from ffl_integrations.fastbound.importer import (
 	_ensure_brand,
@@ -111,7 +114,10 @@ def compute_serial_fb_diff(serial: str) -> dict:
 	Returns:
 	    {status: "ok" | "not_in_fastbound" | "not_configured" |
 	    "fb_missing" | "fb_disposed", serial, [fb_item_number], [in_sync],
-	    [diffs: [{field, pos_value, fb_value}]]}.
+	    [diffs: [{field, pos_value, fb_value}]], [serial_diff: {pos_value,
+	    fb_value} or None]}. serial_diff compares the gun's ledger serial with
+	    FastBound's (case and spacing aside); it is outside `diffs` because a
+	    serial is changed with Correct Serial, not by picking a side here.
 	"""
 	frappe.has_permission("Serial No", "read", throw=True)
 	serial = (serial or "").strip()
@@ -139,9 +145,13 @@ def compute_serial_fb_diff(serial: str) -> dict:
 		if pos_canon(pos_val) != fb_canon(fb_val):
 			diffs.append({"field": field, "label": label,
 				"pos_value": pos_val, "fb_value": fb_val})
+	ledger = _serials.ledger_serial(serial)
+	fb_serial = str(item.get("serial") or "").strip()
+	serial_diff = None if _serials.same_serial(ledger, fb_serial) \
+		else {"pos_value": ledger, "fb_value": fb_serial}
 	return {"status": "ok", "serial": serial,
 		"fb_item_number": item.get("itemNumber"),
-		"in_sync": not diffs, "diffs": diffs}
+		"in_sync": not diffs, "diffs": diffs, "serial_diff": serial_diff}
 
 
 def _stage_fb_to_pos(field: str, fb_value: str, sn_updates: dict, skipped: list) -> bool:
@@ -284,7 +294,10 @@ def match_serial_to_fastbound(serial: str) -> dict:
 		client = FastBoundClient.from_settings()
 	except FastBoundConfigError:
 		return {"ok": False, "reason": "not_configured"}
-	item = client.find_item_by_serial(serial)
+	# FastBound knows the gun by its ledger serial; an item another gun already
+	# holds is never this gun's.
+	item = client.find_item_by_serial(_serials.ledger_serial(serial),
+		skip=_held_by_another_serial(serial))
 	if not item:
 		return {"ok": False, "reason": "not_found"}
 	item_id = item.get("id") or item.get("itemId")
@@ -481,7 +494,8 @@ def reconcile_record_to_fastbound(doctype: str, name: str, fastbound_ref: str) -
 			"/ GUID in FastBound and try again (item numbers are zero-padded, "
 			"e.g. 01171 not 1171). Nothing was changed.").format(ref))
 	fb_serial = str(item.get("serial") or "").strip()
-	doc_serial = str(doc.serial or "").strip()
+	# The bound book records the ledger serial; doc.serial is the gun's POS key.
+	doc_serial = str(doc.get("ledger_serial") or "").strip() or _serials.ledger_serial(doc.serial)
 	if not fb_serial or not doc_serial:
 		frappe.throw(_("A record and a bound-book item can only be linked "
 			"through a matching, NON-EMPTY serial — blank on {0}. Nothing was "
@@ -492,7 +506,7 @@ def reconcile_record_to_fastbound(doctype: str, name: str, fastbound_ref: str) -
 	if fb_serial.casefold() != doc_serial.casefold():
 		frappe.throw(_("FastBound item #{0} is serial {1!r} but {2} {3} is serial "
 			"{4!r} — refusing to link records for two different guns.").format(
-			item.get("itemNumber"), fb_serial, doctype, name, doc.serial))
+			item.get("itemNumber"), fb_serial, doctype, name, doc_serial))
 
 	item_id = item.get("id") or item.get("itemId")
 	if doctype == "FFL Disposition":

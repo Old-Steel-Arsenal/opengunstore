@@ -7,6 +7,7 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime
 
+from ffl_core import serials as _serials
 from ffl_core.firearm import NOT_IN_BOOK_PREFIX  # reconcile imports it from here
 
 from ffl_integrations.fastbound.client import (
@@ -138,11 +139,27 @@ def _record_acquisition_push(acquisition_name: str, result: dict) -> None:
 		"fastbound_synced_at": now_datetime(),
 		"fastbound_sync_error": "",
 	}, update_modified=False)
-	for fb_item in result.get("items", []):
-		if (fb_item.get("serial") and fb_item.get("fbItemId")
-				and frappe.db.exists("Serial No", fb_item["serial"])):
-			frappe.db.set_value("Serial No", fb_item["serial"],
-				"fastbound_item_id", fb_item["fbItemId"], update_modified=False)
+	# One acquisition is one gun. FastBound answers with the bound-book serial, which
+	# is not the gun's name for a same-serial / no-serial gun — so the item goes on the
+	# gun this acquisition names (the key that was pushed as externalId), never on a
+	# Serial No that merely shares the serial FastBound echoed.
+	acq = frappe.db.get_value("FFL Acquisition", acquisition_name,
+		["serial", "ledger_serial"], as_dict=True) or {}
+	key = (acq.get("serial") or "").strip()
+	ledger = (acq.get("ledger_serial") or "").strip() or _serials.ledger_serial(key)
+	items = [it for it in result.get("items", []) if it.get("fbItemId")]
+	matching = [it for it in items if _serials.same_serial(it.get("serial"), ledger)]
+	pick = matching[0] if len(matching) == 1 else (
+		items[0] if len(items) == 1 and not matching else None)
+	if key and pick and frappe.db.exists("Serial No", key):
+		stamp = {"fastbound_item_id": pick["fbItemId"]}
+		if pick.get("itemNumber"):
+			stamp["fastbound_item_number"] = pick["itemNumber"]
+		frappe.db.set_value("Serial No", key, stamp, update_modified=False)
+	elif items and not pick:
+		frappe.log_error(title=f"FastBound push of {acquisition_name}: item not matched",
+			message=f"No single returned item matches serial {ledger!r}; nothing stamped on "
+				f"{key!r}: {items!r}")
 
 
 def _notify_terminal(doctype: str, name: str, error: str) -> None:
