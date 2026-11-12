@@ -246,7 +246,17 @@
 						+ '<div><b>' + esc(row.template) + '</b>' + needs + gun + '</div>'
 						+ '<div style="display:flex; align-items:center; gap:8px; white-space:nowrap"><span class="indicator-pill ' + st[1] + '">' + esc(st[0]) + '</span>' + act + '</div></div>';
 				}).join('');
+				// Something this sale's items need is unsigned: a manager can let this one sale go
+				// without it (never an every-sale or extension agreement: the server refuses those).
+				var skippable = rows.filter(function (row) {
+					return row.required && row.skippable && row.state !== 'signed' && row.state !== 'expiring';
+				});
+				if (skippable.length) html += '<div style="padding-top:12px; text-align:right"><button class="btn btn-xs btn-default" data-ffl-skip>'
+					+ __('Skip for this sale (manager)') + '</button></div>';
 				d.fields_dict.rows.$wrapper.html(html);
+				d.fields_dict.rows.$wrapper.find('[data-ffl-skip]').on('click', function () {
+					skipForSale(frm, skippable).then(function (ok) { if (ok) d.hide(); });
+				});
 				d.fields_dict.rows.$wrapper.find('[data-ffl-send]').on('click', function () {
 					var row = rows[+$(this).attr('data-ffl-send')];
 					// One copy for every gun of this agreement not signed yet.
@@ -265,6 +275,84 @@
 		d.show();
 		load();
 		return d;
+	}
+
+	// A manager lets the next sale to this customer from this screen go without the agreements
+	// this cart's items ask for (agreements.skip_for_sale): a manager signed in just confirms;
+	// anyone else has one pick themselves and type their PIN or password. Reason optional.
+	// Resolves true once approved.
+	function skipForSale(frm, rows) {
+		var customer = frm.doc.customer, customerName = frm.doc.customer_name;
+		return frappe.call({ method: M + 'skip_approvers' }).then(function (r) {
+			var info = r.message || {}, users = info.approvers || [], byUser = {}, usePassword = false;
+			users.forEach(function (u) { byUser[u.user] = u; });
+			return new Promise(function (resolve) {
+				var done = false;
+				// What the manager is approving: each agreement, and the unsigned guns it is for.
+				var list = (rows || []).map(function (row) {
+					var guns = (row.firearms || []).filter(function (g) { return g.state !== 'signed'; });
+					return '<li><b>' + esc(row.template) + '</b>' + (guns.length ? ' — ' + esc(guns.map(gunLabel).join('; ')) : '') + '</li>';
+				}).join('');
+				var fields = [{ fieldtype: 'HTML', fieldname: 'intro', options: '<p>' + esc(__('{0} can buy without signing:', [customerName || customer]))
+					+ '</p><ul>' + list + '</ul><p class="text-muted small">' + esc(__('It is recorded on the sale.')) + '</p>' }];
+				if (!info.self) fields.push(
+					{ fieldtype: 'Select', fieldname: 'approver', label: __('Manager'), reqd: 1,
+						options: [{ value: '', label: '' }].concat(users.map(function (u) { return { value: u.user, label: u.full_name }; })),
+						change: function () { mode(); } },
+					{ fieldtype: 'Password', fieldname: 'secret', label: __('PIN') },
+					{ fieldtype: 'HTML', fieldname: 'switch' });
+				fields.push({ fieldtype: 'Data', fieldname: 'reason', label: __('Reason (optional)') },
+					{ fieldtype: 'HTML', fieldname: 'err' });
+				var d = new frappe.ui.Dialog({ title: __('Skip agreements for this sale'), fields: fields,
+					primary_action_label: __('Skip'),
+					primary_action: function (v) {
+						var args = { customer: customer, items: cartOf(frm), sale: frm.doc.__islocal ? null : frm.doc.name,
+							reason: v.reason || '' };
+						if (!info.self) {
+							if (!v.approver) return error(__('Pick the manager approving.'));
+							if (!v.secret) return error(currentMode() === 'pin' ? __('Type the PIN.') : __('Type the password.'));
+							args.approver = v.approver;
+							args[currentMode() === 'pin' ? 'pin' : 'password'] = v.secret;
+						}
+						error('');
+						d.get_primary_btn().prop('disabled', true);
+						ffl.staffSwitch.post(M + 'skip_for_sale', args, __('That PIN is not right.')).then(function (body) {
+							var m = body.message || {};
+							done = true;
+							d.hide();
+							frappe.show_alert({ message: __('Approved by {0}. Complete the sale within {1} minutes.',
+								[esc(m.approver_name || m.approver), Math.round((m.expires_in || 900) / 60)]), indicator: 'green' });
+							resolve(true);
+						}, function (err) {
+							if (!info.self) d.set_value('secret', '');
+							error(err.message);
+						}).finally(function () { d.get_primary_btn().prop('disabled', false); });
+					} });
+				function currentMode() { return ffl.staffSwitch.authMode(byUser[d.get_value('approver')], usePassword); }
+				function mode() {
+					d.fields_dict.secret.set_label(currentMode() === 'pin' ? __('PIN') : __('Password'));
+					var u = byUser[d.get_value('approver')];
+					d.fields_dict.switch.$wrapper.html(u && u.has_pin && !u.pin_off
+						? '<a href="#" class="small ffl-skip-switch">' + esc(usePassword ? __('Use PIN instead') : __('Use password instead')) + '</a>' : '');
+					d.fields_dict.switch.$wrapper.find('.ffl-skip-switch').on('click', function (e) {
+						e.preventDefault();
+						usePassword = !usePassword;
+						d.set_value('secret', '');
+						mode();
+					});
+				}
+				function error(text) {
+					d.fields_dict.err.$wrapper.html(text ? '<div class="text-danger small">' + esc(text) + '</div>' : '');
+				}
+				if (!info.self) {
+					if (!users.length) error(__('No manager is set up to approve.'));
+					d.fields_dict.secret.$input && d.fields_dict.secret.$input.attr({ autocomplete: 'off', inputmode: 'numeric' });
+					mode();
+				}
+				d.onhide = function () { if (!done) resolve(false); };
+				d.show();
+			});
+		});
 	}
 
 	// The register: once the cart holds something this customer must sign (an Item or
@@ -339,5 +427,5 @@
 	}
 
 	window.ffl.agreements = { request: request, recordPaper: recordPaper, showQr: showQr, forSale: forSale,
-		sendForSigning: sendForSigning };
+		sendForSigning: sendForSigning, skipForSale: skipForSale };
 })();

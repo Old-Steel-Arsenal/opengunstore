@@ -599,6 +599,104 @@ class SaleGate(_Base):
 		frappe.db.set_single_value("FFL Settings", "used_item_agreement_template", None)   # empty: off
 		self.assertIsNone(agreements.required_for_item(self.item.name))
 
+	def _skip_staff(self):
+		from frappe.utils.password import update_password
+
+		from ffl_core import staff_switch
+
+		clerk, manager = "agr-skip-clerk@example.com", "agr-skip-manager@example.com"
+		_user(clerk, "Sales User")
+		_user(manager, "Sales Manager", "Sales User")
+		update_password(manager, "5713", fieldname=staff_switch.PIN_FIELD)
+		frappe.cache.delete(staff_switch._pin_fail_key(manager))
+		self.addCleanup(frappe.cache.delete_value, f"{agreements._SKIP_KEY}{clerk}:{self.cust.name}")
+		self.addCleanup(frappe.cache.delete_value, f"{agreements._SKIP_KEY}{manager}:{self.cust.name}")
+		return clerk, manager
+
+	def cart(self, si):
+		return [{"item_code": r.item_code, "serial_no": r.serial_no or "", "rate": r.rate} for r in si.items]
+
+	def test_a_manager_skips_the_agreements_for_one_sale(self):
+		from ffl_core import staff_switch
+
+		clerk, manager = self._skip_staff()
+		si = self.invoice()
+		si.insert()
+		with _as(clerk):
+			with self.assertRaises(staff_switch.WrongPassword):
+				agreements.skip_for_sale(self.cust.name, self.cart(si), approver=clerk, pin="5713")   # a clerk is no approver
+			with self.assertRaises(agreements.AgreementRequired):
+				agreements.refuse_missing_required(si)
+			out = agreements.skip_for_sale(self.cust.name, self.cart(si), approver=manager, pin="5713",
+				reason="Signed tablet down")
+			self.assertEqual(out["skipped"], [{"template": self.tpl.name, "serial_no": None}])
+			agreements.refuse_missing_required(si)
+			agreements.mark_firearm_agreements_used(si)   # on_submit writes the note
+			with self.assertRaises(agreements.AgreementRequired, msg="used once"):
+				agreements.refuse_missing_required(si)
+		note = frappe.get_all("Comment", filters={"reference_doctype": si.doctype, "reference_name": si.name,
+			"comment_type": "Comment"}, pluck="content")
+		self.assertTrue(any(self.tpl.name in n and "Signed tablet down" in n for n in note), note)
+		# Another user's sale is not covered by it.
+		with _as(clerk):
+			agreements.skip_for_sale(self.cust.name, self.cart(si), approver=manager, pin="5713")
+		with _as(manager), self.assertRaises(agreements.AgreementRequired):
+			agreements.refuse_missing_required(si)
+		with _as(manager):   # a manager signed in approves their own, no PIN
+			self.assertEqual(agreements.skip_for_sale(self.cust.name, self.cart(si))["approver"], manager)
+			agreements.refuse_missing_required(si)
+
+	def test_a_skip_covers_only_the_cart_it_was_given_for(self):
+		clerk, manager = self._skip_staff()
+		other = _template()
+		item2 = frappe.get_doc({"doctype": "Item", "item_code": _uniq("Lane Rental"), "item_group": "All Item Groups",
+			"stock_uom": "Nos", "is_stock_item": 0, "ffl_required_agreement": other.name}).insert(ignore_permissions=True)
+		si = self.invoice()
+		si.insert()
+		with _as(clerk):
+			agreements.skip_for_sale(self.cust.name, self.cart(si), approver=manager, pin="5713")
+			bigger = self.invoice()
+			bigger.append("items", {"item_code": item2.name, "qty": 1, "rate": 10})
+			with self.assertRaisesRegex(agreements.AgreementRequired, other.name):
+				agreements.refuse_missing_required(bigger)   # needs more than was approved
+			agreements.refuse_missing_required(si)   # not used up by the refused one
+
+	def test_an_every_sale_or_extension_agreement_cannot_be_skipped(self):
+		clerk, manager = self._skip_staff()
+		frappe.db.set_value("Item", self.item.name, "ffl_required_agreement", None)
+		every = _template(requirement="Required for every sale")
+		self.addCleanup(frappe.db.set_value, "Agreement Template", every.name, "active", 0)
+		si = self.invoice()
+		with _as(clerk), self.assertRaisesRegex(frappe.ValidationError, "can be skipped"):
+			agreements.skip_for_sale(self.cust.name, self.cart(si), approver=manager, pin="5713")
+		frappe.db.set_value("Agreement Template", every.name, "active", 0)
+		ext = _template()
+		_PROVIDED.append(ext.name)
+		real = frappe.get_hooks
+
+		def hooks(name=None, *a, **k):
+			return [f"{__name__}._provider"] if name == "gunshop_required_agreements" else real(name, *a, **k)
+		with patch("frappe.get_hooks", side_effect=hooks), _as(clerk), \
+				self.assertRaisesRegex(frappe.ValidationError, "can be skipped"):
+			agreements.skip_for_sale(self.cust.name, self.cart(si), approver=manager, pin="5713")
+
+	def test_the_register_list_says_what_a_manager_may_skip(self):
+		every = _template(requirement="Required for every sale")
+		self.addCleanup(frappe.db.set_value, "Agreement Template", every.name, "active", 0)
+		rows = {r["template"]: r for r in agreements.agreements_for_sale(self.cust.name, [{"item_code": self.item.name}])["rows"]}
+		self.assertEqual((rows[self.tpl.name]["required"], rows[self.tpl.name]["skippable"]), (True, True))
+		self.assertEqual((rows[every.name]["required"], rows[every.name]["skippable"]), (True, False))
+
+	def test_a_restored_skip_keeps_only_the_time_it_had_left(self):
+		key = f"{agreements._SKIP_KEY}nobody@example.com:{self.cust.name}"
+		self.addCleanup(frappe.cache.delete_value, key)
+		with patch.object(frappe.cache, "set_value") as put:
+			agreements._keep_skip(key, {"expires": str(now_datetime() + timedelta(seconds=120))})
+			self.assertLessEqual(put.call_args.kwargs["expires_in_sec"], 120)
+			put.reset_mock()
+			agreements._keep_skip(key, {"expires": str(now_datetime() - timedelta(seconds=1))})
+			put.assert_not_called()
+
 	def test_extension_hook_adds_and_a_broken_one_is_logged(self):
 		other = _template()
 		_PROVIDED.append(other.name)
