@@ -4030,6 +4030,7 @@
   "allow_on_submit": 0,
   "columns": 0,
   "default": "0",
+  "depends_on": "no_serial",
   "description": "The bound book records this gun without a serial number.",
   "docstatus": 0,
   "doctype": "Custom Field",
