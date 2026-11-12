@@ -150,9 +150,12 @@ def get_customer_flags(customer: str) -> dict:
 	    "expired": bool}] for ID documents expired or expiring within 30 days,
 	    "agreements": [{"template", "state", "expires_on", "agreement"}] for each
 	    active Agreement Template shown on the counter panel — state is signed,
-	    expiring (within 30 days), expired, pending or missing}.
+	    expiring (within 30 days), expired, pending or missing, "membership": the member badge
+	    (``membership_benefits.membership_badge``: {"text", "memberships"}) or None}.
 	    Never carries an ID number or date of birth.
 	"""
+	from ffl_core.membership_benefits import membership_badge
+
 	frappe.has_permission("Customer", "read", doc=customer, throw=True)
 	doc = frappe.get_doc("Customer", customer)
 	status = doc.get("customer_status") or ACTIVE
@@ -178,6 +181,7 @@ def get_customer_flags(customer: str) -> dict:
 			"members": frappe.db.count("Customer", {"primary_customer": doc.name})},
 		"ids": expiring_ids(doc.get("customer_ids") or []),
 		"agreements": counter_panel_rows(doc.name),
+		"membership": membership_badge(doc.name),
 	}
 
 

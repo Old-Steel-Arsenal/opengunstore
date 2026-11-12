@@ -38,6 +38,15 @@ test('summarize: other statuses, IDs, family, tags and alerts', () => {
 		[{ label: '3 family members', tone: 'blue' }]);
 });
 
+test('summarize: the member badge, after the status', () => {
+	const s = cf.summarize({ ...base, status: 'Inactive', membership: { text: 'Premium · to 2027-04 · Range 1/2 today' } });
+	assert.deepStrictEqual(s.chips, [
+		{ label: 'Inactive', tone: 'orange' },
+		{ label: 'Premium · to 2027-04 · Range 1/2 today', tone: 'green' },
+	]);
+	assert.deepStrictEqual(cf.summarize({ ...base, membership: null }).chips, []);
+});
+
 test('stripHtml escapes what customers and clerks typed', () => {
 	const html = cf.stripHtml({ ...base, tags: ['<img src=x onerror=alert(1)>'], alerts: [{ message: '"quoted" <b>' }] });
 	assert.ok(!html.includes('<img'), html);
