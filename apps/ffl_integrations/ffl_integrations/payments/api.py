@@ -44,7 +44,7 @@ from ffl_core.firearm import firearm_items_in
 from ffl_core.utils import commit as _safe_commit
 from ffl_integrations.integration_gate import card_reference_required
 from ffl_integrations.notifications import notify_admins, safe_log_error
-from ffl_integrations.payments import registry
+from ffl_integrations.payments import card_readers, registry
 from ffl_integrations.payments.base import APPROVED, CANCELED, DECLINED, PENDING, UNKNOWN, CardProcessorError
 from ffl_integrations.payments.setup import MODE_OF_PAYMENT_NAME
 
@@ -171,7 +171,7 @@ def _card_target(inv) -> float:
 
 
 def _append_charge_row(invoice_name: str, *, instruction_id: str, attempt: int,
-        processor: str, save: dict | None = None) -> str:
+        processor: str, save: dict | None = None, reader: dict | None = None) -> str:
     """Row-level insert (db_insert, hash name — how Frappe names child rows):
     charge stamps must not run the parent's validate/save cycle mid-charge,
     exactly like every set_value(update_modified=False) in this module."""
@@ -186,6 +186,8 @@ def _append_charge_row(invoice_name: str, *, instruction_id: str, attempt: int,
         # Currency columns are NOT NULL — seed 0, never None.
         "amount": 0, "refunded_amount": 0,
     })
+    if reader:
+        row.card_reader = reader["name"]
     if save:
         # Card on file: the cashier asked to keep this card (saved_cards.save_request).
         row.update({"save_card": 1, "save_reference": save["reference"]})
@@ -659,7 +661,8 @@ def card_tender_mode() -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
-        amount=None, description: str | None = None, save_card=0, keyed=0) -> dict:
+        amount=None, description: str | None = None, save_card=0, keyed=0,
+        reader: str | None = None) -> dict:
     """Start a card charge on the card processor's terminal for a POS invoice.
 
     Starts the charge on the active processor's card device; the frontend then
@@ -677,6 +680,9 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
             invoice customer has signed the card-on-file authorization.
         keyed: 1 to key the card number in on the processor's payment page instead
             of the terminal (managers only; not with save_card).
+        reader: This computer's card reader (its name). Required when the store lists
+            card readers (refused when it is missing, unknown or switched off);
+            ignored for a keyed charge. Without listed readers, leave it out.
 
     Returns:
         {ok, instruction_id, status, amount} — plus keyed_url (the payment page to
@@ -698,6 +704,8 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
         frappe.throw(_("invoice_name is required."))
     if not frappe.db.exists("POS Invoice", invoice_name):
         frappe.throw(_("POS Invoice {0} not found.").format(invoice_name))
+    # Which device: checked before any gateway call (the browser names it, never its serial).
+    chosen = card_readers.resolve(_processor(None), reader, keyed=bool(keyed))
     # Card on file: every gate (switch, processor, customer, signed authorization) is checked
     # here, before any gateway call — the dialog's checkbox is not the gate.
     save = _saved_cards().save_request(frappe.db.get_value("POS Invoice", invoice_name,
@@ -800,10 +808,10 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
             terminal=terminal, operator=frappe.session.user,
             description=description or f"POS Invoice {invoice_name}",
             # Passed only when asked for: a processor without card on file never sees the argument.
-            **({"save_card": save} if save else {}))
+            **({"save_card": save} if save else {}), **card_readers.start_kwargs(chosen))
     try:
         _append_charge_row(invoice_name, instruction_id=iid, attempt=attempt,
-            processor=active.code, save=save)
+            processor=active.code, save=save, reader=chosen)
         stamps = {"card_attempt": attempt}
         if inv.get("card_manual_settlement"):
             # New money through the integration invalidates a prior
@@ -1097,7 +1105,7 @@ def _charge_amount(sales_invoice: str, outstanding_amount, amount) -> float:
 
 @frappe.whitelist(methods=["POST"])
 def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None = None,
-        save_card=0, keyed=0) -> dict:
+        save_card=0, keyed=0, reader: str | None = None) -> dict:
     """Start a card charge on the card processor's terminal against a counter Sales Invoice.
 
     The counter's card tender for an on-account order (Create Order right
@@ -1117,6 +1125,9 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
             invoice customer has signed the card-on-file authorization.
         keyed: 1 to key the card number in on the processor's payment page instead
             of the terminal (managers only; not with save_card).
+        reader: This computer's card reader (its name). Required when the store lists
+            card readers (refused when it is missing, unknown or switched off);
+            ignored for a keyed charge. Without listed readers, leave it out.
 
     Returns:
         {ok, instruction_id, status, amount} — plus keyed_url (the payment page to
@@ -1135,6 +1146,7 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
     sales_invoice = (sales_invoice or "").strip()
     if not sales_invoice or not frappe.db.exists("Sales Invoice", sales_invoice):
         frappe.throw(_("Sales Invoice {0} not found.").format(sales_invoice))
+    chosen = card_readers.resolve(_processor(None), reader, keyed=bool(keyed))
     # Two screens / a double-click must serialize on this invoice — read-check-
     # insert below is only safe under the row lock (same rule as the POS charge).
     frappe.db.get_value("Sales Invoice", sales_invoice, "name", for_update=True)
@@ -1198,11 +1210,11 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
         iid, started = active.start_charge(document=sales_invoice, attempt=attempt, amount=amt,
             terminal=terminal, operator=frappe.session.user,
             description=f"{sales_invoice} — {si.customer_name or ''}".strip(" —"),
-            **({"save_card": save} if save else {}))
+            **({"save_card": save} if save else {}), **card_readers.start_kwargs(chosen))
     try:
         rec = frappe.get_doc({"doctype": TERMINAL_PAYMENT, "sales_invoice": sales_invoice,
             "amount": amt, "status": "IN_PROGRESS", "instruction_id": iid,
-            "processor": active.code,
+            "processor": active.code, **({"card_reader": chosen["name"]} if chosen else {}),
             **({"save_card": 1, "save_reference": save["reference"], "save_usage": save["usage"]}
                 if save else {})})
         rec.flags.ignore_permissions = True
