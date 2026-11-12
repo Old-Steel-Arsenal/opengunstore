@@ -1,7 +1,7 @@
 {
  "actions": [],
  "creation": "2026-10-27 12:00:00.000000",
- "modified": "2026-10-30 18:00:00.000000",
+ "modified": "2026-11-12 12:00:00.000000",
  "modified_by": "Administrator",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -27,7 +27,9 @@
   "terms_template",
   "column_break_c",
   "grace_enabled",
-  "grace_days"
+  "grace_days",
+  "section_benefits",
+  "benefits"
  ],
  "fields": [
   {
@@ -135,6 +137,18 @@
    "label": "Grace Days",
    "depends_on": "grace_enabled",
    "mandatory_depends_on": "grace_enabled"
+  },
+  {
+   "fieldname": "section_benefits",
+   "fieldtype": "Section Break",
+   "label": "Member Benefits",
+   "description": "Member prices at the register. A line takes the lowest price it qualifies for: a member price, or the item's own price when that is lower (a sale)."
+  },
+  {
+   "fieldname": "benefits",
+   "fieldtype": "Table",
+   "label": "Benefits",
+   "options": "Membership Plan Benefit"
   }
  ],
  "sort_field": "creation",

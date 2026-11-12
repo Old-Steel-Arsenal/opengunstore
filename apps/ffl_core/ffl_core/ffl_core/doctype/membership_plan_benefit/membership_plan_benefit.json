@@ -1,0 +1,120 @@
+{
+ "actions": [],
+ "creation": "2026-11-12 12:00:00.000000",
+ "modified": "2026-11-12 12:00:00.000000",
+ "modified_by": "Administrator",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "module": "FFL Core",
+ "name": "Membership Plan Benefit",
+ "owner": "Administrator",
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "field_order": [
+  "applies_to",
+  "item",
+  "item_group",
+  "price_list",
+  "column_break_a",
+  "benefit_type",
+  "value",
+  "uses_per_day",
+  "days",
+  "label"
+ ],
+ "fields": [
+  {
+   "fieldname": "applies_to",
+   "fieldtype": "Select",
+   "label": "Applies To",
+   "options": "Item\nItem Group\nPrice List",
+   "default": "Item",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "item",
+   "fieldtype": "Link",
+   "label": "Item",
+   "options": "Item",
+   "depends_on": "eval:doc.applies_to=='Item'",
+   "mandatory_depends_on": "eval:doc.applies_to=='Item'",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "item_group",
+   "fieldtype": "Link",
+   "label": "Item Group",
+   "options": "Item Group",
+   "depends_on": "eval:doc.applies_to=='Item Group'",
+   "mandatory_depends_on": "eval:doc.applies_to=='Item Group'",
+   "description": "Its sub-groups too.",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "price_list",
+   "fieldtype": "Link",
+   "label": "Price List",
+   "options": "Price List",
+   "depends_on": "eval:doc.applies_to=='Price List'",
+   "mandatory_depends_on": "eval:doc.applies_to=='Price List'",
+   "description": "Items with a price in this list.",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "column_break_a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "benefit_type",
+   "fieldtype": "Select",
+   "label": "Benefit",
+   "options": "Percent off\nAmount off\nFixed price\nPrice-list price",
+   "default": "Percent off",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Price-list price: the item's price in the price list above (Applies To = Price List only)."
+  },
+  {
+   "fieldname": "value",
+   "fieldtype": "Float",
+   "label": "Value",
+   "depends_on": "eval:doc.benefit_type!='Price-list price'",
+   "description": "Percent off: the percentage. Amount off: the amount off each unit. Fixed price: the price of each unit.",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "uses_per_day",
+   "fieldtype": "Int",
+   "label": "Uses per Day",
+   "default": "0",
+   "non_negative": 1,
+   "description": "Units at this price per member per day. 0 = no limit.",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "days",
+   "fieldtype": "Data",
+   "label": "Days",
+   "description": "Blank = every day. Otherwise the days, separated by commas: Mon, Tue, Wed, Thu, Fri, Sat, Sun.",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "label": "Label",
+   "description": "Shown on the sale line. Blank = made from the benefit and the plan, e.g. Member 50% (Basic)."
+  }
+ ],
+ "states": [],
+ "istable": 1,
+ "editable_grid": 1
+}
