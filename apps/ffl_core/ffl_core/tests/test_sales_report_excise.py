@@ -111,7 +111,7 @@ class ExciseSplit(ExciseStoreFixtures):
 	def test_the_service_template_still_covers_the_excise_account(self):
 		"""Regression guard: the 0% service template is built from `_company_sales_tax_accounts`, which must keep
 		the excise account — dropping it there would start charging excise on every service line."""
-		self.assertEqual(tax._company_sales_tax_accounts(COMPANY), [self.sales_tax, self.excise])
+		self.assertEqual(sorted(tax._company_sales_tax_accounts(COMPANY)), sorted([self.sales_tax, self.excise]))
 		self.assertEqual(sorted((r.tax_type, flt(r.tax_rate)) for r in
 			frappe.get_doc("Item Tax Template", self.service_template).taxes),
 			sorted([(self.sales_tax, 0.0), (self.excise, 0.0)]))
