@@ -75,6 +75,9 @@ BAD_LISTING_TERMS = "bad_listing_terms"
 AUCTION_PRICE_LOCKED = "auction_price_locked"
 AUCTION_HAS_BIDS = "auction_has_bids"
 NOT_SELLABLE = "not_sellable"
+# No serial / same serial as another gun: the listing would show the POS key as its
+# SerialNumber (ffl_core.serials.listing_block_reason decides; lifted in a later run).
+TAGGED_SERIAL = "tagged_serial"
 NO_CATEGORY = "no_category"
 NO_SHIP_COST = "no_ship_cost"
 BANNED_TITLE = "banned_title"
@@ -267,7 +270,15 @@ def check_push_guards(serial_no: str, *, relist: bool = False,
 	Returns:
 	    A skip dict, or None when the gun may be listed.
 	"""
+	from ffl_core.serials import listing_block_reason
+
 	from ffl_integrations.integration_gate import gunbroker_enabled
+
+	# 0. A gun named by a tagged key: GunBroker would publish the key as its serial.
+	#    Answered before anything else — no setting or button changes it.
+	tagged = listing_block_reason(serial_no)
+	if tagged:
+		return skip(TAGGED_SERIAL, tagged)
 
 	# 1. Switched off.
 	if not gunbroker_enabled():

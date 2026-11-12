@@ -55,6 +55,7 @@ import frappe
 import requests
 
 from ffl_core.custody import is_custody_serial
+from ffl_core.serials import listing_block_reason
 from ffl_core.warehouses import is_consigned_out
 from ffl_core.firearm import _is_firearm_row
 from ffl_core.utils import commit as safe_commit  # no-op inside the test transaction
@@ -149,6 +150,13 @@ CHANNEL_RESERVED = "channel_reserved"
 # existing product passes only because its payload is stock 0 + draft — which is
 # re-checked against the built payload, not assumed.
 CONSIGNED_OUT = "consigned_out"
+
+# A gun with no serial number, or sharing its serial with another gun: its Serial No
+# name is a tagged key, and the storefront would show that key where the serial
+# goes. Not listable until the channel shows the ledger serial
+# (ffl_core.serials.listing_block_reason, the one place that decides it). Refused
+# outright, like TRANSFER_CUSTODY: `_relist` cannot lift it.
+TAGGED_SERIAL = "tagged_serial"
 
 # WHY THIS APP ASKS `other_channel_reservation(own=CHANNEL_WOO)` and not
 # `channel_reservation`, at every read point in it:
@@ -1056,6 +1064,10 @@ def push_serial(
     # push costs no HTTP and no config read.
     if is_custody_serial(serial_no):
         return {"skipped": TRANSFER_CUSTODY, "serial_no": serial_no, "site": site}
+    _tagged = listing_block_reason(serial_no)
+    if _tagged:
+        return {"skipped": TAGGED_SERIAL, "serial_no": serial_no, "site": site,
+                "message": _tagged}
 
     # Another sales channel already has this gun. NOT one of our own web orders —
     # those are mid-fulfilment and their product page stays published at stock 0.

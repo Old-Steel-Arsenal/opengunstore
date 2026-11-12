@@ -408,6 +408,9 @@ doc_events = {
 			"ffl_core.compliance.consignment.block_consignment_returns",
 			"ffl_core.compliance.zero_cost_sale_alert.warn_on_unpriced_firearm_sale",
 			"ffl_core.compliance.firearm.canonicalize_row_serials",
+			# A same-serial / no-serial gun is not sellable until receipts and 4473 records
+			# print its bound-book serial (serials.refuse_tagged_serial_sale; returns pass).
+			"ffl_core.serials.refuse_tagged_serial_sale",
 			"ffl_core.compliance.firearm.require_serial_for_firearm",
 			"ffl_core.compliance.firearm.require_4473_and_nics_for_firearm_sale",
 			"ffl_core.compliance.dealer_transfer.require_shippable_ffl_dealer",
@@ -590,6 +593,9 @@ doc_events = {
 			"ffl_core.compliance.consignment.block_consignment_returns",
 			"ffl_core.compliance.zero_cost_sale_alert.warn_on_unpriced_firearm_sale",
 			"ffl_core.compliance.firearm.canonicalize_row_serials",
+			# A same-serial / no-serial gun is not sellable until receipts and 4473 records
+			# print its bound-book serial (serials.refuse_tagged_serial_sale; returns pass).
+			"ffl_core.serials.refuse_tagged_serial_sale",
 			"ffl_core.compliance.firearm.require_serial_for_firearm",
 			# One gun per line — fires on EVERY validate (Draft too) so a qty>1 /
 			# multi-serial firearm line never persists to break the 4473 match
