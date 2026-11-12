@@ -8,7 +8,7 @@ Source: `apps/ffl_core/ffl_core/api/pos_ticket.py` · 1 endpoint(s)
 
 `POST /api/method/ffl_core.api.pos_ticket.open_ticket`
 
-**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager
+**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
 
 Open a draft register ticket (POS Invoice) on the open POS shift.
 
@@ -19,7 +19,7 @@ manager's approval gave for this ticket. A rate past the item's Max Discount is 
 | arg | type | required | default | description |
 |---|---|---|---|---|
 | `customer` | string | yes | — | Customer name. |
-| `items` | — | yes | — | JSON list of lines ``[{item_code, qty=1, rate?, serial_no?, storage_location?}]``; rate blank = the item's price for the customer, a serial is one unit. |
+| `items` | — | yes | — | JSON list of lines ``[{item_code, qty=1, rate?, serial_no?, storage_location?}]``; rate blank = the item's price for the customer, a serial is one unit. A member price lower than the line's rate replaces it. |
 | `company` | string \| null | no | `None` | Company the shift is on; blank = the user's default company. |
 | `approval_token` | string \| null | no | `None` | The token ``ffl_core.price_approval.approve`` returned for this ticket (its doc: a POS Invoice with these customer and lines). |
 
