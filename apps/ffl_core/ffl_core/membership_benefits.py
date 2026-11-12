@@ -442,6 +442,8 @@ def used_on(benefit: str, customer: str, day, *, exclude: tuple[str, str | None]
 
 
 def _used_on(benefit: str, customer: str, day, exclude: tuple, share: str) -> float:
+	# lazy: counted from the invoice lines on every read; a per-member, per-day count table once a
+	# store's volume makes this read show up.
 	pos_x, si_x = _exclusions(*exclude)
 	args = {"b": benefit, "c": customer, "d": getdate(day), "pos_x": pos_x, "si_x": si_x}
 	lines = frappe.db.sql(f"""select i.name, i.qty from `tabPOS Invoice Item` i join `tabPOS Invoice` p on p.name = i.parent
@@ -729,7 +731,9 @@ def apply_member_prices(doc, method: str | None = None) -> None:
 
 def settle_member_lines(doc, method: str | None = None) -> None:
 	"""validate, after ERPNext's own: a line ERPNext priced otherwise than its member price (a Pricing
-	Rule that took it over) carries no benefit record — the benefit was not used."""
+	Rule that took it over) carries no benefit record — the benefit was not used.
+	# lazy: a Pricing Rule on a member's line wins even when the member price is lower (ERPNext
+	# re-applies the rule in its own validate); upgrade path: drop the rule from such a line."""
 	if doc.doctype not in PRICED or cint(doc.get("is_return")) or cint(doc.get("is_consolidated")):
 		return
 	from ffl_core.compliance.locked_lines import rate_precision
