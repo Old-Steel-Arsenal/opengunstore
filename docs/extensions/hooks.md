@@ -233,6 +233,13 @@ A rate you put on the ticket is your code's price: the register does not ask a m
 
 Also available: `gunstore.extensions.isEnabled(id, boot)`, `ffl.featureOffPage(page, featureTitle, whereToTurnOn)` for your own Desk pages, `gunstore.renderReleaseNotes(entries)`.
 
+### Shared front-end helpers
+
+Loaded on every Desk page (`app_include_js`). Read them through `window.ffl` and fall back when absent, as a core older than your extension may not have them.
+
+- `ffl.aamva.parse(raw, { ids })`: reads the text a license scanner typed (the PDF417 barcode on a US driver license or ID card). Returns `null` when the text is not a license, else `{first, middle, last, suffix, address1, address2, city, state, zip, country}`, with `{idNumber, dob, expiry}` (dates `YYYY-MM-DD`, `''` when unreadable) added only when `ids` is true. Pass `ids: !!frappe.boot.ffl_store_customer_id_numbers`, the store's choice to keep ID numbers.
+- `ffl.customerFlags.check(customer, { key })`: the counter's customer check, as the register runs it. Returns `Promise<boolean>`: `false` when the customer is Banned and no manager overrode it in the box shown; otherwise `true`, after showing the customer's active alerts once per `key`. An empty customer or a failed read resolves `true` (the server still refuses a sale to a Banned customer).
+
 ## Desk pages, sidebar, shortcuts
 
 - List your pages in the Gun Shop sidebar and the Dashboard's **All records** with `gunshop_sidebar_items`.
