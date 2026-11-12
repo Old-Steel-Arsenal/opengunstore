@@ -246,13 +246,16 @@
 						+ '<div><b>' + esc(row.template) + '</b>' + needs + gun + '</div>'
 						+ '<div style="display:flex; align-items:center; gap:8px; white-space:nowrap"><span class="indicator-pill ' + st[1] + '">' + esc(st[0]) + '</span>' + act + '</div></div>';
 				}).join('');
-				// Something this sale needs is unsigned: a manager can let this one sale go without it.
-				var blocked = rows.some(function (row) { return row.required && row.state !== 'signed' && row.state !== 'expiring'; });
-				if (blocked) html += '<div style="padding-top:12px; text-align:right"><button class="btn btn-xs btn-default" data-ffl-skip>'
+				// Something this sale's items need is unsigned: a manager can let this one sale go
+				// without it (never an every-sale or extension agreement: the server refuses those).
+				var skippable = rows.filter(function (row) {
+					return row.required && row.skippable && row.state !== 'signed' && row.state !== 'expiring';
+				});
+				if (skippable.length) html += '<div style="padding-top:12px; text-align:right"><button class="btn btn-xs btn-default" data-ffl-skip>'
 					+ __('Skip for this sale (manager)') + '</button></div>';
 				d.fields_dict.rows.$wrapper.html(html);
 				d.fields_dict.rows.$wrapper.find('[data-ffl-skip]').on('click', function () {
-					skipForSale(frm).then(function (ok) { if (ok) d.hide(); });
+					skipForSale(frm, skippable).then(function (ok) { if (ok) d.hide(); });
 				});
 				d.fields_dict.rows.$wrapper.find('[data-ffl-send]').on('click', function () {
 					var row = rows[+$(this).attr('data-ffl-send')];
@@ -278,14 +281,20 @@
 	// this cart's items ask for (agreements.skip_for_sale): a manager signed in just confirms;
 	// anyone else has one pick themselves and type their PIN or password. Reason optional.
 	// Resolves true once approved.
-	function skipForSale(frm) {
+	function skipForSale(frm, rows) {
 		var customer = frm.doc.customer, customerName = frm.doc.customer_name;
 		return frappe.call({ method: M + 'skip_approvers' }).then(function (r) {
 			var info = r.message || {}, users = info.approvers || [], byUser = {}, usePassword = false;
 			users.forEach(function (u) { byUser[u.user] = u; });
 			return new Promise(function (resolve) {
 				var done = false;
-				var fields = [{ fieldtype: 'HTML', fieldname: 'intro', options: '<p>' + esc(__('{0} can buy without the agreements this cart\'s items need. It is recorded on the sale.', [customerName || customer])) + '</p>' }];
+				// What the manager is approving: each agreement, and the unsigned guns it is for.
+				var list = (rows || []).map(function (row) {
+					var guns = (row.firearms || []).filter(function (g) { return g.state !== 'signed'; });
+					return '<li><b>' + esc(row.template) + '</b>' + (guns.length ? ' — ' + esc(guns.map(gunLabel).join('; ')) : '') + '</li>';
+				}).join('');
+				var fields = [{ fieldtype: 'HTML', fieldname: 'intro', options: '<p>' + esc(__('{0} can buy without signing:', [customerName || customer]))
+					+ '</p><ul>' + list + '</ul><p class="text-muted small">' + esc(__('It is recorded on the sale.')) + '</p>' }];
 				if (!info.self) fields.push(
 					{ fieldtype: 'Select', fieldname: 'approver', label: __('Manager'), reqd: 1,
 						options: [{ value: '', label: '' }].concat(users.map(function (u) { return { value: u.user, label: u.full_name }; })),

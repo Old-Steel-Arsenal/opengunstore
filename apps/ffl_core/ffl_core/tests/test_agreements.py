@@ -680,6 +680,13 @@ class SaleGate(_Base):
 				self.assertRaisesRegex(frappe.ValidationError, "can be skipped"):
 			agreements.skip_for_sale(self.cust.name, self.cart(si), approver=manager, pin="5713")
 
+	def test_the_register_list_says_what_a_manager_may_skip(self):
+		every = _template(requirement="Required for every sale")
+		self.addCleanup(frappe.db.set_value, "Agreement Template", every.name, "active", 0)
+		rows = {r["template"]: r for r in agreements.agreements_for_sale(self.cust.name, [{"item_code": self.item.name}])["rows"]}
+		self.assertEqual((rows[self.tpl.name]["required"], rows[self.tpl.name]["skippable"]), (True, True))
+		self.assertEqual((rows[every.name]["required"], rows[every.name]["skippable"]), (True, False))
+
 	def test_a_restored_skip_keeps_only_the_time_it_had_left(self):
 		key = f"{agreements._SKIP_KEY}nobody@example.com:{self.cust.name}"
 		self.addCleanup(frappe.cache.delete_value, key)

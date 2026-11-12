@@ -324,17 +324,21 @@ def _row_serials(row) -> list[str]:
 
 def _transfer_serials(rows) -> set[str]:
 	"""The serials on *rows* that are customers' guns in for an FFL transfer: sitting in a customer
-	custody warehouse now. Where the gun is, not ``Serial No.is_transfer_gun``: that flag is reset
-	only on a Purchase Receipt, so a gun the store later took in another way (a trade-in) may still
-	carry it — and the store's own used gun must still be asked for."""
+	custody warehouse, or flagged ``Serial No.is_transfer_gun`` and already handed over (in no
+	warehouse: an on_submit pass after the stock moved). The flag alone is not enough: it is reset
+	only on a Purchase Receipt, so a gun the store later took back another way (a trade-in) may
+	still carry it while it sits in the store's stock — and the store's own used gun is asked for.
+	Raw SQL, as ``custody_warehouse_names``: no meta machinery on the submit path."""
 	from ffl_core.warehouses import custody_warehouse_names
 
 	serials = {s for r in rows or [] if r.get("item_code") for s in _row_serials(r)}
-	whs = custody_warehouse_names() if serials else set()
-	if not whs:
+	if not serials:
 		return set()
-	return set(frappe.get_all("Serial No", filters={"name": ("in", list(serials)), "warehouse": ("in", list(whs))},
-		pluck="name"))
+	flag = "is_transfer_gun" if frappe.db.has_column("Serial No", "is_transfer_gun") else "0"
+	whs = custody_warehouse_names()
+	found = frappe.db.sql(f"select name, warehouse, {flag} from `tabSerial No` where name in %(s)s",
+		{"s": tuple(serials)})
+	return {name for name, wh, flagged in found if (wh and wh in whs) or (not wh and flagged)}
 
 
 def sale_agreements_enforced() -> bool:
@@ -344,7 +348,7 @@ def sale_agreements_enforced() -> bool:
 	return single_flag("FFL Settings", "enforce_sale_agreements", default=1)
 
 
-def sale_requirements(doc) -> list[dict]:
+def sale_requirements(doc, transfer: set[str] | None = None) -> list[dict]:
 	"""What a counter sale's customer must have signed: [{"template", "serial_no",
 	"item_code", "skippable"}] (serial_no only for an Each firearm sold template, one entry per
 	gun; skippable: a Required by item template only the sale's Items name, which a manager may
@@ -363,10 +367,12 @@ def sale_requirements(doc) -> list[dict]:
 	nothing is asked for it (a transfer fee line still counts as a sale line). With FFL Settings › Require Agreements
 	at Sale off, nothing does (providers are not even asked): the sale gate, a counter
 	order's emails, Dispose's check and the register's "required" marks all read this.
+	*transfer*: the sale's transfer serials when the caller already has them.
 	"""
 	if not sale_agreements_enforced():
 		return []
-	transfer = _transfer_serials(doc.get("items"))
+	if transfer is None:
+		transfer = _transfer_serials(doc.get("items"))
 	rows = [r for r in doc.get("items") or [] if r.get("item_code")
 		and not (_row_serials(r) and set(_row_serials(r)) <= transfer)]
 	# An FFL dealer buying wholesale is not who a store-wide waiver or a retail buyer's
@@ -445,7 +451,8 @@ def agreements_for_sale(customer: str, items: list | str | None = None, sale: st
 
 	Returns:
 	    {"rows": [{"template", "scope", "requirement", "required": whether this
-	    sale needs it, "state", "expires_on", "agreement", "firearms"}]} — every
+	    sale needs it, "skippable": whether a manager may let this sale go without
+	    it (:func:`skip_for_sale`), "state", "expires_on", "agreement", "firearms"}]} — every
 	    template once, except an Each firearm sold one with One copy per gun, once
 	    per gun. An Each firearm sold row lists the guns one copy is signed for in
 	    "firearms": [{"serial_no", "item_code", "item_name", "rate", "state"}] (the
@@ -456,8 +463,9 @@ def agreements_for_sale(customer: str, items: list | str | None = None, sale: st
 	frappe.has_permission("Customer", "read", doc=customer, throw=True)
 	cart = frappe.parse_json(items) if isinstance(items, str) else (items or [])
 	cart = [frappe._dict(r) for r in cart if isinstance(r, dict) and isinstance(r.get("item_code"), str)][:200]
-	needed = {(n["template"], n["serial_no"]) for n in sale_requirements(frappe._dict(items=cart, customer=customer))}
 	transfer = _transfer_serials(cart)
+	needed = {(n["template"], n["serial_no"]): n["skippable"]
+		for n in sale_requirements(frappe._dict(items=cart, customer=customer), transfer)}
 	guns = [(serial, r) for r in cart for serial in _row_serials(r) if serial not in transfer]
 	names = {r.item_code: r for r in frappe.get_all("Item", filters={"name": ("in", [g[1].item_code for g in guns] or [""])},
 		fields=["name as item_code", "item_name"])}
@@ -468,7 +476,8 @@ def agreements_for_sale(customer: str, items: list | str | None = None, sale: st
 		base = {"template": t, "scope": row.scope, "requirement": row.requirement, "firearms": []}
 		if row.scope != PER_FIREARM:
 			st = agreement_status(customer, t)
-			out.append({**base, "required": (t, None) in needed, "state": st["state"],
+			out.append({**base, "required": (t, None) in needed, "skippable": bool(needed.get((t, None))),
+				"state": st["state"],
 				"expires_on": st["expires_on"], "agreement": st["agreement"]})
 			continue
 		mine = [(serial, r) for serial, r in guns if (t, serial) in needed] or guns
@@ -479,7 +488,8 @@ def agreements_for_sale(customer: str, items: list | str | None = None, sale: st
 			unsigned = [g for g in copy if g["state"] != "signed"]
 			state = "signed" if copy and not unsigned else \
 				"pending" if unsigned and all(g["state"] == "pending" for g in unsigned) else "missing"
-			out.append({**base, "required": any((t, g["serial_no"]) in needed for g in copy), "state": state,
+			out.append({**base, "required": any((t, g["serial_no"]) in needed for g in copy),
+				"skippable": any(needed.get((t, g["serial_no"])) for g in copy), "state": state,
 				"expires_on": None, "agreement": None, "firearms": copy})
 	out.sort(key=lambda x: (not x["required"], x["template"]))
 	return {"rows": out}

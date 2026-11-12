@@ -339,6 +339,12 @@ class FflTransfer(_Base):
 
 	def test_a_stale_transfer_flag_on_the_stores_own_gun_is_still_asked_for(self):
 		# Taken back in a way that did not reset the flag (a trade-in): it sits in the store's stock now.
-		frappe.db.set_value("Serial No", self.t_serial, "warehouse", None)
+		store = frappe.get_all("Warehouse", filters={"is_group": 0, "is_custody_warehouse": 0}, pluck="name", limit=1)[0]
+		frappe.db.set_value("Serial No", self.t_serial, "warehouse", store)
 		with self.assertRaisesRegex(agreements.AgreementRequired, self.t_serial):
 			agreements.refuse_missing_required(self.sale((self.t_code, self.t_serial)))
+
+	def test_a_flagged_transfer_gun_already_handed_over_still_counts(self):
+		# on_submit, after the stock moved: no warehouse, flag still on.
+		frappe.db.set_value("Serial No", self.t_serial, "warehouse", None)
+		self.assertEqual(agreements.sale_requirements(self.sale((self.t_code, self.t_serial))), [])
