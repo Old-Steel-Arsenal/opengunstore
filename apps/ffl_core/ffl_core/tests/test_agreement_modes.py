@@ -316,7 +316,10 @@ class FflTransfer(_Base):
 		frappe.db.set_single_value("FFL Settings", "used_item_agreement_template", self.tpl.name)
 		self.code, self.serial = _gun()
 		self.t_code, self.t_serial = _gun()
-		frappe.db.set_value("Serial No", self.t_serial, "is_transfer_gun", 1)
+		from ffl_core.warehouses import ensure_custody_warehouse
+
+		custody = ensure_custody_warehouse(frappe.defaults.get_global_default("company"))
+		frappe.db.set_value("Serial No", self.t_serial, {"is_transfer_gun": 1, "warehouse": custody})
 
 	def sale(self, *rows):
 		si = frappe.new_doc("Sales Invoice")
@@ -334,8 +337,8 @@ class FflTransfer(_Base):
 		row = [r for r in rows if r["template"] == self.tpl.name]
 		self.assertEqual([(r["required"], r["firearms"]) for r in row], [(False, [])])
 
-	def test_a_transfer_gun_in_the_custody_warehouse_counts_without_the_flag(self):
-		frappe.db.set_value("Serial No", self.t_serial, "is_transfer_gun", 0)
-		with patch("ffl_core.custody.custody_warehouse_names", return_value={"_Custody - X"}):
-			frappe.db.set_value("Serial No", self.t_serial, "warehouse", "_Custody - X", update_modified=False)
+	def test_a_stale_transfer_flag_on_the_stores_own_gun_is_still_asked_for(self):
+		# Taken back in a way that did not reset the flag (a trade-in): it sits in the store's stock now.
+		frappe.db.set_value("Serial No", self.t_serial, "warehouse", None)
+		with self.assertRaisesRegex(agreements.AgreementRequired, self.t_serial):
 			agreements.refuse_missing_required(self.sale((self.t_code, self.t_serial)))

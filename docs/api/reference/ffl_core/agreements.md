@@ -20,7 +20,7 @@ Every active agreement and where this customer stands, for the register's Agreem
 
 **Returns:** {"rows": [{"template", "scope", "requirement", "required": whether this sale needs it, "state", "expires_on", "agreement", "firearms"}]} — every template once, except an Each firearm sold one with One copy per gun, once per gun. An Each firearm sold row lists the guns one copy is signed for in "firearms": [{"serial_no", "item_code", "item_name", "rate", "state"}] (the guns the sale needs it for, else every gun in the cart; empty when the cart has none); its "state" is signed once every one of them is, pending when the unsigned ones all have a copy out, else missing.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:424`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:437`</sub>
 
 ## `get_customer_agreements`
 
@@ -36,7 +36,7 @@ The Agreements section of the Customer form.
 
 **Returns:** {"rows": [{"name", "template", "serial_no": every gun it covers, comma-separated, "status", "signed_on", "signed_via", "expires_on", "signed_pdf"}] newest first, "can_manage": whether the caller may void or record paper copies}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:933`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:976`</sub>
 
 ## `load_for_signing`
 
@@ -58,7 +58,7 @@ then on carries) the current text.
 
 **Returns:** {"customer_name", "title", "body_html", "store_name", "minors_need_guardian", "minor_by_dob": true / false from the customer's date of birth, or null when the store keeps none (the page then asks)}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:1028`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:1071`</sub>
 
 ## `record_paper_agreement`
 
@@ -85,7 +85,7 @@ signed scan there is nothing to record.
 
 **Returns:** {"name", "status", "expires_on", "signed_pdf"}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:870`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:913`</sub>
 
 ## `regenerate_signed_pdf`
 
@@ -101,7 +101,7 @@ Build a signed copy's PDF again (when the background job failed).
 
 **Returns:** {"signed_pdf": file URL}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:958`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:1001`</sub>
 
 ## `request_agreement`
 
@@ -132,7 +132,7 @@ tablet right now — nothing changes unless ``replace`` is 1: the answer is
 
 **Returns:** {"name": the Customer Agreement, "deliver", "token_expires"} plus, for ``qr``, "sign_url" and "qr_svg" (an SVG data URI); for ``email``, "email". The link itself is never stored.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:680`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:723`</sub>
 
 ## `skip_approvers`
 
@@ -144,7 +144,7 @@ Who can approve :func:`skip_for_sale` for this user.
 
 **Returns:** {"self": whether a manager is signed in (they approve their own), "approvers": the managers to pick from otherwise: [{"user", "full_name", "has_pin", "pin_off"}]}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:560`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:589`</sub>
 
 ## `skip_for_sale`
 
@@ -152,25 +152,30 @@ Who can approve :func:`skip_for_sale` for this user.
 
 **Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager
 
-A manager lets the next sale to *customer* from this screen go without the agreements it needs.
+A manager lets the next sale to *customer* from this screen go without the agreements its cart needs.
 
-A Sales / System Manager signed in approves their own; anyone else names a manager, who
-types their counter PIN (or password) — the price approval's list and checks, lockouts
-included. Good for :data:`SKIP_MINUTES` minutes, once, for the user who asked and this
-customer: the sale gate (:func:`refuse_missing_required`) takes it and writes what was
-unsigned, who approved and why on the sale's timeline.
+Only what the cart's Items ask for (a Required by item template, the used-gun one say) can be
+skipped — never one every sale needs or one an extension asks for. The approval covers the
+agreements unsigned for this cart now: a sale that turns out to need anything else is refused
+as usual and does not use it up. A Sales / System Manager signed in approves their own; anyone
+else names a manager, who types their counter PIN (or password) — the price approval's list
+and checks, lockouts included. Good for :data:`SKIP_MINUTES` minutes, once, for the user who
+asked and this customer: the sale gate (:func:`refuse_missing_required`) takes it, and on
+submit what was unsigned, who approved and why go on the sale's timeline.
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
 | `customer` | string | yes | — | Customer name (document id). |
+| `items` | list | str | no | `None` | The cart, as :func:`agreements_for_sale` reads it. |
+| `sale` | string \| null | no | `None` | The POS Invoice, once saved. |
 | `approver` | string \| null | no | `None` | The manager's user id (from :func:`skip_approvers`); ignored for a manager signed in. |
 | `pin` | string \| null | no | `None` | The approver's counter PIN. |
 | `password` | string \| null | no | `None` | Or their password. |
 | `reason` | string \| null | no | `None` | Why (optional). |
 
-**Returns:** {"approver", "approver_name", "expires_in": seconds}.
+**Returns:** {"approver", "approver_name", "expires_in": seconds, "skipped": [{"template", "serial_no"}]}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:526`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:540`</sub>
 
 ## `submit_signature`
 
@@ -202,7 +207,7 @@ link and 300 per IP address.
 
 **Returns:** {"signed": true, "store_name"}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:1111`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:1154`</sub>
 
 ## `void_agreement`
 
@@ -222,4 +227,4 @@ reason goes on its timeline.
 
 **Returns:** {"name", "status": "Void"}.
 
-<sub>`apps/ffl_core/ffl_core/agreements.py:842`</sub>
+<sub>`apps/ffl_core/ffl_core/agreements.py:885`</sub>

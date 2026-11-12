@@ -344,7 +344,7 @@ doc_events = {
 		"before_submit": [
 			"ffl_core.compliance.web_hold.refuse_held_units",
 			# The customer must have signed what the sale's Items (or extensions) require
-			# (agreements.refuse_missing_required; no override — sign or a paper copy).
+			# (agreements.refuse_missing_required: sign, a paper copy, or a manager skips it for one sale).
 			"ffl_core.agreements.refuse_missing_required",
 		],
 		# Dealer firearm invoices ship from the invoice unless a DN is in
@@ -610,7 +610,7 @@ doc_events = {
 			# online order is owed (web or GunBroker) is not the counter's to sell.
 			"ffl_core.compliance.web_hold.refuse_claimed_firearm_units",
 			# Before anything books: the customer must have signed what the sale needs
-			# (agreements.refuse_missing_required; no override — sign or a paper copy).
+			# (agreements.refuse_missing_required: sign, a paper copy, or a manager skips it for one sale).
 			"ffl_core.agreements.refuse_missing_required",
 			"ffl_core.compliance.trade_in_credit.book_trade_ins_on_submit",
 			# Counter pickup's 4473 ticket: the gun leaves only against a settled

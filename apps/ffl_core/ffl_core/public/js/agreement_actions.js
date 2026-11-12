@@ -252,7 +252,7 @@
 					+ __('Skip for this sale (manager)') + '</button></div>';
 				d.fields_dict.rows.$wrapper.html(html);
 				d.fields_dict.rows.$wrapper.find('[data-ffl-skip]').on('click', function () {
-					skipForSale(customer, frm.doc.customer_name).then(function (ok) { if (ok) d.hide(); });
+					skipForSale(frm).then(function (ok) { if (ok) d.hide(); });
 				});
 				d.fields_dict.rows.$wrapper.find('[data-ffl-send]').on('click', function () {
 					var row = rows[+$(this).attr('data-ffl-send')];
@@ -274,16 +274,18 @@
 		return d;
 	}
 
-	// A manager lets the next sale to this customer from this screen go without its agreements
-	// (agreements.skip_for_sale): a manager signed in just confirms; anyone else has one pick
-	// themselves and type their PIN or password. Reason optional. Resolves true once approved.
-	function skipForSale(customer, customerName) {
+	// A manager lets the next sale to this customer from this screen go without the agreements
+	// this cart's items ask for (agreements.skip_for_sale): a manager signed in just confirms;
+	// anyone else has one pick themselves and type their PIN or password. Reason optional.
+	// Resolves true once approved.
+	function skipForSale(frm) {
+		var customer = frm.doc.customer, customerName = frm.doc.customer_name;
 		return frappe.call({ method: M + 'skip_approvers' }).then(function (r) {
 			var info = r.message || {}, users = info.approvers || [], byUser = {}, usePassword = false;
 			users.forEach(function (u) { byUser[u.user] = u; });
 			return new Promise(function (resolve) {
 				var done = false;
-				var fields = [{ fieldtype: 'HTML', fieldname: 'intro', options: '<p>' + esc(__('{0} can buy without the agreements this sale needs. It is recorded on the sale.', [customerName || customer])) + '</p>' }];
+				var fields = [{ fieldtype: 'HTML', fieldname: 'intro', options: '<p>' + esc(__('{0} can buy without the agreements this cart\'s items need. It is recorded on the sale.', [customerName || customer])) + '</p>' }];
 				if (!info.self) fields.push(
 					{ fieldtype: 'Select', fieldname: 'approver', label: __('Manager'), reqd: 1,
 						options: [{ value: '', label: '' }].concat(users.map(function (u) { return { value: u.user, label: u.full_name }; })),
@@ -295,7 +297,8 @@
 				var d = new frappe.ui.Dialog({ title: __('Skip agreements for this sale'), fields: fields,
 					primary_action_label: __('Skip'),
 					primary_action: function (v) {
-						var args = { customer: customer, reason: v.reason || '' };
+						var args = { customer: customer, items: cartOf(frm), sale: frm.doc.__islocal ? null : frm.doc.name,
+							reason: v.reason || '' };
 						if (!info.self) {
 							if (!v.approver) return error(__('Pick the manager approving.'));
 							if (!v.secret) return error(currentMode() === 'pin' ? __('Type the PIN.') : __('Type the password.'));
