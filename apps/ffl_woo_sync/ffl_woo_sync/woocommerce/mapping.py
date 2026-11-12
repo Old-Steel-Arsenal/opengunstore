@@ -113,7 +113,8 @@ def _pa_condition(
 #
 # Keys below are written in natural form and normalized once at import via
 # ``_norm_caliber_key`` so authoring stays readable and lookups are consistent.
-# Item-dependent bare tokens (``.30`` / ``30`` / ``7.62``) are intentionally
+# Item-dependent bare tokens (``.30`` / ``30`` / ``7.62`` / ``7.62MM`` /
+# ``6.5mm`` / ``.22`` — a suppressor marked ".22 CAL" can have a 5.56 bore) are intentionally
 # absent — string context can't disambiguate them; they are resolved on the
 # POS Item / Serial No side and reach here already specific.
 # ---------------------------------------------------------------------------
@@ -142,7 +143,7 @@ _CALIBER_CANONICAL: dict[str, str] = {
         "32 ACP": ".32 ACP",
         "7.65 mm": "7.65mm Browning",
         ".25 ACP (.25 Auto /  6.35mm)": ".25 ACP",
-        "10mm Auto": "10mm Auto",
+        "10mm Auto": "10mm Auto", "10MM": "10mm Auto",
         ".500 S&W Mag": ".500 S&W Magnum",
         "7.65x21mm": ".30 Luger",
         "7.62x25 mm": "7.62x25mm Tokarev",
@@ -153,8 +154,10 @@ _CALIBER_CANONICAL: dict[str, str] = {
         # ── Rifle / rimfire cartridges ──
         ".22 LR": ".22 LR", "22 LR": ".22 LR", "22": ".22 LR", "22 long rifle": ".22 LR",
         "223": ".223 Remington", ".223": ".223 Remington", ".223 Remington": ".223 Remington",
+        "223 Remington": ".223 Remington", ".223 REM": ".223 Remington", "223 REM": ".223 Remington",
         "5.56 NATO": "5.56 NATO", "5.56mm": "5.56 NATO", "5.56x45": "5.56 NATO",
         "5.56mmx45": "5.56 NATO", "5.56mm/223": "5.56 NATO",
+        "5.56": "5.56 NATO", "556NATO": "5.56 NATO", "556 NATO": "5.56 NATO",
         ".30-06": ".30-06 Springfield", "30-06": ".30-06 Springfield",
         ".30 Carbine": ".30 Carbine", "30 CARBINE": ".30 Carbine",
         ".30-30 Win": ".30-30 Win",
@@ -163,6 +166,7 @@ _CALIBER_CANONICAL: dict[str, str] = {
         ".308": ".308 Win", ".308/7.62x51mm (.308 Winchester)": ".308 Win",
         "7.62 NATO": ".308 Win", "7.62.N": ".308 Win",
         ".300 AAC Blackout (7.62x35mm)": ".300 AAC Blackout", ".300BLK": ".300 AAC Blackout",
+        "300 Blackout": ".300 AAC Blackout", "300 BLK": ".300 AAC Blackout",
         ".338 WM": ".338 Win Mag",
         "338 LAP MAG": ".338 Lapua Magnum",
         "7mm Rem": "7mm Rem",
@@ -182,8 +186,9 @@ _CALIBER_CANONICAL: dict[str, str] = {
         "6.5x52mm Carcano (6.5x52mm Mannlicher-Carcano)": "6.5x52mm Carcano",
         "7.7 Japanese (7.7x58mm)": "7.7 Japanese",
         # ── Shotgun ──
-        "12GA": "12 Gauge", "12 Gauge": "12 Gauge",
-        "20": "20 Gauge",
+        "12GA": "12 Gauge", "12 Gauge": "12 Gauge", "12 GA": "12 Gauge",
+        "20": "20 Gauge", "20GA": "20 Gauge", "20 GA": "20 Gauge",
+        "16GA": "16 Gauge", "16 GA": "16 Gauge",
         "10GA": "10 Gauge",
     }.items()
 }
