@@ -85,7 +85,7 @@ const SR_DEFAULT_HIDDEN = {
 	"Order Detail": [
 		"channel", "item_code", "serial_no", "qty", "unit_price", "gross_merch",
 		"trade_in_net", "net_amount", "line_tax", "shipping", "unclassified",
-		"sales_tax", "tax_mismatch", "total", "order_ref",
+		"sales_tax", "excise_tax", "tax_mismatch", "total", "order_ref",
 		"channel_fees", "profit_after_fees", "ship_to_state",
 		"trade_in_applied", "trade_in_payout",
 	],
@@ -230,13 +230,14 @@ function sr_aggregate_orders(rows) {
 		const inv = r.invoice;
 		if (!inv) return;
 		if (!byInvoice[inv]) {
-			byInvoice[inv] = { order: null, lines: [], charges: { shipping: 0, salesTax: 0, unclassified: [] } };
+			byInvoice[inv] = { order: null, lines: [], charges: { shipping: 0, salesTax: 0, excise: 0, unclassified: [] } };
 		}
 		const agg = byInvoice[inv];
 		if (r.row_kind === "order") {
 			agg.order = r;
 			agg.charges.shipping = Number(r.shipping) || 0;
 			agg.charges.salesTax = Number(r.sales_tax) || 0;
+			agg.charges.excise = Number(r.excise_tax) || 0;
 		} else if (r.row_kind === "product") {
 			agg.lines.push(r);
 		} else if (r.row_kind === "unclassified") {
@@ -853,6 +854,7 @@ function sr_open_order_dialog(invoice) {
 				? [[__("Trade-in"), `<span style="color:var(--blue-600)">◐ ${cur(o.trade_in_net)}</span>`]]
 				: []),
 			[__("Sales Tax"), cur(agg.charges.salesTax)],
+			...(flt(agg.charges.excise) ? [[__("Excise Tax"), cur(agg.charges.excise)]] : []),
 			[__("Shipping"), cur(agg.charges.shipping)],
 			[__("Total"), cur(o.total)],
 			// A negative ticket: the store paid the customer the difference.
@@ -877,6 +879,7 @@ function sr_open_order_dialog(invoice) {
 		const chargeRows = [];
 		if (flt(agg.charges.shipping)) chargeRows.push([__("Shipping"), cur(agg.charges.shipping), ""]);
 		if (flt(agg.charges.salesTax)) chargeRows.push([__("Sales tax"), cur(agg.charges.salesTax), ""]);
+		if (flt(agg.charges.excise)) chargeRows.push([__("Excise tax"), cur(agg.charges.excise), ""]);
 		agg.charges.unclassified.forEach((u) => chargeRows.push([esc(u.label), cur(u.amount), "color:var(--orange-600)"]));
 		const chargesBlock = chargeRows.length
 			? `<div class="text-muted" style="font-size:11px;margin:14px 0 4px">${__("CHARGES")}</div>

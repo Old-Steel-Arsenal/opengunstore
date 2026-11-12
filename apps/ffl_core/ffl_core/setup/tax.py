@@ -116,6 +116,33 @@ def _company_sales_tax_accounts(company: str) -> list[str]:
 	return list(dict.fromkeys(a for a in rows if a))
 
 
+# The account store_setup makes for California's firearm and ammunition excise tax.
+EXCISE_ACCOUNT_NAME = "CA Firearm Excise Tax Payable"
+
+
+def sales_tax_and_excise_accounts(company: str) -> tuple[list[str], list[str]]:
+	"""(sales-tax accounts, excise accounts) of *company*, for reporting what was collected.
+
+	The excise accounts are FFL Settings' peace-officer exempt account (when it is this
+	company's) and any account of the default template named EXCISE_ACCOUNT_NAME; the sales-tax
+	accounts are the default template's accounts less those. Reporting only:
+	`_company_sales_tax_accounts` stays the full list, because the 0% service template and the
+	freight-tax mirror must cover the excise account too."""
+	accounts = _company_sales_tax_accounts(company)
+	if not accounts:
+		return [], []
+	from ffl_core.compliance.le_excise_exempt import SETTING
+	from ffl_core.utils import single_raw
+
+	names = dict(frappe.get_all("Account", filters={"name": ["in", accounts]},
+		fields=["name", "account_name"], as_list=True))
+	excise = {a for a in accounts if names.get(a) == EXCISE_ACCOUNT_NAME}
+	setting = single_raw("FFL Settings", SETTING)
+	if setting and frappe.db.get_value("Account", setting, "company") == company:
+		excise.add(setting)
+	return [a for a in accounts if a not in excise], sorted(excise)
+
+
 # lazy: 25 is a ceiling, not a tuning knob. Steady state is 0 and a retired company
 # leaves exactly 2 (its Service-group link and its TRANSFER-FEE link); anything in
 # the hundreds is templates renamed or dropped without their child links, which is
