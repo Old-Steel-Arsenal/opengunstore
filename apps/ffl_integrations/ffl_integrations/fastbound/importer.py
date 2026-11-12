@@ -35,6 +35,7 @@ except ImportError:  # pragma: no cover — ships with ERPNext, guard anyway
 	barcodenumber = None
 
 from ffl_core.utils import commit as safe_commit
+from ffl_core import serials as _serials
 from ffl_core.firearm import (
 	ensure_brand as _ensure_brand,
 	ensure_caliber as _ensure_caliber,
@@ -68,6 +69,7 @@ class ImportStats:
 	corrected: list[dict] = field(default_factory=list)  # structural fixes applied (serial rename / item move)
 	regroup: list[dict] = field(default_factory=list)    # couldn't auto-move (not a clean in-stock import) → manual
 	projected: dict = field(default_factory=dict)   # dry-run only: item_code → grouping
+	duplicate_groups: list[dict] = field(default_factory=list)  # tagged guns: same serial / no serial
 
 	def as_dict(self) -> dict:
 		return {
@@ -82,6 +84,7 @@ class ImportStats:
 			"regroup_needed": self.regroup,
 			"projected_items": len(self.projected),
 			"projected": self.projected,
+			"duplicate_groups": self.duplicate_groups,
 		}
 
 
@@ -129,9 +132,16 @@ def import_bound_book(
 	        importing a sold gun would wrongly re-stock it). Pass 0 to
 	        import the entire historical book.
 
+	Guns the book records with no serial ("NONE MARKED", "NSN", ...) or with the
+	same serial as another in-stock item are each imported as their own gun under a
+	tagged Serial No ("<serial> (FB <item number>)"); the serial as the book writes
+	it is kept in Serial No.ledger_serial.
+
 	Returns:
 	    Import stats dict (created/synced/corrected/regroup_needed counts;
-	    plus `projected` on a dry run).
+	    plus `projected` on a dry run) and `duplicate_groups`: [{ledger_serial,
+	    no_serial, items: [{fastbound_id, itemNumber, serial, manufacturer,
+	    model, caliber}]}] — the guns that get tagged keys, to review first.
 	"""
 	frappe.only_for(SYSTEM_ROLES)
 	dry = bool(int(dry_run))
@@ -154,34 +164,41 @@ def import_bound_book(
 	if not dry:
 		company = frappe.defaults.get_user_default("Company") or _first_company()
 		warehouse = _default_warehouse(company)
+	# Read the whole book first: whether a gun needs a tagged key depends on every
+	# other in-stock item (two items with one serial are BOTH tagged; see _tag_plan).
+	book: list[dict] = []
 	for page in client.iter_items(page_size=int(page_size)):
 		for fb_item in page:
 			stats.fetched += 1
 			if skip_disp and (fb_item.get("disposed") or fb_item.get("deleted")):
 				stats.disposed += 1
 				continue
-			try:
-				if dry:
-					dry_items.append(fb_item)
-					stats.skipped += 1
-					continue
-				outcome = _upsert_one(fb_item, aggregate_by=mode, stats=stats, warehouse=warehouse)
-				if outcome == "created":
-					stats.created += 1
-				elif outcome == "updated":
-					stats.updated += 1
-				else:
-					stats.skipped += 1
-				if commit:
-					frappe.db.commit()
-			except Exception as exc:
-				stats.errors.append({
-					"serial": fb_item.get("serial"),
-					"fastbound_id": fb_item.get("id"),
-					"error": str(exc)[:300],
-				})
-				if commit:
-					frappe.db.rollback()
+			book.append(fb_item)
+	tagged, stats.duplicate_groups = _tag_plan(book)
+	for fb_item in book:
+		try:
+			if dry:
+				dry_items.append(fb_item)
+				stats.skipped += 1
+				continue
+			outcome = _upsert_one(fb_item, aggregate_by=mode, stats=stats, warehouse=warehouse,
+				force_tag=str(fb_item.get("id") or "").strip() in tagged)
+			if outcome == "created":
+				stats.created += 1
+			elif outcome == "updated":
+				stats.updated += 1
+			else:
+				stats.skipped += 1
+			if commit:
+				frappe.db.commit()
+		except Exception as exc:
+			stats.errors.append({
+				"serial": fb_item.get("serial"),
+				"fastbound_id": fb_item.get("id"),
+				"error": str(exc)[:300],
+			})
+			if commit:
+				frappe.db.rollback()
 
 	if dry:
 		stats.projected = _preview_grouping(dry_items, aggregate_by=mode)
@@ -212,10 +229,49 @@ def _preview_grouping(items: list[dict], *, aggregate_by: str = AGGREGATE_AUTO) 
 	return out
 
 
+def _ledger_text(fb_item: dict) -> str:
+	"""The bound-book serial as written (outer whitespace aside)."""
+	return str(fb_item.get("serial") or "").strip()
+
+
+def _tag_plan(book: list[dict]) -> tuple[set[str], list[dict]]:
+	"""Which bound-book items get a tagged key, and the groups to show before importing.
+
+	An item is tagged when its serial is a "no serial" spelling, or when another item
+	in the same import carries the same serial (case and spacing aside): then EVERY
+	item of that group is tagged, so no gun of the group answers to the bare number
+	(a later bare-number lookup finds nothing instead of the wrong gun). The tag is
+	FastBound's item number, so a re-import mints the same key — and a re-import
+	finds each gun by its FastBound id before it would ever mint one."""
+	groups: dict[str, list[dict]] = {}
+	for it in book:
+		ledger = _ledger_text(it)
+		key = "\x00placeholder:" + ledger.casefold() if _serials.is_placeholder(ledger) \
+			else " ".join(ledger.casefold().split())
+		groups.setdefault(key, []).append(it)
+	tagged: set[str] = set()
+	preview: list[dict] = []
+	for key, items in groups.items():
+		if len(items) < 2 and not key.startswith("\x00placeholder:"):
+			continue
+		tagged.update(str(it.get("id") or "").strip() for it in items)
+		preview.append({
+			"ledger_serial": _ledger_text(items[0]),
+			"no_serial": key.startswith("\x00placeholder:"),
+			"items": [{
+				"fastbound_id": it.get("id"), "itemNumber": it.get("itemNumber"),
+				"serial": _ledger_text(it), "manufacturer": it.get("manufacturer"),
+				"model": it.get("model"), "caliber": it.get("caliber"),
+			} for it in items],
+		})
+	return tagged, preview
+
+
 # ---------------------------------------------------------------- internals
 
 def _upsert_one(fb_item: dict[str, Any], *, aggregate_by: str = AGGREGATE_AUTO,
-		stats: ImportStats | None = None, warehouse: str | None = None) -> str:
+		stats: ImportStats | None = None, warehouse: str | None = None,
+		force_tag: bool = False) -> str:
 	"""Mirror one FastBound item; returns 'created', 'updated', or 'skipped'.
 
 	Does NOT commit — the caller (`import_bound_book`) decides the transaction
@@ -228,36 +284,80 @@ def _upsert_one(fb_item: dict[str, Any], *, aggregate_by: str = AGGREGATE_AUTO,
 
 	# Already imported? Re-sync it instead of skipping — FastBound is authoritative,
 	# so a later correction (maker/importer, serial typo, model/caliber) must reach POS.
-	if frappe.db.exists("FFL Acquisition", {"fastbound_id": fb_id}):
-		return _resync_existing(fb_item, aggregate_by=aggregate_by, stats=stats)
+	# A gun pushed FROM the POS carries the item id on its Serial No only (its
+	# acquisition holds FastBound's acquisition id), so look there too — creating it
+	# again would put a second unit of one gun in stock.
+	if (frappe.db.exists("FFL Acquisition", {"fastbound_id": fb_id})
+			or frappe.db.exists("Serial No", {"fastbound_item_id": fb_id})):
+		return _resync_existing(fb_item, aggregate_by=aggregate_by, stats=stats, force_tag=force_tag)
 
-	_create_from_scratch(fb_item, aggregate_by=aggregate_by, warehouse=warehouse)
+	_create_from_scratch(fb_item, aggregate_by=aggregate_by, warehouse=warehouse, force_tag=force_tag)
 	return "created"
 
 
 def _create_from_scratch(fb_item: dict[str, Any], *, aggregate_by: str,
-		warehouse: str | None = None) -> str:
+		warehouse: str | None = None, force_tag: bool = False) -> str:
 	"""Item (created if absent) + FFL Acquisition + serialized stock receipt for one
 	gun. The aggregation key (SKU > UPC > MPN > model-slug > fb-id, or model+caliber
 	in model mode) decides which Item it rolls into."""
 	item_code = _item_code_for(fb_item, aggregate_by=aggregate_by)
+	key = _key_for_new_gun(fb_item, force_tag=force_tag)
 	_ensure_item(item_code, fb_item, aggregate_by=aggregate_by)
-	_create_acquisition(item_code, fb_item)
-	_create_stock_receipt(item_code, fb_item, warehouse=warehouse)
+	_create_acquisition(item_code, fb_item, key=key)
+	_create_stock_receipt(item_code, fb_item, warehouse=warehouse, serial=key)
+	_stamp_ledger(key, _ledger_text(fb_item))
 	return item_code
 
 
+def _key_for_new_gun(fb_item: dict[str, Any], *, force_tag: bool) -> str:
+	"""The Serial No name for a bound-book item the POS doesn't have yet.
+
+	An untagged serial already naming an IN-STOCK gun is refused rather than tagged:
+	that gun is not linked to this bound-book item (or the import would have found it
+	by id), so it may be the very same physical gun — tagging would stock it twice. A
+	sold gun of that name coming back is a reacquisition of the same Serial No, as
+	before."""
+	ledger = _ledger_text(fb_item)
+	if not force_tag and ledger and not _serials.is_placeholder(ledger):
+		status = frappe.db.get_value("Serial No", ledger, "status")
+		if status == "Active":
+			raise FastBoundError(
+				f"Serial {ledger!r} is already in stock in the POS under another record, not "
+				f"linked to FastBound item #{fb_item.get('itemNumber')}. If they are the same "
+				f"gun, link them with Reconcile to FastBound; if they are two guns, import them "
+				f"together so both are told apart.")
+		if status:
+			return frappe.db.get_value("Serial No", ledger, "name")
+	return _serials.allocate_serial_key(
+		ledger, fb_item_number=fb_item.get("itemNumber"), force_tag=force_tag)
+
+
+def _stamp_ledger(key: str, ledger: str) -> None:
+	"""The gun's bound-book serial and whether the book records it as having none."""
+	frappe.db.set_value("Serial No", key, {
+		"ledger_serial": ledger or _serials.NO_SERIAL_TEXT,
+		"no_serial": 1 if _serials.is_placeholder(ledger) else 0,
+	}, update_modified=False)
+
+
 def _resync_existing(fb_item: dict[str, Any], *, aggregate_by: str,
-		stats: ImportStats | None = None) -> str:
+		stats: ImportStats | None = None, force_tag: bool = False) -> str:
 	"""Re-sync an already-imported gun from the CURRENT FastBound record so a FB
-	correction reaches POS. The gun is located by its FastBound id (stable across a
-	serial edit). Returns 'updated', or 'skipped' if it can't be located.
+	correction reaches POS. Returns 'updated', or 'skipped' if it can't be located.
+
+	The gun is located by its FastBound id: on the Serial No, else through the FFL
+	Acquisition the import booked with that id. Never by the bound-book serial, which
+	repeats (no-serial guns, same-serial guns): adopting a gun by serial is how one gun
+	ends up carrying another bound-book item's id.
 
 	This is an ATTRIBUTE reconciliation, never a structural move:
 	- maker / importer / model / caliber changed → re-stamp the Serial No in place
 	  (FastBound is authoritative; these are per-unit fields, no stock movement).
-	- serial changed → rename the Serial No (keeps stock + A&D) and carry the new
-	  serial onto its FFL Acquisition.
+	- serial changed → the gun's ledger serial follows, and so does its key, so an
+	  ordinary gun stays named by its serial: renamed to the new serial when that is
+	  free (keeps stock + A&D), else to a tagged key ("<serial> (FB <number>)") when
+	  another gun holds the serial or it is a "no serial" spelling. Never merged into
+	  another gun.
 	- model / caliber now maps to a DIFFERENT Item (the gun is mis-bucketed) → it is
 	  ONLY reported (regroup_needed) for a human to reassign. The sync NEVER moves a
 	  gun between Items itself — that's the manual reassign's job. Auto-moving would
@@ -271,35 +371,42 @@ def _resync_existing(fb_item: dict[str, Any], *, aggregate_by: str,
 	was written against is long gone.
 	"""
 	fb_id = (fb_item.get("id") or "").strip()
-	fields = ["name", "item_code"]
+	fields = ["name", "item_code", "fastbound_item_id"]
 	sn = frappe.db.get_value("Serial No", {"fastbound_item_id": fb_id}, fields, as_dict=True)
 	if not sn:
-		# Older import without the id stamped — fall back to the FastBound serial.
-		fb_serial = (fb_item.get("serial") or "").strip()
-		if fb_serial:
-			sn = frappe.db.get_value("Serial No", fb_serial, fields, as_dict=True)
+		# Imported before the id was stamped on the Serial No: the acquisition the
+		# import booked carries the id and names the gun's key.
+		key = frappe.db.get_value("FFL Acquisition", {"fastbound_id": fb_id}, "serial")
+		sn = frappe.db.get_value("Serial No", key, fields, as_dict=True) if key else None
 	if not sn:
+		return "skipped"
+	if (sn.fastbound_item_id or "").strip() not in ("", fb_id):
+		# That gun is linked to a DIFFERENT bound-book item. Stamping this id on it
+		# would make two bound-book entries one gun; a person decides.
+		if stats is not None:
+			stats.regroup.append({"serial": sn.name, "from": sn.item_code, "to": sn.item_code,
+				"reason": "FastBound item {0} leads to a gun linked to FastBound item {1}; "
+					"resolve by hand".format(fb_id, sn.fastbound_item_id)})
 		return "skipped"
 
 	cur_serial, cur_item = sn.name, sn.item_code
-	new_serial = (fb_item.get("serial") or "").strip()
+	new_ledger = _ledger_text(fb_item)
 
-	# Serial correction → rename in place; keeps stock + A&D intact (non-destructive).
-	if new_serial and new_serial != cur_serial:
-		if frappe.db.exists("Serial No", new_serial):
-			# The corrected serial already names a DIFFERENT gun locally — a real
-			# conflict we can't auto-resolve. Surface it for a human.
-			if stats is not None:
-				stats.regroup.append({"serial": cur_serial, "from": cur_item, "to": cur_item,
-					"reason": "corrected serial {0} already exists".format(new_serial)})
-		else:
-			frappe.rename_doc("Serial No", cur_serial, new_serial, force=True)
+	# Serial correction in FastBound → the ledger serial follows, and the key with it
+	# when it must (rename in place keeps stock + A&D intact).
+	if new_ledger and new_ledger != _serials.ledger_serial(cur_serial):
+		target = _key_after_serial_edit(cur_serial, new_ledger, fb_item, force_tag=force_tag)
+		if target != cur_serial:
+			frappe.rename_doc("Serial No", cur_serial, target, force=True)
 			for acq in frappe.get_all("FFL Acquisition", filters={"serial": cur_serial}, pluck="name"):
-				frappe.db.set_value("FFL Acquisition", acq, "serial", new_serial, update_modified=False)
+				frappe.db.set_value("FFL Acquisition", acq, "serial", target, update_modified=False)
 			if stats is not None:
-				stats.corrected.append({"serial": new_serial, "change": "renamed",
-					"from": cur_serial, "to": new_serial})
-			cur_serial = new_serial
+				stats.corrected.append({"serial": target, "change": "renamed",
+					"from": cur_serial, "to": target})
+			cur_serial = target
+		_stamp_ledger(cur_serial, new_ledger)
+		for acq in frappe.get_all("FFL Acquisition", filters={"serial": cur_serial}, pluck="name"):
+			frappe.db.set_value("FFL Acquisition", acq, "ledger_serial", new_ledger, update_modified=False)
 
 	# Align this gun's per-unit facts (maker / importer / model / caliber) to
 	# FastBound — pure field writes, no stock movement, no data loss.
@@ -314,6 +421,21 @@ def _resync_existing(fb_item: dict[str, Any], *, aggregate_by: str,
 			"reason": "model/caliber now maps to {0}; reassign if desired".format(new_item)})
 
 	return "updated"
+
+
+def _key_after_serial_edit(cur_key: str, new_ledger: str, fb_item: dict, *, force_tag: bool) -> str:
+	"""The key a gun should carry once its bound-book serial reads `new_ledger`.
+
+	Kept when it already reads as that serial: a change of case only, or a tagged gun
+	that stays tagged under the same serial. Else the bare serial when it is free and
+	no other gun of this import shares it, else a new tagged key."""
+	if _serials.same_serial(cur_key, new_ledger):
+		return cur_key
+	if (force_tag or _serials.is_placeholder(new_ledger)) \
+			and cur_key.startswith(_serials.key_base(new_ledger) + " ("):
+		return cur_key
+	return _serials.allocate_serial_key(
+		new_ledger, fb_item_number=fb_item.get("itemNumber"), force_tag=force_tag)
 
 
 def _safe_to_rekey(serial: str, status: str | None = None) -> bool:
@@ -589,7 +711,7 @@ def _describe(fb_item: dict) -> str:
 	return " | ".join(parts)
 
 
-def _create_acquisition(item_code: str, fb_item: dict) -> str:
+def _create_acquisition(item_code: str, fb_item: dict, *, key: str | None = None) -> str:
 	from ffl_core.acquisition import record_firearm_acquisition
 
 	# Importer doesn't follow acquisitionContactId — saves one HTTP per item.
@@ -601,7 +723,8 @@ def _create_acquisition(item_code: str, fb_item: dict) -> str:
 	id_required = source_type in {"Individual", "Trade-in", "Estate", "Pawn"}
 	return record_firearm_acquisition(
 		item_code=item_code,
-		serial=(fb_item.get("serial") or "").strip(),
+		serial=key or _ledger_text(fb_item),
+		ledger_serial=_ledger_text(fb_item) or _serials.NO_SERIAL_TEXT,
 		source_type=source_type,
 		source_name=src_name,
 		source_ffl=src_ffl,
@@ -636,7 +759,11 @@ def _map_acquisition_source(fb_item: dict) -> str:
 	return "Individual"
 
 
-def _create_stock_receipt(item_code: str, fb_item: dict, *, warehouse: str | None = None) -> str:
+def _create_stock_receipt(item_code: str, fb_item: dict, *, warehouse: str | None = None,
+		serial: str | None = None) -> str:
+	"""One-unit Material Receipt of the gun named `serial` (its Serial No key; defaults
+	to the item's own serial, which is how reassign_serial_to_item passes it)."""
+	serial = (serial or fb_item.get("serial") or "").strip()
 	# A given warehouse decides the company (reassign's receipt leg must land where
 	# issue_serial took the gun out); otherwise the user's default.
 	company = (frappe.db.get_value("Warehouse", warehouse, "company") if warehouse else None) \
@@ -651,7 +778,7 @@ def _create_stock_receipt(item_code: str, fb_item: dict, *, warehouse: str | Non
 		"items": [serialized_receipt_row(
 			item_code=item_code, qty=1, warehouse=warehouse,
 			basic_rate=float(fb_item.get("cost") or 0) or 0.01,
-			serial=(fb_item.get("serial") or "").strip() or None,
+			serial=serial or None,
 		)],
 	})
 	se.flags.ignore_permissions = True
@@ -659,7 +786,6 @@ def _create_stock_receipt(item_code: str, fb_item: dict, *, warehouse: str | Non
 	se.submit()
 
 	# Stamp per-unit attributes onto the Serial No the receipt just materialised.
-	serial = (fb_item.get("serial") or "").strip()
 	if serial and frappe.db.exists("Serial No", serial):
 		_stamp_serial_attrs(serial, fb_item)
 	return se.name
@@ -685,6 +811,10 @@ def _stamp_serial_attrs(serial: str, fb_item: dict) -> None:
 	fb_id = (fb_item.get("id") or "").strip()
 	if fb_id:
 		updates["fastbound_item_id"] = fb_id
+	number = str(fb_item.get("itemNumber") or "").strip()
+	if number:
+		# The bound-book entry number staff read in FastBound; tells same-serial guns apart.
+		updates["fastbound_item_number"] = number
 	mfg = (fb_item.get("manufacturer") or "").strip()
 	if mfg and mfg.lower() != "unknown":
 		# Canonical maker name (H&R, Colt, …) so the bound book shows one
