@@ -1215,8 +1215,14 @@ def is_member(customer: str, plan: str | None = None) -> bool:
 	if plan:
 		filters["plan"] = plan
 	today = getdate(nowdate())
-	return any(r.status == ACTIVE or (r.grace_until and getdate(r.grace_until) >= today)
+	return any(gives_benefits(r.status, r.grace_until, today)
 		for r in frappe.get_all(DOCTYPE, filters=filters, fields=["status", "grace_until"]))
+
+
+def gives_benefits(status: str, grace_until, day) -> bool:
+	"""Whether a membership in *status* gives its benefits on *day*: Active, or Past Due while its
+	grace (to *grace_until*) lasts. The one rule for :func:`is_member` and the member prices."""
+	return status == ACTIVE or (status == PAST_DUE and bool(grace_until) and getdate(grace_until) >= getdate(day))
 
 
 @frappe.whitelist()

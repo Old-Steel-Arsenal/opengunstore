@@ -340,6 +340,7 @@ class DailyUses(_Base):
 		second = _ticket(self.cust, (self.item, 1))
 		self.assertEqual(_line(second.items[0]), (30, 30, 0, 0, None))
 		self.assertTrue(any("no uses left today" in str(m) for m in frappe.message_log), frappe.message_log)
+		self.assertTrue(any(f"Used on: {first.name}." in str(m) for m in frappe.message_log), frappe.message_log)
 		self.assertEqual(mb.benefit_usage(self.cust, self.benefit), {"limit": 1, "used": 1, "left": 0})
 
 	def test_two_lines_in_one_ticket(self):
@@ -356,9 +357,24 @@ class DailyUses(_Base):
 		self.assertEqual(flt(inv.items[0].rate), 30)
 		self.assertTrue(any("1 left today, this line has 2" in str(m) for m in frappe.message_log), frappe.message_log)
 
-	def test_a_draft_holds_its_use(self):
-		_ticket(self.cust, (self.item, 1))
+	def test_a_draft_holds_its_use_and_the_notice_names_it(self):
+		draft = _ticket(self.cust, (self.item, 1))
+		frappe.message_log = []
 		self.assertEqual(flt(_ticket(self.cust, (self.item, 1)).items[0].rate), 30)
+		self.assertTrue(any(f"Used on: {draft.name} (not completed)." in str(m) for m in frappe.message_log),
+			frappe.message_log)
+		self.assertIn(f"{draft.name} (not completed)", mb.member_price(self.cust, self.item)["notice"])
+		# Only this member's sales: another member's ticket is never named.
+		other = gw._customer().name
+		_member(other, self.plan)
+		_ticket(other, (self.item, 1))
+		self.assertNotIn(draft.name, mb.member_price(other, self.item)["notice"])
+
+	def test_the_notice_names_this_sales_earlier_line(self):
+		frappe.message_log = []
+		_ticket(self.cust, (self.item, 1), (self.item, 1))
+		self.assertTrue(any("Used on: earlier lines of this sale." in str(m) for m in frappe.message_log),
+			frappe.message_log)
 
 	def test_a_full_return_gives_the_use_back_a_partial_one_does_not(self):
 		from erpnext.accounts.doctype.pos_invoice.pos_invoice import make_sales_return
@@ -374,6 +390,20 @@ class DailyUses(_Base):
 		self.assertEqual(mb.benefit_usage(cust, plan.benefits[0].name)["used"], 2, "half returned: still used")
 		self._return(make_sales_return(sale.name))
 		self.assertEqual(mb.benefit_usage(cust, plan.benefits[0].name)["used"], 0, "all returned: given back")
+
+	def test_a_credit_note_naming_the_register_line_gives_the_use_back(self):
+		"""A credit note whose line names only the register line (pos_invoice_item), not an invoice line."""
+		sale = _ticket(self.cust, (self.item, 1), submit=True)
+		self.assertEqual(mb.benefit_usage(self.cust, self.benefit)["used"], 1)
+		note = frappe.get_doc({"doctype": "Sales Invoice", "company": COMPANY, "customer": self.cust, "is_return": 1,
+			"items": [{"item_code": self.item, "qty": -1, "rate": 15, "pos_invoice": sale.name,
+				"pos_invoice_item": sale.items[0].name}]})
+		note.set_missing_values()
+		note.insert(ignore_permissions=True)
+		note.submit()
+		self.assertEqual((note.items[0].pos_invoice_item, note.items[0].sales_invoice_item),
+			(sale.items[0].name, None))
+		self.assertEqual(mb.benefit_usage(self.cust, self.benefit)["used"], 0, "returned in full: given back")
 
 	@staticmethod
 	def _return(ret, qty=None):
@@ -444,7 +474,7 @@ class SubmitAndApproval(_Base):
 		inv.set_missing_values()
 		inv.append("payments", {"mode_of_payment": "Cash", "amount": 31.8})
 		inv.flags.ignore_permissions = True
-		with self.assertRaisesRegex(mb.MemberPriceChanged, "member price changed"):
+		with self.assertRaisesRegex(mb.MemberPriceChanged, "member price is different now.*Complete Order again"):
 			inv.submit()
 
 	def test_price_approval_floor(self):
@@ -599,6 +629,137 @@ class ExtensionSurface(_Base):
 		out = pos_ticket.build_ticket(self.cust, [{"item_code": self.lane, "rate": 30}], company=COMPANY)
 		self.assertEqual(flt(frappe.get_doc("POS Invoice", out["pos_invoice"]).items[0].rate), 20,
 			"a member price under the caller's rate replaces it")
+
+
+class PostingDay(_Base):
+	"""ERPNext posts a draft on the day it is saved or completed, not the day it was started (unless it
+	keeps its own date): the member price and its daily uses follow that day."""
+
+	def setUp(self):
+		super().setUp()
+		self.cust = gw._customer().name
+		self.item = _item("DAY", 30)
+		self.yesterday = add_days(getdate(nowdate()), -1)
+		# An Item Price is valid from the day it is made: this one sold yesterday too.
+		frappe.db.set_value("Item Price", {"item_code": self.item, "price_list": PRICE_LIST}, "valid_from",
+			add_days(self.yesterday, -7))
+
+	def _dated(self, customer, on, keep=True):
+		"""A draft priced on *on*; with keep=False it is left as a draft saved that day (no own date)."""
+		inv = frappe.get_doc({"doctype": "POS Invoice", "company": COMPANY, "pos_profile": gw.PROFILE,
+			"customer": customer, "posting_date": on, "set_posting_time": 1,
+			"items": [{"item_code": self.item, "qty": 1}]})
+		inv.set_missing_values()
+		inv.flags.ignore_permissions = True
+		inv.insert()
+		if not keep:
+			frappe.db.set_value("POS Invoice", inv.name, "set_posting_time", 0)
+		return frappe.get_doc("POS Invoice", inv.name)
+
+	def _complete(self, inv):
+		inv.set("payments", [])
+		inv.append("payments", {"mode_of_payment": "Cash", "amount": flt(inv.rounded_total) or flt(inv.grand_total),
+			"default": 1})
+		inv.flags.ignore_permissions = True
+		inv.submit()
+
+	def _refused_then_list_price(self, draft):
+		with self.assertRaisesRegex(mb.MemberPriceChanged, "started on another day"):
+			self._complete(frappe.get_doc("POS Invoice", draft.name))
+		inv = frappe.get_doc("POS Invoice", draft.name)
+		inv.save()
+		self.assertEqual(getdate(inv.posting_date), getdate(nowdate()))
+		self.assertEqual(_line(inv.items[0]), (30, 30, 0, 0, None))
+		self.assertFalse(inv.items[0].get(BENEFIT_FIELD))
+
+	def test_a_benefit_of_yesterdays_weekday_is_not_given_today(self):
+		_member(self.cust, _plan(_benefit(mb.ON_ITEM, self.item, mb.PERCENT, 20, days=mb.DAYS[self.yesterday.weekday()])))
+		draft = self._dated(self.cust, self.yesterday, keep=False)
+		self.assertEqual((getdate(draft.posting_date), flt(draft.items[0].rate)), (self.yesterday, 24))
+		self.assertEqual(mb.posting_day(draft), getdate(nowdate()))
+		self._refused_then_list_price(draft)
+
+	def test_todays_use_taken_on_another_ticket(self):
+		_member(self.cust, _plan(_benefit(mb.ON_ITEM, self.item, mb.PERCENT, 20, uses=1)))
+		draft = self._dated(self.cust, self.yesterday, keep=False)
+		self.assertEqual(flt(draft.items[0].rate), 24, "yesterday's use")
+		today = _ticket(self.cust, (self.item, 1))
+		self.assertEqual(flt(today.items[0].rate), 24, "the draft counts on yesterday, so today's use is free")
+		self._refused_then_list_price(draft)
+
+	def test_a_document_keeping_its_own_date_is_priced_on_it(self):
+		_member(self.cust, _plan(_benefit(mb.ON_ITEM, self.item, mb.PERCENT, 20, uses=1,
+			days=mb.DAYS[self.yesterday.weekday()])))
+		kept = self._dated(self.cust, self.yesterday)
+		self.assertEqual(mb.posting_day(kept), self.yesterday)
+		kept.save()
+		kept = frappe.get_doc("POS Invoice", kept.name)
+		self.assertEqual((getdate(kept.posting_date), flt(kept.items[0].rate)), (self.yesterday, 24))
+		self.assertEqual(mb.benefit_usage(self.cust, kept.items[0].get(BENEFIT_FIELD), self.yesterday)["used"], 1)
+		self.assertIn(f"Used on: {kept.name} (not completed).",
+			mb.member_price(self.cust, self.item, on_date=self.yesterday)["notice"])
+		self.assertEqual(flt(_ticket(self.cust, (self.item, 1)).items[0].rate), 30, "not today's weekday")
+
+
+class UnitsOfMeasure(_Base):
+	"""A benefit is per stock unit: a box of 20 rounds takes 20 times the amount off and 20 uses."""
+
+	def setUp(self):
+		super().setUp()
+		self.cust = gw._customer().name
+		self.ammo = _item("BOX", 1, uoms=[{"uom": "Nos", "conversion_factor": 1}, {"uom": "Box", "conversion_factor": 20}])
+
+	def _box(self, *boxes):
+		inv = frappe.get_doc({"doctype": "POS Invoice", "company": COMPANY, "pos_profile": gw.PROFILE,
+			"customer": self.cust, "items": [{"item_code": self.ammo, "qty": q, "uom": "Box", "conversion_factor": 20}
+				for q in boxes]})
+		inv.set_missing_values()
+		inv.flags.ignore_permissions = True
+		inv.insert()
+		return frappe.get_doc("POS Invoice", inv.name)
+
+	def test_amount_and_fixed_per_stock_unit(self):
+		plan = _plan(_benefit(mb.ON_ITEM, self.ammo, mb.AMOUNT, 0.25))
+		_member(self.cust, plan)
+		self.assertEqual(_line(self._box(1).items[0])[:3], (20, 15, 5), "$0.25 a round off a box of 20")
+		cust = gw._customer().name
+		_member(cust, _plan(_benefit(mb.ON_ITEM, self.ammo, mb.FIXED, 0.5)))
+		self.cust = cust
+		self.assertEqual(_line(self._box(1).items[0])[:3], (20, 10, 10), "$0.50 a round: $10 a box")
+
+	def test_uses_are_stock_units(self):
+		plan = _plan(_benefit(mb.ON_ITEM, self.ammo, mb.AMOUNT, 0.25, uses=50))
+		_member(self.cust, plan)
+		benefit = plan.benefits[0].name
+		inv = self._box(2, 1)
+		self.assertEqual([flt(r.rate) for r in inv.items], [15, 20], "40 of 50 rounds, then 10 left for a box of 20")
+		self.assertEqual(mb.benefit_usage(self.cust, benefit), {"limit": 50, "used": 40, "left": 10})
+		self.assertEqual(mb.member_price(self.cust, self.ammo, qty=10)["rate"], 0.75, "10 loose rounds still fit")
+		self.assertIn("10 left today, this line has 20", mb.member_price(self.cust, self.ammo, qty=20)["notice"])
+
+	def test_a_free_box_of_a_taxed_item_is_refused_at_plan_save(self):
+		with self.assertRaisesRegex(frappe.ValidationError, "cannot be given for free"):
+			_plan(_benefit(mb.ON_ITEM, self.ammo, mb.AMOUNT, 1))
+
+
+class FloorsReuse(_Base):
+	"""The price approval's member floors reuse the member prices the same save worked out."""
+
+	def test_reused_within_the_save_recomputed_otherwise(self):
+		cust = gw._customer().name
+		item = _item("FLR", 30)
+		_member(cust, _plan(_benefit(mb.ON_ITEM, item, mb.PERCENT, 20, uses=1)))
+		inv = _ticket(cust, (item, 1), (item, 1))
+		inv._action = "save"
+		mb.apply_member_prices(inv)
+		fresh = mb.member_floors(frappe.get_doc("POS Invoice", inv.name))
+		with patch.object(mb, "price_line", wraps=mb.price_line) as priced:
+			self.assertEqual(mb.member_floors(inv), {inv.items[0].name: 24})
+			self.assertEqual(priced.call_count, 0, "the save's own answer")
+			self.assertEqual(mb.member_floors(inv), fresh)
+			inv.items[1].qty = 2   # the lines changed after it was worked out
+			mb.member_floors(inv)
+			self.assertEqual(priced.call_count, 2, "worked out again")
 
 
 class OpenTicketApproval(SettingsSandbox, _Base):

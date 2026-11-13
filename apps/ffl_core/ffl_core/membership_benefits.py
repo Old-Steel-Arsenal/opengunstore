@@ -4,21 +4,27 @@ A Membership Plan lists its benefits (``Membership Plan Benefit``): what a membe
 an Item Group (sub-groups too) or the items of a Price List — a percentage or an amount off, a fixed
 price, or that price list's own price — on which days, and how many units a day.
 
-* **One line, one answer** — :func:`price_line` prices a line for one member on one day:
+* **One line, one answer** — :func:`price_line` prices a line for one member on one day, the day
+  the document will be posted on (:func:`posting_day`: today, as ERPNext posts a sale saved or
+  completed today, unless the document keeps its own date):
 
   1. ``list_rate`` is what the line costs anyone today (``price_approval.list_rate``: the
      document's Item Price, a sale already in it, a gun's own price). It is never raised back to
      a price before a sale.
   2. Every benefit of every membership the member holds that day (Active, or Past Due within its
-     grace — :func:`ffl_core.membership.is_member`, on the document's date) that covers the item
-     gives a member price, worked out from the item's *regular* price (before any sale).
+     grace — ``membership.gives_benefits``, the rule of :func:`ffl_core.membership.is_member`) that
+     covers the item gives a member price, worked out from the item's *regular* price (before any
+     sale). A benefit is defined per stock unit: an Amount off and a Fixed price are multiplied by
+     the line's conversion factor (a box of 20 at $1 off a round is $20 off the box).
   3. The lowest member price wins, and only when it is below ``list_rate``: then the line's rate
      is the member price and the line records the benefit. Otherwise the line keeps its price and
      no benefit is used (the better of the two, never both).
-  4. A benefit with uses per day covers one unit per use; a line needs a use for each unit. Uses
-     are counted from the lines that carry the benefit for that member that day — register tickets
-     and Sales Invoices other than POS consolidation, drafts too; a line returned in full gives its
-     uses back to the day it was sold. When too few are left the line keeps its price.
+  4. A benefit with uses per day covers one stock unit per use; a line needs a use for each stock
+     unit (qty × conversion factor). Uses are counted, in stock units, from the lines that carry the
+     benefit for that member that day — register tickets and Sales Invoices other than POS
+     consolidation, drafts too; a line returned in full gives its uses back to the day it was sold.
+     When too few are left the line keeps its price, and the notice names the sales holding the
+     uses (drafts marked not completed: an abandoned ticket holds its use until deleted).
   5. A member price of 0 is never given on an item the store taxes (:func:`taxed_here`).
   6. Never priced: trade-in credit and deposit lines, membership fee items, consignment guns, a
      gun priced one by one unless a benefit names its Item, returns (they copy the line they
@@ -32,8 +38,10 @@ price, or that price list's own price — on which days, and how many units a da
   membership, the member and the reason shown on the line. A rate a person lowered below the member
   price stays (the manager price approval judges it, its floor being the member price), with no
   benefit recorded. A draft that no longer qualifies goes back to its list price on save; at
-  submit nothing is repriced: a line whose member price changed since the draft was saved (another
-  day, uses spent elsewhere) is refused with what to do. :func:`settle_member_lines` (validate)
+  submit nothing is repriced: a line whose member price is not what the sale carries (started on
+  another day, uses spent elsewhere, a line the screen never priced) is refused with what to do; the
+  register asks :func:`preview` first and shows the new total instead of completing
+  (``public/js/member_prices.js``). :func:`settle_member_lines` (validate)
   drops the record from a line ERPNext priced otherwise (a Pricing Rule).
 * **Who** — the document's customer, or the member an in-process ticket builder names per line
   (``pos_ticket.build_ticket``'s ``benefit_customer``). A name sent by a screen or the API is
@@ -61,6 +69,8 @@ DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 PRICED = ("POS Invoice", "Sales Invoice")
 # doc.flags, server-only: an in-process builder named the member of some lines (pos_ticket.build_ticket).
 TRUSTED_MEMBERS = "ffl_benefit_members_trusted"
+# frappe.flags (request-local, never from a payload): (document, _floors_key, floors) of the save in progress.
+_FLOORS = "ffl_member_floors"
 _EPS = 0.0001
 
 
@@ -294,14 +304,15 @@ def summarize_benefits(plan_name: str) -> list[str]:
 
 def _live_memberships(customer: str, day) -> list:
 	"""The customer's memberships that give benefits on *day*: Active, or Past Due within grace."""
+	from ffl_core.membership import ACTIVE, PAST_DUE, gives_benefits
+
 	if not customer:
 		return []
-	day = getdate(day)
 	rows = frappe.db.sql("""select m.name, m.plan, m.status, m.grace_until, m.current_period_end,
 			coalesce(p.plan_name, m.plan) as plan_name
 		from `tabMembership` m left join `tabMembership Plan` p on p.name = m.plan
-		where m.customer = %s and m.status in ('Active', 'Past Due') order by m.name""", customer, as_dict=True)
-	return [r for r in rows if r.status == "Active" or (r.grace_until and getdate(r.grace_until) >= day)]
+		where m.customer = %s and m.status in %s order by m.name""", (customer, (ACTIVE, PAST_DUE)), as_dict=True)
+	return [r for r in rows if gives_benefits(r.status, r.grace_until, day)]
 
 
 def _benefits(customer: str, day, cache: dict) -> list:
@@ -357,7 +368,7 @@ def _price_in(price_list: str, doc, row, item, cache: dict) -> float | None:
 	key = ("price", price_list, item.name, uom, flt(row.get("qty")) or 1, doc.get("customer"))
 	if key not in cache:
 		ctx = frappe._dict(price_list=price_list, customer=doc.get("customer"), uom=uom, stock_uom=item.stock_uom,
-			transaction_date=doc.get("posting_date") or nowdate(), qty=flt(row.get("qty")) or 1,
+			transaction_date=_pricing_view(doc, cache).posting_date, qty=flt(row.get("qty")) or 1,
 			conversion_factor=flt(row.get("conversion_factor")) or 1, batch_no=row.get("batch_no"))
 		price = get_price_list_rate_for(ctx, item.name)
 		cache[key] = None if price is None else flt(price)
@@ -400,13 +411,24 @@ def _regular(doc, row, item, listed: float, per_gun: bool, cache: dict) -> float
 	return listed
 
 
+def _factor(row) -> float:
+	"""Stock units in one unit of the line (its conversion factor)."""
+	return flt(row.get("conversion_factor")) or 1
+
+
+def _units(row) -> float:
+	"""The line's quantity in stock units: what its uses are counted in."""
+	return flt(row.get("qty")) * _factor(row)
+
+
 def _member_rate(b, regular: float, doc, row, item, p: int, cache: dict) -> float | None:
+	"""The member price of one unit of the line; a benefit's amount is per stock unit."""
 	if b.benefit_type == PERCENT:
 		return flt(regular - flt(regular * flt(b.value) / 100, 2), p)
 	if b.benefit_type == AMOUNT:
-		return max(0.0, flt(regular - flt(b.value), p))
+		return max(0.0, flt(regular - flt(b.value) * _factor(row), p))
 	if b.benefit_type == FIXED:
-		return flt(flt(b.value) * (flt(row.get("conversion_factor")) or 1), p)
+		return flt(flt(b.value) * _factor(row), p)
 	if b.benefit_type == LIST_PRICE and b.price_list:
 		price = _price_in(b.price_list, doc, row, item, cache)
 		return None if price is None else flt(price, p)
@@ -426,61 +448,101 @@ def _exclusions(doctype: str, name: str | None) -> tuple[str, str]:
 
 def used_on(benefit: str, customer: str, day, *, exclude: tuple[str, str | None] = ("", None),
 		lock: bool = False) -> float:
-	"""Units of *benefit* the customer took on *day*: lines carrying it for them on register tickets
-	and on Sales Invoices other than POS consolidation, drafts and submitted, less lines returned in
-	full. *exclude*: (doctype, name) of the document being priced. *lock*: read with a shared lock —
-	the latest committed rows, not the transaction's snapshot (a caller holding the membership lock)."""
+	"""Stock units of *benefit* the customer took on *day*: lines carrying it for them on register
+	tickets and on Sales Invoices other than POS consolidation, drafts and submitted, less lines
+	returned in full. *exclude*: (doctype, name) of the document being priced. *lock*: read with a
+	shared lock — the latest committed rows, not the transaction's snapshot (a caller holding the
+	membership lock)."""
 	if lock:
 		try:
-			return _used_on(benefit, customer, day, exclude, " lock in share mode")
+			lines = _used_lines(benefit, customer, day, exclude, " lock in share mode")
 		except frappe.QueryDeadlockError:
 			# A sale committed lines of this benefit after this transaction began (MariaDB's snapshot
 			# isolation answers a locking read of them with 1020): never price on the stale count.
 			frappe.throw(_("This member's daily benefit was just used on another sale. Save again to see what "
 				"is left today."), MemberUsesBusy, title=_("Member price"))
-	return _used_on(benefit, customer, day, exclude, "")
+	else:
+		lines = _used_lines(benefit, customer, day, exclude, "")
+	return sum(flt(l.units) for l in lines)
 
 
-def _used_on(benefit: str, customer: str, day, exclude: tuple, share: str) -> float:
+def used_by(benefit: str, customer: str, day, *, exclude: tuple[str, str | None] = ("", None)) -> list:
+	"""[(document, docstatus)] of the sales whose lines hold the uses :func:`used_on` counts, oldest
+	first: where a member's uses for the day went (an abandoned draft holds its use until deleted)."""
+	seen: dict = {}
+	for line in _used_lines(benefit, customer, day, exclude, ""):
+		seen.setdefault(line.parent, cint(line.docstatus))
+	return list(seen.items())
+
+
+def _used_lines(benefit: str, customer: str, day, exclude: tuple, share: str) -> list:
+	"""The lines :func:`used_on` counts: {name, units, parent, docstatus}, not returned in full."""
 	# lazy: counted from the invoice lines on every read; a per-member, per-day count table once a
 	# store's volume makes this read show up.
 	pos_x, si_x = _exclusions(*exclude)
 	args = {"b": benefit, "c": customer, "d": getdate(day), "pos_x": pos_x, "si_x": si_x}
-	lines = frappe.db.sql(f"""select i.name, i.qty from `tabPOS Invoice Item` i join `tabPOS Invoice` p on p.name = i.parent
+	units = "i.qty * coalesce(nullif(i.conversion_factor, 0), 1) as units"
+	lines = frappe.db.sql(f"""select i.name, {units}, p.name as parent, p.docstatus, p.creation
+		from `tabPOS Invoice Item` i join `tabPOS Invoice` p on p.name = i.parent
 		where i.{BENEFIT_FIELD} = %(b)s and i.{BENEFICIARY_FIELD} = %(c)s and p.posting_date = %(d)s
 			and p.docstatus < 2 and p.is_return = 0 and p.name != %(pos_x)s{share}""", args, as_dict=True)
-	lines += frappe.db.sql(f"""select i.name, i.qty from `tabSales Invoice Item` i join `tabSales Invoice` s on s.name = i.parent
+	lines += frappe.db.sql(f"""select i.name, {units}, s.name as parent, s.docstatus, s.creation
+		from `tabSales Invoice Item` i join `tabSales Invoice` s on s.name = i.parent
 		where i.{BENEFIT_FIELD} = %(b)s and i.{BENEFICIARY_FIELD} = %(c)s and s.posting_date = %(d)s
 			and s.docstatus < 2 and s.is_return = 0 and s.is_consolidated = 0 and s.name != %(si_x)s{share}""",
 		args, as_dict=True)
 	if not lines:
-		return 0.0
+		return []
 	returned = _returned_qty([l.name for l in lines])
-	return sum(flt(l.qty) for l in lines if returned.get(l.name, 0) + _EPS < flt(l.qty))
+	return sorted((l for l in lines if returned.get(l.name, 0) + _EPS < flt(l.units)),
+		key=lambda l: (l.creation, l.parent, l.name))
 
 
 def _returned_qty(names: list[str]) -> dict:
-	"""{original line: units returned} over submitted returns: register returns, and credit notes
-	(made against the original invoice, or against the consolidation invoice that carried it)."""
+	"""{original line: stock units returned} over submitted returns: register returns, and credit
+	notes (made against the original invoice, or against the consolidation invoice that carried it,
+	or naming the register line itself)."""
+	wanted = set(names)
 	out: dict = {}
-	rows = frappe.db.sql("""select r.pos_invoice_item as orig, r.qty
+	units = "abs(r.qty * coalesce(nullif(r.conversion_factor, 0), 1)) as units"
+	rows = frappe.db.sql(f"""select r.pos_invoice_item as orig, {units}
 		from `tabPOS Invoice Item` r join `tabPOS Invoice` p on p.name = r.parent
 		where p.is_return = 1 and p.docstatus = 1 and r.pos_invoice_item in %(n)s""", {"n": names}, as_dict=True)
-	rows += frappe.db.sql("""select coalesce(nullif(c.pos_invoice_item, ''), r.sales_invoice_item) as orig, r.qty
-		from `tabSales Invoice Item` r join `tabSales Invoice` s on s.name = r.parent
-			left join `tabSales Invoice Item` c on c.name = r.sales_invoice_item
-		where s.is_return = 1 and s.docstatus = 1 and s.is_consolidated = 0
-			and (r.sales_invoice_item in %(n)s or r.pos_invoice_item in %(n)s or c.pos_invoice_item in %(n)s)""",
-		{"n": names}, as_dict=True)
+	for r in frappe.db.sql(f"""select c.pos_invoice_item as merged, r.sales_invoice_item, r.pos_invoice_item, {units}
+			from `tabSales Invoice Item` r join `tabSales Invoice` s on s.name = r.parent
+				left join `tabSales Invoice Item` c on c.name = r.sales_invoice_item
+			where s.is_return = 1 and s.docstatus = 1 and s.is_consolidated = 0
+				and (r.sales_invoice_item in %(n)s or r.pos_invoice_item in %(n)s or c.pos_invoice_item in %(n)s)""",
+			{"n": names}, as_dict=True):
+		# The original is whichever of the three the query matched.
+		orig = next((x for x in (r.merged, r.sales_invoice_item, r.pos_invoice_item) if x in wanted), None)
+		rows.append(frappe._dict(orig=orig, units=r.units))
 	for r in rows:
-		if r.orig in names:
-			out[r.orig] = out.get(r.orig, 0) + abs(flt(r.qty))
+		if r.orig in wanted:
+			out[r.orig] = out.get(r.orig, 0) + flt(r.units)
 	return out
+
+
+def posting_day(doc):
+	"""The day *doc* will be posted on. ERPNext moves a POS Invoice / Sales Invoice to today on every
+	save, in its own validate, after this module priced it (``SalesInvoice.validate_auto_set_posting_time``
+	→ ``TransactionBase.validate_posting_time``), unless the document keeps its own date: Edit Posting
+	Date and Time (``set_posting_time``), a new amendment, or an import / restore that carries a date.
+	Anything else (a quote's plain dict) keeps the date it was given."""
+	from frappe.model.document import Document
+
+	if isinstance(doc, Document) and doc.doctype in PRICED:
+		keeps = cint(doc.get("set_posting_time")) or (doc.is_new() and doc.get("amended_from")) \
+			or ((frappe.flags.in_import or doc.flags.get("from_restore")) and doc.get("posting_date"))
+		if not keeps:
+			return getdate(nowdate())
+	return getdate(doc.get("posting_date") or nowdate())
 
 
 def _pricing_view(doc, cache: dict):
 	"""What the price lookups read off the document, with the price list ERPNext will give it when it
-	has none yet (a Sales Invoice built on the server is validated before its missing values are set)."""
+	has none yet (a Sales Invoice built on the server is validated before its missing values are set)
+	and the day it will be posted on (:func:`posting_day`)."""
 	if "view" not in cache:
 		price_list = doc.get("selling_price_list")
 		if not price_list:
@@ -492,24 +554,24 @@ def _pricing_view(doc, cache: dict):
 			price_list = (get_default_price_list(frappe.get_cached_doc("Customer", customer))
 				if customer and frappe.db.exists("Customer", customer) else None) or _default_selling_price_list()
 		cache["view"] = frappe._dict(selling_price_list=price_list, customer=doc.get("customer"),
-			posting_date=doc.get("posting_date") or nowdate(), plc_conversion_rate=doc.get("plc_conversion_rate"),
+			posting_date=posting_day(doc), plc_conversion_rate=doc.get("plc_conversion_rate"),
 			conversion_rate=doc.get("conversion_rate"))
 	return cache["view"]
 
 
 def price_line(doc, row, customer: str | None, *, consumed: dict | None = None, lock: bool = False,
 		cache: dict | None = None) -> frappe._dict:
-	"""The member price of one line (module docstring, steps 1-6) for *customer* on the document's
-	posting date. Writes nothing.
+	"""The member price of one line (module docstring, steps 1-6) for *customer* on the day the
+	document will be posted on (:func:`posting_day`). Writes nothing.
 
-	*consumed*: {(benefit, customer): units} this document's earlier lines took. *lock*: count uses
+	*consumed*: {(benefit, customer): stock units} this document's earlier lines took. *lock*: count uses
 	with a shared lock (the caller holds the membership lock).
 
 	Returns:
 	    {list_rate, rate, regular, benefit, membership, plan, reason, uses_left, limit, notice,
 	    percentage}: ``rate`` == ``list_rate`` and ``benefit`` None when nothing applies.
 	    ``uses_left``: of the chosen benefit before this line (None = no limit). ``notice``: why a
-	    better member price was not given (no uses left). ``percentage``: the discount percentage the
+	    better member price was not given (no uses left, and which sales took them). ``percentage``: the discount percentage the
 	    line may show (0 unless a percentage benefit gives the rate back exactly).
 	"""
 	from ffl_core.compliance.locked_lines import rate_precision
@@ -527,14 +589,14 @@ def price_line(doc, row, customer: str | None, *, consumed: dict | None = None, 
 	item = _item(row.item_code, cache)
 	if not item or _never_priced(item, cache):
 		return out
-	day = getdate(doc.get("posting_date") or nowdate())
+	day = posting_day(doc)
 	held = _benefits(customer, day, cache)
 	if not held:
 		return out
 	per_gun = bool(cint(item.has_serial_no) and not cint(item.uniform_sell_price))
 	regular = _regular(doc, row, item, listed, per_gun, cache)
 	out.regular = regular
-	qty = flt(row.get("qty"))
+	qty = _units(row)
 	best = blocked = None
 	for b, m in held:
 		if not _covers(b, item, doc, row, day, per_gun, cache):
@@ -568,11 +630,24 @@ def price_line(doc, row, customer: str | None, *, consumed: dict | None = None, 
 	if blocked and (best is None or blocked[2] < best[2]):
 		b, m, _rate, left = blocked
 		label = benefit_label(b, m.plan_name)
-		out.notice = _("{0}: no uses left today.").format(label) if left <= _EPS else \
-			_("{0}: {1} left today, this line has {2}.").format(label, f"{left:g}", f"{qty:g}")
+		out.notice = (_("{0}: no uses left today").format(label) if left <= _EPS else
+			_("{0}: {1} left today, this line has {2}").format(label, f"{left:g}", f"{qty:g}")) \
+			+ "." + _where_used(b.name, customer, day, doc, flt(consumed.get((b.name, customer))))
 		if best is None:
 			out.uses_left, out.limit = left, cint(b.uses_per_day)
 	return out
+
+
+def _where_used(benefit: str, customer: str, day, doc, here: float) -> str:
+	"""The "Used on: X, Y (not completed)." tail of a no-uses notice: the sales holding the member's
+	uses of the day, so the counter can open the right one or delete a ticket left behind."""
+	where = [_("earlier lines of this sale")] if here > _EPS else []
+	tickets = used_by(benefit, customer, day, exclude=(doc.get("doctype") or "", doc.get("name")))
+	for name, docstatus in tickets[:3]:
+		where.append(name if docstatus else _("{0} (not completed)").format(name))
+	if len(tickets) > 3:
+		where.append(_("{0} more").format(len(tickets) - 3))
+	return " " + _("Used on: {0}.").format(", ".join(where)) if where else ""
 
 
 # ------------------------------------------------------------------ the invoice
@@ -663,18 +738,19 @@ def _has_benefits() -> bool:
 
 def reprice(doc, before=None, *, submitting: bool = False, lock: bool = False) -> dict:
 	"""Work out every line of *doc* and write the answer onto it (module docstring, "The line").
-	*before*: the document as stored. Returns {"notices": [...], "refused": [...]}; with
-	*submitting*, a line whose price would move is left as it is and listed in "refused"."""
+	*before*: the document as stored. Returns {"notices": [...], "refused": [...], "floors": {line
+	name (or idx): member price}}; with *submitting*, a line whose price would move is left as it is
+	and listed in "refused". "floors" is :func:`member_floors`' answer for these lines."""
 	from ffl_core.compliance.locked_lines import rate_precision
 
-	out = {"notices": [], "refused": []}
+	out = {"notices": [], "refused": [], "floors": {}}
 	rows = [r for r in doc.get("items") or [] if r.get("item_code") and flt(r.get("qty")) > 0]
 	if not rows or (not _has_benefits() and not any(r.get(BENEFIT_FIELD) for r in rows)):
 		return out
 	p = rate_precision(doc.doctype)
 	stored = {r.name: r for r in (before.get("items") or [])} if before else {}
 	stored_customer = before.get("customer") if before else None
-	day = getdate(doc.get("posting_date") or nowdate())
+	day = posting_day(doc)
 	members = {r.name if r.get("name") else id(r): _beneficiary(doc, r, stored, stored_customer) for r in rows}
 	if lock:
 		_lock_memberships({m for m, _named in members.values() if m}, day)
@@ -687,13 +763,15 @@ def reprice(doc, before=None, *, submitting: bool = False, lock: bool = False) -
 		ours = stamped and abs(rate - flt(row.get(MEMBER_RATE_FIELD), p)) < _EPS
 		res = None if _excluded_row(row) else price_line(doc, row, member, consumed=consumed, lock=lock, cache=cache)
 		listed = res.list_rate if res else flt(row.get("price_list_rate"), p)
+		if res and res.benefit:
+			out["floors"][row.get("name") or row.get("idx")] = res.rate
 		charged = listed if (ours or (not rate and not stamped)) else rate
 		if res and res.benefit and charged >= res.rate - _EPS:
 			if submitting and abs(rate - res.rate) > _EPS:
 				out["refused"].append((row, rate, res.rate, res.reason))
 				continue
 			_write_member(row, res, member)
-			consumed[(res.benefit, member)] = flt(consumed.get((res.benefit, member))) + flt(row.qty)
+			consumed[(res.benefit, member)] = flt(consumed.get((res.benefit, member))) + _units(row)
 			continue
 		if res and res.notice and (row.get("name") not in stored or stamped):
 			out["notices"].append(_("Row {0} ({1}): {2} The line is at its regular price.").format(
@@ -713,6 +791,7 @@ def reprice(doc, before=None, *, submitting: bool = False, lock: bool = False) -
 def apply_member_prices(doc, method: str | None = None) -> None:
 	"""before_validate (POS Invoice / Sales Invoice): the member price of every line (module docstring).
 	Refuses a submit whose member prices moved since the draft was saved."""
+	frappe.flags.pop(_FLOORS, None)   # never a previous save's answer
 	if doc.doctype not in PRICED or getattr(doc, "_action", "save") not in ("save", "submit") or _skip(doc):
 		return
 	submitting = getattr(doc, "_action", None) == "submit"
@@ -722,9 +801,10 @@ def apply_member_prices(doc, method: str | None = None) -> None:
 		lines = [_("Row {0} ({1}): {2} → {3}{4}").format(row.idx, escape_html(row.item_code),
 			fmt_money(was, currency=doc.get("currency")), fmt_money(now, currency=doc.get("currency")),
 			f" ({escape_html(why)})" if why else "") for row, was, now, why in found["refused"]]
-		frappe.throw(_("The member price changed since this sale was saved (another day, or the member's uses "
-			"for today were taken on another sale): {0}. Save the sale again to update it, collect the new total, "
-			"then complete it.").format("; ".join(lines)), MemberPriceChanged, title=_("Member price changed"))
+		frappe.throw(_("The member price is different now: {0}. The sale was started on another day, or the "
+			"member used today's benefit on another sale. On the register, press Complete Order again to update the "
+			"total; on a form, save the sale. Then collect the new total and complete it.").format("; ".join(lines)), MemberPriceChanged, title=_("Member price changed"))
+	frappe.flags[_FLOORS] = (doc, _floors_key(doc), found["floors"])
 	if found["notices"]:
 		frappe.msgprint("<br>".join(found["notices"]), title=_("Member price"), indicator="orange", alert=True)
 
@@ -744,14 +824,28 @@ def settle_member_lines(doc, method: str | None = None) -> None:
 			_clear_record(row, keep_member=row.get(BENEFICIARY_FIELD) not in (None, "", doc.get("customer")))
 
 
+def _floors_key(doc) -> tuple:
+	"""What a line's member price depends on, for :func:`member_floors` to know apply_member_prices'
+	answer still describes the document's current lines."""
+	return (posting_day(doc), doc.get("customer"), doc.get("selling_price_list"), tuple(
+		(r.get("name") or r.get("idx"), r.get("idx"), r.get("item_code"), flt(r.get("qty")), r.get("uom"), _factor(r),
+			r.get("serial_no") or "", r.get("batch_no") or "", r.get(BENEFICIARY_FIELD) or "",
+			flt(r.get("consignment_commission_pct")), cint(r.get("is_free_item")))
+		for r in doc.get("items") or []))
+
+
 def member_floors(doc, before=None) -> dict:
 	"""{line name (or idx): member price} of the lines a member price covers, worked out again on the
 	server for the price approval's floor (``price_approval.reductions``); a screen's claim counts
-	for nothing."""
+	for nothing. Within a save, the answer :func:`apply_member_prices` worked out for these very lines
+	is reused (kept server-side in ``frappe.flags``, for this document object only)."""
 	from frappe.model.document import Document
 
 	if doc.get("doctype") not in PRICED or not isinstance(doc, Document) or _skip(doc):
 		return {}   # a Create Order payload (a plain dict) is not priced here
+	kept = frappe.flags.get(_FLOORS)
+	if kept and kept[0] is doc and kept[1] == _floors_key(doc):
+		return dict(kept[2])
 	rows = [r for r in doc.get("items") or [] if r.get("item_code") and flt(r.get("qty")) > 0]
 	if not rows or not _has_benefits():
 		return {}
@@ -767,7 +861,7 @@ def member_floors(doc, before=None) -> dict:
 		res = price_line(doc, row, member, consumed=consumed, cache=cache)
 		if res.benefit:
 			out[row.get("name") or row.get("idx")] = res.rate
-			consumed[(res.benefit, member)] = flt(consumed.get((res.benefit, member))) + flt(row.qty)
+			consumed[(res.benefit, member)] = flt(consumed.get((res.benefit, member))) + _units(row)
 	return out
 
 
@@ -789,7 +883,7 @@ def member_price(customer: str, item_code: str, qty: float = 1, on_date=None, *,
 	Args:
 	    customer: The member (the person who uses the benefit, not necessarily the payer).
 	    item_code: The Item.
-	    qty: Units on the line; a benefit with uses per day needs one use per unit.
+	    qty: Stock units on the line; a benefit with uses per day needs one use per stock unit.
 	    on_date: The day (store-local); blank = today.
 	    exclude_invoice: A POS Invoice / Sales Invoice whose own lines must not count as used (the
 	        ticket being priced).
@@ -798,7 +892,8 @@ def member_price(customer: str, item_code: str, qty: float = 1, on_date=None, *,
 	    {"list_rate", "rate", "benefit", "membership", "reason", "uses_left", "notice"}. With no
 	    benefit (not a member, item not covered, no uses left, a sale already lower) ``rate`` ==
 	    ``list_rate`` and ``benefit`` is None. ``uses_left``: uses of the benefit left that day before
-	    this line (None = no limit). ``notice``: why a member price was not given, or None.
+	    this line (None = no limit). ``notice``: why a member price was not given (naming the sales
+	    that took the uses), or None.
 	"""
 	doc = _quote_doc(customer, on_date)
 	if exclude_invoice:
@@ -822,7 +917,7 @@ def benefit_usage(customer: str, benefit: str, on_date=None) -> dict:
 	    on_date: The day; blank = today.
 
 	Returns:
-	    {"limit": uses per day (0 = no limit), "used": units taken that day, "left": uses left, or
+	    {"limit": uses per day (0 = no limit), "used": stock units taken that day, "left": uses left, or
 	    None with no limit}.
 	"""
 	limit = cint(frappe.db.get_value(BENEFIT, benefit, "uses_per_day"))
