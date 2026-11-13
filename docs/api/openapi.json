@@ -13713,6 +13713,84 @@
         }
       }
     },
+    "/api/method/ffl_core.assignment_notice.acknowledge": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Say you saw these assignments. Each one is yours or the call is refused; one that is closed,",
+        "description": "cancelled, gone, already acknowledged or never asked is skipped. The time is stored on the ToDo\nand the document gets a timeline comment.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/assignment_notice.py:151`",
+        "operationId": "ffl_core.assignment_notice.acknowledge",
+        "responses": {
+          "200": {
+            "description": "What is still waiting, as :func:`pending` returns it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "array"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "names": {
+                    "type": "array",
+                    "description": "ToDo names (a list, or its JSON), at most 50."
+                  }
+                },
+                "required": [
+                  "names"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.assignment_notice.pending": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Your assignments waiting for you to say you saw them, oldest first (at most 50).",
+        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/assignment_notice.py:139`",
+        "operationId": "ffl_core.assignment_notice.pending",
+        "responses": {
+          "200": {
+            "description": "[{\"name\": ToDo, \"assigned_by\": full name, \"reference_type\", \"reference_name\", \"title\" (all three None when the document is gone or there is none), \"description\": plain text, \"priority\", \"date\": due date or None, \"creation\"}].",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "array"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.customer_flags.banned_order_rows": {
       "post": {
         "tags": [
