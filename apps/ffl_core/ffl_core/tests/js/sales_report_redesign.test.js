@@ -100,6 +100,7 @@ test('aggregate: charges pull shipping/sales_tax from the order row', () => {
 	const agg = sr_aggregate_orders(od_rows_one_order());
 	assert.strictEqual(agg.INV1.charges.shipping, 45);
 	assert.strictEqual(agg.INV1.charges.salesTax, 0);
+	assert.strictEqual(agg.INV1.charges.excise, 0);
 	assert.deepStrictEqual(agg.INV1.charges.unclassified, []);
 });
 
@@ -212,7 +213,7 @@ test('default hidden: Order Detail hides all non-9 columns', () => {
 	assert.deepStrictEqual(sr_default_hidden('Order Detail'), [
 		'channel', 'item_code', 'serial_no', 'qty', 'unit_price', 'gross_merch',
 		'trade_in_net', 'net_amount', 'line_tax', 'shipping', 'unclassified',
-		'sales_tax', 'tax_mismatch', 'total', 'order_ref',
+		'sales_tax', 'excise_tax', 'tax_mismatch', 'total', 'order_ref',
 		// The fee pair (default-hidden) and Ship-to State, which
 		// is not one of the 9 order-grid columns either.
 		'channel_fees', 'profit_after_fees', 'ship_to_state',

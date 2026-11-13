@@ -220,7 +220,7 @@ gunstore.extensions.register('acme_layaway', {
 | `settingsLinks` | **Settings** on the extension's card | One per Settings Single. |
 | `onDeskReady()` | — | Once after the desk is ready, per effective extension. A throw is logged to the console and does not stop the others. |
 
-**Send a ticket to the register from your own page.** Build the draft on the server with `ffl_core.api.pos_ticket.open_ticket` (the caller's open shift; your rates are the ticket's), then:
+**Send a ticket to the register from your own page.** Build the draft on the server with `ffl_core.api.pos_ticket.build_ticket` (the caller's open shift; your rates are the ticket's and are not asked for a manager's approval — the HTTP endpoint `open_ticket` judges a caller's typed rates like the register does), then:
 
 ```js
 frappe.route_options = { ffl_pos_invoice: name };   // the draft POS Invoice
@@ -232,6 +232,14 @@ The register opens it in the cart the way Recent Orders › Draft does (a sale a
 A rate you put on the ticket is your code's price: the register does not ask a manager to approve it afterwards. When a person chose a price below list on your page, take the manager's approval in your own flow before you build the ticket.
 
 Also available: `gunstore.extensions.isEnabled(id, boot)`, `ffl.featureOffPage(page, featureTitle, whereToTurnOn)` for your own Desk pages, `gunstore.renderReleaseNotes(entries)`.
+
+### Shared front-end helpers
+
+Loaded on every Desk page (`app_include_js`). Read them through `window.ffl` and fall back when absent, as a core older than your extension may not have them.
+
+- `ffl.aamva.parse(raw, { ids })`: reads the text a license scanner typed (the PDF417 barcode on a US driver license or ID card). Returns `null` when the text is not a license, else `{first, middle, last, suffix, address1, address2, city, state, zip, country}`, with `{idNumber, dob, expiry}` (dates `YYYY-MM-DD`, `''` when unreadable) added only when `ids` is true. Pass `ids: !!frappe.boot.ffl_store_customer_id_numbers`, the store's choice to keep ID numbers.
+- `ffl.customerFlags.check(customer, { key })`: the counter's customer check, as the register runs it. Returns `Promise<boolean>`: `false` when the customer is Banned and no manager overrode it in the box shown; otherwise `true`, after showing the customer's active alerts once per `key`. An empty customer or a failed read resolves `true` (the server still refuses a sale to a Banned customer).
+- `ffl.customerQuickEntry.newFromScan(raw)`: opens the New Customer dialog for an individual, filled from that scan by the dialog's own Scan ID (name and address; the license number and birth date only while the store keeps ID numbers). Returns `Promise<string | null>`: the customer's name once the clerk saves it, or picks an existing customer at the duplicate check; `null` when the dialog is closed without one, when the clerk moves to Edit in full page, or when the site opens the full Customer form instead of the dialog. Called again before it has answered, it returns the same promise and fills that same dialog from the new scan (from the newest one, if the dialog is still loading).
 
 ## Desk pages, sidebar, shortcuts
 

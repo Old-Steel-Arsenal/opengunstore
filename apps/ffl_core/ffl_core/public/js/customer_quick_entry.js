@@ -481,6 +481,57 @@
 		if (F && F.CustomerQuickEntryForm) { applyPatch(F.CustomerQuickEntryForm); return; }
 		if (left > 0) setTimeout(function () { fallbackRetry(left - 1); }, 250);
 	}
+	// ffl.customerQuickEntry.newFromScan(raw) → Promise<customer name | null>: the New Customer
+	// dialog, filled from a license scan by the dialog's own Scan ID (so the store's Store Customer
+	// ID Numbers switch decides, as always, whether the license number and birth date are read).
+	// Resolves the customer's name once the clerk saves (or picks an existing customer at the
+	// duplicate check); null when the dialog closes without one, including "Edit in full page"
+	// and a site where Customer has no quick entry. Called again before it has answered, it returns
+	// the same promise: an open dialog is re-filled from the new scan; one still loading is filled
+	// from the newest scan once it is up.
+	var open = null;   // {qe, raw, promise} while a newFromScan call has not answered
+	function newFromScan(raw) {
+		if (open) {
+			if (open.qe) open.qe.__fflApplyScan(raw);
+			else open.raw = raw;
+			return open.promise;
+		}
+		var mine = { qe: null, raw: raw, promise: null };
+		var settled = false, settle;
+		mine.promise = new Promise(function (resolve) {
+			settle = function (name) {
+				if (settled) return;
+				settled = true;
+				if (open === mine) open = null;
+				resolve(name || null);
+			};
+		});
+		open = mine;
+		// A "Create a new Customer" from a Link the clerk left earlier would take the saved
+		// customer instead of our callback (frappe._from_link outlives a dialog closed unsaved).
+		delete frappe._from_link;
+		var shown = false;
+		var setup = frappe.ui.form.make_quick_entry('Customer', function (doc) {
+			settle(doc && (doc.name || (doc.doc && doc.doc.name)));
+		}, function (qe) {
+			if (!qe || typeof qe.__fflApplyScan !== 'function') return;   // full form instead of the dialog
+			shown = true;
+			mine.qe = qe;
+			var stockOnHide = qe.onhide;
+			qe.onhide = function () {
+				var out = stockOnHide && stockOnHide.apply(qe, arguments);
+				// "Use this customer" (duplicate check) hides the dialog just before answering: wait a tick.
+				setTimeout(function () { settle(null); }, 0);
+				return out;
+			};
+			qe.__fflApplyScan(mine.raw);
+		}, { doctype: 'Customer', customer_type: 'Individual' });
+		// No dialog came up (Customer opens its full form on this site): nothing to wait for.
+		Promise.resolve(setup).then(function () { if (!shown) settle(null); }, function () { settle(null); });
+		return mine.promise;
+	}
+	api.newFromScan = newFromScan;
+
 	function wire() {
 		if (!window.frappe || typeof frappe.provide !== 'function') return;
 		frappe.provide('frappe.ui.form');
