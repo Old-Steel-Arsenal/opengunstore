@@ -42,6 +42,7 @@ from ffl_core.api.counter_pickup import (
 )
 from ffl_core.compliance import channel_invoice, cr_transfer, dealer_transfer, le_excise_exempt
 from ffl_core.compliance.firearm import is_awaiting_procurement_row
+from ffl_core.crm import holds as deal_holds
 from ffl_core.crm.orders import deal_for_order
 from ffl_core.customer_name import refresh_customer_name_snapshots
 from ffl_core.firearm import (
@@ -332,7 +333,7 @@ def _create_order(payload, *, shipping_tax_inclusive: int | None = None,
 		tax_exempt = bool(frappe.db.get_value("Customer", customer, "is_tax_exempt"))
 	le_exemption = _le_exemption(payload)
 
-	rows, _serials, has_regulated = _validate_items(payload.get("items") or [])
+	rows, _serials, has_regulated = _validate_items(payload.get("items") or [], customer=customer)
 	# Counter pickup: the customer collects here, so the order HAS no destination —
 	# no address is asked for and none is stored (which is what makes the invoice a
 	# pickup downstream). Anything that needs a destination is refused here rather
@@ -2466,7 +2467,8 @@ def fulfill_from_stock(sales_invoice: str, row_name: str, serial_no: str | None 
 	qty = int(row.qty)
 	serial_no = (serial_no or "").strip()
 	if target["is_firearm"]:
-		free = available_serials_for_items([row.item_code], exclude_unavailable=True)
+		free = available_serials_for_items([row.item_code], exclude_unavailable=True,
+			customer=si.customer)
 		if serial_no not in (free.get(row.item_code) or []):
 			frappe.throw(_("{0} is not an unheld in-stock serial of {1}.").format(
 				serial_no or "(none)", row.item_code))
@@ -3607,7 +3609,7 @@ def _presale_warning(serial_no: str) -> str | None:
 
 def _serial_status(term, ctx: dict | None = None,
 		ignore_invoice: str | None = None, *,
-		probe: bool = True) -> tuple[dict | None, str | None]:
+		probe: bool = True, customer: str | None = None) -> tuple[dict | None, str | None]:
 	"""(line data, None) when the serial is sellable, (None, reason) when not —
 	the single rulebook behind the throwing find_serial_for_order (scan-to-add),
 	the non-throwing bulk check_serials_available (draft resume) and the
@@ -3620,7 +3622,11 @@ def _serial_status(term, ctx: dict | None = None,
 	ignore_invoice: the Edit flow re-validates an order's OWN serial lines, so a
 	serial held only by the invoice being edited must not read as unavailable —
 	otherwise the prefill (and a delete-then-rescan of the same gun) would reject
-	the order's own firearm. Pass the SI being edited to exempt its own hold."""
+	the order's own firearm. Pass the SI being edited to exempt its own hold.
+
+	customer: the order's buyer. A gun held for a CRM deal (crm/holds.py) is
+	sellable to that deal's customer only; to anyone else the reason is a
+	holds.HeldText naming the deal and the time."""
 	term = (str(term or "")).strip()
 	if not term:
 		return None, _("Enter a serial number.")
@@ -3701,7 +3707,10 @@ def _serial_status(term, ctx: dict | None = None,
 	# (same "exempt the editing doc's own hold" concept in two rulebooks): this
 	# path matches on ref alone (any hold kind for Create Order / Edit); the POS
 	# picker gates its own-hold exemption to a kind='pos' hold. Keep them aligned.
-	if held and held.get("ref") != ignore_invoice:
+	if held and held.get("kind") == deal_holds.KIND:
+		if not (customer and held.get("customer") == customer):
+			return None, deal_holds.HeldText(deal_holds.held_message(sn.name, held))
+	elif held and held.get("ref") != ignore_invoice:
 		return None, _("Serial {0} is already held by {1}.").format(
 			sn.name, held.get("ref") or held.get("source"))
 	sell_price = next(
@@ -3717,7 +3726,8 @@ def _serial_status(term, ctx: dict | None = None,
 
 
 @frappe.whitelist()
-def find_serial_for_order(serial: str, ignore_invoice: str | None = None) -> dict:
+def find_serial_for_order(serial: str, ignore_invoice: str | None = None,
+		customer: str | None = None) -> dict:
 	"""Scan-to-add for the Create Order page: resolve a firearm serial number
 	straight to an order line (canonical serial + item + tag price). Throws
 	with the specific reason when the gun can't be sold — unknown serial, not
@@ -3729,6 +3739,8 @@ def find_serial_for_order(serial: str, ignore_invoice: str | None = None) -> dic
 	    serial: Scanned/typed serial number.
 	    ignore_invoice: Exempts the edited order's own hold, so staff can
 	        delete then re-scan the same gun mid-edit.
+	    customer: The order's buyer: a gun held for their CRM deal is theirs
+	        to buy. Held for anyone else, the refusal is a DealHoldError.
 
 	Returns:
 	    Order-line data: canonical serial, item_code/item_name, and the tag
@@ -3738,14 +3750,16 @@ def find_serial_for_order(serial: str, ignore_invoice: str | None = None) -> dic
 	    Sales User / Sales Manager / Stock Manager / System Manager.
 	"""
 	frappe.only_for(_ROLES)
-	data, reason = _serial_status(serial, ignore_invoice=(ignore_invoice or None))
+	data, reason = _serial_status(serial, ignore_invoice=(ignore_invoice or None),
+		customer=(customer or None))
 	if reason:
-		frappe.throw(reason)
+		deal_holds.throw_reason(reason)
 	return data
 
 
 @frappe.whitelist()
-def check_serials_available(serials, ignore_invoice: str | None = None) -> dict:
+def check_serials_available(serials, ignore_invoice: str | None = None,
+		customer: str | None = None) -> dict:
 	"""Bulk, non-throwing serial validation for draft resume / edit prefill.
 
 	Resuming a draft re-checks every parked firearm (drafts don't reserve
@@ -3756,6 +3770,8 @@ def check_serials_available(serials, ignore_invoice: str | None = None) -> dict:
 	    ignore_invoice: Exempts the edited order's own hold — the Edit
 	        prefill re-checks the order's own serials, which must not read
 	        as unavailable.
+	    customer: The order's buyer: a gun held for their CRM deal is
+	        theirs to buy.
 
 	Returns:
 	    {typed_term: {ok: True, ...line data} | {ok: False, reason}}.
@@ -3770,7 +3786,7 @@ def check_serials_available(serials, ignore_invoice: str | None = None) -> dict:
 	out = {}
 	ctx: dict = {}  # shared per-item cache — see _serial_ctx_for_item
 	for term in serials or []:
-		data, reason = _serial_status(term, ctx, ignore_invoice)
+		data, reason = _serial_status(term, ctx, ignore_invoice, customer=(customer or None))
 		out[term] = {"ok": True, **data} if data else {"ok": False, "reason": reason}
 	return out
 
@@ -4128,10 +4144,11 @@ def rename_customer(customer: str, new_name: str) -> dict:
 # ------------------------------------------------------------------ internals
 
 
-def _validate_items(items: list) -> tuple[list[dict], set[str], bool]:
+def _validate_items(items: list, customer: str | None = None) -> tuple[list[dict], set[str], bool]:
 	"""Normalise + validate order lines. Firearms are one-per-row with exactly
 	one in-stock serial, each serial used only once across the order. Returns
-	(rows, serials_seen, has_regulated_firearm)."""
+	(rows, serials_seen, has_regulated_firearm). ``customer``: the buyer, whom a
+	gun held for their CRM deal is sold to."""
 	rows: list[dict] = []
 	serials_seen: set[str] = set()
 	serial_ctx: dict = {}  # shared per-item cache for _serial_status
@@ -4221,7 +4238,7 @@ def _validate_items(items: list) -> tuple[list[dict], set[str], bool]:
 					"Firearm '{0}' must be one unit per line with exactly one serial."
 				).format(item_code))
 			serial = picked[0]
-			serial_wh = _validate_serial(serial, item_code, serials_seen, serial_ctx)
+			serial_wh = _validate_serial(serial, item_code, serials_seen, serial_ctx, customer=customer)
 			serials_seen.add(serial)
 			rows.append({"item_code": item_code, "qty": 1, "rate": rate,
 				"serials": [serial], "warehouse": serial_wh})
@@ -4692,7 +4709,7 @@ def _fire_counter_distributor_hook(sales_invoice_name: str, context: dict) -> No
 
 
 def _validate_serial(serial: str, item_code: str, serials_seen: set[str],
-		ctx: dict | None = None) -> str:
+		ctx: dict | None = None, customer: str | None = None) -> str:
 	"""Validate the serial is sellable for item_code; return its warehouse so the
 	order ships each firearm from where it actually is (not the POS default).
 
@@ -4708,9 +4725,9 @@ def _validate_serial(serial: str, item_code: str, serials_seen: set[str],
 	if sn.item_code != item_code:
 		frappe.throw(_("Serial {0} belongs to {1}, not {2}.").format(
 			serial, sn.item_code, item_code))
-	_data, reason = _serial_status(serial, ctx, probe=False)
+	_data, reason = _serial_status(serial, ctx, probe=False, customer=customer)
 	if reason:
-		frappe.throw(reason)
+		deal_holds.throw_reason(reason)
 	return sn.warehouse
 
 

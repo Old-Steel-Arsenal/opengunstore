@@ -222,6 +222,8 @@ app_include_js = [
 	# A lowered price asks a manager (PIN + reason) before the save: POS, the three forms, Create
 	# Order (price_approval.py). Needs staff_switch.js above (authMode / serverMessage / post).
 	_hashed("js/price_approval.js"),
+	# "Gun held for a deal" at the register and on Create Order (crm/holds.py); posts through staff_switch.js.
+	_hashed("js/deal_hold.js"),
 	# Member prices shown on the cart as lines are added or the customer changes; the server's save
 	# is the authority (membership_benefits.py).
 	_hashed("js/member_prices.js"),
@@ -312,6 +314,11 @@ doc_events = {
 		"validate": ["ffl_core.crm.deal.price_lines", "ffl_core.crm.orders.pin_deal_value"],
 		# A deal converted from a lead the team shares stays shared (ffl_core.crm.mail).
 		"after_insert": "ffl_core.crm.mail.share_converted_deal",
+		# A gun held for the deal (crm/holds.py): Won / Lost, a gun off its lines, deleted or renamed
+		# ends or follows its holds.
+		"on_update": "ffl_core.crm.holds.on_deal_update",
+		"on_trash": "ffl_core.crm.holds.on_deal_trash",
+		"after_rename": "ffl_core.crm.holds.on_deal_rename",
 	},
 	# A new staff account lands on the POS, not on the /apps picker CRM's own app brings (ffl_core.crm).
 	"User": {"validate": "ffl_core.crm.staff_default_app"},
@@ -411,6 +418,9 @@ doc_events = {
 			# A same-serial / no-serial gun is not sellable until receipts and 4473 records
 			# print its bound-book serial (serials.refuse_tagged_serial_sale; returns pass).
 			"ffl_core.serials.refuse_tagged_serial_sale",
+			# A gun held for a CRM deal goes to that deal's customer only (crm/holds.py; returns,
+			# merges and web / GunBroker mirrors pass). A manager's override ends the hold first.
+			"ffl_core.crm.holds.refuse_deal_held_serials",
 			"ffl_core.compliance.firearm.require_serial_for_firearm",
 			"ffl_core.compliance.firearm.require_4473_and_nics_for_firearm_sale",
 			"ffl_core.compliance.dealer_transfer.require_shippable_ffl_dealer",
@@ -468,6 +478,9 @@ doc_events = {
 			"ffl_core.compliance.trade_in_settlement.reconcile_payout_on_merge",
 			# Each firearm sold agreements this sale used (agreements.py).
 			"ffl_core.agreements.mark_firearm_agreements_used",
+			# A gun held for a deal, sold to its customer: the hold ends (never blocks; crm/holds.py).
+			# Before the deal's write-back, which ends the deal's other holds when it goes Won.
+			"ffl_core.crm.holds.release_sold",
 			# The invoice's CRM deal: its value, Won on the first sale (never blocks; crm/orders.py).
 			"ffl_core.crm.orders.on_submit",
 		],
@@ -599,6 +612,9 @@ doc_events = {
 			# A same-serial / no-serial gun is not sellable until receipts and 4473 records
 			# print its bound-book serial (serials.refuse_tagged_serial_sale; returns pass).
 			"ffl_core.serials.refuse_tagged_serial_sale",
+			# A gun held for a CRM deal goes to that deal's customer only (crm/holds.py; returns,
+			# merges and web / GunBroker mirrors pass). A manager's override ends the hold first.
+			"ffl_core.crm.holds.refuse_deal_held_serials",
 			"ffl_core.compliance.firearm.require_serial_for_firearm",
 			# One gun per line — fires on EVERY validate (Draft too) so a qty>1 /
 			# multi-serial firearm line never persists to break the 4473 match
@@ -680,6 +696,8 @@ doc_events = {
 			"ffl_core.agreements.mark_firearm_agreements_used",
 			# A gunsmith work order's deposit / pick-up invoice (gunsmith.py).
 			"ffl_core.gunsmith.on_invoice_submit",
+			# A gun held for a deal, sold to its customer: the hold ends (never blocks; crm/holds.py).
+			"ffl_core.crm.holds.release_sold",
 		],
 		# A negative trade-in ticket: the payout goes back to the drawer first,
 		# refused once a count relied on it (compliance/trade_in_settlement).
@@ -1123,6 +1141,11 @@ scheduler_events = {
 		# The AI's look at each team mailbox's spam folder (crm/mail.py).
 		"*/10 * * * *": [
 			"ffl_core.crm.mail.check_spam_folders",
+		],
+		# Guns held for deals: write the ones that ran out or whose gun left, and tell the website
+		# (crm/holds.py). The counter already reads expiry as it happens.
+		"*/5 * * * *": [
+			"ffl_core.crm.holds.sweep",
 		],
 	},
 	"hourly": [
