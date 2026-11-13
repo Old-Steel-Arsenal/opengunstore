@@ -18,13 +18,13 @@ everything back.
 | arg | type | required | default | description |
 |---|---|---|---|---|
 | `serial` | string | yes | — | Current Serial No name (must be an in-stock firearm). |
-| `new_serial` | string | yes | — | Corrected serial number. |
+| `new_serial` | string | yes | — | Corrected serial number, as the bound book should record it. |
 | `reason` | string | yes | — | Required free-text audit reason. |
 
-**Returns:** {ok, old_serial, new_serial, fastbound_item_id} — fastbound_item_id is "" on a store running with the FastBound integration switched off, where the local rename is the whole correction.
+**Returns:** {ok, old_serial, new_serial, ledger_serial, fastbound_item_id} — new_serial is the gun's Serial No name afterwards (the corrected serial itself, or a tagged key when another gun already has that serial); fastbound_item_id is "" on a store running with the FastBound integration switched off, where the local rename is the whole correction.
 
 **Raises:** ValidationError / PermissionError / FastBoundError: With no partial write.
 
 **Permissions:** Stock Manager / System Manager (aligned with intake).
 
-<sub>`apps/ffl_core/ffl_core/api/serial_correction.py:36`</sub>
+<sub>`apps/ffl_core/ffl_core/api/serial_correction.py:45`</sub>

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenGunstore API",
-    "version": "0.8.1",
+    "version": "0.9.0",
     "description": "RPC API of the OpenGunstore custom apps (Frappe/ERPNext v16): ffl_core, ffl_integrations, ffl_woo_sync.\n\nAll endpoints are Frappe *whitelisted methods* invoked as `/api/method/<dotted.path>`. Unless an endpoint declares explicit HTTP verbs, it is documented here as POST (Frappe also accepts GET for read-only calls; always POST mutations). Arguments may be sent as JSON body, form data, or query string — JSON body is recommended.\n\nEvery operation carries an **Auth (derived from code)** line statically resolved from the role gate the function actually executes; the prose Permissions note adds semantics the machine can't infer.\n\nStandard CRUD on DocTypes is served by Frappe's REST layer (`/api/resource/<DocType>`) — see docs/api/frappe-rest.md; the custom DocTypes are modelled under components.schemas and listed in reference/doctypes.md."
   },
   "servers": [
@@ -1137,6 +1137,10 @@
             "type": "string",
             "description": "Serial"
           },
+          "ledger_serial": {
+            "type": "string",
+            "description": "Ledger Serial"
+          },
           "cost": {
             "type": "number",
             "description": "Cost"
@@ -1218,6 +1222,10 @@
           "serial": {
             "type": "string",
             "description": "Serial"
+          },
+          "ledger_serial": {
+            "type": "string",
+            "description": "Ledger Serial"
           },
           "sales_invoice": {
             "type": "string",
@@ -1374,6 +1382,10 @@
           "used_item_agreement_template": {
             "type": "string",
             "description": "Used Item Agreement (Link: Agreement Template)"
+          },
+          "serial_placeholders": {
+            "type": "string",
+            "description": "No-Serial Spellings"
           },
           "live_check_provider": {
             "type": "string",
@@ -12336,11 +12348,11 @@
           "ffl_core"
         ],
         "summary": "Rename an in-stock firearm's serial and sync FastBound, atomically.",
-        "description": "All validation runs before any write; a FastBound failure rolls\neverything back.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\n**Permissions:** Stock Manager / System Manager (aligned with intake).\n\nSource: `apps/ffl_core/ffl_core/api/serial_correction.py:36`",
+        "description": "All validation runs before any write; a FastBound failure rolls\neverything back.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\n**Permissions:** Stock Manager / System Manager (aligned with intake).\n\nSource: `apps/ffl_core/ffl_core/api/serial_correction.py:45`",
         "operationId": "ffl_core.api.serial_correction.correct_serial",
         "responses": {
           "200": {
-            "description": "{ok, old_serial, new_serial, fastbound_item_id} — fastbound_item_id is \"\" on a store running with the FastBound integration switched off, where the local rename is the whole correction.",
+            "description": "{ok, old_serial, new_serial, ledger_serial, fastbound_item_id} — new_serial is the gun's Serial No name afterwards (the corrected serial itself, or a tagged key when another gun already has that serial); fastbound_item_id is \"\" on a store running with the FastBound integration switched off, where the local rename is the whole correction.",
             "content": {
               "application/json": {
                 "schema": {
@@ -12370,7 +12382,7 @@
                   },
                   "new_serial": {
                     "type": "string",
-                    "description": "Corrected serial number."
+                    "description": "Corrected serial number, as the bound book should record it."
                   },
                   "reason": {
                     "type": "string",
@@ -18739,11 +18751,11 @@
           "ffl_integrations"
         ],
         "summary": "Import / re-sync the FastBound bound book into ERPNext.",
-        "description": "Re-running is a SYNC: already-imported guns (matched by FastBound id) are re-synced\nfrom FastBound, which stays authoritative. A corrected maker/importer re-stamps the\nSerial No; a corrected serial renames it (stock + A&D follow); a corrected\nmodel/caliber re-keys the gun onto the right Item (reverse + re-create). Every\nstructural fix is listed in `corrected`; a gun that can't be safely auto-moved\n(sold/transferred — not a clean in-stock import) is listed in `regroup_needed`.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/importer.py:94`",
+        "description": "Re-running is a SYNC: already-imported guns (matched by FastBound id) are re-synced\nfrom FastBound, which stays authoritative. A corrected maker/importer re-stamps the\nSerial No; a corrected serial renames it (stock + A&D follow); a corrected\nmodel/caliber re-keys the gun onto the right Item (reverse + re-create). Every\nstructural fix is listed in `corrected`; a gun that can't be safely auto-moved\n(sold/transferred — not a clean in-stock import) is listed in `regroup_needed`.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/importer.py:97`",
         "operationId": "ffl_integrations.fastbound.importer.import_bound_book",
         "responses": {
           "200": {
-            "description": "Import stats dict (created/synced/corrected/regroup_needed counts; plus `projected` on a dry run).",
+            "description": "Import stats dict (created/synced/corrected/regroup_needed counts; plus `projected` on a dry run) and `duplicate_groups`: [{ledger_serial, no_serial, items: [{fastbound_id, itemNumber, serial, manufacturer, model, caliber}]}] — the guns that get tagged keys, to review first.",
             "content": {
               "application/json": {
                 "schema": {
@@ -18788,7 +18800,7 @@
                   },
                   "skip_disposed": {
                     "type": "integer",
-                    "description": "1 (default) imports only CURRENT INVENTORY — guns FastBound marks disposed (sold) or deleted are skipped (the importer creates acquisitions + receipts, not dispositions, so importing a sold gun would wrongly re-stock it). Pass 0 to import the entire historical book.",
+                    "description": "1 (default) imports only CURRENT INVENTORY — guns FastBound marks disposed (sold) or deleted are skipped (the importer creates acquisitions + receipts, not dispositions, so importing a sold gun would wrongly re-stock it). Pass 0 to import the entire historical book. Guns the book records with no serial (\"NONE MARKED\", \"NSN\", ...) or with the same serial as another in-stock item are each imported as their own gun under a tagged Serial No (\"<serial> (FB <item number>)\"); the serial as the book writes it is kept in Serial No.ledger_serial.",
                     "default": 1
                   }
                 }
@@ -18804,7 +18816,7 @@
           "ffl_integrations"
         ],
         "summary": "Move one in-stock firearm serial from its current Item to `target_item`,",
-        "description": "keeping the SAME Serial No and FFL Acquisition records — so the gun's price,\nphotos, condition, maker/importer/model/caliber, A&D history and FastBound\nlinkage all survive (nothing is deleted, so nothing can be dropped).\n\nERPNext ties a serial to one Item, so the stock moves with two ledger legs:\nissue the serial out of the old Item, flip the serial's item_code, then receive\nit into the target. The A&D record's `item` is re-pointed in place. FastBound is\nNOT touched — reassign is a POS-internal re-bucketing; the bound book only changes\non an explicit serial edit. A per-gun WooCommerce listing, where the gun has one,\nIS delisted: it belonged to the old Item, and leaving it live sells the same rifle\ntwice. Whitelisted for the Serial No form's \"Reassign Item\" action, for resolving\nthe sync's `regroup_needed` list, and for the Woo webhook's declared cross-Item\npick (`ffl_woo_sync.woocommerce.tasks.rebucket_and_apply_serial_task`).\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/importer.py:331`",
+        "description": "keeping the SAME Serial No and FFL Acquisition records — so the gun's price,\nphotos, condition, maker/importer/model/caliber, A&D history and FastBound\nlinkage all survive (nothing is deleted, so nothing can be dropped).\n\nERPNext ties a serial to one Item, so the stock moves with two ledger legs:\nissue the serial out of the old Item, flip the serial's item_code, then receive\nit into the target. The A&D record's `item` is re-pointed in place. FastBound is\nNOT touched — reassign is a POS-internal re-bucketing; the bound book only changes\non an explicit serial edit. A per-gun WooCommerce listing, where the gun has one,\nIS delisted: it belonged to the old Item, and leaving it live sells the same rifle\ntwice. Whitelisted for the Serial No form's \"Reassign Item\" action, for resolving\nthe sync's `regroup_needed` list, and for the Woo webhook's declared cross-Item\npick (`ffl_woo_sync.woocommerce.tasks.rebucket_and_apply_serial_task`).\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/importer.py:453`",
         "operationId": "ffl_integrations.fastbound.importer.reassign_serial_to_item",
         "responses": {
           "200": {
@@ -19205,7 +19217,7 @@
           "ffl_integrations"
         ],
         "summary": "Clear an abandoned counter order: drop FastBound's pending disposition",
-        "description": "for every gun on it, then delete the draft that has been holding them.\n\nThe counter half of the DISP-2026-02000 fix, and deliberately a BUTTON. The\ndaily watch (``ffl_core.api.pending_4473.alert_overdue_pending_4473``) only\never raises a ToDo: deleting a bound-book record is an ATF-visible act and\nan unattended job may not decide to perform one.\n\nSame shape as :func:`manager_redo_4473` — manager gate, reason required,\naudit trail — with one difference that matters: the invoice does not\nsurvive, so the trail is an Error Log entry rather than a comment on a\ndocument that is about to disappear. The draft itself is *deleted*, not\ncancelled (a draft cannot be cancelled), which is how the POS closes an\nabandoned order anyway — ``ffl_core.api.pos_recycle_bin`` keeps it\nrestorable for as long as its Deleted Document row lives.\n\nFastBound goes FIRST, and is then RE-READ. A failure leaves everything as it\nwas; doing it the other way round would release the gun while the bound book\nstill held it, which is the state this whole change exists to end. The\nre-read is there because DELETE is not always the end of the hold — it can\nleave the item carrying a dangling ``dispositionId`` (observed 2026-07-07;\nsee :meth:`FastBoundClient.undispose_item`). The draft is the only POS trace\nof the order, so it is given up only once FastBound itself confirms every gun\nis free.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Sales Manager / System Manager (manager gate) + required reason.\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/pos_4473_recovery.py:466`",
+        "description": "for every gun on it, then delete the draft that has been holding them.\n\nThe counter half of the DISP-2026-02000 fix, and deliberately a BUTTON. The\ndaily watch (``ffl_core.api.pending_4473.alert_overdue_pending_4473``) only\never raises a ToDo: deleting a bound-book record is an ATF-visible act and\nan unattended job may not decide to perform one.\n\nSame shape as :func:`manager_redo_4473` — manager gate, reason required,\naudit trail — with one difference that matters: the invoice does not\nsurvive, so the trail is an Error Log entry rather than a comment on a\ndocument that is about to disappear. The draft itself is *deleted*, not\ncancelled (a draft cannot be cancelled), which is how the POS closes an\nabandoned order anyway — ``ffl_core.api.pos_recycle_bin`` keeps it\nrestorable for as long as its Deleted Document row lives.\n\nFastBound goes FIRST, and is then RE-READ. A failure leaves everything as it\nwas; doing it the other way round would release the gun while the bound book\nstill held it, which is the state this whole change exists to end. The\nre-read is there because DELETE is not always the end of the hold — it can\nleave the item carrying a dangling ``dispositionId`` (observed 2026-07-07;\nsee :meth:`FastBoundClient.undispose_item`). The draft is the only POS trace\nof the order, so it is given up only once FastBound itself confirms every gun\nis free.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Sales Manager / System Manager (manager gate) + required reason.\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/pos_4473_recovery.py:468`",
         "operationId": "ffl_integrations.fastbound.pos_4473_recovery.manager_abandon_4473",
         "responses": {
           "200": {
@@ -19258,7 +19270,7 @@
           "ffl_integrations"
         ],
         "summary": "Re-open a COMPLETED 4473 — the only sanctioned way past the reset guard.",
-        "description": "The counter path (``pos_4473.start_4473_for_pos_invoice``) refuses to reset a\ncompleted order, because a stale page clicking that button is exactly what\nbroke a past invoice. A genuine redo — wrong serial on the 4473, buyer\ndenied after the fact, the disposition voided in FastBound — comes through\nhere instead:\n\n* manager-gated (Sales Manager / System Manager) and reason-required;\n* cancels this order's committed Retail Sale dispositions — the bound-book\n  mirror of the 4473 being voided — so coverage drops to zero and\n  ``refresh_4473_status`` has nothing left to restore Completed from;\n* clears the webhook-owned field group as a WHOLE, keeping \"Pending while\n  still carrying a fastbound_disposition_id\" an impossible state. That shape\n  is the fingerprint of the bug this change closes, so it must not be\n  reachable through a legitimate path either. ``fastbound_url`` goes too: it\n  is the \"electronic 4473 in flight\" marker that makes ``attest_paper_4473``\n  refuse, and whose error message sends the cashier here;\n* marks this order's Paper / override Form 4473 Log rows Cancelled (the\n  status the webhook gives a voided electronic 4473), so the row the redone\n  form left behind can be told apart from the corrected one logged next.\n\nDoes NOT touch FastBound — void the disposition there first.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Sales Manager / System Manager (manager gate) + required reason.\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/pos_4473_recovery.py:294`",
+        "description": "The counter path (``pos_4473.start_4473_for_pos_invoice``) refuses to reset a\ncompleted order, because a stale page clicking that button is exactly what\nbroke a past invoice. A genuine redo — wrong serial on the 4473, buyer\ndenied after the fact, the disposition voided in FastBound — comes through\nhere instead:\n\n* manager-gated (Sales Manager / System Manager) and reason-required;\n* cancels this order's committed Retail Sale dispositions — the bound-book\n  mirror of the 4473 being voided — so coverage drops to zero and\n  ``refresh_4473_status`` has nothing left to restore Completed from;\n* clears the webhook-owned field group as a WHOLE, keeping \"Pending while\n  still carrying a fastbound_disposition_id\" an impossible state. That shape\n  is the fingerprint of the bug this change closes, so it must not be\n  reachable through a legitimate path either. ``fastbound_url`` goes too: it\n  is the \"electronic 4473 in flight\" marker that makes ``attest_paper_4473``\n  refuse, and whose error message sends the cashier here;\n* marks this order's Paper / override Form 4473 Log rows Cancelled (the\n  status the webhook gives a voided electronic 4473), so the row the redone\n  form left behind can be told apart from the corrected one logged next.\n\nDoes NOT touch FastBound — void the disposition there first.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Sales Manager / System Manager (manager gate) + required reason.\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/pos_4473_recovery.py:296`",
         "operationId": "ffl_integrations.fastbound.pos_4473_recovery.manager_redo_4473",
         "responses": {
           "200": {
@@ -19311,7 +19323,7 @@
           "ffl_integrations"
         ],
         "summary": "Re-read the authoritative 4473 state for a POS Invoice.",
-        "description": "Layer 1 — the DB already says Completed/Proceed: the caller's page was just\nstale. Report and stop.\nLayer 2 — every firearm on the order has a committed Retail Sale disposition\nbut the doc-level flags say otherwise: the flags are stale, restore them from\nthe ledger. This is the past invoice shape.\nLayer 3 — coverage is incomplete: ask FastBound what it knows and REPORT it.\n\nNever writes NICS from a FastBound probe: the API does not carry the outcome,\nso inferring Proceed from \"the gun left the bound book\" would fabricate a\ncompliance fact.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS 4473 roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/pos_4473_recovery.py:211`",
+        "description": "Layer 1 — the DB already says Completed/Proceed: the caller's page was just\nstale. Report and stop.\nLayer 2 — every firearm on the order has a committed Retail Sale disposition\nbut the doc-level flags say otherwise: the flags are stale, restore them from\nthe ledger. This is the past invoice shape.\nLayer 3 — coverage is incomplete: ask FastBound what it knows and REPORT it.\n\nNever writes NICS from a FastBound probe: the API does not carry the outcome,\nso inferring Proceed from \"the gun left the bound book\" would fabricate a\ncompliance fact.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS 4473 roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/pos_4473_recovery.py:213`",
         "operationId": "ffl_integrations.fastbound.pos_4473_recovery.refresh_4473_status",
         "responses": {
           "200": {
@@ -19359,7 +19371,7 @@
           "ffl_integrations"
         ],
         "summary": "Apply the operator's per-field POS-vs-FastBound resolution choices.",
-        "description": "Re-computes the diff first: a field no longer differing is skipped\n(already_resolved); a field whose FB value changed since shown is\nskipped (changed); the rest apply against fresh FB values. FB-wins\nwrite the Serial No; any POS-win triggers exactly one\npush_serial_to_fastbound.\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:180`",
+        "description": "Re-computes the diff first: a field no longer differing is skipped\n(already_resolved); a field whose FB value changed since shown is\nskipped (changed); the rest apply against fresh FB values. FB-wins\nwrite the Serial No; any POS-win triggers exactly one\npush_serial_to_fastbound.\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:190`",
         "operationId": "ffl_integrations.fastbound.reconcile.apply_serial_fb_resolution",
         "responses": {
           "200": {
@@ -19411,7 +19423,7 @@
           "ffl_integrations"
         ],
         "summary": "Undo :func:`mark_not_in_bound_book` — the record turned out to belong in the",
-        "description": "bound book after all. Its sync error is emptied, so the daily retry pushes it again\nand the Dashboard lists it until it lands; a comment records who cleared it.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:401`",
+        "description": "bound book after all. Its sync error is emptied, so the daily retry pushes it again\nand the Dashboard lists it until it lands; a comment records who cleared it.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:414`",
         "operationId": "ffl_integrations.fastbound.reconcile.clear_not_in_bound_book",
         "responses": {
           "200": {
@@ -19464,11 +19476,11 @@
           "ffl_integrations"
         ],
         "summary": "Diff a Serial No's firearm identity against its FastBound item (read-only).",
-        "description": "**Auth (derived from code):** Requires read permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:105`",
+        "description": "**Auth (derived from code):** Requires read permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:108`",
         "operationId": "ffl_integrations.fastbound.reconcile.compute_serial_fb_diff",
         "responses": {
           "200": {
-            "description": "{status: \"ok\" | \"not_in_fastbound\" | \"not_configured\" | \"fb_missing\" | \"fb_disposed\", serial, [fb_item_number], [in_sync], [diffs: [{field, pos_value, fb_value}]]}.",
+            "description": "{status: \"ok\" | \"not_in_fastbound\" | \"not_configured\" | \"fb_missing\" | \"fb_disposed\", serial, [fb_item_number], [in_sync], [diffs: [{field, pos_value, fb_value}]], [serial_diff: {pos_value, fb_value} or None]}. serial_diff compares the gun's ledger serial with FastBound's (case and spacing aside); it is outside `diffs` because a serial is changed with Correct Serial, not by picking a side here.",
             "content": {
               "application/json": {
                 "schema": {
@@ -19512,7 +19524,7 @@
           "ffl_integrations"
         ],
         "summary": "Record that a person checked this submitted record and it does not belong in the",
-        "description": "bound book — e.g. an antique (pre-1899 receiver) booked by mistake, which FastBound\nrefuses because it never acquired the gun. The daily retry, the stuck digest and the\nDashboard's \"Not in the bound book yet\" list leave it alone from then on. The record\nitself is not cancelled (its stock leg is right); the reason, who marked it and the\nprevious sync error are kept as a comment.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:342`",
+        "description": "bound book — e.g. an antique (pre-1899 receiver) booked by mistake, which FastBound\nrefuses because it never acquired the gun. The daily retry, the stuck digest and the\nDashboard's \"Not in the bound book yet\" list leave it alone from then on. The record\nitself is not cancelled (its stock leg is right); the reason, who marked it and the\nprevious sync error are kept as a comment.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:355`",
         "operationId": "ffl_integrations.fastbound.reconcile.mark_not_in_bound_book",
         "responses": {
           "200": {
@@ -19570,7 +19582,7 @@
           "ffl_integrations"
         ],
         "summary": "Find and stamp the FastBound item id for an unlinked serial.",
-        "description": "For a gun with no fastbound_item_id, finds its FastBound item by\nserial and stamps the id so it can be reconciled. Uses\nfind_item_by_serial (raises on >1 in-stock match — surfaced to the\noperator).\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:263`",
+        "description": "For a gun with no fastbound_item_id, finds its FastBound item by\nserial and stamps the id so it can be reconciled. Uses\nfind_item_by_serial (raises on >1 in-stock match — surfaced to the\noperator).\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:273`",
         "operationId": "ffl_integrations.fastbound.reconcile.match_serial_to_fastbound",
         "responses": {
           "200": {
@@ -19618,7 +19630,7 @@
           "ffl_integrations"
         ],
         "summary": "Link an already-booked POS record to an EXISTING FastBound record.",
-        "description": "For the divergence class where the bound book already carries the event\n(entered directly in FastBound, or a push that landed but lost its id) and\nthe POS record is stuck with a sync error: re-pushing would double-book, so\nthe fix is to adopt the FastBound record's id. fastbound_id is locked after\nsubmit on both doctypes — this endpoint is the sanctioned entrance (the\n2026-08-21 JV-return incident had to do all of this through a bench\nconsole).\n\nEverything is verified against FastBound LIVE before anything is written\n(fail-closed): the ref must resolve to a real item whose serial matches the\nrecord's, and a Disposition additionally requires the item to actually be\ndisposed. An acquisition reconcile also repoints Serial No.fastbound_item_id\nthe way a successful push would.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:430`",
+        "description": "For the divergence class where the bound book already carries the event\n(entered directly in FastBound, or a push that landed but lost its id) and\nthe POS record is stuck with a sync error: re-pushing would double-book, so\nthe fix is to adopt the FastBound record's id. fastbound_id is locked after\nsubmit on both doctypes — this endpoint is the sanctioned entrance (the\n2026-08-21 JV-return incident had to do all of this through a bench\nconsole).\n\nEverything is verified against FastBound LIVE before anything is written\n(fail-closed): the ref must resolve to a real item whose serial matches the\nrecord's, and a Disposition additionally requires the item to actually be\ndisposed. An acquisition reconcile also repoints Serial No.fastbound_item_id\nthe way a successful push would.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:443`",
         "operationId": "ffl_integrations.fastbound.reconcile.reconcile_record_to_fastbound",
         "responses": {
           "200": {
@@ -19676,7 +19688,7 @@
           "ffl_integrations"
         ],
         "summary": "Re-run the FastBound push for a submitted FFL Disposition that failed.",
-        "description": "``push_disposition_to_fastbound`` is a ``@frappe.task`` and nothing else —\nthere was no way to re-run one. A push that failed sat in\n``fastbound_sync_error`` until the next daily ``reconcile_failed_pushes``,\nwhich is up to 24 hours with a firearm out of the building and no bound-book\nentry for it. DISP-2026-02000 spent a day in exactly that state while the\nobstacle that caused the 400 had already been cleared by hand.\n\nA thin wrapper on purpose: it re-checks who may press it and what may be\npressed, then calls the task unchanged. Run INLINE rather than enqueued so\nthe operator sees the outcome — the task is already idempotent (it no-ops on\nan already-linked record) and carries its own retry/back-off.\n\nThe ``PUSHABLE_DISPOSITION_TYPES`` check is not decoration. A Retail Sale is\na 4473 disposition that FastBound's own wizard owns; pushing one from here\nwould book a to-individual transfer as a plain bound-book entry — a\ncompliance defect, not a sync error. The task would refuse it silently, so\nthis refuses it loudly instead of pretending to have done something. So does\nFastBound being switched off, for the same reason: the task returns silently\non a disabled integration, which behind a button reads as \"it failed again,\nreason unknown\".\n\nThe task's retry ladder is turned OFF here (``_retries=0``): an operator is\nwaiting, and the default four attempts with back-off can hold the desk for\n~80 seconds before showing anything.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\n**Permissions:** Inventory roles (same gate as :func:`reconcile_record_to_fastbound`).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:529`",
+        "description": "``push_disposition_to_fastbound`` is a ``@frappe.task`` and nothing else —\nthere was no way to re-run one. A push that failed sat in\n``fastbound_sync_error`` until the next daily ``reconcile_failed_pushes``,\nwhich is up to 24 hours with a firearm out of the building and no bound-book\nentry for it. DISP-2026-02000 spent a day in exactly that state while the\nobstacle that caused the 400 had already been cleared by hand.\n\nA thin wrapper on purpose: it re-checks who may press it and what may be\npressed, then calls the task unchanged. Run INLINE rather than enqueued so\nthe operator sees the outcome — the task is already idempotent (it no-ops on\nan already-linked record) and carries its own retry/back-off.\n\nThe ``PUSHABLE_DISPOSITION_TYPES`` check is not decoration. A Retail Sale is\na 4473 disposition that FastBound's own wizard owns; pushing one from here\nwould book a to-individual transfer as a plain bound-book entry — a\ncompliance defect, not a sync error. The task would refuse it silently, so\nthis refuses it loudly instead of pretending to have done something. So does\nFastBound being switched off, for the same reason: the task returns silently\non a disabled integration, which behind a button reads as \"it failed again,\nreason unknown\".\n\nThe task's retry ladder is turned OFF here (``_retries=0``): an operator is\nwaiting, and the default four attempts with back-off can hold the desk for\n~80 seconds before showing anything.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\n**Permissions:** Inventory roles (same gate as :func:`reconcile_record_to_fastbound`).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:543`",
         "operationId": "ffl_integrations.fastbound.reconcile.retry_disposition_push",
         "responses": {
           "200": {
@@ -19724,7 +19736,7 @@
           "ffl_integrations"
         ],
         "summary": "Kick off a background POS-vs-FastBound diff scan of in-stock firearms.",
-        "description": "Scans every in-stock firearm with a fastbound_item_id. The result\n(which guns differ) is pushed via realtime (event 'fb_diff_scan_done')\n+ a Notification Log when the job finishes.\n\n**Auth (derived from code):** Requires read permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:296`",
+        "description": "Scans every in-stock firearm with a fastbound_item_id. The result\n(which guns differ) is pushed via realtime (event 'fb_diff_scan_done')\n+ a Notification Log when the job finishes.\n\n**Auth (derived from code):** Requires read permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:309`",
         "operationId": "ffl_integrations.fastbound.reconcile.scan_in_stock_fb_diffs",
         "responses": {
           "200": {
@@ -19754,7 +19766,7 @@
           "ffl_integrations"
         ],
         "summary": "Push a post-acquisition manufacturer / importer correction for ONE",
-        "description": "firearm to FastBound, editing the bound-book item in place (PUT /Items/{id})\n— no delete/recreate, FastBound audit-logs the edit.\n\nCalled synchronously from the Serial No form's \"sync to FastBound?\" confirm\nafter an operator edits a per-unit manufacturer / importer.\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/tasks.py:703`",
+        "description": "firearm to FastBound, editing the bound-book item in place (PUT /Items/{id})\n— no delete/recreate, FastBound audit-logs the edit.\n\nCalled synchronously from the Serial No form's \"sync to FastBound?\" confirm\nafter an operator edits a per-unit manufacturer / importer.\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/tasks.py:720`",
         "operationId": "ffl_integrations.fastbound.tasks.push_serial_to_fastbound",
         "responses": {
           "200": {
@@ -19802,7 +19814,7 @@
           "webhooks"
         ],
         "summary": "Single FastBound webhook entry point (guest, HMAC-verified).",
-        "description": "**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\n**Payload:** FastBound's webhook JSON body; the event name selects the handler. The X-FastBound-Signature header must carry a valid HMAC over the raw body (secret configured in FastBound Settings).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/webhook.py:1120`",
+        "description": "**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\n**Payload:** FastBound's webhook JSON body; the event name selects the handler. The X-FastBound-Signature header must carry a valid HMAC over the raw body (secret configured in FastBound Settings).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/webhook.py:1131`",
         "operationId": "ffl_integrations.fastbound.webhook.fastbound_event",
         "responses": {
           "200": {
