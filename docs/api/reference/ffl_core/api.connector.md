@@ -14,11 +14,11 @@ Who this bearer token belongs to, and whether it was issued to a connector.
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
-| `surface` | string \| null | no | `None` | "cpa" or "full" — the connector asking; refused unless that surface is switched on in MCP Settings. |
+| `surface` | string \| null | no | `None` | "cpa", "full" or "web_ro" — the connector asking. |
 
-**Returns:** {user, full_name, client_id, client_name, connector, enabled, expires_at} — connector is true only for a client created by dynamic registration; enabled says whether that surface is switched on (answered, not refused: a switched-off server must not look like a bad token, or clients would loop on sign-in); expires_at is the token's expiry as a Unix timestamp.
+**Returns:** {user, full_name, client_id, client_name, connector, enabled, web_access, expires_at} — connector is true only for a client created by dynamic registration; enabled says whether that surface is switched on (answered, not refused: a switched-off server must not look like a bad token, or clients would loop on sign-in); web_access is the user's level on a website surface ("manager", "viewer" or "", by role alone; always "" for cpa and full); expires_at is the token's expiry as a Unix timestamp.
 
-<sub>`apps/ffl_core/ffl_core/api/connector.py:94`</sub>
+<sub>`apps/ffl_core/ffl_core/api/connector.py:100`</sub>
 
 ## `log_connector_call`
 
@@ -36,7 +36,7 @@ moves from Started to its outcome exactly once; it cannot be rewritten.
 | arg | type | required | default | description |
 |---|---|---|---|---|
 | `tool` | string | yes | — | Tool name. |
-| `surface` | string | yes | — | "cpa" or "full". |
+| `surface` | string | yes | — | "cpa", "full" or "web_ro". |
 | `phase` | string | no | `'started'` | "started", "ok" or "failed". |
 | `arguments` | string \| null | no | `None` | The tool arguments as JSON; secret-looking keys are masked. |
 | `log` | string \| null | no | `None` | The Connector Audit Log returned by the "started" call (for "ok"/"failed"). |
@@ -44,4 +44,4 @@ moves from Started to its outcome exactly once; it cannot be rewritten.
 
 **Returns:** {log} — the Connector Audit Log name.
 
-<sub>`apps/ffl_core/ffl_core/api/connector.py:121`</sub>
+<sub>`apps/ffl_core/ffl_core/api/connector.py:129`</sub>

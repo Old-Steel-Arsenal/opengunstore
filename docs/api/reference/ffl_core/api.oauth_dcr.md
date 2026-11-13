@@ -17,4 +17,4 @@ sign in and approve before it gets any token.
 
 **Returns:** Frappe's registration response (201 with the client metadata, or 400).
 
-<sub>`apps/ffl_core/ffl_core/api/oauth_dcr.py:32`</sub>
+<sub>`apps/ffl_core/ffl_core/api/oauth_dcr.py:35`</sub>

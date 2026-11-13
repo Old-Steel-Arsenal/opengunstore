@@ -699,7 +699,8 @@
             "type": "string",
             "enum": [
               "cpa",
-              "full"
+              "full",
+              "web_ro"
             ],
             "description": "Surface"
           },
@@ -1996,6 +1997,22 @@
           "full_claude_code": {
             "type": "string",
             "description": "Claude Code Command (Full)"
+          },
+          "enable_web_ro": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Enable Website Read-only MCP Server"
+          },
+          "web_ro_url": {
+            "type": "string",
+            "description": "Website Read-only MCP Server URL"
+          },
+          "web_ro_claude_code": {
+            "type": "string",
+            "description": "Claude Code Command (Website Read-only)"
           }
         }
       },
@@ -7511,11 +7528,11 @@
           "ffl_core"
         ],
         "summary": "Who this bearer token belongs to, and whether it was issued to a connector.",
-        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/connector.py:94`",
+        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/connector.py:100`",
         "operationId": "ffl_core.api.connector.connector_identity",
         "responses": {
           "200": {
-            "description": "{user, full_name, client_id, client_name, connector, enabled, expires_at} — connector is true only for a client created by dynamic registration; enabled says whether that surface is switched on (answered, not refused: a switched-off server must not look like a bad token, or clients would loop on sign-in); expires_at is the token's expiry as a Unix timestamp.",
+            "description": "{user, full_name, client_id, client_name, connector, enabled, web_access, expires_at} — connector is true only for a client created by dynamic registration; enabled says whether that surface is switched on (answered, not refused: a switched-off server must not look like a bad token, or clients would loop on sign-in); web_access is the user's level on a website surface (\"manager\", \"viewer\" or \"\", by role alone; always \"\" for cpa and full); expires_at is the token's expiry as a Unix timestamp.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7544,7 +7561,7 @@
                 "null"
               ]
             },
-            "description": "\"cpa\" or \"full\" — the connector asking; refused unless that surface is switched on in MCP Settings."
+            "description": "\"cpa\", \"full\" or \"web_ro\" — the connector asking."
           }
         ]
       }
@@ -7555,7 +7572,7 @@
           "ffl_core"
         ],
         "summary": "Record one connector tool call in Connector Audit Log.",
-        "description": "Called before the tool runs (phase \"started\" — the connector refuses to run\nthe tool if this fails, so nothing happens unrecorded) and once after it\n(phase \"ok\" / \"failed\", with the log name returned by the first call). A row\nmoves from Started to its outcome exactly once; it cannot be rewritten.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/connector.py:121`",
+        "description": "Called before the tool runs (phase \"started\" — the connector refuses to run\nthe tool if this fails, so nothing happens unrecorded) and once after it\n(phase \"ok\" / \"failed\", with the log name returned by the first call). A row\nmoves from Started to its outcome exactly once; it cannot be rewritten.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/connector.py:129`",
         "operationId": "ffl_core.api.connector.log_connector_call",
         "responses": {
           "200": {
@@ -7589,7 +7606,7 @@
                   },
                   "surface": {
                     "type": "string",
-                    "description": "\"cpa\" or \"full\"."
+                    "description": "\"cpa\", \"full\" or \"web_ro\"."
                   },
                   "phase": {
                     "type": "string",
@@ -11235,7 +11252,7 @@
           "webhooks"
         ],
         "summary": "RFC 7591 dynamic client registration (Frappe's), plus localhost loopback",
-        "description": "redirects. Open by design like Frappe's: the client still needs a user to\nsign in and approve before it gets any token.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/api/oauth_dcr.py:32`",
+        "description": "redirects. Open by design like Frappe's: the client still needs a user to\nsign in and approve before it gets any token.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/api/oauth_dcr.py:35`",
         "operationId": "ffl_core.api.oauth_dcr.register_client",
         "responses": {
           "200": {
