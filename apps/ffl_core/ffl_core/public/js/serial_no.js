@@ -14,6 +14,7 @@ frappe.ui.form.on('Serial No', {
 		_renderImages(frm);
 		_addCorrectSerialButton(frm);
 		_addCorrectCostButton(frm);
+		_showDealHold(frm);
 	},
 
 	// Re-render the strip live when the Photo is changed/cleared.
@@ -67,4 +68,19 @@ function _renderImages(frm) {
 	if (g.customizeImageGalleryGrid) g.customizeImageGalleryGrid(frm);
 	// Same photo manager as the Item form; this gun's own shots live here.
 	if (g.renderPhotoManager) g.renderPhotoManager(frm, { sectionField: 'ffl_media_section' });
+}
+
+// A gun held for a CRM deal (ffl_core/crm/holds.py): who for and until when, linked to the deal.
+// Released on the Deal page or at the counter, so no button here.
+function _showDealHold(frm) {
+	if (frm.is_new() || (frm.doc.status || '') !== 'Active') return;
+	// The endpoint's own roles (COUNTER_ROLES): anyone else would get a permission pop-up.
+	if (!frappe.user.has_role(['Sales User', 'Sales Manager', 'Stock Manager', 'System Manager'])) return;
+	frappe.xcall('ffl_core.api.crm.serial_hold', { serial: frm.doc.name }).then((r) => {
+		const h = r && r.hold;
+		if (!h || frm.doc.name !== h.serial) return;
+		const esc = frappe.utils.escape_html;
+		const deal = `<a href="/crm/deals/${encodeURIComponent(h.deal)}">${esc(h.deal)}</a>`;
+		frm.set_intro(__('Held for deal {0} ({1}) until {2}.', [deal, esc(h.customer_name || ''), esc(h.expires_label)]), 'orange');
+	}).catch(() => { /* no counter role: nothing to show */ });
 }

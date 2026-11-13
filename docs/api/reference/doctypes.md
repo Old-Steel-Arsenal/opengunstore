@@ -45,6 +45,29 @@ The text of a waiver or agreement customers sign.
 | `body` | Text Editor | Agreement Text | ✓ |  |
 | `description` | Small Text | Staff Notes |  |  |
 
+## CRM Deal Hold
+
+app: `ffl_core` · module: FFL Core · roles: Sales Manager, Sales User, Stock Manager, System Manager
+
+A gun held for a CRM deal: the counter, the website and GunBroker do not sell it to anyone else until the hold ends.
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `serial_no` | Link | Serial No | ✓ | Serial No |
+| `item_code` | Link | Item | ✓ | Item |
+| `deal` | Data | Deal | ✓ |  |
+| `status` | Select | Status | ✓ | Active, Released, Expired |
+| `held_by` | Link | Held by |  | User |
+| `held_at` | Datetime | Held at |  |  |
+| `expires_at` | Datetime | Held until | ✓ |  |
+| `extensions` | Int | Extensions |  |  |
+| `ended_at` | Datetime | Ended at |  |  |
+| `ended_by` | Link | Ended by |  | User |
+| `end_reason` | Select | Why it ended |  | , Released, Expired, Deal won, Deal lost, Deal deleted, Off the deal, Sold to the customer, Manager override, Gun left stock, Taken by another order |
+| `approved_by` | Link | Approved by |  | User |
+| `note` | Small Text | Note |  |  |
+| `active_serial` | Data | Active serial |  |  |
+
 ## CRM Mail Category
 
 app: `ffl_core` · module: FFL Core · roles: Sales Manager, Sales User, System Manager
@@ -576,6 +599,7 @@ Which incoming staff mail goes into CRM: the store's team addresses, and the dom
 | `category_rules` | Table | Category rules |  | CRM Mail Category Rule |
 | `spam_folder` | Data | Spam folder |  |  |
 | `crm_pos_link` | Check | Link deals to POS orders |  |  |
+| `crm_deal_holds` | Check | Hold guns for deals |  |  |
 
 ## MCP Settings
 
