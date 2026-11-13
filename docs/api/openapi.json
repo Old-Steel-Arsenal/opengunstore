@@ -11865,11 +11865,11 @@
           "ffl_core"
         ],
         "summary": "Open a draft register ticket (POS Invoice) on the open POS shift.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/pos_ticket.py:101`",
+        "description": "A rate under the line's list price needs a manager's approval while the store requires one,\nas at the register: a manager signed in approves their own; anyone else sends the token a\nmanager's approval gave for this ticket. A rate past the item's Max Discount is refused.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/pos_ticket.py:112`",
         "operationId": "ffl_core.api.pos_ticket.open_ticket",
         "responses": {
           "200": {
-            "description": "{\"pos_invoice\", \"grand_total\", \"payment_modes\": the profile's modes of payment on the ticket}. Refused when no shift is open.",
+            "description": "{\"pos_invoice\", \"grand_total\", \"payment_modes\": the profile's modes of payment on the ticket}. Refused when no shift is open, or when a lowered price has no approval.",
             "content": {
               "application/json": {
                 "schema": {
@@ -11906,6 +11906,13 @@
                       "null"
                     ],
                     "description": "Company the shift is on; blank = the user's default company."
+                  },
+                  "approval_token": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The token ``ffl_core.price_approval.approve`` returned for this ticket (its doc: a POS Invoice with these customer and lines)."
                   }
                 },
                 "required": [

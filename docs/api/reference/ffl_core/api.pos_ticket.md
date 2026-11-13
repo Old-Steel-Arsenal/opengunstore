@@ -12,12 +12,17 @@ Source: `apps/ffl_core/ffl_core/api/pos_ticket.py` · 1 endpoint(s)
 
 Open a draft register ticket (POS Invoice) on the open POS shift.
 
+A rate under the line's list price needs a manager's approval while the store requires one,
+as at the register: a manager signed in approves their own; anyone else sends the token a
+manager's approval gave for this ticket. A rate past the item's Max Discount is refused.
+
 | arg | type | required | default | description |
 |---|---|---|---|---|
 | `customer` | string | yes | — | Customer name. |
 | `items` | — | yes | — | JSON list of lines ``[{item_code, qty=1, rate?, serial_no?, storage_location?}]``; rate blank = the item's price for the customer, a serial is one unit. |
 | `company` | string \| null | no | `None` | Company the shift is on; blank = the user's default company. |
+| `approval_token` | string \| null | no | `None` | The token ``ffl_core.price_approval.approve`` returned for this ticket (its doc: a POS Invoice with these customer and lines). |
 
-**Returns:** {"pos_invoice", "grand_total", "payment_modes": the profile's modes of payment on the ticket}. Refused when no shift is open.
+**Returns:** {"pos_invoice", "grand_total", "payment_modes": the profile's modes of payment on the ticket}. Refused when no shift is open, or when a lowered price has no approval.
 
-<sub>`apps/ffl_core/ffl_core/api/pos_ticket.py:101`</sub>
+<sub>`apps/ffl_core/ffl_core/api/pos_ticket.py:112`</sub>

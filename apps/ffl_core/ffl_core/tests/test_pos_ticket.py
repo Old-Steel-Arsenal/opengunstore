@@ -1,5 +1,6 @@
-"""pos_ticket.open_ticket: a draft register ticket on the open shift, built by the
-shared counter-draft helpers, with the caller's lines checked at the boundary.
+"""pos_ticket.open_ticket / build_ticket: a draft register ticket on the open shift, built by the
+shared counter-draft helpers, with the caller's lines checked at the boundary and (open_ticket)
+its typed rates judged by price approval and the item's Max Discount.
 
 Site tests on the bootstrap company ("FFL Test") and the gunsmith fixtures' profile.
 """
@@ -8,8 +9,11 @@ from __future__ import annotations
 import frappe
 from frappe.utils import flt
 
+from ffl_core import price_approval as pa
 from ffl_core.api import pos_ticket
 from ffl_core.tests import test_gunsmith_work_order as gw
+from ffl_core.tests import test_price_approval as tpa
+from ffl_core.tests.settings_sandbox import SettingsSandbox
 
 PART = "_Test GW Part"
 
@@ -67,11 +71,12 @@ class OpenTicket(gw._Base):
 
 # Priced items for the discount tests: code -> (list price, Item.max_discount).
 _PRICED = {"_Test Ticket Disc 20": (20, 0), "_Test Ticket Disc 1999": (19.99, 0),
-	"_Test Ticket Disc 1234": (1234.56, 0), "_Test Ticket Disc Cap": (20, 10)}
+	"_Test Ticket Disc 1234": (1234.56, 0), "_Test Ticket Disc Cap": (20, 10),
+	"_Test Ticket Disc Cap 1234": (1234.56, 20)}
 
 
-class OpenTicketDiscount(gw._Base):
-	"""A caller's rate under the list price is the line's discount off it, and the rate it saves."""
+class _Priced(gw._Base):
+	"""The priced items in place."""
 
 	@classmethod
 	def setUpClass(cls):
@@ -96,6 +101,10 @@ class OpenTicketDiscount(gw._Base):
 	def _row(self, row):
 		return (row.item_code, flt(row.price_list_rate), flt(row.rate), flt(row.discount_percentage),
 			flt(row.discount_amount))
+
+
+class OpenTicketDiscount(_Priced):
+	"""A caller's rate under the list price is the line's discount off it, and the rate it saves."""
 
 	def test_rate_below_list_shows_its_discount(self):
 		_out, inv = self._ticket([{"item_code": "_Test Ticket Disc 20", "rate": 17}])
@@ -138,8 +147,24 @@ class OpenTicketDiscount(gw._Base):
 		_out, inv = self._ticket([{"item_code": "_Test Ticket Disc 1234", "rate": 1000}])
 		self.assertEqual(self._row(inv.items[0]), ("_Test Ticket Disc 1234", 1234.56, 1000, 0, 234.56))
 
-	def test_over_the_items_max_discount_still_opens(self):
-		_out, inv = self._ticket([{"item_code": "_Test Ticket Disc Cap", "rate": 15}])
+	def test_over_the_items_max_discount_is_refused(self):
+		# 25% off a 10% cap. Judged on the rate, not the saved %: on a 20% cap the lowest rate off
+		# 1234.56 is 987.65, and a rate whose % cannot be reproduced (saved as 0% + amount) is no way past.
+		with self.assertRaisesRegex(frappe.ValidationError, "Maximum discount for Item _Test Ticket Disc Cap is 10"):
+			self._ticket([{"item_code": "_Test Ticket Disc Cap", "rate": 15}])
+		with self.assertRaisesRegex(frappe.ValidationError, "Maximum discount"):
+			self._ticket([{"item_code": "_Test Ticket Disc Cap 1234", "rate": 987.64}])
+		_out, inv = self._ticket([{"item_code": "_Test Ticket Disc Cap", "rate": 18},
+			{"item_code": "_Test Ticket Disc Cap 1234", "rate": 1000},
+			{"item_code": "_Test Ticket Disc Cap 1234", "rate": 987.65}])
+		self.assertEqual([self._row(r) for r in inv.items], [("_Test Ticket Disc Cap", 20, 18, 10, 2),
+			("_Test Ticket Disc Cap 1234", 1234.56, 1000, 0, 234.56),
+			("_Test Ticket Disc Cap 1234", 1234.56, 987.65, 20, 246.91)])
+
+	def test_build_ticket_may_pass_the_max_discount(self):
+		out = pos_ticket.build_ticket(self.cust.name, [{"item_code": "_Test Ticket Disc Cap", "rate": 15}],
+			company=gw.COMPANY)
+		inv = frappe.get_doc("POS Invoice", out["pos_invoice"])
 		self.assertEqual(self._row(inv.items[0]), ("_Test Ticket Disc Cap", 20, 15, 0, 5))
 
 	def test_rate_above_list(self):
@@ -163,19 +188,89 @@ class OpenTicketDiscount(gw._Base):
 			inv.save()
 			self.assertEqual([self._row(r) for r in frappe.get_doc("POS Invoice", inv.name).items], first)
 
-	def test_price_approval_reads_the_same(self):
-		"""What the register's submit would ask: nothing for the rates the ticket was saved at; below
-		list (the approval record's test) every discounted line, at the caller's rate."""
-		from ffl_core import price_approval
 
-		_out, inv = self._ticket([{"item_code": "_Test Ticket Disc 20", "rate": 17},
-			{"item_code": "_Test Ticket Disc 1999", "rate": 16.99},
-			{"item_code": "_Test Ticket Disc 20"}])
-		stored = frappe.get_doc("POS Invoice", inv.name)
-		self.assertEqual(price_approval.reductions(inv, stored)["lines"], [])
-		self.assertEqual([(l["item_code"], l["list_rate"], l["rate"])
-			for l in price_approval.reductions(inv, against_list=True)["lines"]],
-			[("_Test Ticket Disc 20", 20, 17), ("_Test Ticket Disc 1999", 19.99, 16.99)])
-		# A new ticket judged as unsaved (the register's own first save) asks for the same two lines.
-		self.assertEqual([l["item_code"] for l in price_approval.reductions(inv)["lines"]],
-			["_Test Ticket Disc 20", "_Test Ticket Disc 1999"])
+
+class OpenTicketApproval(SettingsSandbox, _Priced):
+	"""open_ticket's typed rates are judged by price approval like a register save; build_ticket's
+	are our own pricing and are not."""
+
+	def setUp(self):
+		super().setUp()
+		self.set_single("FFL Settings", pa.SETTING, 1)
+		tpa._staff()
+
+	def _as(self, user, items, **kw):
+		frappe.set_user(user)
+		self.addCleanup(frappe.set_user, "Administrator")
+		return pos_ticket.open_ticket(self.cust.name, frappe.as_json(items), company=gw.COMPANY, **kw)
+
+	def _record(self, name):
+		return frappe.db.get_value("POS Invoice", name, [pa.BY, pa.REASON, pa.TOKEN_FIELD], as_dict=True)
+
+	def _token(self, items):
+		"""What the screen does first: a manager's approval for a ticket of these lines."""
+		frappe.set_user(tpa.CLERK)
+		doc = {"doctype": "POS Invoice", "company": gw.COMPANY, "customer": self.cust.name,
+			"selling_price_list": "Standard Selling", "items": [dict(i) for i in items]}   # get_doc fills them in
+		return pa.approve(approver=tpa.MANAGER, reason=tpa.REASON, pin=tpa.PIN, doc=doc)["token"]
+
+	def test_a_clerk_below_list_is_refused(self):
+		with self.assertRaisesRegex(pa.PriceApprovalRequired, "Ask a manager"):
+			self._as(tpa.CLERK, [{"item_code": "_Test Ticket Disc 20", "rate": 0}])
+
+	def test_a_clerk_at_or_above_list_is_not_asked(self):
+		out = self._as(tpa.CLERK, [{"item_code": "_Test Ticket Disc 20"}, {"item_code": "_Test Ticket Disc 20",
+			"rate": 25}])
+		self.assertFalse(self._record(out["pos_invoice"])[pa.BY])
+
+	def test_a_clerk_with_a_token_opens_it_and_it_is_recorded(self):
+		items = [{"item_code": "_Test Ticket Disc 20", "qty": 1, "rate": 17}]
+		token = self._token(items)
+		out = self._as(tpa.CLERK, items, approval_token=token)
+		row = self._record(out["pos_invoice"])
+		self.assertEqual((row[pa.BY], row[pa.REASON]), (tpa.MANAGER, tpa.REASON))
+		self.assertFalse(row[pa.TOKEN_FIELD], "the token is carried in, never stored")
+		with self.assertRaisesRegex(pa.PriceApprovalRequired, "expired or was used"):
+			self._as(tpa.CLERK, items, approval_token=token)
+
+	def test_a_token_does_not_cover_a_lower_rate(self):
+		token = self._token([{"item_code": "_Test Ticket Disc 20", "qty": 1, "rate": 17}])
+		with self.assertRaisesRegex(pa.PriceApprovalRequired, "Lower than the manager approved"):
+			self._as(tpa.CLERK, [{"item_code": "_Test Ticket Disc 20", "rate": 16}], approval_token=token)
+
+	def test_a_manager_approves_their_own_and_it_is_recorded(self):
+		out = self._as(tpa.MANAGER, [{"item_code": "_Test Ticket Disc 20", "rate": 17}])
+		row = self._record(out["pos_invoice"])
+		self.assertEqual((row[pa.BY], row[pa.REASON]), (tpa.MANAGER, "Manager's own price"))
+		self.assertEqual(len(tpa._comments(frappe._dict(doctype="POS Invoice", name=out["pos_invoice"]))), 1)
+
+	def test_build_ticket_is_not_asked(self):
+		frappe.set_user(tpa.CLERK)
+		self.addCleanup(frappe.set_user, "Administrator")
+		out = pos_ticket.build_ticket(self.cust.name, [{"item_code": "_Test Ticket Disc 20", "rate": 0}],
+			company=gw.COMPANY)
+		inv = frappe.get_doc("POS Invoice", out["pos_invoice"])
+		self.assertEqual(self._row(inv.items[0]), ("_Test Ticket Disc 20", 20, 0, 100, 20))
+		self.assertFalse(inv.get(pa.BY))
+
+	def test_switch_off_asks_nothing(self):
+		self.set_single("FFL Settings", pa.SETTING, 0)
+		out = self._as(tpa.CLERK, [{"item_code": "_Test Ticket Disc 20", "rate": 17}])
+		inv = frappe.get_doc("POS Invoice", out["pos_invoice"])
+		self.assertEqual(self._row(inv.items[0]), ("_Test Ticket Disc 20", 20, 17, 15, 3))
+		self.assertFalse(inv.get(pa.BY))
+
+	def test_the_registers_save_after_does_not_ask_again(self):
+		out = self._as(tpa.MANAGER, [{"item_code": "_Test Ticket Disc 20", "rate": 17},
+			{"item_code": "_Test Ticket Disc 1999", "rate": 16.99}])
+		tpa._request(self)   # the register's own save, by a clerk
+		frappe.set_user(tpa.CLERK)
+		inv = frappe.get_doc("POS Invoice", out["pos_invoice"])
+		inv.save()
+		self.assertEqual([flt(r.rate) for r in inv.items], [17, 16.99])
+		self.assertEqual(self._record(inv.name)[pa.BY], tpa.MANAGER, "the ticket's approval stays on it")
+		# Lowered again at the register, it asks.
+		inv = frappe.get_doc("POS Invoice", out["pos_invoice"])
+		inv.items[0].rate, inv.items[0].discount_percentage, inv.items[0].discount_amount = 16, 0, 0
+		with self.assertRaisesRegex(pa.PriceApprovalRequired, "Ask a manager"):
+			inv.save()

@@ -220,7 +220,7 @@ gunstore.extensions.register('acme_layaway', {
 | `settingsLinks` | **Settings** on the extension's card | One per Settings Single. |
 | `onDeskReady()` | — | Once after the desk is ready, per effective extension. A throw is logged to the console and does not stop the others. |
 
-**Send a ticket to the register from your own page.** Build the draft on the server with `ffl_core.api.pos_ticket.open_ticket` (the caller's open shift; your rates are the ticket's), then:
+**Send a ticket to the register from your own page.** Build the draft on the server with `ffl_core.api.pos_ticket.build_ticket` (the caller's open shift; your rates are the ticket's and are not asked for a manager's approval — the HTTP endpoint `open_ticket` judges a caller's typed rates like the register does), then:
 
 ```js
 frappe.route_options = { ffl_pos_invoice: name };   // the draft POS Invoice
