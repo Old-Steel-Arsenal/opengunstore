@@ -257,7 +257,42 @@ def _lock(item_code: str, serial: str, columns: list[str]):
 	return (row[0] if row else None), active
 
 
+_PENDING = "ffl_deal_hold_comments"
+
+
 def _comment(deal: str, text: str) -> None:
+	"""The deal's timeline note. Inside :func:`_after_commit` it waits for the hold's own commit."""
+	pending = getattr(frappe.local, _PENDING, None)
+	if pending is not None:
+		pending.append((deal, text))
+		return
+	_insert_comment(deal, text)
+
+
+def _after_commit(fn):
+	"""Run *fn* (a write under the gun's locks, which commits), then post its deal notes in a
+	transaction of their own. A note updates the deal's row (``_comments``): written under the
+	locks, a deal saved meanwhile by someone else (mail, CRM's page) would fail the whole hold with
+	MariaDB's 1020. A note that still fails is logged; the hold stands."""
+	setattr(frappe.local, _PENDING, [])
+	try:
+		result = fn()
+		commit()
+	finally:
+		pending = getattr(frappe.local, _PENDING, None) or []
+		setattr(frappe.local, _PENDING, None)
+	for deal, text in pending:
+		frappe.db.savepoint("ffl_hold_note")
+		try:
+			_insert_comment(deal, text)
+			commit()
+		except Exception:
+			_rollback("ffl_hold_note")
+			frappe.log_error(title=f"[{TITLE}] Hold note not posted: {deal}", message=frappe.get_traceback())
+	return result
+
+
+def _insert_comment(deal: str, text: str) -> None:
 	if deal and installed() and frappe.db.exists(DEAL, deal):
 		frappe.get_doc({"doctype": "Comment", "comment_type": "Comment", "reference_doctype": DEAL,
 			"reference_name": deal, "content": escape_html(text), "comment_email": frappe.session.user,
@@ -424,7 +459,7 @@ def hold_guns(deal, serials, approver: str | None = None, pin: str | None = None
 	manager = _approval(approver, pin, password) if needs else None
 	columns = shelf_state_columns()
 	for serial in sorted(todo, key=lambda s: (items[s], s)):
-		out = _hold_one(deal.name, serial, items[serial], columns, manager)
+		out = _after_commit(lambda serial=serial: _hold_one(deal.name, serial, items[serial], columns, manager))
 		(held if "name" in out else refused).append(out)
 	return {"held": held, "refused": refused}
 
@@ -530,7 +565,7 @@ def extend(name: str, approver: str | None = None, pin: str | None = None, passw
 		fire_changed(doc.serial_no)
 		return _public(doc.name)
 
-	return _concurrent(run)
+	return _after_commit(lambda: _concurrent(run))
 
 
 def release(name: str, reason: str | None = None, approver: str | None = None, pin: str | None = None,
@@ -555,7 +590,7 @@ def release(name: str, reason: str | None = None, approver: str | None = None, p
 			comment=_("Hold on {0} released by {1}.").format(locked.serial_no, get_fullname(user)))
 		return _public(name)
 
-	return _concurrent(run)
+	return _after_commit(lambda: _concurrent(run))
 
 
 def override(serial: str, reason: str, approver: str | None = None, pin: str | None = None,
@@ -591,7 +626,7 @@ def override(serial: str, reason: str, approver: str | None = None, pin: str | N
 		commit()
 		return {"released": _public(doc.name), "task": task}
 
-	return _concurrent(run)
+	return _after_commit(lambda: _concurrent(run))
 
 
 # ---------------------------------------------------------------- the deal's own events
@@ -658,8 +693,7 @@ def sweep() -> dict:
 	for name in frappe.get_all(HOLD, filters={"status": ACTIVE}, pluck="name", order_by="expires_at asc"):
 		frappe.db.savepoint("ffl_hold_sweep")
 		try:
-			ended = _sweep_one(name)
-			commit()
+			ended = _after_commit(lambda name=name: _sweep_one(name))
 		except Exception:
 			_rollback("ffl_hold_sweep")
 			frappe.log_error(title=f"[{TITLE}] Hold sweep failed: {name}", message=frappe.get_traceback())
