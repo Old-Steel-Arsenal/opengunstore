@@ -173,6 +173,8 @@ extend_bootinfo = [
 	# Whether any plan has a member benefit: the cart's live preview stays quiet without one
 	# (membership_benefits.py).
 	"ffl_core.membership_benefits.extend_bootinfo",
+	# The signed-in person's assignments waiting for them to say they saw them (assignment_notice.py).
+	"ffl_core.assignment_notice.extend_bootinfo",
 ]
 
 
@@ -223,9 +225,17 @@ app_include_js = [
 	# Member prices shown on the cart as lines are added or the customer changes; the server's save
 	# is the authority (membership_benefits.py).
 	_hashed("js/member_prices.js"),
+	# "Assigned to you": the dialog that asks a person to say they saw a new assignment
+	# (assignment_notice.py). Needs staff_switch.js above (post, and its lock screen to wait behind).
+	_hashed("js/assignment_notice.js"),
 ]
 
 doc_events = {
+	# A new assignment asks its person to say they saw it (assignment_notice.py).
+	"ToDo": {
+		"before_validate": "ffl_core.assignment_notice.stamp",
+		"on_update": "ffl_core.assignment_notice.announce",
+	},
 	# A copy requested for a gunsmith work order is its intake authorization (gunsmith.py).
 	"Customer Agreement": {"on_update": "ffl_core.gunsmith.link_intake_agreement"},
 	# A store flipping an integration's switch re-shapes the Gun Shop sidebar and home page
@@ -895,6 +905,8 @@ after_install = [
 	"ffl_core.price_approval.ensure_default",
 	# Member price line fields (setup/member_benefits).
 	"ffl_core.setup.member_benefits.ensure",
+	# The assignment notice's two ToDo fields (setup/assignment_notice).
+	"ffl_core.setup.assignment_notice.ensure",
 	# Cash drawer: the two POS Closing Entry fields (accounts wait for a company, at after_migrate).
 	"ffl_core.setup.cash_drawer.ensure_fields_only",
 	# Frappe CRM wired to the POS: custom fields, ERPNext CRM Settings, the product backfill (ffl_core.crm.setup).
@@ -978,6 +990,8 @@ after_migrate = [
 	"ffl_core.setup.cash_drawer.ensure",
 	# Manager approval for lowered prices: the record + token fields (setup/price_approval).
 	"ffl_core.setup.price_approval.ensure",
+	# The assignment notice's two ToDo fields (setup/assignment_notice).
+	"ffl_core.setup.assignment_notice.ensure",
 	# Frappe CRM wired to the POS (ffl_core.crm.setup); does nothing while CRM is not on the site.
 	"ffl_core.crm.setup.ensure",
 ]
