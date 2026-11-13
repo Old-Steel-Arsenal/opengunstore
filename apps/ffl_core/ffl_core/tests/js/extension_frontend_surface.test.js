@@ -27,8 +27,9 @@ function loadInBrowser(file, frappe) {
 // ERPNext's New Customer dialog, as far as newFromScan sees it: make_quick_entry hands the dialog to
 // init_callback (or, with no quick entry, the bare doc), the dialog's onhide fires on close, and a
 // save calls after_insert with the saved doc.
-function quickEntryStub({ dialog = true } = {}) {
+function quickEntryStub({ dialog = true, loading = false } = {}) {
 	const calls = [];
+	const later = [];   // loading: the dialog comes up when the test calls later.shift()()
 	const frappe = {
 		provide() {}, _from_link: { stale: true },
 		ui: { form: {
@@ -38,12 +39,15 @@ function quickEntryStub({ dialog = true } = {}) {
 				const qe = { scans: [], onhide: () => { calls.push('stock-onhide'); },
 					__fflApplyScan(raw) { this.scans.push(raw); } };
 				calls.push({ doctype, doc, qe, afterInsert });
+				if (loading) {
+					return new Promise((resolve) => later.push(() => { initCallback(qe); resolve(qe); }));
+				}
 				if (dialog) initCallback(qe); else initCallback({ doctype });
 				return Promise.resolve(qe);
 			},
 		} },
 	};
-	return { frappe, calls };
+	return { frappe, calls, later };
 }
 const tick = () => new Promise((r) => setTimeout(r, 5));
 
@@ -94,6 +98,37 @@ test('newFromScan: called again while its dialog is open, re-fills that dialog a
 	// Settled: the next call opens a new dialog.
 	ffl.customerQuickEntry.newFromScan('RAW-3');
 	assert.strictEqual(calls.filter((c) => c.doctype).length, 2);
+});
+
+test('newFromScan: scans while the dialog is still loading share one dialog, filled from the newest', async () => {
+	const { frappe, calls, later } = quickEntryStub({ loading: true });
+	const ffl = loadInBrowser('customer_quick_entry.js', frappe);
+	const first = ffl.customerQuickEntry.newFromScan('RAW-1');
+	const second = ffl.customerQuickEntry.newFromScan('RAW-2');
+	const third = ffl.customerQuickEntry.newFromScan('RAW-3');
+	assert.strictEqual(second, first);
+	assert.strictEqual(third, first);
+	assert.strictEqual(calls.filter((c) => c.doctype).length, 1, 'one dialog');
+	later.shift()();
+	await tick();
+	assert.deepStrictEqual(calls[0].qe.scans, ['RAW-3']);
+	calls[0].afterInsert({ name: 'CUST-0003' });
+	assert.strictEqual(await first, 'CUST-0003');
+});
+
+test('newFromScan: an answered call does not clear the next one', async () => {
+	const { frappe, calls } = quickEntryStub();
+	const ffl = loadInBrowser('customer_quick_entry.js', frappe);
+	const first = ffl.customerQuickEntry.newFromScan('RAW-1');
+	calls[0].afterInsert({ name: 'CUST-A' });
+	assert.strictEqual(await first, 'CUST-A');
+	const second = ffl.customerQuickEntry.newFromScan('RAW-2');
+	calls[0].qe.onhide();          // the first dialog's late hide settles only its own call
+	await tick();
+	assert.strictEqual(ffl.customerQuickEntry.newFromScan('RAW-3'), second, 'the second dialog is still the open one');
+	assert.deepStrictEqual(calls[1].qe.scans, ['RAW-2', 'RAW-3']);
+	calls[1].afterInsert({ name: 'CUST-B' });
+	assert.strictEqual(await second, 'CUST-B');
 });
 
 test('newFromScan: "Use this customer" hides the dialog first, then answers: the name still wins', async () => {

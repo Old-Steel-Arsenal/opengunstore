@@ -486,24 +486,27 @@
 	// ID Numbers switch decides, as always, whether the license number and birth date are read).
 	// Resolves the customer's name once the clerk saves (or picks an existing customer at the
 	// duplicate check); null when the dialog closes without one, including "Edit in full page"
-	// and a site where Customer has no quick entry. Called again while its dialog is still open,
-	// it re-fills that same dialog from the new scan and returns the same promise.
-	var open = null;   // {qe, promise} while a newFromScan dialog is up
+	// and a site where Customer has no quick entry. Called again before it has answered, it returns
+	// the same promise: an open dialog is re-filled from the new scan; one still loading is filled
+	// from the newest scan once it is up.
+	var open = null;   // {qe, raw, promise} while a newFromScan call has not answered
 	function newFromScan(raw) {
-		if (open && open.qe) {
-			open.qe.__fflApplyScan(raw);
+		if (open) {
+			if (open.qe) open.qe.__fflApplyScan(raw);
+			else open.raw = raw;
 			return open.promise;
 		}
+		var mine = { qe: null, raw: raw, promise: null };
 		var settled = false, settle;
-		var promise = new Promise(function (resolve) {
+		mine.promise = new Promise(function (resolve) {
 			settle = function (name) {
 				if (settled) return;
 				settled = true;
-				open = null;
+				if (open === mine) open = null;
 				resolve(name || null);
 			};
 		});
-		open = { qe: null, promise: promise };
+		open = mine;
 		// A "Create a new Customer" from a Link the clerk left earlier would take the saved
 		// customer instead of our callback (frappe._from_link outlives a dialog closed unsaved).
 		delete frappe._from_link;
@@ -513,7 +516,7 @@
 		}, function (qe) {
 			if (!qe || typeof qe.__fflApplyScan !== 'function') return;   // full form instead of the dialog
 			shown = true;
-			open.qe = qe;
+			mine.qe = qe;
 			var stockOnHide = qe.onhide;
 			qe.onhide = function () {
 				var out = stockOnHide && stockOnHide.apply(qe, arguments);
@@ -521,11 +524,11 @@
 				setTimeout(function () { settle(null); }, 0);
 				return out;
 			};
-			qe.__fflApplyScan(raw);
+			qe.__fflApplyScan(mine.raw);
 		}, { doctype: 'Customer', customer_type: 'Individual' });
 		// No dialog came up (Customer opens its full form on this site): nothing to wait for.
 		Promise.resolve(setup).then(function () { if (!shown) settle(null); }, function () { settle(null); });
-		return promise;
+		return mine.promise;
 	}
 	api.newFromScan = newFromScan;
 
