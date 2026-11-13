@@ -12,7 +12,9 @@ from ffl_core.api import connector
 from ffl_core.ffl_core.doctype.mcp_settings import mcp_settings
 
 
-class TestConnectorApi(FrappeTestCase):
+class ConnectorFixtures(FrappeTestCase):
+	"""Switches, OAuth clients and tokens shared by the test classes below (no tests here)."""
+
 	def setUp(self):
 		super().setUp()
 		self.user = "Administrator"
@@ -45,6 +47,8 @@ class TestConnectorApi(FrappeTestCase):
 		return patch.object(connector.frappe, "get_request_header",
 			side_effect=lambda h, *a: f"Bearer {token}" if h == "Authorization" else None)
 
+
+class TestConnectorApi(ConnectorFixtures):
 	def test_identity_marks_only_registered_clients_as_connectors(self):
 		with self._as(self.connector_token):
 			me = connector.connector_identity("cpa")
@@ -206,9 +210,9 @@ class TestConnectorApi(FrappeTestCase):
 				connector.log_connector_call("x", "cpa", phase="ok", log=log)
 
 
-class TestWebConnector(TestConnectorApi):
+class TestWebConnector(ConnectorFixtures):
 	"""The website read-only surface (web_ro): its switch AND a website role gate a call;
-	connector_identity reports the role level as web_access. Reuses the token helpers above."""
+	connector_identity reports the role level as web_access. Uses the token helpers in ConnectorFixtures."""
 
 	VIEWER, MANAGER = mcp_settings.WEB_VIEWER_ROLE, mcp_settings.WEB_MANAGER_ROLE
 
