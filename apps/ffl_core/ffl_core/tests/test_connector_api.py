@@ -343,3 +343,19 @@ class TestWebConnector(ConnectorFixtures):
 		doc.run_method("onload")
 		self.assertTrue(doc.web_ro_url.endswith("/connector/web_ro/mcp"))
 		self.assertIn("gunstore-web-ro", doc.web_ro_claude_code)
+
+
+class TestSurfacesContract(FrappeTestCase):
+	def test_surfaces_is_exactly_the_pos_surfaces(self):
+		"""mcp_settings.SURFACES is a name first-party extensions import and iterate:
+		the AI extension refuses to connect unless every surface in it is switched on
+		and mints one token per surface. It must stay exactly the POS's own surfaces
+		(cpa, full); a website surface is never in it (those live in ALL_SURFACES),
+		or a released extension would demand the website connector be switched on."""
+		self.assertEqual(mcp_settings.SURFACES, {"cpa": "enable_cpa", "full": "enable_full"})
+		self.assertFalse(set(mcp_settings.SURFACES) & set(mcp_settings.WEB_SURFACES))
+		self.assertEqual(set(mcp_settings.ALL_SURFACES),
+			set(mcp_settings.SURFACES) | set(mcp_settings.WEB_SURFACES))
+		meta = frappe.get_meta("MCP Settings")
+		for field in mcp_settings.ALL_SURFACES.values():
+			self.assertTrue(meta.has_field(field), field)

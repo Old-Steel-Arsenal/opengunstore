@@ -26,7 +26,7 @@ from frappe.utils import now_datetime
 from frappe.utils.data import get_system_timezone
 
 from ffl_core.ffl_core.doctype.mcp_settings.mcp_settings import (
-	SURFACES,
+	ALL_SURFACES,
 	WEB_SURFACES,
 	surface_enabled,
 	web_access,
@@ -157,8 +157,8 @@ def log_connector_call(tool: str, surface: str, phase: str = "started",
 			frappe.throw(_("Invalid argument type."))
 	if phase not in STATUS:
 		frappe.throw(_("phase must be started, ok or failed."))
-	if surface not in SURFACES:
-		frappe.throw(_("surface must be one of {0}.").format(", ".join(SURFACES)))
+	if surface not in ALL_SURFACES:
+		frappe.throw(_("surface must be one of {0}.").format(", ".join(ALL_SURFACES)))
 	# A call already running when the switch goes off may still close its record.
 	if phase == "started":
 		_require_surface(surface, c.user)
