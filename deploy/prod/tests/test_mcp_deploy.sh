@@ -23,13 +23,15 @@ case "$*" in
 esac
 SH
 chmod +x "$T/up.sh"
-# fake docker: log the call; `ps --format` reports both containers healthy
+# fake docker: log the call; `ps --format` reports FAKE_HEALTHY (default 2) healthy containers
 cat > "$T/docker" <<'SH'
 #!/usr/bin/env bash
 echo "docker $* [COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME-unset}]" >> "$FAKE_LOG"
-case "$*" in *"ps --format"*) printf 'healthy\nhealthy\n' ;; esac
+case "$*" in *"ps --format"*) for _ in $(seq 1 "${FAKE_HEALTHY:-2}"); do echo healthy; done ;; esac
 SH
 chmod +x "$T/docker"
+# fake sleep: the health wait's retries cost no time
+printf '#!/bin/sh\n' > "$T/sleep"; chmod +x "$T/sleep"
 
 # run <extra .env lines...>: a fresh deploy dir with mcp/ pinned at sha-pinned0
 run() {
@@ -38,6 +40,9 @@ run() {
 	printf 'FRAPPE_SITE_NAME_HEADER=pos.example.com\n%s\n' "$*" > "$T/d/.env"
 	echo 'x: y' > "$T/d/mcp/compose.yaml"
 	echo 'MCP_TAG=sha-pinned0' > "$T/d/mcp/version.env"
+	echo 'x: y' > "$T/d/mcp/compose.web.yaml"
+	if [ -n "${WEB_ENV_MODE:-}" ]; then echo 'WEB_SITE_URL=x' > "$T/d/mcp/web.env"; chmod "$WEB_ENV_MODE" "$T/d/mcp/web.env"; fi
+	[ -z "${NO_WEB_COMPOSE:-}" ] || rm "$T/d/mcp/compose.web.yaml"
 	PATH="$T:$PATH" FAKE_LOG="$T/log" HERE="$T/d" ENV_FILE="$T/d/.env" UP="$T/up.sh" SITE=pos.example.com \
 		bash -c 'source "$0"; deploy_mcp' "$T/fn.sh" > "$T/out" 2>&1 || echo "(deploy_mcp exit $?)" >> "$T/out"
 }
@@ -81,6 +86,32 @@ env_has 'MCP_RANGE=1' && ok "Range on: MCP_RANGE=1" || bad "$(cat "$T/d/mcp/.env
 FAKE_RANGE=garbage run ''
 env_has 'MCP_RANGE=0' && ok "anything but true: MCP_RANGE=0" || bad "$(cat "$T/d/mcp/.env" 2>&1)"
 unset FAKE_RANGE
+
+echo "== no mcp/web.env: exactly the docker calls from before the website connector"
+run ''
+D="$T/d/mcp"
+expected="docker compose -f $D/compose.yaml --env-file $D/.env pull -q [COMPOSE_PROJECT_NAME=unset]
+docker compose -f $D/compose.yaml --env-file $D/.env up -d [COMPOSE_PROJECT_NAME=unset]
+docker compose -f $D/compose.yaml --env-file $D/.env ps --format {{.Health}} [COMPOSE_PROJECT_NAME=unset]"
+[ "$(cat "$T/log")" = "$expected" ] && ok "pull, up -d, ps on compose.yaml alone; 2 healthy is enough" || bad "log: $(cat "$T/log")"
+! grep -q 'website' "$T/out" && ok "says nothing about the website connector" || bad "out: $(cat "$T/out")"
+
+echo "== mcp/web.env (mode 600) adds the website connector to every compose call"
+WEB_ENV_MODE=600 FAKE_HEALTHY=3 run ''
+[ "$(grep -c 'compose -f .*/compose.yaml -f .*/compose.web.yaml --env-file' "$T/log")" = 3 ] && ok "pull, up -d, ps all carry compose.web.yaml" || bad "log: $(cat "$T/log")"
+grep -q 'MCP servers healthy' "$T/out" && ok "3 healthy containers pass" || bad "out: $(cat "$T/out")"
+WEB_ENV_MODE=600 FAKE_HEALTHY=2 run ''
+! grep -q 'MCP servers healthy' "$T/out" && grep -q 'deploy_mcp exit' "$T/out" && ok "with it on, 2 healthy is not enough" || bad "out: $(cat "$T/out")"
+
+echo "== a web.env others can read is not used"
+WEB_ENV_MODE=644 run ''
+! grep -q compose.web.yaml "$T/log" && grep -q '::warning title=Website connector not started' "$T/out" && ok "left off, with a warning" || bad "log: $(cat "$T/log"); out: $(cat "$T/out")"
+WEB_ENV_MODE=640 run ''
+! grep -q compose.web.yaml "$T/log" && ok "group-readable: left off" || bad "log: $(cat "$T/log")"
+
+echo "== web.env without compose.web.yaml (an older release) changes nothing"
+WEB_ENV_MODE=600 NO_WEB_COMPOSE=1 run ''
+[ "$(cat "$T/log")" = "$(sed "s|$D|$T/d/mcp|g" <<<"$expected")" ] && ok "same calls as without web.env" || bad "log: $(cat "$T/log")"
 
 echo; echo "mcp-deploy: $pass passed, $fail failed"
 [ "$fail" = 0 ]

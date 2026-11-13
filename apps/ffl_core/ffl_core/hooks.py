@@ -911,6 +911,8 @@ after_install = [
 	"ffl_core.setup.cash_drawer.ensure_fields_only",
 	# Frappe CRM wired to the POS: custom fields, ERPNext CRM Settings, the product backfill (ffl_core.crm.setup).
 	"ffl_core.crm.setup.after_install",
+	# The website connector roles (mcp_settings.WEB_ROLES).
+	"ffl_core.ffl_core.doctype.mcp_settings.mcp_settings.ensure_web_roles",
 ]
 before_migrate = [
 	# Extension upgrades: any migrate that runs an upgrade's new code (a deploy's
@@ -923,6 +925,8 @@ after_migrate = [
 	"ffl_core.extensions.registry.sync",
 	# OAuth Settings follow the MCP server switches (mcp_settings.sync_oauth).
 	"ffl_core.ffl_core.doctype.mcp_settings.mcp_settings.sync_oauth",
+	# The website connector roles (mcp_settings.WEB_ROLES), so a manager can give them.
+	"ffl_core.ffl_core.doctype.mcp_settings.mcp_settings.ensure_web_roles",
 	# Item form layout belongs to the custom_field fixtures (insert_after). A
 	# Customize Form save pins a field_order Property Setter that overrides them
 	# for every field it saw — drop it each migrate (setup/item_layout.py).

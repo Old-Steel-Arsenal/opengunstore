@@ -1,0 +1,20 @@
+# The website read-only connector (opengunstore-mcp in web mode): an MCP server that
+# reads the store's website as one site user and answers each signed-in POS user
+# by their website role (MCP Settings › Website Read-only). Optional, per store.
+#
+# auto_deploy.sh adds this file to the MCP stack only when the host holds the
+# site credentials in web.env next to it (mode 600; see web.env.example). A store
+# without that file runs exactly the two services in compose.yaml.
+services:
+  mcp-web-ro:
+    image: ${MCP_IMAGE:-ghcr.io/old-steel-arsenal/gunstore-pos-mcp}:${MCP_TAG:?MCP_TAG comes from version.env}
+    network_mode: host
+    restart: unless-stopped
+    env_file: [.env, web.env]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}
+    environment:
+      GUNSTORE_MCP_MODE: web
+      GUNSTORE_MCP_PORT: "8783"
+      GUNSTORE_MCP_PUBLIC_URL: ${FRAPPE_BASE_URL:?}/connector/web_ro/mcp
