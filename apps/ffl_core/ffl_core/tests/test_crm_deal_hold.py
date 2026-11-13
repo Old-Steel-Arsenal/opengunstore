@@ -608,7 +608,9 @@ class TwoClerksAtOnce(FrappeTestCase):
 		product = upsert_product(frappe.get_doc("Item", item))   # goes with the Item (CRM's own cascade)
 		warehouse = frappe.db.get_value("Warehouse", {"is_group": 0}, "name")
 		serial = f"DHRACE{token}"
-		frappe.get_doc({"doctype": "Serial No", "serial_no": serial, "item_code": item}).insert(ignore_permissions=True)
+		company = frappe.db.get_value("Warehouse", warehouse, "company")
+		frappe.get_doc({"doctype": "Serial No", "serial_no": serial, "item_code": item, "company": company}).insert(
+			ignore_permissions=True)
 		frappe.db.set_value("Serial No", serial, {"status": "Active", "warehouse": warehouse, "sell_price": 500},
 			update_modified=False)
 		made.append(("Serial No", serial))
