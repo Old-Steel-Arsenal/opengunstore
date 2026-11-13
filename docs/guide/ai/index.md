@@ -20,7 +20,9 @@ It does not replace you at the counter. A Form 4473, the background check, handi
 | **Full** | Read, and also change data, within your own role | Counter staff and managers who want it to do work |
 | **Website** | Read the store's website: orders, products, SEO and email contacts. A Website Connector Manager can also make the changes the store has set up, such as SEO titles, product text, order notes and contact tags | Staff a manager gives a website role |
 
-Every connection signs in as **you**. The assistant can do only what your own account can do on screen. A counter account stays a counter account. The website connection is off until the store sets it up, and it also needs a website role on your account: **Website Connector Viewer** only reads, **Website Connector Manager** can also change the website. Changes go live on the website at once.
+Every connection signs in as **you**. The assistant can do only what your own account can do on screen. A counter account stays a counter account.
+
+The website connection is off until the store sets it up, and it also needs a website role on your account: **Website Connector Viewer** only reads, **Website Connector Manager** can also change the website. Changes go live on the website at once.
 
 ## Before you start
 

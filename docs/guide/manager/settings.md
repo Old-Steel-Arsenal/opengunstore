@@ -83,7 +83,9 @@ The connection pages are described field by field in [Integrations](../admin/int
 
 **MCP Settings** switches on the read-only, the full and the website MCP server, the connection an AI assistant such as Claude uses. Once a switch is on, it shows its server address and a command ready to copy.
 
-Staff sign in with their own account, and the assistant can do only what their role allows. The website server needs a website role: Website Connector Viewer reads, Website Connector Manager can also change the website. **Connector Audit Log** on the form opens the permanent record of every action taken through a connector. System Manager only. See [the MCP server](../../ai/mcp.md).
+Staff sign in with their own account, and the assistant can do only what their role allows. The website server needs a website role: Website Connector Viewer reads, Website Connector Manager can also change the website.
+
+**Connector Audit Log** on the form opens the permanent record of every action taken through a connector. System Manager only. See [the MCP server](../../ai/mcp.md).
 
 ## Cash Drawer Settings
 
