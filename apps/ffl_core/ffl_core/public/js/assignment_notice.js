@@ -186,10 +186,11 @@
 	function badge(n) {
 		if (n != null) openTasks = n;
 		var text = api.badgeText(openTasks);
-		$('.sidebar-item-container a.item-anchor[href$="/app/' + PAGE + '"]').each(function () {
+		$('.sidebar-item-container a.item-anchor[href$="/' + PAGE + '"]').each(function () {
 			var $a = $(this), $b = $a.find('.ffl-task-count');
 			if (!$b.length) {
-				$b = $('<span class="ffl-task-count indicator-pill orange" style="margin-left:auto; padding:0 6px; font-size:var(--text-xs)"></span>');
+				$b = $('<span class="ffl-task-count" style="margin-left:auto; min-width:18px; padding:0 6px; border-radius:9px; text-align:center;'
+					+ ' background:var(--bg-orange); color:var(--text-on-orange); font-size:var(--text-xs); line-height:18px"></span>');
 				$a.find('.sidebar-item-label').after($b);
 			}
 			$b.text(text).toggle(!!text);
