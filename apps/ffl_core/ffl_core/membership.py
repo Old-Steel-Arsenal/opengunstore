@@ -940,15 +940,17 @@ def run_renewals(batch: int = 1) -> dict:
 
 
 def renew_memberships(time_budget: float | None = None) -> dict:
-	"""Daily, store-local morning: charge the renewals that are due, retry the past-due ones once a
-	day, suspend those whose grace ran out, then send the yearly reminders. Nothing runs with no plan
+	"""Daily, store-local morning: send the yearly reminders, then charge the renewals that are due,
+	retry the past-due ones once a day and suspend those whose grace ran out. Nothing runs with no plan
 	or with Membership Settings → Charge renewals automatically off. Each membership is its own
 	transaction (one failure is logged and leaves the others alone); running it twice the same day
 	tries nobody twice — nor does a run killed halfway and run again: a membership is marked tried
 	today, together with its charge record, before its card is charged. With ``time_budget``
 	(seconds) no new membership is started once it has run out: the tally then counts the ones
-	left under ``more`` and the reminders wait for the batch that finishes. Returns a tally of the
-	outcomes."""
+	left under ``more``. The reminders go first, so a batch that runs out of time (or the last
+	batch never running) cannot hold them up; they are sent once per renewal, so every batch
+	asking again sends nothing twice, and a reminder that fails is logged and charges nothing
+	less. Returns a tally of the outcomes."""
 	if not frappe.db.count(PLAN) or not renewals_enabled():
 		return {}
 	started = time.monotonic()
@@ -958,15 +960,24 @@ def renew_memberships(time_budget: float | None = None) -> dict:
 	# Past due with auto-renew since switched off: not charged, but its grace still runs out.
 	lapsing = frappe.get_all(DOCTYPE, filters={"auto_renew": 0, "status": PAST_DUE}, pluck="name")
 	todo = due + lapsing
-	tally: dict = {}
+	tally: dict = {"reminded": _send_reminders_safely(today)}
 	for i, name in enumerate(todo):
 		if i and time_budget is not None and time.monotonic() - started > time_budget:
 			tally[MORE] = len(todo) - i
 			return tally
 		out = _renew_safely(name, today)
 		tally[out] = tally.get(out, 0) + 1
-	tally["reminded"] = send_renewal_reminders(today)
 	return tally
+
+
+def _send_reminders_safely(today) -> int:
+	"""The yearly reminders, never stopping the renewals behind them (each reminder already logs
+	its own failure; this covers the run itself: a reminder sent is committed with its mark)."""
+	try:
+		return send_renewal_reminders(today)
+	except Exception:
+		frappe.log_error(title="Membership renewal reminders failed", message=frappe.get_traceback())
+		return 0
 
 
 def _renew_safely(name: str, today) -> str:

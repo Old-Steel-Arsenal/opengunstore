@@ -211,6 +211,30 @@ class RenewalJob(_Base):
 		self.assertIn("$650", call.kwargs["message"].replace(" ", ""))
 		self.assertNotEqual(call.kwargs["reference_name"], monthly)
 
+	def test_reminders_go_out_even_when_the_batch_runs_out_of_time(self):
+		"""The reminders do not wait for the last batch: a batch out of time (or the day's batch
+		limit) used to skip them. Each batch asks again and sends nothing twice."""
+		frappe.db.set_value("Customer", self.customer, "email_id", "member-reminder3@example.com")
+		yearly = self._active(self.yearly.name)
+		self._active()
+		self._active(self.grace_plan.name)                 # two monthly renewals due that day
+		with patch("ffl_core.membership.frappe.sendmail") as sendmail, _on("2027-11-08"):
+			first = ms.renew_memberships(time_budget=-1)   # out of time after one membership
+			self.assertEqual(first["reminded"], 1)
+			self.assertGreaterEqual(first.get(ms.MORE, 0), 1)       # the batch stopped early
+			second = ms.renew_memberships(time_budget=-1)
+			self.assertEqual(second["reminded"], 0)
+		self.assertEqual([c.kwargs["reference_name"] for c in sendmail.call_args_list], [yearly])
+
+	def test_a_failing_reminder_run_never_stops_the_renewals(self):
+		m = self._active()
+		with patch("ffl_core.membership.send_renewal_reminders", side_effect=frappe.ValidationError("smtp")), \
+				_on("2026-12-15"):
+			out = ms.renew_memberships()
+		self.assertEqual((out["reminded"], out.get(ms.NO_CARD)), (0, 1))
+		self.assertNotEqual(frappe.db.get_value(ms.DOCTYPE, m, "status"), ms.ACTIVE)
+		self.assertTrue(frappe.db.exists("Error Log", {"method": "Membership renewal reminders failed"}))
+
 	def test_yearly_reminder_zero_days_is_off(self):
 		frappe.db.set_value("Customer", self.customer, "email_id", "member-reminder2@example.com")
 		self._active(self.yearly.name)

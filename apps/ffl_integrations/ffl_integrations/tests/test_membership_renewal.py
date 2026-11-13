@@ -379,7 +379,7 @@ class MembershipRenewal(_CardOnFileBase):
 		self.assertEqual((second.get(ms.RENEWED), second.get(ms.MORE)), (1, 1))
 		self.assertEqual(third.get(ms.RENEWED), 1)
 		self.assertNotIn(ms.MORE, third)
-		self.assertIn("reminded", third)                         # the last batch sends the reminders
+		self.assertIn("reminded", first)                         # the reminders go out with the first batch
 		self.assertEqual(len(queued), 2)
 		self.assertEqual(len(set(self._charged(client))), 3)
 		self.assertEqual(len(self._charged(client)), 3)

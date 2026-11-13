@@ -12,7 +12,8 @@ Rules:
   * rows, a terminal charge with no reader named → refused (:class:`CardReaderRequired`): never
     quietly fall back to some device — it may be on another counter
   * rows, an unknown or disabled reader → refused (:class:`CardReaderUnavailable`); the browser
-    forgets its choice and asks again
+    forgets its choice, reads the readers again (``card_tender_mode``) and asks again
+  * every refusal names the readers that are switched on, so an API client can retry with one
   * a keyed charge (the processor's payment page) uses no device and needs no reader
 
 A charge already started stays with its own device: poll / cancel / resume go by the handle the
@@ -46,22 +47,27 @@ def _has_table(settings_doctype: str | None) -> bool:
 
 def readers(settings_doctype: str | None) -> list:
 	"""Every card reader row of a processor's settings Single, in table order ([] when the
-	processor keeps no table, or it is empty)."""
+	processor keeps no table, or it is empty). Read from the cached Single (every readiness check,
+	charge start and boot asks): saving the settings clears that cache."""
 	if not _has_table(settings_doctype):
 		return []
-	return frappe.get_all(DOCTYPE, filters={"parenttype": settings_doctype, "parent": settings_doctype,
-		"parentfield": TABLE_FIELD}, fields=["reader_name", "serial_number", "enabled"],
-		order_by="idx asc")
+	return list(frappe.get_cached_doc(settings_doctype).get(TABLE_FIELD) or [])
 
 
 def enabled_readers(settings_doctype: str | None) -> list:
 	return [r for r in readers(settings_doctype) if r.enabled]
 
 
+def _available(rows) -> str:
+	"""The switched-on readers' names, for a refusal the caller can retry from."""
+	return ", ".join(r.reader_name for r in rows if r.enabled) or _("none")
+
+
 def resolve(processor, reader: str | None, *, keyed: bool = False) -> dict | None:
 	"""The reader a new charge on ``processor`` goes to: {"name", "serial"}, or None when the
 	processor keeps no readers (its own configured device) or the charge is keyed. Throws when
-	readers are set up and ``reader`` is missing, unknown or switched off."""
+	readers are set up and ``reader`` is missing, unknown or switched off; the message names the
+	readers that are available, so a screen or an API client can charge again with one."""
 	if keyed:
 		return None
 	rows = readers(processor.settings_doctype)
@@ -69,17 +75,19 @@ def resolve(processor, reader: str | None, *, keyed: bool = False) -> dict | Non
 	if not rows:
 		if reader:
 			# A page loaded while readers were set up; the table has since been emptied.
-			frappe.throw(_("Card reader {0} is no longer set up. Reload the page and charge again."
-				).format(reader), CardReaderUnavailable, title=_("Card reader"))
+			frappe.throw(_("Card reader {0} is no longer set up: charges go to the store's one card "
+				"device. Charge again without a card reader.").format(reader),
+				CardReaderUnavailable, title=_("Card reader"))
 		return None
 	if not reader:
-		frappe.throw(_("Choose this computer's card reader first. Reload the page if you are not "
-			"asked which one."), CardReaderRequired,
+		frappe.throw(_("This store has several card readers: charge again on one of them. "
+			"Available card readers: {0}.").format(_available(rows)), CardReaderRequired,
 			title=_("Card reader"))
 	row = next((r for r in rows if (r.reader_name or "").strip().lower() == reader.lower()), None)
 	if not row or not row.enabled:
-		frappe.throw(_("Card reader {0} is not available. Choose this computer's card reader again."
-			).format(reader), CardReaderUnavailable, title=_("Card reader"))
+		frappe.throw(_("Card reader {0} is not available: charge again on one of the others. "
+			"Available card readers: {1}.").format(reader, _available(rows)),
+			CardReaderUnavailable, title=_("Card reader"))
 	return {"name": row.reader_name, "serial": (row.serial_number or "").strip()}
 
 

@@ -15,7 +15,7 @@ on the invoice and emails the admins — it never re-books money.
 from __future__ import annotations
 
 import frappe
-from frappe.utils import add_days, flt, now_datetime
+from frappe.utils import add_days, flt, get_datetime, now_datetime
 
 from ffl_integrations.integration_gate import payroc_ready
 from ffl_integrations.notifications import notify_admins, safe_log_error
@@ -43,9 +43,9 @@ DRAFT_TAG = "(draft)"
 RECONCILE_JOB = "ffl_integrations.payroc.reconcile"
 RECONCILE_QUEUE = "long"
 RECONCILE_TIMEOUT = 3600
-# lazy: at most this many gateway reads a run (~1 s each fits the timeout; any beyond it go unread);
-# page Payroc's transaction search by date (client.search_transactions) when a week of card sales
-# outgrows it.
+# lazy: at most this many gateway reads a run (~1 s each fits the timeout), newest first, so a charge
+# is read at least once while fewer than this are taken a day; page Payroc's transaction search by
+# date (client.search_transactions) when a day of card sales outgrows it.
 MAX_CHECKS = 2500
 
 
@@ -53,7 +53,7 @@ def _captured_charges(since, until=None) -> list[frappe._dict]:
 	"""Every card capture the POS booked since `since` (and before `until`, when
 	given), one row per gateway reference: POS Invoice charge rows, the legacy
 	single-stamp POS Invoices that predate them, and counter Sales Invoice
-	terminal payments."""
+	terminal payments. Each carries ``at`` (when it was taken) for :func:`_to_check`."""
 	out: dict[str, frappe._dict] = {}
 	created = ("between", [since, until]) if until else (">=", since)
 	# `until` is exclusive (the next midnight); posting_date BETWEEN is inclusive.
@@ -67,7 +67,7 @@ def _captured_charges(since, until=None) -> list[frappe._dict]:
 			filters={"status": "CHARGED", "creation": created,
 				"parenttype": "POS Invoice", "docstatus": ("<", 2)},
 			fields=["unique_reference as ref", "amount", "refunded_amount",
-				"parent as name", "docstatus", "processor"]):
+				"parent as name", "docstatus", "processor", "creation as at"]):
 		# Only Payroc's own captures: another card processor's references mean nothing
 		# to this gateway (blank = recorded before charges named their processor).
 		if r.ref and (r.pop("processor", None) or LEGACY_PROCESSOR) == PROCESSOR:
@@ -78,7 +78,7 @@ def _captured_charges(since, until=None) -> list[frappe._dict]:
 				"posting_date": posted, "docstatus": ("<", 2),
 				"card_unique_reference": ("not in", ["", MULTI_STAMP])},
 			fields=["card_unique_reference as ref", "card_charged_amount as amount",
-				"card_refunded_amount as refunded_amount", "name", "docstatus"]):
+				"card_refunded_amount as refunded_amount", "name", "docstatus", "creation as at"]):
 		# Legacy single-stamp invoices only — charge rows (above) own the rest.
 		if r.ref and not frappe.db.exists("Card Charge",
 				{"parent": r.name, "parenttype": "POS Invoice"}):
@@ -89,7 +89,7 @@ def _captured_charges(since, until=None) -> list[frappe._dict]:
 			filters={"status": ("in", ["CHARGED", "REFUNDED"]), "creation": created,
 				"unique_reference": ("is", "set")},
 			fields=["unique_reference as ref", "amount", "refunded_amount", "sales_invoice as name",
-				"gunbroker_order", "processor"]):
+				"gunbroker_order", "processor", "creation as at"]):
 		if (r.pop("processor", None) or LEGACY_PROCESSOR) != PROCESSOR:
 			continue
 		gb = r.pop("gunbroker_order", None)
@@ -218,12 +218,17 @@ def schedule_reconcile() -> None:
 
 
 def _to_check(charges: list) -> list:
-	"""The charges this run reads back: all of them, or the first MAX_CHECKS (logged)."""
-	if len(charges) <= MAX_CHECKS:
-		return charges
+	"""The charges this run reads back: those not flagged yet, newest first whatever the record
+	(counter sale, order, dues), at most MAX_CHECKS (the rest logged). Flagged ones never take a
+	place, and newest first means each charge is read on its first day even when the week holds
+	more than one run can read."""
+	todo = sorted((c for c in charges if not _already_flagged(c)),
+		key=lambda c: get_datetime(c.get("at") or "1970-01-01"), reverse=True)
+	if len(todo) <= MAX_CHECKS:
+		return todo
 	safe_log_error("Payroc reconcile: too many charges for one run",
-		f"{len(charges)} card charges in the window; {MAX_CHECKS} were checked.")
-	return charges[:MAX_CHECKS]
+		f"{len(todo)} unflagged card charges in the window; the newest {MAX_CHECKS} were checked.")
+	return todo[:MAX_CHECKS]
 
 
 def reconcile_payroc_charges(days: int = 7) -> list[dict]:
@@ -237,8 +242,6 @@ def reconcile_payroc_charges(days: int = 7) -> list[dict]:
 	client = PayrocClient.from_settings()
 	found = []
 	for charge in _to_check(_captured_charges(add_days(now_datetime(), -int(days)))):
-		if _already_flagged(charge):
-			continue
 		try:
 			payment = client.retrieve_payment(charge.ref)
 		except Exception:

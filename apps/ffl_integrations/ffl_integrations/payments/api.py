@@ -151,7 +151,7 @@ def _charge_rows(invoice_name: str) -> list:
         filters={"parenttype": "POS Invoice", "parent": invoice_name},
         fields=["name", "amount", "refunded_amount", "status", "unique_reference",
                 "instruction_id", "attempt", "card_summary", "processor",
-                "save_card", "save_reference", "saved_card"],
+                "save_card", "save_reference", "saved_card", "card_reader"],
         order_by="idx asc, creation asc")
 
 
@@ -187,7 +187,9 @@ def _append_charge_row(invoice_name: str, *, instruction_id: str, attempt: int,
         "amount": 0, "refunded_amount": 0,
     })
     if reader:
-        row.card_reader = reader["name"]
+        # The reader's name for the counter, and the device serial the charge was sent to (a
+        # renamed or re-pointed reader cannot rewrite which device took it).
+        row.update({"card_reader": reader["name"], "device_serial_number": reader["serial"]})
     if save:
         # Card on file: the cashier asked to keep this card (saved_cards.save_request).
         row.update({"save_card": 1, "save_reference": save["reference"]})
@@ -653,10 +655,13 @@ def card_tender_mode() -> dict:
         (none)
 
     Returns:
-        {"integrated": bool}.
+        {"integrated": bool, "readers": [names]} — readers: the card readers switched on
+        now, one of which a terminal charge must name ([] = the processor's one device,
+        name none). The counter reads it again after a charge naming a reader is refused.
     """
     _check_perm()
-    return {"integrated": _integration_ready(require_device=True)}
+    return {"integrated": _integration_ready(require_device=True),
+            "readers": card_readers.boot_names(registry.active_processor())}
 
 
 @frappe.whitelist(methods=["POST"])
@@ -685,7 +690,9 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
             ignored for a keyed charge. Without listed readers, leave it out.
 
     Returns:
-        {ok, instruction_id, status, amount} — plus keyed_url (the payment page to
+        {ok, instruction_id, reader, status, amount} — reader: the card reader the charge
+        is on (a charge already in flight on this invoice keeps its own; None when
+        no reader is named) — plus keyed_url (the payment page to
         open) for a keyed charge — or {"skip": True} when no card processor is
         switched on and configured. The poll that settles an approval then adds
         card_saved / save_message.
@@ -734,7 +741,7 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
             legacy = gateway(LEGACY_PROCESSOR)
             polled = legacy.poll(prev)
             if _still_on_device(polled):
-                return {"ok": True, "instruction_id": prev,
+                return {"ok": True, "instruction_id": prev, "reader": None,
                         "status": "IN_PROGRESS", "amount": flt(amount) or _card_target(inv)}
             if polled.status in (APPROVED, DECLINED):
                 res = _resolve_completed(legacy, polled, invoice_name,
@@ -756,7 +763,7 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
         owner = gateway(row.processor)
         polled = owner.poll(row.instruction_id)
         if _still_on_device(polled):
-            return {"ok": True, "instruction_id": row.instruction_id,
+            return {"ok": True, "instruction_id": row.instruction_id, "reader": row.card_reader,
                     "status": "IN_PROGRESS", "amount": flt(amount) or 0,
                     **_keyed_url(owner, row.instruction_id, "POS Invoice", invoice_name)}
         _settle_instruction_row(owner, polled, invoice_name, row)
@@ -773,6 +780,7 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
         foreign = [r for r in rows if r.status == "IN_PROGRESS"]
         if foreign:
             return {"ok": True, "instruction_id": foreign[0].instruction_id,
+                    "reader": foreign[0].card_reader,
                     "status": "IN_PROGRESS", "amount": flt(amount) or 0,
                     **_keyed_url(gateway(foreign[0].processor), foreign[0].instruction_id, "POS Invoice", invoice_name)}
 
@@ -830,7 +838,7 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
         except Exception:
             pass
         raise
-    return {"ok": True, "instruction_id": iid,
+    return {"ok": True, "instruction_id": iid, "reader": chosen["name"] if chosen else None,
             "status": started or "IN_PROGRESS", "amount": amt, **_keyed_url(active, iid, "POS Invoice", invoice_name)}
 
 
@@ -962,7 +970,7 @@ def cancel_pos_charge(invoice_name: str, instruction_id: str) -> dict:
 TERMINAL_PAYMENT = "Card Terminal Payment"
 _TP_FIELDS = ["name", "sales_invoice", "gunbroker_order", "amount", "status", "instruction_id",
     "unique_reference", "approval_code", "card_summary", "payment_entry", "processor",
-    "save_card", "save_reference", "save_usage", "saved_card"]
+    "save_card", "save_reference", "save_usage", "saved_card", "card_reader"]
 
 
 def _terminal_payments(sales_invoice: str) -> list:
@@ -1130,7 +1138,9 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
             ignored for a keyed charge. Without listed readers, leave it out.
 
     Returns:
-        {ok, instruction_id, status, amount} — plus keyed_url (the payment page to
+        {ok, instruction_id, reader, status, amount} — reader: the card reader the charge
+        is on (a charge already in flight on this invoice keeps its own; None when
+        no reader is named) — plus keyed_url (the payment page to
         open) for a keyed charge — {"skip": True} when no card processor is
         switched on and configured; an earlier approval found unrecorded comes
         back settled with already=True. The poll that settles
@@ -1178,7 +1188,7 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
         owner = gateway(row.processor)
         polled = owner.poll(row.instruction_id)
         if _still_on_device(polled):
-            return {"ok": True, "instruction_id": row.instruction_id,
+            return {"ok": True, "instruction_id": row.instruction_id, "reader": row.card_reader,
                     "status": "IN_PROGRESS", "amount": flt(row.amount),
                     **_keyed_url(owner, row.instruction_id, "Sales Invoice", sales_invoice)}
         res = _settle_terminal_payment(owner, polled, row)
@@ -1195,6 +1205,7 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
         foreign = [r for r in _terminal_payments(sales_invoice) if r.status == "IN_PROGRESS"]
         if foreign:
             return {"ok": True, "instruction_id": foreign[0].instruction_id,
+                    "reader": foreign[0].card_reader,
                     "status": "IN_PROGRESS", "amount": flt(foreign[0].amount),
                     **_keyed_url(gateway(foreign[0].processor), foreign[0].instruction_id, "Sales Invoice", sales_invoice)}
 
@@ -1214,7 +1225,8 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
     try:
         rec = frappe.get_doc({"doctype": TERMINAL_PAYMENT, "sales_invoice": sales_invoice,
             "amount": amt, "status": "IN_PROGRESS", "instruction_id": iid,
-            "processor": active.code, **({"card_reader": chosen["name"]} if chosen else {}),
+            "processor": active.code,
+            **({"card_reader": chosen["name"], "device_serial_number": chosen["serial"]} if chosen else {}),
             **({"save_card": 1, "save_reference": save["reference"], "save_usage": save["usage"]}
                 if save else {})})
         rec.flags.ignore_permissions = True
@@ -1227,7 +1239,7 @@ def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None =
         except Exception:
             pass
         raise
-    return {"ok": True, "instruction_id": iid,
+    return {"ok": True, "instruction_id": iid, "reader": chosen["name"] if chosen else None,
             "status": started or "IN_PROGRESS", "amount": amt, **_keyed_url(active, iid, "Sales Invoice", sales_invoice)}
 
 
@@ -1387,7 +1399,7 @@ def charge_gb_order(gunbroker_order: str, amount=None) -> dict:
         owner = gateway(row.processor)
         polled = owner.poll(row.instruction_id)
         if _still_on_device(polled):
-            return {"ok": True, "instruction_id": row.instruction_id,
+            return {"ok": True, "instruction_id": row.instruction_id, "reader": row.card_reader,
                     "status": "IN_PROGRESS", "amount": flt(row.amount),
                     **_keyed_url(owner, row.instruction_id, GB_ORDER, gunbroker_order)}
         res = _settle_terminal_payment(owner, polled, row)

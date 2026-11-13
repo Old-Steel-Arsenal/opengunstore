@@ -21,6 +21,7 @@
   "section_gateway",
   "processor",
   "card_reader",
+  "device_serial_number",
   "instruction_id",
   "response",
   "column_break_gateway",
@@ -143,6 +144,12 @@
    "read_only": 1
   },
   {
+   "fieldname": "device_serial_number",
+   "fieldtype": "Data",
+   "label": "Device Serial Number",
+   "read_only": 1
+  },
+  {
    "fieldname": "instruction_id",
    "fieldtype": "Data",
    "label": "Instruction ID",
@@ -189,7 +196,7 @@
  "index_web_pages_for_search": 0,
  "istable": 0,
  "links": [],
- "modified": "2026-11-12 12:00:00.000000",
+ "modified": "2026-11-12 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "Card Terminal Payment",

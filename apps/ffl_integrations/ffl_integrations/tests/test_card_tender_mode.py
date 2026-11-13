@@ -17,12 +17,14 @@ class CardTenderMode(FrappeTestCase):
 		frappe.set_user("Administrator")
 
 	def test_answers_the_device_gate(self):
-		self.assertEqual(api.card_tender_mode(), {"integrated": api._integration_ready(require_device=True)})
+		self.assertEqual(api.card_tender_mode()["integrated"], api._integration_ready(require_device=True))
 		with patch.object(api, "_integration_ready", return_value=True) as ready:
-			self.assertEqual(api.card_tender_mode(), {"integrated": True})
+			self.assertTrue(api.card_tender_mode()["integrated"])
 		ready.assert_called_once_with(require_device=True)
 		with patch.object(api, "_integration_ready", return_value=False):
-			self.assertEqual(api.card_tender_mode(), {"integrated": False})
+			self.assertFalse(api.card_tender_mode()["integrated"])
+		# The card readers switched on now ride along (test_card_readers pins the list).
+		self.assertIsInstance(api.card_tender_mode()["readers"], list)
 
 	def test_charge_roles_only(self):
 		frappe.set_user("Guest")

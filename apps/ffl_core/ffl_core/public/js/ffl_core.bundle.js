@@ -3488,6 +3488,7 @@ frappe.provide('frappe.ui.form');
 		// payment page to open (also when an in-flight keyed charge is resumed).
 		let instructionId = '';
 		let keyedUrl = '';
+		let onReader = reader;
 		try {
 			const c = await frappe.call({
 				method: 'ffl_integrations.payments.api.charge_pos_invoice',
@@ -3505,6 +3506,9 @@ frappe.provide('frappe.ui.form');
 			if (created.skip) return { skip: true };
 			instructionId = created.instruction_id || '';
 			keyedUrl = created.keyed_url || '';
+			// The reader the charge is actually on: a charge already in flight on this sale (another
+			// computer's, or one a failed cancel left live) keeps its own.
+			if ('reader' in created) onReader = created.reader || '';
 		} catch (err) {
 			if (!(err && err._server_messages)) {
 				frappe.msgprint({
@@ -3525,16 +3529,22 @@ frappe.provide('frappe.ui.form');
 			cancelled = true;
 			hideDialog(dlg);   // free the UI now, don't wait out the in-flight poll
 			await giveUp();
-		}, keyedUrl, page.open, reader, () => {
+		}, keyedUrl, page.open, onReader, () => {
 			// The card is on the wrong reader: cancel here (an approval that won the race is
-			// recorded, never charged twice), choose another, charge the same amount there.
+			// recorded, never charged twice), choose another, charge the same amount there —
+			// only after a plain cancel (card_reader.js afterSwitch).
 			if (cancelled) return;
 			cancelled = true;
 			hideDialog(dlg);
 			switching = (async () => {
 				const m = await giveUp();
-				// A plain cancel answers ok too; only a reconciled approval is money taken.
-				if (m.reconciled && m.ok) { await frm.reload_doc(); return { skip: false, ok: true }; }
+				const next = window.ffl.cardReader.afterSwitch(m);
+				if (next === 'charged') { await frm.reload_doc(); return { skip: false, ok: true }; }
+				if (next !== 'restart') {
+					if (next === 'settled') await frm.reload_doc();
+					frappe.msgprint(Object.assign({ indicator: 'orange' }, window.ffl.cardReader.switchStopped(next, onReader)));
+					return { skip: false, ok: false };
+				}
 				if (!(await window.ffl.cardReader.pick())) return { skip: false, ok: false };
 				return runSingleCharge(frm, amount, saveCard, keyed);
 			})();
@@ -3711,6 +3721,7 @@ frappe.provide('frappe.ui.form');
 		let instructionId = '';
 		let keyedUrl = '';
 		let created = {};
+		let onReader = reader;
 		try {
 			const c = await call(start, reader ? { reader } : null);
 			created = (c && c.message) || {};
@@ -3720,6 +3731,8 @@ frappe.provide('frappe.ui.form');
 			if (created.already) return Object.assign({ skip: false }, created);
 			instructionId = created.instruction_id || '';
 			keyedUrl = created.keyed_url || '';
+			// The reader the charge is actually on (an in-flight charge keeps its own).
+			if ('reader' in created) onReader = created.reader || '';
 		} catch (err) {
 			if (!(err && err._server_messages)) {
 				frappe.msgprint({ title: __('Terminal error'), indicator: 'red',
@@ -3742,16 +3755,20 @@ frappe.provide('frappe.ui.form');
 			cancelled = true;
 			hideDialog(dlg);
 			await cancelIt();
-		}, keyedUrl, page.open, reader, () => {
+		}, keyedUrl, page.open, onReader, () => {
 			// Wrong reader: cancel (an approval that won the race is recorded, never charged
-			// twice), choose another, start again there.
+			// twice), choose another, start again there — only after a plain cancel.
 			if (cancelled) return;
 			cancelled = true;
 			hideDialog(dlg);
 			switching = (async () => {
 				const m = await cancelIt();
-				// A plain cancel answers ok too; only a reconciled approval is money taken.
-				if (m.reconciled && m.ok) return Object.assign({ skip: false }, m);
+				const next = window.ffl.cardReader.afterSwitch(m);
+				if (next === 'charged') return Object.assign({ skip: false }, m);
+				if (next !== 'restart') {
+					frappe.msgprint(Object.assign({ indicator: 'orange' }, window.ffl.cardReader.switchStopped(next, onReader)));
+					return Object.assign({ skip: false }, m, { ok: false });
+				}
 				if (!(await window.ffl.cardReader.pick())) return { skip: false, ok: false };
 				return window.ffl.terminalCharge(spec);
 			})();

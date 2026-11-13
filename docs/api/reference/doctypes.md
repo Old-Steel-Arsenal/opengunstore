@@ -818,6 +818,7 @@ app: `ffl_integrations` · module: FFL Integrations · child table
 | `attempt` | Int | Attempt |  |  |
 | `processor` | Data | Processor |  |  |
 | `card_reader` | Data | Card Reader |  |  |
+| `device_serial_number` | Data | Device Serial Number |  |  |
 | `instruction_id` | Data | Instruction ID |  |  |
 | `response` | Code | Gateway Response |  |  |
 | `save_card` | Check | Save Card Requested |  |  |
@@ -839,7 +840,7 @@ app: `ffl_integrations` · module: FFL Integrations · child table
 
 | field | type | label | reqd | options |
 |---|---|---|---|---|
-| `reader_name` | Data | Name | ✓ |  |
+| `reader_name` | Data | Reader Name | ✓ |  |
 | `serial_number` | Data | Device Serial Number | ✓ |  |
 | `enabled` | Check | Enabled |  |  |
 
@@ -863,6 +864,7 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sal
 | `reversal_lock` | Small Text | Unconfirmed Void / Refund |  |  |
 | `processor` | Data | Processor |  |  |
 | `card_reader` | Data | Card Reader |  |  |
+| `device_serial_number` | Data | Device Serial Number |  |  |
 | `instruction_id` | Data | Instruction ID |  |  |
 | `response` | Code | Gateway Response |  |  |
 | `save_card` | Check | Save Card Requested |  |  |

@@ -2716,6 +2716,10 @@
             "type": "string",
             "description": "Card Reader"
           },
+          "device_serial_number": {
+            "type": "string",
+            "description": "Device Serial Number"
+          },
           "instruction_id": {
             "type": "string",
             "description": "Instruction ID"
@@ -2766,7 +2770,7 @@
         "properties": {
           "reader_name": {
             "type": "string",
-            "description": "Name"
+            "description": "Reader Name"
           },
           "serial_number": {
             "type": "string",
@@ -2853,6 +2857,10 @@
           "card_reader": {
             "type": "string",
             "description": "Card Reader"
+          },
+          "device_serial_number": {
+            "type": "string",
+            "description": "Device Serial Number"
           },
           "instruction_id": {
             "type": "string",
@@ -15458,7 +15466,7 @@
           "ffl_core"
         ],
         "summary": "The overdue renewal's invoice (the open one, else a new one for the next period from the",
-        "description": "original due date), for the counter to take payment by any tender. Paid: Active again.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1169`",
+        "description": "original due date), for the counter to take payment by any tender. Paid: Active again.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1180`",
         "operationId": "ffl_core.membership.invoice_renewal",
         "responses": {
           "200": {
@@ -15506,7 +15514,7 @@
           "ffl_core"
         ],
         "summary": "Memberships a manager should look at: Past Due, Suspended, a renewal charge the gateway never",
-        "description": "confirmed, a renewal the job could not charge, and sign-ups still unpaid after a few days.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1213`",
+        "description": "confirmed, a renewal the job could not charge, and sign-ups still unpaid after a few days.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1224`",
         "operationId": "ffl_core.membership.needs_attention",
         "responses": {
           "200": {
@@ -15536,7 +15544,7 @@
           "ffl_core"
         ],
         "summary": "One page of the Memberships page's member list, by customer name.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1399`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1410`",
         "operationId": "ffl_core.membership.page_members",
         "responses": {
           "200": {
@@ -15603,7 +15611,7 @@
           "ffl_core"
         ],
         "summary": "Everything the Memberships page shows above the member list, in one round trip.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1356`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1367`",
         "operationId": "ffl_core.membership.page_overview",
         "responses": {
           "200": {
@@ -15633,7 +15641,7 @@
           "ffl_core"
         ],
         "summary": "Charge a membership's saved card now for its overdue renewal (Past Due, Suspended, or Active",
-        "description": "past its period end). Paid: Active again, the new period starting at the original due date. A\ncard charge still waiting for the gateway's answer is looked up, never sent again.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1140`",
+        "description": "past its period end). Paid: Active again, the new period starting at the original due date. A\ncard charge still waiting for the gateway's answer is looked up, never sent again.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1151`",
         "operationId": "ffl_core.membership.retry_renewal",
         "responses": {
           "200": {
@@ -21339,7 +21347,7 @@
           "ffl_integrations"
         ],
         "summary": "Cancel an in-flight keyed card charge on a GunBroker order (race-safe).",
-        "description": "A cancel that races an approval records the approval instead.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1467`",
+        "description": "A cancel that races an approval records the approval instead.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1479`",
         "operationId": "ffl_integrations.payments.api.cancel_gb_order_charge",
         "responses": {
           "200": {
@@ -21392,7 +21400,7 @@
           "ffl_integrations"
         ],
         "summary": "Cancel an in-flight card charge (race-safe).",
-        "description": "If the cancel RACES an approval (card just captured), the capture is\nreconciled instead of stranding it / letting a retry double-charge.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:897`",
+        "description": "If the cancel RACES an approval (card just captured), the capture is\nreconciled instead of stranding it / letting a retry double-charge.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:905`",
         "operationId": "ffl_integrations.payments.api.cancel_pos_charge",
         "responses": {
           "200": {
@@ -21445,7 +21453,7 @@
           "ffl_integrations"
         ],
         "summary": "Cancel an in-flight terminal charge on a Sales Invoice (race-safe).",
-        "description": "A cancel that races an approval settles the approval instead — the card\nwas charged, so it is recorded and booked, never stranded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1266`",
+        "description": "A cancel that races an approval settles the approval instead — the card\nwas charged, so it is recorded and booked, never stranded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1278`",
         "operationId": "ffl_integrations.payments.api.cancel_sales_invoice_charge",
         "responses": {
           "200": {
@@ -21498,11 +21506,11 @@
           "ffl_integrations"
         ],
         "summary": "Whether a Credit Card tender must go through the counter terminal.",
-        "description": "Read-only. With a card processor switched on, configured and holding a\ndevice, a card is charged on the terminal (charge_pos_invoice); otherwise a\nCredit Card row is a plain tender typed from a standalone terminal.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:645`",
+        "description": "Read-only. With a card processor switched on, configured and holding a\ndevice, a card is charged on the terminal (charge_pos_invoice); otherwise a\nCredit Card row is a plain tender typed from a standalone terminal.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:647`",
         "operationId": "ffl_integrations.payments.api.card_tender_mode",
         "responses": {
           "200": {
-            "description": "{\"integrated\": bool}.",
+            "description": "{\"integrated\": bool, \"readers\": [names]} — readers: the card readers switched on now, one of which a terminal charge must name ([] = the processor's one device, name none). The counter reads it again after a charge naming a reader is refused.",
             "content": {
               "application/json": {
                 "schema": {
@@ -21528,7 +21536,7 @@
           "ffl_integrations"
         ],
         "summary": "Start a keyed card charge (the processor's payment page) for a GunBroker order.",
-        "description": "Pending Order → Record Payment on a GunBroker order that has not been paid. The\nfrontend polls it with poll_gb_order_charge(); the approval is recorded as the\norder's payment, which opens Dispose. Reuses an in-flight charge rather than\ncharging twice.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm); keying a card in needs a manager.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1351`",
+        "description": "Pending Order → Record Payment on a GunBroker order that has not been paid. The\nfrontend polls it with poll_gb_order_charge(); the approval is recorded as the\norder's payment, which opens Dispose. Reuses an in-flight charge rather than\ncharging twice.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm); keying a card in needs a manager.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1363`",
         "operationId": "ffl_integrations.payments.api.charge_gb_order",
         "responses": {
           "200": {
@@ -21579,11 +21587,11 @@
           "ffl_integrations"
         ],
         "summary": "Start a card charge on the card processor's terminal for a POS invoice.",
-        "description": "Starts the charge on the active processor's card device; the frontend then\npolls poll_pos_charge() until the terminal returns. Reuses an in-flight\ncharge rather than double-charging.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:663`",
+        "description": "Starts the charge on the active processor's card device; the frontend then\npolls poll_pos_charge() until the terminal returns. Reuses an in-flight\ncharge rather than double-charging.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:668`",
         "operationId": "ffl_integrations.payments.api.charge_pos_invoice",
         "responses": {
           "200": {
-            "description": "{ok, instruction_id, status, amount} — plus keyed_url (the payment page to open) for a keyed charge — or {\"skip\": True} when no card processor is switched on and configured. The poll that settles an approval then adds card_saved / save_message.",
+            "description": "{ok, instruction_id, reader, status, amount} — reader: the card reader the charge is on (a charge already in flight on this invoice keeps its own; None when no reader is named) — plus keyed_url (the payment page to open) for a keyed charge — or {\"skip\": True} when no card processor is switched on and configured. The poll that settles an approval then adds card_saved / save_message.",
             "content": {
               "application/json": {
                 "schema": {
@@ -21659,11 +21667,11 @@
           "ffl_integrations"
         ],
         "summary": "Start a card charge on the card processor's terminal against a counter Sales Invoice.",
-        "description": "The counter's card tender for an on-account order (Create Order right\nafter the order books; Pending Order → Record Payment for a balance).\nStarts a charge on the active processor's card device; the frontend polls it with\npoll_sales_invoice_charge(); the approval books a Payment Entry. Reuses\nan in-flight instruction rather than double-charging, and never starts\none while an earlier approval on this invoice is unrecorded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1107`",
+        "description": "The counter's card tender for an on-account order (Create Order right\nafter the order books; Pending Order → Record Payment for a balance).\nStarts a charge on the active processor's card device; the frontend polls it with\npoll_sales_invoice_charge(); the approval books a Payment Entry. Reuses\nan in-flight instruction rather than double-charging, and never starts\none while an earlier approval on this invoice is unrecorded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1115`",
         "operationId": "ffl_integrations.payments.api.charge_sales_invoice",
         "responses": {
           "200": {
-            "description": "{ok, instruction_id, status, amount} — plus keyed_url (the payment page to open) for a keyed charge — {\"skip\": True} when no card processor is switched on and configured; an earlier approval found unrecorded comes back settled with already=True. The poll that settles an approval then adds card_saved / save_message.",
+            "description": "{ok, instruction_id, reader, status, amount} — reader: the card reader the charge is on (a charge already in flight on this invoice keeps its own; None when no reader is named) — plus keyed_url (the payment page to open) for a keyed charge — {\"skip\": True} when no card processor is switched on and configured; an earlier approval found unrecorded comes back settled with already=True. The poll that settles an approval then adds card_saved / save_message.",
             "content": {
               "application/json": {
                 "schema": {
@@ -21732,7 +21740,7 @@
           "ffl_integrations"
         ],
         "summary": "Record that a gateway-charged sale's refund was issued in the card processor's portal.",
-        "description": "The manager-level exit for the switched-off refund guard. Deliberately its\nown field plus a timeline entry — never the tender row's ``reference_no``,\nwhich the standalone-terminal flow collects for a different purpose and\nwhich therefore cannot double as this guard's evidence (a guard whose\nevidence another rule force-collects clears itself).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role (_check_manager).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:2593`",
+        "description": "The manager-level exit for the switched-off refund guard. Deliberately its\nown field plus a timeline entry — never the tender row's ``reference_no``,\nwhich the standalone-terminal flow collects for a different purpose and\nwhich therefore cannot double as this guard's evidence (a guard whose\nevidence another rule force-collects clears itself).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role (_check_manager).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:2605`",
         "operationId": "ffl_integrations.payments.api.confirm_out_of_band_refund",
         "responses": {
           "200": {
@@ -21790,7 +21798,7 @@
           "ffl_integrations"
         ],
         "summary": "List the terminals the active card processor's credentials may use (connectivity smoke test).",
-        "description": "A zero-risk connectivity + pairing check (Payroc: the authenticate\nresponse's allowedTerminals).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1511`",
+        "description": "A zero-risk connectivity + pairing check (Payroc: the authenticate\nresponse's allowedTerminals).\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager role.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1523`",
         "operationId": "ffl_integrations.payments.api.list_terminals",
         "responses": {
           "200": {
@@ -21820,7 +21828,7 @@
           "ffl_integrations"
         ],
         "summary": "Poll a keyed card charge started by charge_gb_order once.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1442`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1454`",
         "operationId": "ffl_integrations.payments.api.poll_gb_order_charge",
         "responses": {
           "200": {
@@ -21873,7 +21881,7 @@
           "ffl_integrations"
         ],
         "summary": "Poll a card charge once, on the processor that started it.",
-        "description": "In progress → {ok: False} (frontend loops). Finished → verify full\napproval, stamp the reference on the invoice.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:847`",
+        "description": "In progress → {ok: False} (frontend loops). Finished → verify full\napproval, stamp the reference on the invoice.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:855`",
         "operationId": "ffl_integrations.payments.api.poll_pos_charge",
         "responses": {
           "200": {
@@ -21929,7 +21937,7 @@
           "ffl_integrations"
         ],
         "summary": "Poll a terminal charge started by charge_sales_invoice once.",
-        "description": "IN_PROGRESS → {ok: False} (frontend loops). On approval the record goes\nCHARGED and a Payment Entry books against the invoice; the answer carries\nthe new balance.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1235`",
+        "description": "IN_PROGRESS → {ok: False} (frontend loops). On approval the record goes\nCHARGED and a Payment Entry books against the invoice; the answer carries\nthe new balance.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\n**Permissions:** POS charge roles (_check_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1247`",
         "operationId": "ffl_integrations.payments.api.poll_sales_invoice_charge",
         "responses": {
           "200": {
@@ -21982,7 +21990,7 @@
           "ffl_integrations"
         ],
         "summary": "Refund a POS return's card portion to the original card(s).",
-        "description": "Referenced refund of the Credit Card portion of a POS RETURN invoice,\nsent to the processor that took each original charge. Firearm returns\nare blocked (bound-book reversal is a separate project). Multi-card\noriginals refund across rows within per-original-card caps.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager-gated refund roles (gate at entry).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1848`",
+        "description": "Referenced refund of the Credit Card portion of a POS RETURN invoice,\nsent to the processor that took each original charge. Firearm returns\nare blocked (bound-book reversal is a separate project). Multi-card\noriginals refund across rows within per-original-card caps.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager-gated refund roles (gate at entry).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1860`",
         "operationId": "ffl_integrations.payments.api.refund_pos_invoice",
         "responses": {
           "200": {
@@ -22037,7 +22045,7 @@
           "ffl_integrations"
         ],
         "summary": "Manager unlock for a return whose automatic card refund armed the",
-        "description": "UNKNOWN-OUTCOME re-refund lock (the amplifier: the\nlock had no product-side unlock, so a locked return died in bench\nconsole).\n\nONLY ``UNKNOWN-OUTCOME`` unlocks — zero slices booked, so a full-amount\nretry is exactly the original entitlement. A ``PARTIAL:*`` sentinel is\nthe ONE record of how much this return already pushed back; clearing it\nre-arms a full-amount retry that the per-ORIGINAL-card caps cannot bound\n(an original with headroom would refund the booked slices again).\nIts residue goes to back-office manual processing.\nA real refund reference means the refund COMPLETED and never unlocks.\n\nThe unlock is an attestation, not a reconciliation: the gateway may\nactually have refunded (rows still show headroom), so the manager must\nverify in the processor's portal FIRST — the reason is required and the whole\naction lands in the document timeline (who/when/why/previous lock),\nmirroring manager_override_4473's audit posture.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager gate (roles per the derived Auth line) + required reason — the reason must record what was verified in the processor's portal.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:2231`",
+        "description": "UNKNOWN-OUTCOME re-refund lock (the amplifier: the\nlock had no product-side unlock, so a locked return died in bench\nconsole).\n\nONLY ``UNKNOWN-OUTCOME`` unlocks — zero slices booked, so a full-amount\nretry is exactly the original entitlement. A ``PARTIAL:*`` sentinel is\nthe ONE record of how much this return already pushed back; clearing it\nre-arms a full-amount retry that the per-ORIGINAL-card caps cannot bound\n(an original with headroom would refund the booked slices again).\nIts residue goes to back-office manual processing.\nA real refund reference means the refund COMPLETED and never unlocks.\n\nThe unlock is an attestation, not a reconciliation: the gateway may\nactually have refunded (rows still show headroom), so the manager must\nverify in the processor's portal FIRST — the reason is required and the whole\naction lands in the document timeline (who/when/why/previous lock),\nmirroring manager_override_4473's audit posture.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Manager gate (roles per the derived Auth line) + required reason — the reason must record what was verified in the processor's portal.\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:2243`",
         "operationId": "ffl_integrations.payments.api.unlock_refund_lock",
         "responses": {
           "200": {
@@ -22090,7 +22098,7 @@
           "ffl_integrations"
         ],
         "summary": "Reverse an unsettled card charge (back-office; per-card on multi-card).",
-        "description": "Books the gateway reversal on the processor that took the charge (Payroc\nhas no /void: it reverses). Multi-card invoices void PER CARD: pass the\ncharge row's unique_reference when more than one live capture exists.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Refund/void roles (_check_refund_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1535`",
+        "description": "Books the gateway reversal on the processor that took the charge (Payroc\nhas no /void: it reverses). Multi-card invoices void PER CARD: pass the\ncharge row's unique_reference when more than one live capture exists.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\n**Permissions:** Refund/void roles (_check_refund_perm).\n\nSource: `apps/ffl_integrations/ffl_integrations/payments/api.py:1547`",
         "operationId": "ffl_integrations.payments.api.void_pos_invoice",
         "responses": {
           "200": {
@@ -22821,7 +22829,7 @@
           "ffl_integrations"
         ],
         "summary": "Old path of ffl_integrations.payments.api.cancel_pos_charge (cancel an in-flight charge).",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:55`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:57`",
         "operationId": "ffl_integrations.payroc.api.cancel_pos_charge",
         "responses": {
           "200": {
@@ -22874,7 +22882,7 @@
           "ffl_integrations"
         ],
         "summary": "Old path of ffl_integrations.payments.api.cancel_sales_invoice_charge.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:101`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:106`",
         "operationId": "ffl_integrations.payroc.api.cancel_sales_invoice_charge",
         "responses": {
           "200": {
@@ -22931,7 +22939,7 @@
         "operationId": "ffl_integrations.payroc.api.charge_pos_invoice",
         "responses": {
           "200": {
-            "description": "The new endpoint's answer: {ok, instruction_id, status, amount} or {\"skip\": True}.",
+            "description": "The new endpoint's answer: {ok, instruction_id, reader, status, amount} or {\"skip\": True}.",
             "content": {
               "application/json": {
                 "schema": {
@@ -22975,6 +22983,13 @@
                       "null"
                     ],
                     "description": "Optional statement descriptor."
+                  },
+                  "reader": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The card reader to charge on (its name); required when the store lists card readers, as on the new endpoint."
                   }
                 },
                 "required": [
@@ -22992,7 +23007,7 @@
           "ffl_integrations"
         ],
         "summary": "Old path of ffl_integrations.payments.api.charge_sales_invoice (card charge on a counter order).",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:70`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:72`",
         "operationId": "ffl_integrations.payroc.api.charge_sales_invoice",
         "responses": {
           "200": {
@@ -23033,6 +23048,13 @@
                       "null"
                     ],
                     "description": "Optional terminal id; defaults to the configured one."
+                  },
+                  "reader": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The card reader to charge on (its name); required when the store lists card readers, as on the new endpoint."
                   }
                 },
                 "required": [
@@ -23050,7 +23072,7 @@
           "ffl_integrations"
         ],
         "summary": "Old path of ffl_integrations.payments.api.confirm_out_of_band_refund.",
-        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:174`",
+        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:179`",
         "operationId": "ffl_integrations.payroc.api.confirm_out_of_band_refund",
         "responses": {
           "200": {
@@ -23108,7 +23130,7 @@
           "ffl_integrations"
         ],
         "summary": "Old path of ffl_integrations.payments.api.list_terminals (connectivity smoke test).",
-        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:116`",
+        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:121`",
         "operationId": "ffl_integrations.payroc.api.discover_terminals",
         "responses": {
           "200": {
@@ -23138,7 +23160,7 @@
           "ffl_integrations"
         ],
         "summary": "Old path of ffl_integrations.payments.api.poll_pos_charge (poll a card charge once).",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:39`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:41`",
         "operationId": "ffl_integrations.payroc.api.poll_pos_charge",
         "responses": {
           "200": {
@@ -23194,7 +23216,7 @@
           "ffl_integrations"
         ],
         "summary": "Old path of ffl_integrations.payments.api.poll_sales_invoice_charge.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:86`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:91`",
         "operationId": "ffl_integrations.payroc.api.poll_sales_invoice_charge",
         "responses": {
           "200": {
@@ -23247,7 +23269,7 @@
           "ffl_integrations"
         ],
         "summary": "Old path of ffl_integrations.payments.api.refund_pos_invoice (refund a POS return's card portion).",
-        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:144`",
+        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:149`",
         "operationId": "ffl_integrations.payroc.api.refund_pos_invoice",
         "responses": {
           "200": {
@@ -23302,7 +23324,7 @@
           "ffl_integrations"
         ],
         "summary": "Old path of ffl_integrations.payments.api.unlock_refund_lock (manager unlock of a refund lock).",
-        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:159`",
+        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:164`",
         "operationId": "ffl_integrations.payroc.api.unlock_refund_lock",
         "responses": {
           "200": {
@@ -23355,7 +23377,7 @@
           "ffl_integrations"
         ],
         "summary": "Old path of ffl_integrations.payments.api.void_pos_invoice (reverse an unsettled charge).",
-        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:127`",
+        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/payroc/api.py:132`",
         "operationId": "ffl_integrations.payroc.api.void_pos_invoice",
         "responses": {
           "200": {

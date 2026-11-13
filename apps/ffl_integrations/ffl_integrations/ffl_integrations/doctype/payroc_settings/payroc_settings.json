@@ -107,10 +107,9 @@
   {
    "fieldname": "section_card_readers",
    "fieldtype": "Section Break",
-   "label": "Card Readers"
+   "label": "Multiple Card Readers"
   },
   {
-   "description": "Leave empty to use the Device Serial Number above.",
    "fieldname": "card_readers",
    "fieldtype": "Table",
    "label": "Card Readers",
@@ -177,7 +176,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-12 12:00:00",
+ "modified": "2026-11-12 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "Payroc Settings",

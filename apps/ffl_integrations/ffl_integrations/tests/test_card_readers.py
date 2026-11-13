@@ -47,6 +47,8 @@ def _list_readers(*rows) -> None:
 			"serial_number": serial, "enabled": row[2] if len(row) > 2 else 1})
 		doc.name = frappe.generate_hash(length=10)
 		doc.db_insert()
+	# Rows written under the Single's feet: drop its cached copy, as saving the settings does.
+	frappe.clear_document_cache(SETTINGS, SETTINGS)
 
 
 class _Readers(_CardOnFileBase):
@@ -84,18 +86,38 @@ class ChargesNameTheirReader(_Readers):
 		self._start(client, "PI-RANGE")
 		api.charge_pos_invoice(inv, reader="Range desk")
 		self.assertEqual(self._serial_sent(client), "PAX-RANGE-02")
-		self.assertEqual(frappe.db.get_value("Card Charge", {"parent": inv}, "card_reader"), "Range desk")
+		self.assertEqual(frappe.db.get_value("Card Charge", {"parent": inv},
+			["card_reader", "device_serial_number"]), ("Range desk", "PAX-RANGE-02"))
+
+	def test_the_answer_names_the_reader_the_charge_is_on(self, cc, _p, _r):
+		client = cc.from_settings.return_value
+		_list_readers(FRONT, RANGE)
+		inv = self._pos_invoice(self._customer())
+		self._start(client, "PI-ANS")
+		self.assertEqual(api.charge_pos_invoice(inv, reader="Range desk")["reader"], "Range desk")
+		si, _owed = self._unpaid_order(self._customer())
+		self._start(client, "PI-ANS-SI")
+		self.assertEqual(api.charge_sales_invoice(si, reader="Front counter")["reader"], "Front counter")
+		self.assertEqual(frappe.db.get_value(api.TERMINAL_PAYMENT, {"sales_invoice": si},
+			["card_reader", "device_serial_number"]), ("Front counter", "PAX-FRONT-01"))
+		# No readers listed: the answer names none.
+		_list_readers()
+		inv2 = self._pos_invoice(self._customer())
+		self._start(client, "PI-ANS-NONE")
+		self.assertIsNone(api.charge_pos_invoice(inv2)["reader"])
+		self.assertIsNone(frappe.db.get_value("Card Charge", {"parent": inv2}, "device_serial_number"))
 
 	def test_missing_unknown_or_disabled_reader_is_refused_before_the_gateway(self, cc, _p, _r):
 		client = cc.from_settings.return_value
 		_list_readers(FRONT, RANGE, OLD + (0,))
 		inv = self._pos_invoice(self._customer())
-		with self.assertRaises(CardReaderRequired):
-			api.charge_pos_invoice(inv)
-		with self.assertRaises(CardReaderUnavailable):
-			api.charge_pos_invoice(inv, reader="Back room")          # switched off
-		with self.assertRaises(CardReaderUnavailable):
-			api.charge_pos_invoice(inv, reader="Garage")             # never listed
+		available = "Available card readers: Front counter, Range desk."
+		for reader, exc in ((None, CardReaderRequired), ("Back room", CardReaderUnavailable),   # switched off
+				("Garage", CardReaderUnavailable)):                                             # never listed
+			with self.assertRaises(exc) as ctx:
+				api.charge_pos_invoice(inv, reader=reader)
+			# The refusal names what a screen or an API client can charge on instead.
+			self.assertIn(available, str(ctx.exception))
 		si, _owed = self._unpaid_order(self._customer())
 		with self.assertRaises(CardReaderRequired):
 			api.charge_sales_invoice(si)
@@ -106,9 +128,26 @@ class ChargesNameTheirReader(_Readers):
 	def test_a_reader_named_after_the_table_was_emptied_is_refused(self, cc, _p, _r):
 		client = cc.from_settings.return_value
 		inv = self._pos_invoice(self._customer())
-		with self.assertRaises(CardReaderUnavailable):
+		with self.assertRaises(CardReaderUnavailable) as ctx:
 			api.charge_pos_invoice(inv, reader="Front counter")
+		self.assertIn("Charge again without a card reader", str(ctx.exception))
 		client.create_payment_instruction.assert_not_called()
+
+	def test_the_old_payroc_paths_pass_the_reader_on(self, cc, _p, _r):
+		from ffl_integrations.payroc import api as old
+
+		client = cc.from_settings.return_value
+		_list_readers(FRONT, RANGE)
+		inv = self._pos_invoice(self._customer())
+		with self.assertRaises(CardReaderRequired):
+			old.charge_pos_invoice(inv)
+		self._start(client, "PI-OLD")
+		self.assertEqual(old.charge_pos_invoice(inv, reader="Range desk")["reader"], "Range desk")
+		self.assertEqual(self._serial_sent(client), "PAX-RANGE-02")
+		si, _owed = self._unpaid_order(self._customer())
+		self._start(client, "PI-OLD-SI")
+		old.charge_sales_invoice(si, reader="Front counter")
+		self.assertEqual(self._serial_sent(client), "PAX-FRONT-01")
 
 	def test_each_card_of_a_split_records_its_own_reader(self, cc, _p, _r):
 		client = cc.from_settings.return_value
@@ -166,6 +205,8 @@ class FollowUpsStayWithTheChargesReader(_Readers):
 		client.poll_payment_instruction.return_value = {"status": "IN_PROGRESS"}
 		again = api.charge_pos_invoice(inv, reader="Range desk")
 		self.assertEqual((again["instruction_id"], again["status"]), ("PI-F1", "IN_PROGRESS"))
+		# ... and says where that charge is, so the waiting screen shows the right reader.
+		self.assertEqual(again["reader"], "Front counter")
 		client.create_payment_instruction.assert_not_called()
 
 		# Cancel goes to that charge (no reader in the call at all) and the record keeps its reader.
@@ -185,6 +226,18 @@ class FollowUpsStayWithTheChargesReader(_Readers):
 			order_by="idx asc")
 		self.assertEqual([(r.status, r.card_reader) for r in rows],
 			[("CANCELED", "Front counter"), ("CHARGED", "Range desk")])
+
+	def test_a_counter_charge_resumed_from_another_computer_names_its_own_reader(self, cc, _p, _r):
+		client = cc.from_settings.return_value
+		_list_readers(FRONT, RANGE)
+		si, _owed = self._unpaid_order(self._customer())
+		self._start(client, "PI-SI-F")
+		api.charge_sales_invoice(si, reader="Range desk")
+		client.create_payment_instruction.reset_mock()
+		client.poll_payment_instruction.return_value = {"status": "IN_PROGRESS"}
+		again = api.charge_sales_invoice(si, reader="Front counter")
+		self.assertEqual((again["instruction_id"], again["reader"]), ("PI-SI-F", "Range desk"))
+		client.create_payment_instruction.assert_not_called()
 
 	def test_a_switched_off_readers_charge_in_flight_still_settles(self, cc, _p, _r):
 		client = cc.from_settings.return_value
@@ -221,6 +274,26 @@ class ReadersSetUp(_Readers):
 		self.assertEqual(card_readers.boot_names(None), [])
 		_list_readers(FRONT, OLD + (0,), RANGE)
 		self.assertEqual(card_readers.boot_names(p), ["Front counter", "Range desk"])
+
+	def test_readers_come_from_the_cached_settings_and_saving_refreshes_them(self):
+		_list_readers(FRONT, RANGE)
+		self.assertEqual(card_readers.boot_names(PayrocProcessor()), ["Front counter", "Range desk"])
+		with patch.object(card_readers.frappe, "get_all") as get_all:
+			card_readers.readers(SETTINGS)
+			get_all.assert_not_called()
+		doc = frappe.get_doc(SETTINGS)
+		doc.card_readers[1].enabled = 0
+		doc.flags.ignore_permissions = True
+		doc.save()
+		self.assertEqual(card_readers.boot_names(PayrocProcessor()), ["Front counter"])
+
+	def test_card_tender_mode_lists_the_readers_switched_on_now(self):
+		with patch("ffl_integrations.payments.api._check_perm"), \
+				patch("ffl_integrations.payments.api._integration_ready", return_value=True), \
+				patch("ffl_integrations.payments.registry.active_processor", return_value=PayrocProcessor()):
+			self.assertEqual(api.card_tender_mode(), {"integrated": True, "readers": []})
+			_list_readers(FRONT, OLD + (0,), RANGE)
+			self.assertEqual(api.card_tender_mode()["readers"], ["Front counter", "Range desk"])
 
 	def test_names_and_serial_numbers_are_used_once(self):
 		doc = frappe.get_doc(SETTINGS)

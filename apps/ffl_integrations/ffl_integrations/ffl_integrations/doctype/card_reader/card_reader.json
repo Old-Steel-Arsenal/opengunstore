@@ -11,11 +11,10 @@
  ],
  "fields": [
   {
-   "description": "What the counter sees, e.g. Front counter.",
    "fieldname": "reader_name",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Name",
+   "label": "Reader Name",
    "reqd": 1
   },
   {
@@ -36,7 +35,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-11-12 12:00:00.000000",
+ "modified": "2026-11-12 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "Card Reader",
