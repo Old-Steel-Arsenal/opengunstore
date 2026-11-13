@@ -145,6 +145,7 @@ class MembershipsPage {
 			$g.append(`<div class="mshp-plan ${canEdit ? 'editable' : ''} ${p.active ? '' : 'off'}" ${canEdit ? `data-act="edit-plan" data-plan="${i}"` : ''}>
 				<div style="font-weight:600">${mshpEsc(p.name)}${p.active ? '' : ` <span class="indicator-pill gray">${mshpEsc(__('Off'))}</span>`}</div>
 				<div class="text-muted small">${format_currency(p.price)} / ${mshpEsc(period(p))} · ${mshpEsc(grace(p))}</div>
+				${(p.benefits || []).map((b) => `<div class="small mshp-benefit">${mshpEsc(b)}</div>`).join('')}
 				<div style="margin-top:4px">${mshpEsc(p.members === 1 ? __('1 member') : __('{0} members', [p.members]))}</div></div>`);
 		});
 		if (canEdit) $g.append(`<div class="mshp-plan new editable" data-act="new-plan">+ ${mshpEsc(__('New plan'))}</div>`);
@@ -245,6 +246,7 @@ class MembershipsPage {
 					description: __('Signed on the tablet for each new membership.') },
 				{ fieldtype: 'Small Text', fieldname: 'description', label: __('Description'), default: editing ? plan.description : '' },
 				{ fieldtype: 'HTML', fieldname: 'tax_note', options: `<p class="text-muted small">${mshpEsc(__('Tax-exempt plan? Set an exempt tax template on the plan\'s item after saving.'))}</p>` },
+				...(editing ? [{ fieldtype: 'HTML', fieldname: 'benefits_link', options: `<p class="small"><a href="/app/membership-plan/${encodeURIComponent(plan.name)}">${mshpEsc(__('Member prices: set them on the plan form'))}</a></p>` }] : []),
 			],
 			primary_action_label: editing ? __('Save') : __('Create plan'),
 			primary_action: async (v) => {

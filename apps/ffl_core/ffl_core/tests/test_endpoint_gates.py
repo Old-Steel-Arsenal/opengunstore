@@ -51,6 +51,11 @@ OPEN_BY_DESIGN = {
 	# DocType permissions reach; desk users only (_require_desk_user), and every
 	# listed endpoint still checks the caller when it is called.
 	"ffl_core.api.action_catalog.list_actions",
+	# Reviewed 2026-11-13: a task can be assigned to any user, whatever their roles; both
+	# read and write only the caller's own ToDos (allocated_to = session user), and Guest is
+	# stopped by the whitelist itself.
+	"ffl_core.assignment_notice.pending",
+	"ffl_core.assignment_notice.acknowledge",
 }
 
 

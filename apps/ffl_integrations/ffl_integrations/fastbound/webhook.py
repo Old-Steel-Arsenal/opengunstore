@@ -25,6 +25,7 @@ from frappe.utils import now_datetime
 
 from ffl_core.alerts import safe_log_error
 from ffl_core.compliance.disposition_lock import book_disposition_once
+from ffl_core.serials import resolve_serial
 from ffl_core.utils import split_serials
 from ffl_integrations.fastbound.client import (
 	FastBoundClient,
@@ -236,7 +237,17 @@ def _our_serials_from_fb_items(items: Any) -> list[str]:
 			if ext and frappe.db.exists("Serial No", ext):
 				our = ext
 		if not our:
-			our = str(node.get("serial") or "").strip() or None
+			bare = str(node.get("serial") or "").strip()
+			# Last resort, and only when it names ONE gun: a serial two of our guns
+			# share (a no-serial or same-serial gun) is never guessed — the sale stays
+			# Pending for a person, which beats closing the wrong gun's 4473.
+			found = resolve_serial(bare, status=None) if bare else []
+			if len(found) > 1:
+				frappe.log_error(title="FastBound 4473: serial matches several guns",
+					message=f"FastBound item {fb_id or '?'} serial {bare!r} matches "
+						f"{', '.join(r['name'] for r in found)}; not matched to any.")
+				continue
+			our = found[0]["name"] if found else (bare or None)
 		if our:
 			out.append(our)
 	return out

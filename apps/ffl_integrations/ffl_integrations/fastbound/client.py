@@ -29,6 +29,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from ffl_core.compliance.ffl_number import is_cr_license
+from ffl_core import serials as _serials
 from ffl_core.firearm import ATF_FIREARM_TYPES
 
 
@@ -392,8 +393,11 @@ class FastBoundClient:
 		so the caller stamps fastbound_id + Serial No.fastbound_item_id and clears
 		the error. Fails loud if the item can't be found, or is already disposed
 		(re-stocking a sold gun needs a human, not an auto-link)."""
-		serial = (acq.serial or "").strip()
-		item = self.find_item_by_serial(serial)
+		key = (acq.serial or "").strip()
+		# FastBound knows the gun by its bound-book serial, never by our key; and an item
+		# another gun of ours already holds is that gun's, not this one's.
+		serial = (getattr(acq, "ledger_serial", None) or "").strip() or _serials.ledger_serial(key)
+		item = self.find_item_by_serial(serial, skip=_held_by_another_serial(key))
 		if not item:
 			raise FastBoundError(
 				f"Acquisition {acq.name}: FastBound reports serial {serial!r} already "
@@ -406,8 +410,10 @@ class FastBoundClient:
 		acq_id = self.find_acquisition_id_by_item(item_id) or item_id
 		# adopted=True: acq_id is a PRE-EXISTING acquisition (it can hold other
 		# guns) — the atomic receive's compensation must never delete it.
-		return {"acquisitionId": acq_id, "adopted": True,
-			"items": [{"fbItemId": item_id, "serial": serial}]}
+		adopted = {"fbItemId": item_id, "serial": serial}
+		if item.get("itemNumber"):
+			adopted["itemNumber"] = str(item["itemNumber"]).strip()
+		return {"acquisitionId": acq_id, "adopted": True, "items": [adopted]}
 
 	def _free_closed_cycle_external_ids(self, body: dict) -> list[dict]:
 		"""Rename the externalId of every closed-cycle FastBound item that holds
@@ -552,7 +558,8 @@ class FastBoundClient:
 		if not fb_id:
 			raise FastBoundError(f"POST /Acquisitions/CreateAndCommit returned no id: {response!r}")
 		items = [
-			{"fbItemId": it.get("id"), "serial": (it.get("serial") or "").strip()}
+			{"fbItemId": it.get("id"), "serial": (it.get("serial") or "").strip(),
+				**({"itemNumber": str(it["itemNumber"]).strip()} if it.get("itemNumber") else {})}
 			for it in (response.get("items") or [])
 			if it.get("id")
 		]
@@ -606,7 +613,8 @@ class FastBoundClient:
 		return self._request(
 			"PUT", f"Items/{quote(item_id, safe='')}", json_body=body) or {}
 
-	def update_item_serial(self, item_id: str, new_serial: str, *, note: str | None = None) -> dict:
+	def update_item_serial(self, item_id: str, new_serial: str, *, note: str | None = None,
+			new_key: str | None = None, old_key: str | None = None) -> dict:
 		"""Correct a bound-book item's serial in place (PUT /Items/{id}) — the
 		FastBound half of a POS serial-number correction (see
 		ffl_core.api.serial_correction). Thin wrapper over update_item so the
@@ -623,6 +631,11 @@ class FastBoundClient:
 		mirrors the serial (the normal case) or is blank (a FastBound-direct item we
 		adopted, now made resolvable) — a custom, non-serial externalId is never
 		clobbered.
+
+		`new_serial` is the bound-book serial. A same-serial / no-serial gun is pushed
+		with its POS key as externalId (unique where the serial is not): pass
+		`old_key` / `new_key` and an externalId equal to `old_key` moves to `new_key`.
+		Both default to the serials, which is the ordinary gun's case.
 
 		`note` is deliberately NOT in `_ITEM_WRITABLE_FIELDS`, so the read-merge-
 		write never re-sends a stale note; passing it here adds a fresh audit note
@@ -643,8 +656,8 @@ class FastBoundClient:
 		fields: dict[str, Any] = {"serial": new_serial}
 		current_ext = (current.get("externalId") or "").strip()
 		current_serial = (current.get("serial") or "").strip()
-		if not current_ext or current_ext == current_serial:
-			fields["externalId"] = new_serial
+		if not current_ext or current_ext in (current_serial, (old_key or "").strip()):
+			fields["externalId"] = (new_key or "").strip() or new_serial
 		if note:
 			fields["note"] = note[:1000]
 		return self.update_item(item_id, fields, current=current)
@@ -683,7 +696,7 @@ class FastBoundClient:
 
 	# -------------------------------------------------- Disposition (non-4473) push
 
-	def find_item_by_serial(self, serial: str) -> dict | None:
+	def find_item_by_serial(self, serial: str, *, skip=None) -> dict | None:
 		"""Find the in-stock FastBound bound-book item for a serial. Returns the
 		full item dict, None if none match, and RAISES on more than one in-stock
 		match.
@@ -693,7 +706,9 @@ class FastBoundClient:
 		directly in FastBound (externalId null): `GET /Items?serial=` then verify
 		client-side (FastBound may ignore the filter, as it does `?fflNumber=`).
 		A serial can recur (old disposed unit + current one), so prefer the
-		in-stock (non-disposed) item — that's the one to adopt.
+		in-stock (non-disposed) item — that's the one to adopt. Two different guns can
+		carry one serial too: then it refuses to guess and names the candidates' item
+		numbers. `skip(item_id)` drops candidates first (items another gun already holds).
 		"""
 		needle = str(serial or "").strip().casefold()
 		if not needle:
@@ -717,7 +732,7 @@ class FastBoundClient:
 				if it.get("deleted"):
 					continue
 				iid = it.get("id") or it.get("itemId")
-				if iid:
+				if iid and not (skip and skip(iid)):
 					matches[iid] = it
 			if len(items) < take:
 				break
@@ -730,9 +745,11 @@ class FastBoundClient:
 		in_stock = {k: v for k, v in matches.items() if not v.get("disposed")}
 		pool = in_stock or matches
 		if len(pool) > 1:
+			numbers = ", ".join(sorted(f"#{v.get('itemNumber') or k}" for k, v in pool.items()))
 			raise FastBoundError(
-				f"{len(pool)} in-stock FastBound items match serial {serial!r} — "
-				f"refusing to guess which to adopt.")
+				f"{len(pool)} in-stock FastBound items match serial {serial!r} ({numbers}) — "
+				f"refusing to guess which to adopt. Link the right one by its item number "
+				f"with Reconcile to FastBound.")
 		return next(iter(pool.values())) if pool else None
 
 	def find_acquisition_id_by_item(self, item_id: str) -> str | None:
@@ -1072,7 +1089,12 @@ class FastBoundClient:
 			# transfer, a trip to the gunsmith) is a NEW item; the Serial No still
 			# points at the old, disposed one. Dispose the re-acquired item and
 			# repoint the Serial No so every later lookup finds the right one.
-			newer = self._reacquired_item_id(serial, fb_item_id) if exc.status_code == 400 else None
+			# FastBound knows the gun by its ledger serial (stamped on the disposition at
+			# validate); `serial` is our key. lazy: a same-serial twin's item is not
+			# excluded here — two in-stock items with the serial make find_item_by_serial
+			# refuse, which covers the twin-plus-returned case; R4 can add the exclusion.
+			ledger = (getattr(disp, "ledger_serial", None) or "").strip() or serial
+			newer = self._reacquired_item_id(ledger, fb_item_id) if exc.status_code == 400 else None
 			if newer:
 				frappe.db.set_value("Serial No", serial, "fastbound_item_id", newer,
 					update_modified=False)
@@ -1302,6 +1324,11 @@ class FastBoundClient:
 			"Serial No", serial,
 			["manufacturer", "importer", "model_name", "caliber", "firearm_type"], as_dict=True,
 		) if serial else None
+		# The bound book gets the gun's ledger serial — never a POS key. An ordinary
+		# gun sends `serial` exactly as before (its ledger serial is its name).
+		ledger = _serials.ledger_serial(serial) if serial else ""
+		if _serials.same_serial(ledger, serial):
+			ledger = serial
 		manufacturer = (sn and sn.get("manufacturer")) or item.get("manufacturer")
 		importer = (sn or {}).get("importer")
 		model = (sn and sn.get("model_name")) or item.get("model_name")
@@ -1314,7 +1341,7 @@ class FastBoundClient:
 		fields = {
 			"manufacturer": (manufacturer or "Unknown")[:100],
 			"model": (model or "Unknown")[:100],
-			"serial": serial or "",
+			"serial": ledger or "",
 			"caliber": (caliber or "Unknown")[:100],
 			"type": _fb_item_type(firearm_type),
 			# Item identifiers → FastBound UPC/SKU/MPN. SKU is our Item code; UPC
@@ -1669,3 +1696,12 @@ def _fb_item_type(firearm_type: str | None) -> str:
 		"Long Gun": "Rifle",
 		"Other": "Other Firearm",
 	}.get(t, "Other Firearm")
+
+
+def _held_by_another_serial(key: str | None):
+	"""skip() for find_item_by_serial: a FastBound item some OTHER Serial No already
+	carries belongs to that gun and must never be adopted for `key`."""
+	def held(item_id: str) -> bool:
+		return bool(frappe.get_all("Serial No", filters={
+			"fastbound_item_id": item_id, "name": ("!=", (key or "").strip())}, limit=1))
+	return held

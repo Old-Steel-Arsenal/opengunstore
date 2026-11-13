@@ -10,6 +10,7 @@ Ask your manager for the address, or open **Settings**, then the **MCP Settings*
 |---|---|
 | Read-only | **Read-only MCP Server URL**, ending in `/connector/cpa/mcp` |
 | Full | **Full MCP Server URL**, ending in `/connector/full/mcp` |
+| The website, read-only | **Website Read-only MCP Server URL**, ending in `/connector/web_ro/mcp` |
 
 Use the read-only address unless you need the assistant to change things.
 

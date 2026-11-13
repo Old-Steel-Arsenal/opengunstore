@@ -125,7 +125,7 @@ echo "==> auto-deployed $TAG to $SITE"
 # exported for the POS stack (a second stack on this host, see docs/self-hosting.md) must not rename it,
 # so every call below runs without that variable. Production sets none, so nothing changes there.
 deploy_mcp() {
-	local dir="$HERE/mcp" publish base gb enabled tag
+	local dir="$HERE/mcp" publish base gb enabled tag mode want=2 files
 	enabled="$(grep '^MCP_ENABLED=' "$ENV_FILE" | head -1 | cut -d= -f2- || true)"
 	[ "$enabled" != "0" ] || { echo "==> MCP servers: skipped (MCP_ENABLED=0)"; return 0; }
 	[ -f "$dir/compose.yaml" ] && [ -f "$dir/version.env" ] || return 0
@@ -155,13 +155,26 @@ deploy_mcp() {
 		grep -h '^MCP_IMAGE=' "$ENV_FILE" || true
 	} > "$dir/.env"
 	echo "==> MCP servers: $(grep '^MCP_TAG=' "$dir/.env")"
-	env -u COMPOSE_PROJECT_NAME docker compose -f "$dir/compose.yaml" --env-file "$dir/.env" pull -q &&
-		env -u COMPOSE_PROJECT_NAME docker compose -f "$dir/compose.yaml" --env-file "$dir/.env" up -d || return 1
+	# The website read-only connector (mcp/compose.web.yaml) joins only on a host that holds the
+	# site credentials in mcp/web.env, readable by its owner alone. Without that file every docker
+	# call below is the same as before it existed.
+	files=(-f "$dir/compose.yaml")
+	if [ -f "$dir/web.env" ] && [ -f "$dir/compose.web.yaml" ]; then
+		mode="$(stat -c %a "$dir/web.env" 2>/dev/null || stat -f %Lp "$dir/web.env")"
+		if [ "${mode: -2}" = "00" ]; then
+			files+=(-f "$dir/compose.web.yaml"); want=3
+			echo "==> MCP servers: website read-only connector on (mcp/web.env)"
+		else
+			echo "::warning title=Website connector not started on $SITE::mcp/web.env is readable by others (mode $mode). Run 'chmod 600' on it and deploy again."
+		fi
+	fi
+	env -u COMPOSE_PROJECT_NAME docker compose "${files[@]}" --env-file "$dir/.env" pull -q &&
+		env -u COMPOSE_PROJECT_NAME docker compose "${files[@]}" --env-file "$dir/.env" up -d || return 1
 	for _ in $(seq 1 24); do
-		[ "$(env -u COMPOSE_PROJECT_NAME docker compose -f "$dir/compose.yaml" --env-file "$dir/.env" ps --format '{{.Health}}' | grep -c healthy)" -ge 2 ] && { echo "==> MCP servers healthy"; return 0; }
+		[ "$(env -u COMPOSE_PROJECT_NAME docker compose "${files[@]}" --env-file "$dir/.env" ps --format '{{.Health}}' | grep -cx healthy)" -ge "$want" ] && { echo "==> MCP servers healthy"; return 0; }
 		sleep 5
 	done
-	env -u COMPOSE_PROJECT_NAME docker compose -f "$dir/compose.yaml" --env-file "$dir/.env" ps || true
+	env -u COMPOSE_PROJECT_NAME docker compose "${files[@]}" --env-file "$dir/.env" ps || true
 	return 1
 }
 deploy_mcp || echo "::warning title=MCP servers not healthy on $SITE::The POS deployed, but the remote MCP servers did not come up healthy — check 'docker compose -f ~/gunstore-pos/deploy/prod/mcp/compose.yaml ps' on the host."

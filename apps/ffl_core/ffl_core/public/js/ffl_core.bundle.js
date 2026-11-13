@@ -3118,13 +3118,16 @@ frappe.provide('frappe.ui.form');
 	}
 
 	// keyedUrl: a keyed charge — the card is typed on the processor's payment page (a pop-up),
-	// and the dialog offers to reopen it (a blocked or closed pop-up).
-	function showWaitingDialog(amount, onCancel, keyedUrl, onReopen) {
+	// and the dialog offers to reopen it (a blocked or closed pop-up). reader: the card reader
+	// the charge is on (named when the store lists readers); onSwitch: clicking its name.
+	function showWaitingDialog(amount, onCancel, keyedUrl, onReopen, reader, onSwitch) {
 		const dollars = amount.toFixed(2);
+		const readerLine = reader && window.ffl.cardReader ? window.ffl.cardReader.label(reader) : '';
 		const hint = keyedUrl
 			? `${__('Type the card on the {0} payment page.', [frappe.utils.escape_html(cardLabel())])}
 				<br><button type="button" class="btn btn-primary btn-sm ffl-keyed-open" style="margin-top:10px">${__('Open payment page')}</button>`
-			: __('Customer should dip / tap card on terminal.');
+			: __('Customer should dip / tap card on terminal.')
+				+ (readerLine ? `<br><span style="display:inline-block;margin-top:10px">${readerLine}</span>` : '');
 		const dlg = new frappe.ui.Dialog({
 			title: keyedUrl ? __('Waiting for the payment page') : __('Waiting for terminal'),
 			fields: [{
@@ -3150,6 +3153,7 @@ frappe.provide('frappe.ui.form');
 		dlg.$wrapper.attr('data-keyboard', 'false');
 		dlg.$wrapper.off('click.bs.modal');
 		dlg.$wrapper.find('.ffl-keyed-open').on('click', (e) => { e.preventDefault(); if (onReopen) onReopen(); });
+		dlg.$wrapper.find('.ffl-card-reader-switch').on('click', (e) => { e.preventDefault(); if (onSwitch) onSwitch(); });
 		return dlg;
 	}
 
@@ -3185,14 +3189,16 @@ frappe.provide('frappe.ui.form');
 	}
 
 	// Best-effort cancel of an in-flight instruction. The server reconciles a
-	// raced approval (stamps it, voidable) instead of stranding the capture.
+	// raced approval (stamps it, voidable) instead of stranding the capture; its
+	// answer is returned ({} when the call failed).
 	async function cancelInstruction(frm, instructionId) {
 		try {
-			await frappe.call({
+			const r = await frappe.call({
 				method: 'ffl_integrations.payments.api.cancel_pos_charge',
 				args: { invoice_name: frm.doc.name, instruction_id: instructionId },
 			});
-		} catch (e) { /* best-effort */ }
+			return (r && r.message) || {};
+		} catch (e) { return {}; /* best-effort */ }
 	}
 
 	// Multi-card charge math lives in the pure, Node-tested module
@@ -3474,10 +3480,15 @@ frappe.provide('frappe.ui.form');
 	// state — the single-charge era flow, parameterized by amount.
 	async function runSingleCharge(frm, amount, saveCard, keyed) {
 
+		// 0. This computer's card reader (only when the store lists readers: asked once).
+		const reader = keyed || !window.ffl.cardReader ? '' : await window.ffl.cardReader.ensure();
+		if (reader === null) return { skip: false, ok: false };   // picker closed: no charge
+
 		// 1. Create the device payment instruction (returns fast with an id) — or, keyed, the
 		// payment page to open (also when an in-flight keyed charge is resumed).
 		let instructionId = '';
 		let keyedUrl = '';
+		let onReader = reader;
 		try {
 			const c = await frappe.call({
 				method: 'ffl_integrations.payments.api.charge_pos_invoice',
@@ -3487,6 +3498,7 @@ frappe.provide('frappe.ui.form');
 					// Sent only when ticked: the request is byte-for-byte the old one otherwise.
 					...(saveCard ? { save_card: 1 } : {}),
 					...(keyed ? { keyed: 1 } : {}),
+					...(reader ? { reader } : {}),
 				},
 			});
 			const created = (c && c.message) || {};
@@ -3494,6 +3506,9 @@ frappe.provide('frappe.ui.form');
 			if (created.skip) return { skip: true };
 			instructionId = created.instruction_id || '';
 			keyedUrl = created.keyed_url || '';
+			// The reader the charge is actually on: a charge already in flight on this sale (another
+			// computer's, or one a failed cancel left live) keeps its own.
+			if ('reader' in created) onReader = created.reader || '';
 		} catch (err) {
 			if (!(err && err._server_messages)) {
 				frappe.msgprint({
@@ -3507,13 +3522,33 @@ frappe.provide('frappe.ui.form');
 
 		// 2. Poll loop (overall timeout). Cancel sets the flag + cancels the instruction.
 		let cancelled = false;
+		let switching = null;   // the charge moved to another card reader: its outcome
 		const page = keyedWindow(keyedUrl);
-		const giveUp = async () => { page.close(); await cancelInstruction(frm, instructionId); };
+		const giveUp = async () => { page.close(); return cancelInstruction(frm, instructionId); };
 		const dlg = showWaitingDialog(amount, async () => {
 			cancelled = true;
 			hideDialog(dlg);   // free the UI now, don't wait out the in-flight poll
 			await giveUp();
-		}, keyedUrl, page.open);
+		}, keyedUrl, page.open, onReader, () => {
+			// The card is on the wrong reader: cancel here (an approval that won the race is
+			// recorded, never charged twice), choose another, charge the same amount there —
+			// only after a plain cancel (card_reader.js afterSwitch).
+			if (cancelled) return;
+			cancelled = true;
+			hideDialog(dlg);
+			switching = (async () => {
+				const m = await giveUp();
+				const next = window.ffl.cardReader.afterSwitch(m);
+				if (next === 'charged') { await frm.reload_doc(); return { skip: false, ok: true }; }
+				if (next !== 'restart') {
+					if (next === 'settled') await frm.reload_doc();
+					frappe.msgprint(Object.assign({ indicator: 'orange' }, window.ffl.cardReader.switchStopped(next, onReader)));
+					return { skip: false, ok: false };
+				}
+				if (!(await window.ffl.cardReader.pick())) return { skip: false, ok: false };
+				return runSingleCharge(frm, amount, saveCard, keyed);
+			})();
+		});
 		const deadline = Date.now() + (keyedUrl ? KEYED_TIMEOUT_MS : POLL_TIMEOUT_MS);
 		try {
 			while (Date.now() < deadline && !cancelled) {
@@ -3532,13 +3567,13 @@ frappe.provide('frappe.ui.form');
 						await giveUp();
 						frappe.msgprint(Object.assign({ indicator: 'red' }, gaveUpMessage(!!keyedUrl, false)));
 					}
-					return { skip: false, ok: false };
+					return switching || { skip: false, ok: false };
 				}
 				const m = (p && p.message) || {};
 				// Cancel may have fired during the await — respect it. If the charge
 				// raced to approval, cancel_pos_charge has reconciled+stamped it, so
 				// it is recorded (voidable), not stranded; we just don't auto-submit.
-				if (cancelled) { hideDialog(dlg); return { skip: false, ok: false }; }
+				if (cancelled) { hideDialog(dlg); return switching || { skip: false, ok: false }; }
 				if (m.status === 'IN_PROGRESS') {
 					// Pace the loop — the terminal takes seconds to prompt/read; a
 					// zero-delay re-poll hammers the gateway (each poll is a full
@@ -3580,7 +3615,7 @@ frappe.provide('frappe.ui.form');
 			await giveUp();
 			frappe.msgprint(Object.assign({ indicator: 'orange' }, gaveUpMessage(!!keyedUrl, true)));
 		}
-		return { skip: false, ok: false };
+		return switching || { skip: false, ok: false };
 	}
 
 	// Terminal charge for a document that is NOT a POS Invoice — a counter Sales
@@ -3675,14 +3710,20 @@ frappe.provide('frappe.ui.form');
 		},
 	};
 
-	window.ffl.terminalCharge = async function ({ amount, start, poll, cancel }) {
-		const call = (spec, extra) => frappe.call({
-			method: spec.method, args: Object.assign({}, spec.args, extra || {}) });
+	// device: the start runs on a card device, so it names this computer's card reader (when the
+	// store lists readers; asked once) — a keyed charge has no device.
+	window.ffl.terminalCharge = async function (spec) {
+		const { amount, start, poll, cancel, device } = spec;
+		const call = (s, extra) => frappe.call({
+			method: s.method, args: Object.assign({}, s.args, extra || {}) });
+		const reader = device && window.ffl.cardReader ? await window.ffl.cardReader.ensure() : '';
+		if (reader === null) return { skip: false, ok: false };   // picker closed: no charge
 		let instructionId = '';
 		let keyedUrl = '';
 		let created = {};
+		let onReader = reader;
 		try {
-			const c = await call(start);
+			const c = await call(start, reader ? { reader } : null);
 			created = (c && c.message) || {};
 			if (created.skip) return { skip: true };
 			// An earlier approval on this document was still unrecorded — the
@@ -3690,6 +3731,8 @@ frappe.provide('frappe.ui.form');
 			if (created.already) return Object.assign({ skip: false }, created);
 			instructionId = created.instruction_id || '';
 			keyedUrl = created.keyed_url || '';
+			// The reader the charge is actually on (an in-flight charge keeps its own).
+			if ('reader' in created) onReader = created.reader || '';
 		} catch (err) {
 			if (!(err && err._server_messages)) {
 				frappe.msgprint({ title: __('Terminal error'), indicator: 'red',
@@ -3701,14 +3744,35 @@ frappe.provide('frappe.ui.form');
 		const page = keyedWindow(keyedUrl);
 		const cancelIt = async () => {
 			page.close();
-			try { await call(cancel, { instruction_id: instructionId }); } catch (e) { /* best-effort */ }
+			try {
+				const r = await call(cancel, { instruction_id: instructionId });
+				return (r && r.message) || {};
+			} catch (e) { return {}; /* best-effort */ }
 		};
 		let cancelled = false;
+		let switching = null;   // the charge moved to another card reader: its outcome
 		const dlg = showWaitingDialog(flt(created.amount || amount), async () => {
 			cancelled = true;
 			hideDialog(dlg);
 			await cancelIt();
-		}, keyedUrl, page.open);
+		}, keyedUrl, page.open, onReader, () => {
+			// Wrong reader: cancel (an approval that won the race is recorded, never charged
+			// twice), choose another, start again there — only after a plain cancel.
+			if (cancelled) return;
+			cancelled = true;
+			hideDialog(dlg);
+			switching = (async () => {
+				const m = await cancelIt();
+				const next = window.ffl.cardReader.afterSwitch(m);
+				if (next === 'charged') return Object.assign({ skip: false }, m);
+				if (next !== 'restart') {
+					frappe.msgprint(Object.assign({ indicator: 'orange' }, window.ffl.cardReader.switchStopped(next, onReader)));
+					return Object.assign({ skip: false }, m, { ok: false });
+				}
+				if (!(await window.ffl.cardReader.pick())) return { skip: false, ok: false };
+				return window.ffl.terminalCharge(spec);
+			})();
+		});
 		const deadline = Date.now() + (keyedUrl ? KEYED_TIMEOUT_MS : POLL_TIMEOUT_MS);
 		try {
 			while (Date.now() < deadline && !cancelled) {
@@ -3720,10 +3784,10 @@ frappe.provide('frappe.ui.form');
 						await cancelIt();
 						frappe.msgprint(Object.assign({ indicator: 'red' }, gaveUpMessage(!!keyedUrl, false)));
 					}
-					return { skip: false, ok: false };
+					return switching || { skip: false, ok: false };
 				}
 				const m = (p && p.message) || {};
-				if (cancelled) return { skip: false, ok: false };
+				if (cancelled) return switching || { skip: false, ok: false };
 				if (m.status === 'IN_PROGRESS') {
 					await new Promise((r) => setTimeout(r, keyedUrl ? 3000 : 1500));
 					continue;
@@ -3747,13 +3811,13 @@ frappe.provide('frappe.ui.form');
 			await cancelIt();
 			frappe.msgprint(Object.assign({ indicator: 'orange' }, gaveUpMessage(!!keyedUrl, true)));
 		}
-		return { skip: false, ok: false };
+		return switching || { skip: false, ok: false };
 	};
 
 	// Terminal charge against a Sales Invoice (counter order, membership dues).
 	// Callers handle skip / ok / decline themselves.
 	window.ffl.chargeSalesInvoice = (si, amount, { saveCard, keyed } = {}) => window.ffl.terminalCharge({
-		amount,
+		amount, device: !keyed,
 		start: { method: 'ffl_integrations.payments.api.charge_sales_invoice', args: { sales_invoice: si, amount,
 			...(saveCard ? { save_card: 1 } : {}), ...(keyed ? { keyed: 1 } : {}) } },
 		poll: { method: 'ffl_integrations.payments.api.poll_sales_invoice_charge', args: { sales_invoice: si } },
@@ -4141,6 +4205,18 @@ frappe.provide('frappe.ui.form');
 			if (!controller.frm.doc.is_ffl_transfer) {
 				const bad = await unpricedPerGunLines(controller.frm);
 				if (bad.length) return showPickTheGun(bad);
+			}
+			// MEMBER PRICES (member_prices.js): the server refuses a submit whose member price would
+			// move, so look now, before any money moves. A total that changed is shown, not completed:
+			// the cashier collects the new total and presses again. A failed look lets the submit go
+			// on — the server still decides.
+			if (window.ffl && ffl.memberPrices && ffl.memberPrices.sync) {
+				const priced = await ffl.memberPrices.sync(controller.frm);
+				if (priced.changed) {
+					try { controller.cart.load_invoice(); controller.payment.render_payment_section(); } catch (e) { /* cosmetic */ }
+					frappe.show_alert({ message: __(priced.message), indicator: 'orange' }, 10);
+					return;
+				}
 			}
 			// Any Zelle tender must carry its Transaction Number before we take a
 			// card portion or complete the order. Prompt now; cancel aborts checkout.

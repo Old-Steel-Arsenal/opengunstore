@@ -1187,6 +1187,18 @@ class TestCanonicalCaliber(FrappeTestCase):
             with self.subTest(raw=raw):
                 self.assertEqual(_canonical_caliber(raw), ".308 Win")
 
+    def test_distributor_spellings_fold_onto_existing_terms(self):
+        # Feed spellings that minted duplicate store terms next to the canonical one.
+        cases = {
+            "556NATO": "5.56 NATO", "5.56": "5.56 NATO",
+            "223 Remington": ".223 Remington", ".223 REM": ".223 Remington",
+            "10MM": "10mm Auto", "300 Blackout": ".300 AAC Blackout",
+            "16 GA": "16 Gauge", "20 GA": "20 Gauge", "12 GA": "12 Gauge",
+        }
+        for raw, canon in cases.items():
+            with self.subTest(raw=raw):
+                self.assertEqual(_canonical_caliber(raw), canon)
+
     def test_765mm_stays_browning_not_32acp(self):
         # 7.65 mm → 7.65mm Browning (NOT folded into .32 ACP)
         self.assertEqual(_canonical_caliber("7.65 mm"), "7.65mm Browning")
@@ -1223,9 +1235,9 @@ class TestCanonicalCaliber(FrappeTestCase):
         # The map's key strategy: .30 / 30 / 7.62 are item-dependent, so they are
         # NOT in the dict and pass through unchanged (resolved item-side, not
         # by string normalization).  Their normkey equals themselves.
-        for raw in (".30", "30", "7.62"):
+        for raw in (".30", "30", "7.62", "7.62MM", "6.5mm", ".22"):
             with self.subTest(raw=raw):
-                self.assertNotIn(raw, _CALIBER_CANONICAL)
+                self.assertNotIn(raw.casefold(), _CALIBER_CANONICAL)
                 self.assertEqual(_canonical_caliber(raw), raw)
 
     def test_safely_mappable_short_tokens_are_dict_keys(self):

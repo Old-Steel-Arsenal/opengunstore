@@ -119,7 +119,7 @@ def payroc_ready(require_device: bool = False) -> bool:
 	"""The documented go-live gate: switched on AND holding usable credentials.
 
 	With the switch off, no Merchant API Key, or (for device charges) no A80
-	serial, the integration is INERT — POS skips the gateway entirely and card rows
+	serial — or, with card readers listed, none of them switched on — the integration is INERT — POS skips the gateway entirely and card rows
 	record as plain tender, swiped on a standalone terminal. Filling in real
 	credentials on an enabled integration is what arms it.
 
@@ -138,6 +138,11 @@ def payroc_ready(require_device: bool = False) -> bool:
 		cfg = PayrocConfig.from_settings()
 	except PayrocConfigError:
 		return False
-	if require_device and not cfg.default_serial_number:
-		return False
+	if require_device:
+		# Several card readers listed (payments.card_readers): at least one switched on; none
+		# listed: the one device serial number, as before.
+		from ffl_integrations.payments.card_readers import readers
+
+		rows = readers(PAYROC_SETTINGS)
+		return any(r.enabled for r in rows) if rows else bool(cfg.default_serial_number)
 	return True

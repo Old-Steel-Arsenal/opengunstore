@@ -46,12 +46,20 @@ Boot: `frappe.boot.gunshop_extensions[id] = {enabled, version, title}` for every
 
 ### The stable surface
 
-Besides the hooks on this page, an extension may call: `ffl_core.extensions.*`, `ffl_core.roles.*`, `ffl_core.workspace_shortcuts.ensure_shortcut` / `remove_shortcut`, `ffl_core.setup.sidebar.mirror_gun_shop_sidebar`, `ffl_core.utils.single_flag`, `ffl_core.agreements.require_agreement`, the endpoints in the [API reference](../api/index.html), `ffl_integrations.distributor.base.DistributorProvider`, `ffl_integrations.distributor.freight.estimate_orders`, `ffl_integrations.payments.base` (`CardProcessor`, `CardResult`, `CardProcessorError`), and the `ffl_core.pricing` functions below. Everything else is internal.
+Besides the hooks on this page, an extension may call: `ffl_core.extensions.*`, `ffl_core.roles.*`, `ffl_core.workspace_shortcuts.ensure_shortcut` / `remove_shortcut`, `ffl_core.setup.sidebar.mirror_gun_shop_sidebar`, `ffl_core.utils.single_flag`, `ffl_core.agreements.require_agreement`, `ffl_core.ffl_core.doctype.mcp_settings.mcp_settings.SURFACES` / `surface_enabled` (the POS's own MCP surfaces, `cpa` and `full`, and whether one is switched on; the website surface is never in `SURFACES`), the endpoints in the [API reference](../api/index.html), `ffl_integrations.distributor.base.DistributorProvider`, `ffl_integrations.distributor.freight.estimate_orders`, `ffl_integrations.payments.base` (`CardProcessor`, `CardResult`, `CardProcessorError`), and the `ffl_core.pricing` functions below. Everything else is internal.
 
 - `counter_list_price(item_code) -> float`: the Item-level list price the register charges today: the selling Item Price of the default price list, except a uniform-priced firearm model in stock, priced from its cheapest priced gun; 0.0 for a gun priced one by one.
 - `counter_price_for(item_code, serial_no=None) -> float`: a quote line's price: a gun priced one by one from that serial (refused unless it is an in-stock serial of the Item), or the cheapest one in stock without a serial; anything else `counter_list_price`.
 - `price_readonly_reason(item_code) -> str | None`: why the regular price cannot be changed outside the POS (a gun priced one by one, a sale running today, a drop-ship listing, the transfer fee), translated for staff; None when it can.
 - `set_regular_price(item_code, price) -> None`: a price approver (`roles.PRICE_APPROVER_ROLES`) sets the regular price; saves the Item (validate, website pushes, the Version trail) and the selling Item Price, and notes the old and new register price on the Item. Raises `PermissionError` for anyone else and `ValidationError` while `price_readonly_reason` answers or when the price is not above 0.
+
+Member prices, `ffl_core.membership_benefits` (a Membership Plan's Benefits; the register prices every line with them on save):
+
+- `member_price(customer, item_code, qty=1, on_date=None, *, exclude_invoice=None) -> dict`: what *customer* (the member who uses the benefit, not necessarily the payer) pays for *qty* stock units on *on_date* (store-local day, default today). Returns `{"list_rate", "rate", "benefit", "membership", "reason", "uses_left", "notice"}`. With no benefit (not a member that day, item not covered, too few uses left, a sale price already lower) `rate == list_rate` and `benefit` is None. `uses_left`: the benefit's uses left that day before this line, None without a limit. `notice`: why a member price was not given (no uses left, naming the member's sales that took them, drafts marked not completed), else None. `exclude_invoice`: a POS Invoice / Sales Invoice whose own lines must not count as used (the ticket you are pricing again).
+- `benefit_usage(customer, benefit, on_date=None) -> dict`: `{"limit", "used", "left"}` for a benefit (`member_price`'s `benefit`); `limit` 0 and `left` None mean no limit. Uses count stock units (qty × conversion factor) on lines carrying the benefit for that member that day, drafts included; a line returned in full gives its uses back.
+- `membership_badge(customer) -> dict | None`: `{"text": "Premium · to 2027-04 · Range 1/2 today", "memberships": [{"membership", "plan", "status", "until", "uses": [{"benefit", "label", "used", "limit"}]}]}` for a customer with a membership giving benefits today (Active, or Past Due within its grace), else None. The counter's customer panel shows `text`.
+
+Build a ticket with `ffl_core.api.pos_ticket.build_ticket(customer, items, company=None)` (Python, same answer as `open_ticket`) to price a line for someone other than the payer: a line may carry `benefit_customer`, the member whose benefits price it (a guest checked in at your counter). The API endpoint `open_ticket` ignores that key. On either, a member price lower than the line's rate replaces it, and a rate you send below the member price stays without the benefit (the better of the two, never both).
 
 ## Named hooks
 
@@ -153,7 +161,7 @@ Declare them in `hooks.py` like any Frappe hook. The value is a dotted path to a
 ### `gunshop_card_processors`
 
 - **Signature:** `() -> CardProcessor` (an `ffl_integrations.payments.base.CardProcessor`).
-- **Purpose:** one card gateway: start / poll / cancel a charge on the device, void, refund, list terminals, a read-only probe for Settings → Payments, answering `CardResult` and raising `CardProcessorError` with an honest `outcome_known`. The core keeps every money fact (charge rows, refund locks, the split across cards, terminal payments and their Payment Entries); the adapter writes no document. At most one processor may be on and configured (`ready()`); each charge row records the processor's `code`, and void / refund / poll go back to that processor. Optional card on file: `supports_card_on_file = True`, accept `save_card` in `start_charge`, answer the token in `CardResult.stored_credential` (+ `card_expiry`, MMYY), implement `charge_stored`, `find_stored_charge(order_reference)`, `delete_stored(merchant_reference)` and `order_reference(document, attempt)`. Never put the token in `raw`.
+- **Purpose:** one card gateway: start / poll / cancel a charge on the device, void, refund, list terminals, a read-only probe for Settings → Payments, answering `CardResult` and raising `CardProcessorError` with an honest `outcome_known`. The core keeps every money fact (charge rows, refund locks, the split across cards, terminal payments and their Payment Entries); the adapter writes no document. At most one processor may be on and configured (`ready()`); each charge row records the processor's `code`, and void / refund / poll go back to that processor. Optional card on file: `supports_card_on_file = True`, accept `save_card` in `start_charge`, answer the token in `CardResult.stored_credential` (+ `card_expiry`, MMYY), implement `charge_stored`, `find_stored_charge(order_reference)`, `delete_stored(merchant_reference)` and `order_reference(document, attempt)`. Never put the token in `raw`. Optional card readers: give the settings Single a `card_readers` table (child doctype Card Reader: name, device serial number, enabled) and accept `device` (that serial number) in `start_charge`; the core passes it only when the store lists readers, and the handle `start_charge` returns must poll / cancel the charge on whichever device took it.
 - **On failure:** that processor counts as not installed: no new charges; a refund of its charge waits for a manager's Confirm Portal Refund.
 
 ### `gunshop_crm_mail_screen`
@@ -220,7 +228,7 @@ gunstore.extensions.register('acme_layaway', {
 | `settingsLinks` | **Settings** on the extension's card | One per Settings Single. |
 | `onDeskReady()` | — | Once after the desk is ready, per effective extension. A throw is logged to the console and does not stop the others. |
 
-**Send a ticket to the register from your own page.** Build the draft on the server with `ffl_core.api.pos_ticket.open_ticket` (the caller's open shift; your rates are the ticket's), then:
+**Send a ticket to the register from your own page.** Build the draft on the server with `ffl_core.api.pos_ticket.build_ticket` (the caller's open shift; your rates are the ticket's and are not asked for a manager's approval — the HTTP endpoint `open_ticket` judges a caller's typed rates like the register does), then:
 
 ```js
 frappe.route_options = { ffl_pos_invoice: name };   // the draft POS Invoice
@@ -229,9 +237,17 @@ frappe.set_route('point-of-sale');
 
 The register opens it in the cart the way Recent Orders › Draft does (a sale already in the cart is parked first, after asking); the clerk adds lines and takes payment as usual. A name that is not an open draft is refused with a notice.
 
-A rate you put on the ticket is your code's price: the register does not ask a manager to approve it afterwards. When a person chose a price below list on your page, take the manager's approval in your own flow before you build the ticket.
+A rate you put on the ticket is your code's price (unless the line's member price is lower): the register does not ask a manager to approve it afterwards. When a person chose a price below list on your page, take the manager's approval in your own flow before you build the ticket.
 
 Also available: `gunstore.extensions.isEnabled(id, boot)`, `ffl.featureOffPage(page, featureTitle, whereToTurnOn)` for your own Desk pages, `gunstore.renderReleaseNotes(entries)`.
+
+### Shared front-end helpers
+
+Loaded on every Desk page (`app_include_js`). Read them through `window.ffl` and fall back when absent, as a core older than your extension may not have them.
+
+- `ffl.aamva.parse(raw, { ids })`: reads the text a license scanner typed (the PDF417 barcode on a US driver license or ID card). Returns `null` when the text is not a license, else `{first, middle, last, suffix, address1, address2, city, state, zip, country}`, with `{idNumber, dob, expiry}` (dates `YYYY-MM-DD`, `''` when unreadable) added only when `ids` is true. Pass `ids: !!frappe.boot.ffl_store_customer_id_numbers`, the store's choice to keep ID numbers.
+- `ffl.customerFlags.check(customer, { key })`: the counter's customer check, as the register runs it. Returns `Promise<boolean>`: `false` when the customer is Banned and no manager overrode it in the box shown; otherwise `true`, after showing the customer's active alerts once per `key`. An empty customer or a failed read resolves `true` (the server still refuses a sale to a Banned customer).
+- `ffl.customerQuickEntry.newFromScan(raw)`: opens the New Customer dialog for an individual, filled from that scan by the dialog's own Scan ID (name and address; the license number and birth date only while the store keeps ID numbers). Returns `Promise<string | null>`: the customer's name once the clerk saves it, or picks an existing customer at the duplicate check; `null` when the dialog is closed without one, when the clerk moves to Edit in full page, or when the site opens the full Customer form instead of the dialog. Called again before it has answered, it returns the same promise and fills that same dialog from the new scan (from the newest one, if the dialog is still loading).
 
 ## Desk pages, sidebar, shortcuts
 

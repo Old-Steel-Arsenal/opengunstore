@@ -67,6 +67,11 @@ def extend_bootinfo(bootinfo):
             # Keyed entry (payments.api._check_keyed): the payment page is set up. The screens
             # offer it to managers only; the server refuses everyone else.
             "keyed": 1 if card and card.supports_keyed_entry() else 0}
+        # The card readers this computer may pick from (payments.card_readers): [] = the
+        # processor's one device, and the counter shows no reader choice at all.
+        from ffl_integrations.payments.card_readers import boot_names
+
+        bootinfo.ffl_card_readers = boot_names(card)
     except Exception:
         try:
             frappe.log_error(

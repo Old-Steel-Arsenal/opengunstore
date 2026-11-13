@@ -24,12 +24,21 @@ re-push is enqueued after commit, never for a rolled-back correction.
 
 Precedent for the rename+repoint half: ffl_integrations.fastbound.importer
 ._resync_existing (the FastBound→POS serial-correction path).
+
+The new value is the gun's BOUND-BOOK serial (Serial No.ledger_serial). An ordinary
+gun is renamed to it, exactly as before. When another gun already carries that
+serial (or it is a "no serial" spelling) this gun gets a tagged key instead
+("<serial> (FB 01074)", ffl_core.serials.allocate_serial_key) — two guns are never
+merged and the correction is not refused. FastBound always receives the bound-book
+serial; its externalId follows the key.
 """
 from __future__ import annotations
 
 import frappe
 from frappe import _
 from frappe.utils import now_datetime
+
+from ffl_core import serials as _serials
 
 
 @frappe.whitelist()
@@ -41,13 +50,16 @@ def correct_serial(serial: str, new_serial: str, reason: str) -> dict:
 
 	Args:
 	    serial: Current Serial No name (must be an in-stock firearm).
-	    new_serial: Corrected serial number.
+	    new_serial: Corrected serial number, as the bound book should record it.
 	    reason: Required free-text audit reason.
 
 	Returns:
-	    {ok, old_serial, new_serial, fastbound_item_id} — fastbound_item_id is
-	        "" on a store running with the FastBound integration switched off,
-	        where the local rename is the whole correction.
+	    {ok, old_serial, new_serial, ledger_serial, fastbound_item_id} —
+	        new_serial is the gun's Serial No name afterwards (the corrected
+	        serial itself, or a tagged key when another gun already has that
+	        serial); fastbound_item_id is "" on a store running with the
+	        FastBound integration switched off, where the local rename is the
+	        whole correction.
 
 	Raises:
 	    ValidationError / PermissionError / FastBoundError: With no partial
@@ -73,17 +85,13 @@ def correct_serial(serial: str, new_serial: str, reason: str) -> dict:
 		frappe.throw(_("The corrected (new) serial number is required."))
 	if not reason:
 		frappe.throw(_("A correction reason is required — it is written to the audit trail."))
-	if new == old:
+	old_ledger = _serials.ledger_serial(old)
+	if new == old or new == old_ledger:
 		frappe.throw(_("The corrected serial is identical to the current one — nothing to change."))
-	if frappe.db.exists("Serial No", new):
-		frappe.throw(_(
-			"Serial No {0} already exists — it names a different firearm. Resolve the "
-			"conflict manually; this tool will not merge two guns."
-		).format(new))
 
 	sn = frappe.db.get_value(
 		"Serial No", old,
-		["status", "item_code", "fastbound_item_id", "woo_product_id"],
+		["status", "item_code", "fastbound_item_id", "woo_product_id", "fastbound_item_number"],
 		as_dict=True,
 	)
 	if (sn.status or "") != "Active":
@@ -111,6 +119,18 @@ def correct_serial(serial: str, new_serial: str, reason: str) -> dict:
 			"Serial No {0} is held on {1}. Finish it or take the gun off that order first, "
 			"then correct the serial."
 		).format(old, hold.get("ref") or hold.get("tooltip") or _("an open order")))
+
+	# The gun's key afterwards. A change of case keeps the key (MariaDB names are
+	# case-blind, so it is the same name). Otherwise the corrected serial itself when
+	# no other gun has it — the ordinary rename — or a tagged key when one does: the
+	# newcomer to a serial is tagged, the gun already holding it is not renamed.
+	if _serials.same_serial(new, old):
+		target = old
+	elif _serials.is_placeholder(new) or frappe.db.exists("Serial No", new):
+		target = _serials.allocate_serial_key(
+			new, fb_item_number=sn.fastbound_item_number, force_tag=True)
+	else:
+		target = _serials.allocate_serial_key(new)
 
 	# -------------------------------------------------- validation (FastBound last)
 	# Resolve the bound-book item BEFORE touching ERP: if FastBound is unreachable
@@ -153,8 +173,8 @@ def correct_serial(serial: str, new_serial: str, reason: str) -> dict:
 	user = frappe.session.user
 	stamp = now_datetime().strftime("%Y-%m-%d %H:%M")
 	audit_line = _("Serial corrected {0} → {1}: {2} ({3}, {4})").format(
-		old, new, reason, user, stamp)
-	fb_note = f"Serial corrected {old}→{new}: {reason} ({user}, {stamp})"
+		old_ledger, new, reason, user, stamp)
+	fb_note = f"Serial corrected {old_ledger}→{new}: {reason} ({user}, {stamp})"
 
 	# -------------------------------------------------- atomic write (one savepoint)
 	savepoint = "serial_correction"
@@ -163,12 +183,17 @@ def correct_serial(serial: str, new_serial: str, reason: str) -> dict:
 		# 1) Rename the Serial No — cascades every Link reference (Serial and Batch
 		#    Entry / bundle / SLE) so stock stays consistent. force=True because
 		#    Serial No sets allow_rename=0. show_alert=False: the desk shows its own.
-		frappe.rename_doc("Serial No", old, new, force=True, show_alert=False)
+		if target != old:
+			frappe.rename_doc("Serial No", old, target, force=True, show_alert=False)
+		frappe.db.set_value("Serial No", target, {
+			"ledger_serial": new, "no_serial": 1 if _serials.is_placeholder(new) else 0,
+		}, update_modified=False)
 
 		# 2) Repoint the submitted A&D (Data field) + append the audit line. Direct
 		#    set_value bypasses the submit lock and never re-pushes FastBound.
 		for acq in acqs:
-			frappe.db.set_value("FFL Acquisition", acq, "serial", new, update_modified=False)
+			frappe.db.set_value("FFL Acquisition", acq, {"serial": target, "ledger_serial": new},
+				update_modified=False)
 			_append_acq_note(acq, audit_line)
 
 		# 3) Timeline comment on the renamed Serial No.
@@ -181,14 +206,14 @@ def correct_serial(serial: str, new_serial: str, reason: str) -> dict:
 			note = _("{0} — NOTE: FastBound is switched off; bound-book item {1} still "
 				"carries the OLD serial and must be corrected there before the "
 				"integration is re-enabled.").format(audit_line, sn.fastbound_item_id)
-		frappe.get_doc("Serial No", new).add_comment("Comment", note)
+		frappe.get_doc("Serial No", target).add_comment("Comment", note)
 
 		# 4) FastBound LAST: edit the bound-book item's serial in place with an audit
 		#    note. Any failure here rolls back every ERP write above. Skipped
 		#    entirely when the integration is switched off — steps 1-3 are then the
 		#    complete correction, and there is no second book to keep in step.
 		if client:
-			client.update_item_serial(fb_item_id, new, note=fb_note)
+			client.update_item_serial(fb_item_id, new, note=fb_note, new_key=target, old_key=old)
 	except Exception:
 		frappe.db.rollback(save_point=savepoint)
 		raise
@@ -203,10 +228,17 @@ def correct_serial(serial: str, new_serial: str, reason: str) -> dict:
 	# (lean) filters exactly those out. Lean here would leave the store selling
 	# under a serial the POS no longer has (webhook._map_sku_to_pos would then
 	# resolve web orders onto a ghost).
-	if (sn.woo_product_id or ""):
+	if (sn.woo_product_id or "") and _serials.listing_block_reason(target):
+		# Now a tagged gun, which may not be listed yet: take its page down instead
+		# of re-pushing (the push would be refused and leave the old serial live).
+		frappe.enqueue(
+			"ffl_woo_sync.woocommerce.tasks.delist_serial_task",
+			queue="long", enqueue_after_commit=True, serial_no=target, site="retail",
+		)
+	elif (sn.woo_product_id or ""):
 		frappe.enqueue(
 			"ffl_woo_sync.woocommerce.tasks.push_serial_task",
-			queue="long", enqueue_after_commit=True, serial_no=new,
+			queue="long", enqueue_after_commit=True, serial_no=target,
 			pos_fields_only=False,
 		)
 
@@ -225,10 +257,11 @@ def correct_serial(serial: str, new_serial: str, reason: str) -> dict:
 		frappe.enqueue(
 			"ffl_integrations.gunbroker.doc_events.on_serial_renamed",
 			queue="long", enqueue_after_commit=True,
-			old_name=old, new_name=new,
+			old_name=old, new_name=target,
 		)
 
-	return {"ok": True, "old_serial": old, "new_serial": new, "fastbound_item_id": fb_item_id}
+	return {"ok": True, "old_serial": old, "new_serial": target, "ledger_serial": new,
+		"fastbound_item_id": fb_item_id}
 
 
 def _append_acq_note(acq_name: str, line: str) -> None:

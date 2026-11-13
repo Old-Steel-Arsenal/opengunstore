@@ -25,7 +25,7 @@ push_serial_to_fastbound.
 
 **Returns:** {ok, applied: {fb: [fields], pos: [fields]}, skipped: [{field, reason}], fastbound_updated} — ok False with a reason when the fresh diff isn't in "ok" state.
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:180`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:190`</sub>
 
 ## `clear_not_in_bound_book`
 
@@ -45,7 +45,7 @@ and the Dashboard lists it until it lands; a comment records who cleared it.
 
 **Returns:** {ok: True, doctype, name}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:401`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:414`</sub>
 
 ## `compute_serial_fb_diff`
 
@@ -59,9 +59,9 @@ Diff a Serial No's firearm identity against its FastBound item (read-only).
 |---|---|---|---|---|
 | `serial` | string | yes | — | Serial No name (needs Serial No read permission). |
 
-**Returns:** {status: "ok" | "not_in_fastbound" | "not_configured" | "fb_missing" | "fb_disposed", serial, [fb_item_number], [in_sync], [diffs: [{field, pos_value, fb_value}]]}.
+**Returns:** {status: "ok" | "not_in_fastbound" | "not_configured" | "fb_missing" | "fb_disposed", serial, [fb_item_number], [in_sync], [diffs: [{field, pos_value, fb_value}]], [serial_diff: {pos_value, fb_value} or None]}. serial_diff compares the gun's ledger serial with FastBound's (case and spacing aside); it is outside `diffs` because a serial is changed with Correct Serial, not by picking a side here.
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:105`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:108`</sub>
 
 ## `mark_not_in_bound_book`
 
@@ -85,7 +85,7 @@ previous sync error are kept as a comment.
 
 **Returns:** {ok: True, doctype, name}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:342`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:355`</sub>
 
 ## `match_serial_to_fastbound`
 
@@ -106,7 +106,7 @@ operator).
 
 **Returns:** {ok: True, item_id} | {ok: True, already: True} | {ok: False, reason: "not_found" | "not_configured"}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:263`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:273`</sub>
 
 ## `reconcile_record_to_fastbound`
 
@@ -138,7 +138,7 @@ the way a successful push would.
 
 **Returns:** {ok: True, fastbound_id, fb_item_id, fb_item_number, serial_repointed}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:430`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:443`</sub>
 
 ## `retry_disposition_push`
 
@@ -181,7 +181,7 @@ waiting, and the default four attempts with back-off can hold the desk for
 
 **Permissions:** Inventory roles (same gate as :func:`reconcile_record_to_fastbound`).
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:529`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:543`</sub>
 
 ## `scan_in_stock_fb_diffs`
 
@@ -197,4 +197,4 @@ Scans every in-stock firearm with a fastbound_item_id. The result
 
 **Returns:** {"ok": True, "started": True} — the scan itself is asynchronous.
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:296`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/reconcile.py:309`</sub>

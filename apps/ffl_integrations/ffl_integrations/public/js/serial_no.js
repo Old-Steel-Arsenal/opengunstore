@@ -154,6 +154,12 @@ function _fbSyncHandle(frm, m) {
 	if (m.status === 'fb_missing') { frappe.msgprint(__('FastBound has no record for this gun.')); return; }
 	if (m.status === 'fb_disposed') { frappe.msgprint(__('FastBound shows this gun as DISPOSED — resolve the stock mismatch first; not field-syncing.')); return; }
 	if (m.status !== 'ok') { frappe.msgprint(__('Could not check FastBound.')); return; }
+	if (m.serial_diff) {
+		// A serial is changed with Correct Serial, not by picking a side in the dialog.
+		frappe.msgprint(__('FastBound records serial {0}; this gun\'s bound-book serial here is {1}. Use Correct Serial to fix whichever is wrong.',
+			[frappe.utils.escape_html(m.serial_diff.fb_value || ''), frappe.utils.escape_html(m.serial_diff.pos_value || '')]));
+		if (m.in_sync) return;
+	}
 	if (m.in_sync) { frappe.show_alert({ message: __('✓ Already in sync with FastBound.'), indicator: 'green' }); return; }
 	_fbSyncDialog(frm, m.diffs);
 }

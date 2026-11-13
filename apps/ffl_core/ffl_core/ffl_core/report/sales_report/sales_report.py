@@ -64,7 +64,7 @@ from ffl_core.compliance.shipping_charge import SHIPPING_TAX_DESCRIPTION
 from ffl_core.marketplace_accounts import (
 	MARKETPLACE_FEE_ACCOUNTS, MARKETPLACE_TAX_ACCOUNTS, ORDER_DOCTYPE)
 from ffl_core.setup.shipping_charge import shipping_account_name
-from ffl_core.setup.tax import _company_sales_tax_accounts
+from ffl_core.setup.tax import sales_tax_and_excise_accounts
 from ffl_core.setup.gunsmith import DEPOSIT_ITEM
 from ffl_core.setup.trade_in_credit import TRADE_IN_CREDIT_ITEM
 from ffl_core.utils import split_serials
@@ -325,7 +325,9 @@ def _channel_fees(header):
 	return flt(header.get("gb_final_value_fee")) + flt(header.get("gb_ffl_doc_fee"))
 
 
-def _fetch_lines(headers, extended=False):
+def _fetch_lines(headers, extended=False, more=()):
+	"""{invoice: [line rows]}. *more*: further line columns a caller needs (the Sales Summary's
+	pricing facts), each fetched where the child doctype has it."""
 	out: dict[str, list] = {}
 	# Each line carries its invoice's date: whether a sold gun was consigned is a
 	# fact of that sale, read differently before and after the commission freeze
@@ -345,7 +347,7 @@ def _fetch_lines(headers, extended=False):
 		# exist on Sales Invoice Item ONLY — neither lane reaches a POS Invoice, and
 		# asking for a column a doctype does not have raises. Same guard as
 		# _OPTIONAL_HEADER_FIELDS, applied per child doctype.
-		child_fields = fields + [f for f in _HOUSE_FIELDS if _has_column(child_dt, f)]
+		child_fields = fields + [f for f in (*_HOUSE_FIELDS, *more) if f not in fields and _has_column(child_dt, f)]
 		for r in frappe.get_all(
 			child_dt,
 			filters={"parent": ["in", names]},
@@ -938,6 +940,9 @@ def _report_summary(view, data, filters=None):
 			_card(flt(total.get("sales_tax")), _("Sales Tax"), "Currency", "Grey"),
 			_card(flt(total.get("shipping")), _("Shipping"), "Currency", "Grey"),
 		]
+		# Only where an excise tax was collected, so a store without one sees no new card.
+		if flt(total.get("excise_tax")):
+			cards.insert(5, _card(flt(total.get("excise_tax")), _("Excise Tax"), "Currency", "Grey"))
 		# Shown ONLY on a run narrowed to the marketplace: on an
 		# all-channel run the same card would sit next to the store's own Texas
 		# sales and read as "our Texas total", which is the opposite of what
@@ -972,6 +977,9 @@ def _report_summary(view, data, filters=None):
 # neither sales tax nor shipping. Cost reuses _line_cost unchanged.
 
 _SALES_TAX, _SHIPPING, _UNCLASSIFIED = "sales_tax", "shipping", "unclassified"
+# A state excise tax collected beside sales tax (California's CFET): its own liability, never
+# summed into sales tax (setup.tax.sales_tax_and_excise_accounts).
+_EXCISE = "excise"
 _MARKETPLACE_TAX, _MARKETPLACE_FEE = "marketplace_tax", "marketplace_fee"
 
 # Liabilities a marketplace collects THROUGH us — matched on the BARE account
@@ -986,7 +994,7 @@ _MARKETPLACE_FEE_ACCOUNTS = MARKETPLACE_FEE_ACCOUNTS
 
 
 def _classify_account(account_head, shipping_account, sales_tax_accounts,
-		account_name=None):
+		account_name=None, excise_accounts=()):
 	"""Positively classify a taxes-row account_head against the company's OWN
 	canonical accounts: the shipping-income account
 	(ffl_core.setup.shipping_charge.shipping_account_name — the very account the
@@ -995,9 +1003,13 @@ def _classify_account(account_head, shipping_account, sales_tax_accounts,
 	→ unclassified. This is deliberately NOT type-based (account_type=="Tax" /
 	root_type=="Income"), which fails OPEN: a Tax-type federal excise tax would be
 	swept into collected sales tax, and an Income-type handling/restocking fee
-	into shipping. Only the resolved account_heads are trusted."""
+	into shipping. Only the resolved account_heads are trusted. An excise account
+	(setup.tax.sales_tax_and_excise_accounts) is checked first: it may sit in the
+	sales-tax template too."""
 	if account_head == shipping_account:
 		return _SHIPPING
+	if account_head in excise_accounts:
+		return _EXCISE
 	if account_head in sales_tax_accounts:
 		return _SALES_TAX
 	if account_name in _MARKETPLACE_TAX_ACCOUNTS:
@@ -1087,16 +1099,19 @@ def _tax_breakdown(taxes_rows, iwt_rows, acct_class):
 	row_class = {t.get("name"): acct_class.get(t.get("account_head"), _UNCLASSIFIED)
 		for t in taxes_rows}
 	line_tax: dict[str, float] = {}
+	line_excise: dict[str, float] = {}
 	for w in iwt_rows:
 		# Only sales-tax allocations become a line's tax; a shipping row's
 		# per-item allocation is deliberately ignored (shipping is order-level).
-		if row_class.get(w.get("tax_row")) == _SALES_TAX:
+		cls = row_class.get(w.get("tax_row"))
+		if cls in (_SALES_TAX, _EXCISE):
+			bucket = line_tax if cls == _SALES_TAX else line_excise
 			key = w.get("item_row")
-			line_tax[key] = flt(line_tax.get(key)) + flt(w.get("amount"))
+			bucket[key] = flt(bucket.get(key)) + flt(w.get("amount"))
 	# Goods sales tax = Σ IWTD (per-line, post-discount, GL-consistent).
 	goods_tax_total = sum(line_tax.values())
 	shipping_total = freight_tax_total = sales_tax_charged = 0.0
-	marketplace_tax_total = marketplace_fee_total = 0.0
+	marketplace_tax_total = marketplace_fee_total = excise_total = 0.0
 	unclassified = []
 	for t in taxes_rows:
 		cls = row_class.get(t.get("name"))
@@ -1108,6 +1123,9 @@ def _tax_breakdown(taxes_rows, iwt_rows, acct_class):
 			freight_tax_total += amt
 		elif cls == _SALES_TAX:
 			sales_tax_charged += amt
+		# Excise (every row on the account, freight included) is its own total.
+		elif cls == _EXCISE:
+			excise_total += amt
 		# Kept OUT of sales_tax_total and out of unclassified both. Out of the
 		# first because it is not tax this store owes a state — counting it there
 		# would overstate the return by every marketplace sale. Out of the second
@@ -1132,6 +1150,9 @@ def _tax_breakdown(taxes_rows, iwt_rows, acct_class):
 		"shipping_total": shipping_total, "unclassified": unclassified,
 		"marketplace_tax_total": marketplace_tax_total,
 		"marketplace_fee_total": marketplace_fee_total,
+		# The charged figures beside the IWTD-based ones above.
+		"sales_tax_charged": sales_tax_charged,
+		"line_excise": line_excise, "excise_total": excise_total,
 		"tax_mismatch": tax_mismatch}
 
 
@@ -1149,7 +1170,11 @@ def _execute_product_view(filters, detail):
 		transfer_serials=transfer_serials,
 		dropship_cost=_fetch_dropship_costs(headers, lines),
 		marketplace_exempt=_fetch_marketplace_exempt(headers))
-	return _product_columns(detail), rows
+	columns = _product_columns(detail)
+	# The Excise Tax column only where the period collected some: a store without one sees none.
+	if not any(flt(r.get("excise_tax")) for r in rows):
+		columns = [c for c in columns if c["fieldname"] != "excise_tax"]
+	return columns, rows
 
 
 def _fetch_item_wise_tax(headers):
@@ -1214,7 +1239,7 @@ def _fetch_account_classes(taxes_by_invoice):
 			fields=["name", "company", "account_name"])
 	}
 	company_of = {name: a.get("company") for name, a in accounts.items()}
-	canon: dict[str, tuple] = {}  # company -> (shipping_account, sales_tax_accounts set)
+	canon: dict[str, tuple] = {}  # company -> (shipping_account, sales-tax set, excise set)
 	out = {}
 	for head in heads:
 		company = company_of.get(head)
@@ -1222,11 +1247,11 @@ def _fetch_account_classes(taxes_by_invoice):
 			out[head] = _UNCLASSIFIED
 			continue
 		if company not in canon:
-			canon[company] = (
-				shipping_account_name(company), set(_company_sales_tax_accounts(company)))
-		ship, taxset = canon[company]
+			sales, excise = sales_tax_and_excise_accounts(company)
+			canon[company] = (shipping_account_name(company), set(sales), set(excise))
+		ship, taxset, exciseset = canon[company]
 		out[head] = _classify_account(head, ship, taxset,
-			account_name=(accounts.get(head) or {}).get("account_name"))
+			account_name=(accounts.get(head) or {}).get("account_name"), excise_accounts=exciseset)
 	return out
 
 
@@ -1241,7 +1266,7 @@ def _build_product_rows(headers, lines_by_invoice, item_meta, serial_cost, consi
 	component separately (gross net, trade-in, shipping, sales tax, cost)."""
 	rows = []
 	child_indent = 1 if detail else 0
-	tot_net = tot_trade = tot_ship = tot_tax = tot_cost = tot_uncl = 0.0
+	tot_net = tot_trade = tot_ship = tot_tax = tot_cost = tot_uncl = tot_excise = 0.0
 	from ffl_core.compliance.interstate_tax import home_state
 
 	tot_fees = tot_mkt_tx = 0.0
@@ -1330,6 +1355,7 @@ def _build_product_rows(headers, lines_by_invoice, item_meta, serial_cost, consi
 				"gross_merch": gross,
 				"trade_in_net": net if is_trade_in else 0.0,
 				"line_tax": flt(bd["line_tax"].get(line.get("name"))),
+				"excise_tax": flt(bd["line_excise"].get(line.get("name"))),
 				"cost": line_cost,
 				"profit": gross - line_cost,
 				"is_firearm": bool(meta.get("is_firearm")),
@@ -1375,6 +1401,7 @@ def _build_product_rows(headers, lines_by_invoice, item_meta, serial_cost, consi
 				"cost": order_cost,
 				"profit": (order_net - trade_in_net) - order_cost,
 				"sales_tax": bd["sales_tax_total"],
+				"excise_tax": bd["excise_total"],
 				# Data only in this slice — the marketplace columns and the
 				# month-end reconciliation that reads them are the next one.
 				"marketplace_tax": bd["marketplace_tax_total"],
@@ -1423,6 +1450,7 @@ def _build_product_rows(headers, lines_by_invoice, item_meta, serial_cost, consi
 		tot_payout += payout
 		tot_ship += bd["shipping_total"]
 		tot_tax += bd["sales_tax_total"]
+		tot_excise += bd["excise_total"]
 		tot_cost += order_cost
 		tot_uncl += sum(u["amount"] for u in bd["unclassified"])
 		tot_fees += fees
@@ -1462,6 +1490,7 @@ def _build_product_rows(headers, lines_by_invoice, item_meta, serial_cost, consi
 			# so the total is visible in either view.
 			"line_tax": tot_tax,
 			"sales_tax": tot_tax,
+			"excise_tax": tot_excise,
 			"unclassified": tot_uncl,
 			# cost is goods COGS (credit lines cost 0) and profit is measured on
 			# gross merchandise — same figures the Order view totals to, and Σ of
@@ -1501,6 +1530,7 @@ def _product_columns(detail):
 			{"label": _("Shipping"), "fieldname": "shipping", "fieldtype": "Currency", "width": 95},
 			{"label": _("Unclassified"), "fieldname": "unclassified", "fieldtype": "Currency", "width": 105},
 			{"label": _("Sales Tax"), "fieldname": "sales_tax", "fieldtype": "Currency", "width": 95},
+			{"label": _("Excise Tax"), "fieldname": "excise_tax", "fieldtype": "Currency", "width": 95},
 			{"label": _("Cost"), "fieldname": "cost", "fieldtype": "Currency", "width": 100},
 			{"label": _("Profit"), "fieldname": "profit", "fieldtype": "Currency", "width": 100},
 			{"label": _("Channel Fees"), "fieldname": "channel_fees", "fieldtype": "Currency", "width": 105},
@@ -1524,6 +1554,7 @@ def _product_columns(detail):
 		{"label": _("Gross Goods"), "fieldname": "gross_merch", "fieldtype": "Currency", "width": 110},
 		{"label": _("Trade-in"), "fieldname": "trade_in_net", "fieldtype": "Currency", "width": 100},
 		{"label": _("Line Tax"), "fieldname": "line_tax", "fieldtype": "Currency", "width": 95},
+		{"label": _("Excise Tax"), "fieldname": "excise_tax", "fieldtype": "Currency", "width": 95},
 		{"label": _("Shipping"), "fieldname": "shipping", "fieldtype": "Currency", "width": 95},
 		{"label": _("Unclassified"), "fieldname": "unclassified", "fieldtype": "Currency", "width": 105},
 		{"label": _("Cost"), "fieldname": "cost", "fieldtype": "Currency", "width": 100},

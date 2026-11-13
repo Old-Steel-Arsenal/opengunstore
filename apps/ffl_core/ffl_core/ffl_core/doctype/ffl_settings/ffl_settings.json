@@ -38,6 +38,8 @@
   "enforce_sale_agreements",
   "column_sale_agreements",
   "used_item_agreement_template",
+  "section_serial_numbers",
+  "serial_placeholders",
   "tab_verification",
   "section_live_check",
   "live_check_provider",
@@ -237,6 +239,17 @@
    "depends_on": "enforce_sale_agreements"
   },
   {
+   "fieldname": "section_serial_numbers",
+   "fieldtype": "Section Break",
+   "label": "Serial Numbers"
+  },
+  {
+   "fieldname": "serial_placeholders",
+   "fieldtype": "Small Text",
+   "label": "No-Serial Spellings",
+   "description": "More ways the bound book writes that a gun has no serial number, one per line. NONE, NONE MARKED, NSN, NO SERIAL, N/A and UNKNOWN are always recognized."
+  },
+  {
    "fieldname": "tab_verification",
    "fieldtype": "Tab Break",
    "label": "FFL Verification"
@@ -274,7 +287,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-30 19:00:00.000000",
+ "modified": "2026-11-12 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "FFL Settings",

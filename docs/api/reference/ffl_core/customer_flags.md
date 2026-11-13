@@ -25,7 +25,7 @@ customer, then the buyer's GunBroker id (field, then alias), then email.
 
 **Returns:** {"woo": [names], "gb": [names], "customers": [names]} — only the Banned ones.
 
-<sub>`apps/ffl_core/ffl_core/customer_flags.py:376`</sub>
+<sub>`apps/ffl_core/ffl_core/customer_flags.py:380`</sub>
 
 ## `find_customers_by_id_number`
 
@@ -44,7 +44,7 @@ stored, and the answer is an empty list). Compared without case, spaces or dashe
 
 **Returns:** [{"name", "customer_name", "customer_status"}], at most 5.
 
-<sub>`apps/ffl_core/ffl_core/customer_flags.py:239`</sub>
+<sub>`apps/ffl_core/ffl_core/customer_flags.py:243`</sub>
 
 ## `find_customers_by_scan`
 
@@ -66,7 +66,7 @@ pick; a number match is the person.
 
 **Returns:** [{"name", "customer_name", "customer_status", "address": primary address on one line, "by_id": matched on the ID number}], at most 5.
 
-<sub>`apps/ffl_core/ffl_core/customer_flags.py:265`</sub>
+<sub>`apps/ffl_core/ffl_core/customer_flags.py:269`</sub>
 
 ## `find_possible_duplicates`
 
@@ -87,7 +87,7 @@ Matches the customer's email (or an email merged into it), mobile number
 
 **Returns:** [{"name", "customer_name", "customer_status", "matched": ["email" | "phone" | "id_number"]}], at most 5.
 
-<sub>`apps/ffl_core/ffl_core/customer_flags.py:321`</sub>
+<sub>`apps/ffl_core/ffl_core/customer_flags.py:325`</sub>
 
 ## `get_customer_flags`
 
@@ -101,7 +101,7 @@ What the counter panel shows when this customer is picked.
 |---|---|---|---|---|
 | `customer` | string | yes | — | Customer name (document id). |
 
-**Returns:** {"name", "customer_name", "status", "status_reason" (only when not Active), "banned": Banned with no open override, "override_until": end of an open manager override or None, "can_override": whether the caller may override, "alerts": [{"message", "created_by", "created_on"}] (active ones, oldest first), "tags": [str], "family": {"primary": {"name", "customer_name"} or None, "relationship", "members": int}, "ids": [{"id_type", "expiry_date", "expired": bool}] for ID documents expired or expiring within 30 days, "agreements": [{"template", "state", "expires_on", "agreement"}] for each active Agreement Template shown on the counter panel — state is signed, expiring (within 30 days), expired, pending or missing}. Never carries an ID number or date of birth.
+**Returns:** {"name", "customer_name", "status", "status_reason" (only when not Active), "banned": Banned with no open override, "override_until": end of an open manager override or None, "can_override": whether the caller may override, "alerts": [{"message", "created_by", "created_on"}] (active ones, oldest first), "tags": [str], "family": {"primary": {"name", "customer_name"} or None, "relationship", "members": int}, "ids": [{"id_type", "expiry_date", "expired": bool}] for ID documents expired or expiring within 30 days, "agreements": [{"template", "state", "expires_on", "agreement"}] for each active Agreement Template shown on the counter panel — state is signed, expiring (within 30 days), expired, pending or missing, "membership": the member badge (``membership_benefits.membership_badge``: {"text", "memberships"}) or None}. Never carries an ID number or date of birth.
 
 <sub>`apps/ffl_core/ffl_core/customer_flags.py:137`</sub>
 
@@ -124,4 +124,4 @@ customer's timeline. The customer stays Banned.
 
 **Returns:** {"customer": name, "override_until": the window's end, "by": the manager}.
 
-<sub>`apps/ffl_core/ffl_core/customer_flags.py:199`</sub>
+<sub>`apps/ffl_core/ffl_core/customer_flags.py:203`</sub>

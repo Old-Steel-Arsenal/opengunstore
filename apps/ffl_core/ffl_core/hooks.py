@@ -170,6 +170,11 @@ extend_bootinfo = [
 	"ffl_core.price_approval.extend_bootinfo",
 	# The US state codes for the address forms' State dropdowns (interstate_tax.US_STATES).
 	"ffl_core.compliance.interstate_tax.extend_bootinfo",
+	# Whether any plan has a member benefit: the cart's live preview stays quiet without one
+	# (membership_benefits.py).
+	"ffl_core.membership_benefits.extend_bootinfo",
+	# The signed-in person's assignments waiting for them to say they saw them (assignment_notice.py).
+	"ffl_core.assignment_notice.extend_bootinfo",
 ]
 
 
@@ -184,6 +189,9 @@ app_include_js = [
 	_hashed("js/customer_display_logic.js"),
 	_hashed("js/pos_tender_guard.js"),
 	_hashed("js/card_charges.js"),
+	# card_reader.js: window.ffl.cardReader — this computer's card reader (picked once, kept in
+	# localStorage) for the bundle's terminal charges; pure choose() is Node-tested.
+	_hashed("js/card_reader.js"),
 	_hashed("js/pos_recycle_bin.js"),
 	# Recent Orders › Work Orders: open gunsmith jobs and their Complete (ffl.gunsmithRegister in the
 	# bundle above); needs ffl.installClassHook from pos_tender_guard.js above.
@@ -214,9 +222,22 @@ app_include_js = [
 	# A lowered price asks a manager (PIN + reason) before the save: POS, the three forms, Create
 	# Order (price_approval.py). Needs staff_switch.js above (authMode / serverMessage / post).
 	_hashed("js/price_approval.js"),
+	# Member prices shown on the cart as lines are added or the customer changes; the server's save
+	# is the authority (membership_benefits.py).
+	_hashed("js/member_prices.js"),
+	# "Assigned to you": the dialog that asks a person to say they saw a new assignment
+	# (assignment_notice.py). Needs staff_switch.js above (post, and its lock screen to wait behind).
+	_hashed("js/assignment_notice.js"),
 ]
 
 doc_events = {
+	# A new assignment asks its person to say they saw it (assignment_notice.py).
+	"ToDo": {
+		"before_validate": "ffl_core.assignment_notice.stamp",
+		"on_update": "ffl_core.assignment_notice.announce",
+	},
+	# A connector client (dynamic registration) also lets the website connector roles sign in (api/oauth_dcr.py).
+	"OAuth Client": {"before_insert": "ffl_core.api.oauth_dcr.allow_website_roles"},
 	# A copy requested for a gunsmith work order is its intake authorization (gunsmith.py).
 	"Customer Agreement": {"on_update": "ffl_core.gunsmith.link_intake_agreement"},
 	# A store flipping an integration's switch re-shapes the Gun Shop sidebar and home page
@@ -371,6 +392,9 @@ doc_events = {
 			# Locked lines (trade-in credit) pinned to their amount BEFORE core
 			# prices, totals and taxes the rows.
 			"ffl_core.compliance.locked_lines.pin_locked_lines",
+			# Member prices onto the lines before core totals and taxes them (membership_benefits.py);
+			# after the consignment freeze, which marks the consignment lines it skips.
+			"ffl_core.membership_benefits.apply_member_prices",
 		],
 		"validate": [
 			# No counter sale to a Banned customer without a manager's open override
@@ -384,6 +408,9 @@ doc_events = {
 			"ffl_core.compliance.consignment.block_consignment_returns",
 			"ffl_core.compliance.zero_cost_sale_alert.warn_on_unpriced_firearm_sale",
 			"ffl_core.compliance.firearm.canonicalize_row_serials",
+			# A same-serial / no-serial gun is not sellable until receipts and 4473 records
+			# print its bound-book serial (serials.refuse_tagged_serial_sale; returns pass).
+			"ffl_core.serials.refuse_tagged_serial_sale",
 			"ffl_core.compliance.firearm.require_serial_for_firearm",
 			"ffl_core.compliance.firearm.require_4473_and_nics_for_firearm_sale",
 			"ffl_core.compliance.dealer_transfer.require_shippable_ffl_dealer",
@@ -413,6 +440,8 @@ doc_events = {
 			"ffl_core.compliance.trade_in_settlement.keep_merged_change",
 			# A gunsmith deposit line only on a register invoice (gunsmith.py).
 			"ffl_core.gunsmith.guard_deposit_lines",
+			# A line ERPNext priced otherwise than its member price keeps no benefit record (membership_benefits.py).
+			"ffl_core.membership_benefits.settle_member_lines",
 			# Locked lines: refuse what ERPNext's own validate did to them after the
 			# before_validate pin (pricing rules, coupons). Last, after every other hook.
 			"ffl_core.compliance.locked_lines.assert_locked_lines",
@@ -492,6 +521,9 @@ doc_events = {
 	"Delivery Note": {
 		"validate": [
 			"ffl_core.compliance.firearm.canonicalize_row_serials",
+			# Same temporary gate as the invoices: a shipment's paperwork would print a
+			# same-serial / no-serial gun's internal key (serials.refuse_tagged_serial_sale).
+			"ffl_core.serials.refuse_tagged_serial_sale",
 			"ffl_core.compliance.firearm.require_serial_for_firearm",
 			"ffl_core.compliance.dealer_transfer.require_shippable_ffl_dealer",
 			"ffl_core.compliance.interstate_tax.apply_interstate_tax",
@@ -529,6 +561,9 @@ doc_events = {
 			# Locked lines pinned before core prices/totals the rows — see the
 			# Sales Invoice entry.
 			"ffl_core.compliance.locked_lines.pin_locked_lines",
+			# Member prices onto the lines (membership_benefits.py): after the consignment freeze, before
+			# anything below reads the line amounts.
+			"ffl_core.membership_benefits.apply_member_prices",
 			# A peace officer's sale: the excise rows off before ERPNext totals the ticket
 			# (compliance/le_excise_exempt), and before the trade-in floor reads the rows.
 			"ffl_core.compliance.le_excise_exempt.apply_le_excise_exemption_before",
@@ -561,6 +596,9 @@ doc_events = {
 			"ffl_core.compliance.consignment.block_consignment_returns",
 			"ffl_core.compliance.zero_cost_sale_alert.warn_on_unpriced_firearm_sale",
 			"ffl_core.compliance.firearm.canonicalize_row_serials",
+			# A same-serial / no-serial gun is not sellable until receipts and 4473 records
+			# print its bound-book serial (serials.refuse_tagged_serial_sale; returns pass).
+			"ffl_core.serials.refuse_tagged_serial_sale",
 			"ffl_core.compliance.firearm.require_serial_for_firearm",
 			# One gun per line — fires on EVERY validate (Draft too) so a qty>1 /
 			# multi-serial firearm line never persists to break the 4473 match
@@ -589,6 +627,8 @@ doc_events = {
 			"ffl_core.api.counter_pickup.assert_ticket_free",
 			# A gunsmith deposit line comes only from its work order, within what it holds (gunsmith.py).
 			"ffl_core.gunsmith.guard_deposit_lines",
+			# A line ERPNext priced otherwise than its member price keeps no benefit record (membership_benefits.py).
+			"ffl_core.membership_benefits.settle_member_lines",
 			# Locked lines: refuse what ERPNext's own validate did to them after the
 			# before_validate pin (pricing rules, coupons). Last, after every other hook.
 			"ffl_core.compliance.locked_lines.assert_locked_lines",
@@ -874,10 +914,16 @@ after_install = [
 	# Manager approval for lowered prices: its fields, and the switch ON for a new store.
 	"ffl_core.setup.price_approval.ensure",
 	"ffl_core.price_approval.ensure_default",
+	# Member price line fields (setup/member_benefits).
+	"ffl_core.setup.member_benefits.ensure",
+	# The assignment notice's two ToDo fields (setup/assignment_notice).
+	"ffl_core.setup.assignment_notice.ensure",
 	# Cash drawer: the two POS Closing Entry fields (accounts wait for a company, at after_migrate).
 	"ffl_core.setup.cash_drawer.ensure_fields_only",
 	# Frappe CRM wired to the POS: custom fields, ERPNext CRM Settings, the product backfill (ffl_core.crm.setup).
 	"ffl_core.crm.setup.after_install",
+	# The website connector roles (mcp_settings.WEB_ROLES).
+	"ffl_core.ffl_core.doctype.mcp_settings.mcp_settings.ensure_web_roles",
 ]
 before_migrate = [
 	# Extension upgrades: any migrate that runs an upgrade's new code (a deploy's
@@ -890,6 +936,8 @@ after_migrate = [
 	"ffl_core.extensions.registry.sync",
 	# OAuth Settings follow the MCP server switches (mcp_settings.sync_oauth).
 	"ffl_core.ffl_core.doctype.mcp_settings.mcp_settings.sync_oauth",
+	# The website connector roles (mcp_settings.WEB_ROLES), so a manager can give them.
+	"ffl_core.ffl_core.doctype.mcp_settings.mcp_settings.ensure_web_roles",
 	# Item form layout belongs to the custom_field fixtures (insert_after). A
 	# Customize Form save pins a field_order Property Setter that overrides them
 	# for every field it saw — drop it each migrate (setup/item_layout.py).
@@ -916,6 +964,8 @@ after_migrate = [
 	# Deferred Membership Revenue + Membership Revenue per company (accounts only; Accounts
 	# Settings change only when a store saves its first active Membership Plan).
 	"ffl_core.setup.membership.ensure",
+	# Member price line fields (setup/member_benefits).
+	"ffl_core.setup.member_benefits.ensure",
 	"ffl_core.setup.consignment.ensure",
 	# Stock at Consignee per company — the account every consignment
 	# warehouse points at (ffl_core.warehouses); core-owned custody primitive.
@@ -955,6 +1005,8 @@ after_migrate = [
 	"ffl_core.setup.cash_drawer.ensure",
 	# Manager approval for lowered prices: the record + token fields (setup/price_approval).
 	"ffl_core.setup.price_approval.ensure",
+	# The assignment notice's two ToDo fields (setup/assignment_notice).
+	"ffl_core.setup.assignment_notice.ensure",
 	# Frappe CRM wired to the POS (ffl_core.crm.setup); does nothing while CRM is not on the site.
 	"ffl_core.crm.setup.ensure",
 ]
@@ -1058,9 +1110,10 @@ scheduler_events = {
 		],
 		# Membership renewals at 7 AM store-local (site timezone): charge the saved cards that are
 		# due, retry past-due ones once a day, suspend when the grace runs out, yearly reminders
-		# (membership.py). Morning, so a decline reaches the staff the same day.
+		# (membership.py). Morning, so a decline reaches the staff the same day. The gate only
+		# queues the run on the long queue (the default queue's 300 s would cut a busy morning short).
 		"0 7 * * *": [
-			"ffl_core.membership.renew_memberships",
+			"ffl_core.membership.schedule_renewals",
 		],
 		# Team mailboxes are pulled every minute; Frappe's own 10-minute pull of every Email Account
 		# (staff mailboxes included) is left as is (crm/mail.py).

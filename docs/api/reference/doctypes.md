@@ -213,7 +213,7 @@ One row per tool call made through a remote MCP connector (Claude, ChatGPT or an
 | `full_name` | Data | Full Name |  |  |
 | `tool` | Data | Tool |  |  |
 | `status` | Select | Status |  | Started, Success, Failed |
-| `surface` | Select | Surface |  | cpa, full |
+| `surface` | Select | Surface |  | cpa, full, web_ro |
 | `client_name` | Data | Connector |  |  |
 | `client_id` | Data | OAuth Client |  |  |
 | `finished_at` | Datetime | Finished At |  |  |
@@ -342,6 +342,7 @@ app: `ffl_core` · module: FFL Core · submittable · roles: Sales Manager, Sale
 | `source_id_document` | Attach | ID Document |  |  |
 | `item` | Link | Item | ✓ | Item |
 | `serial` | Data | Serial |  |  |
+| `ledger_serial` | Data | Ledger Serial |  |  |
 | `cost` | Currency | Cost |  |  |
 | `fastbound_id` | Data | FastBound ID |  |  |
 | `fastbound_synced_at` | Datetime | Last Synced |  |  |
@@ -364,6 +365,7 @@ app: `ffl_core` · module: FFL Core · submittable · roles: Stock Manager, Stoc
 | `destroyed_witness2` | Data | Witness 2 |  |  |
 | `item` | Link | Item | ✓ | Item |
 | `serial` | Autocomplete | Serial |  |  |
+| `ledger_serial` | Data | Ledger Serial |  |  |
 | `sales_invoice` | Link | Sales Invoice |  | Sales Invoice |
 | `sales_order` | Link | Sales Order |  | Sales Order |
 | `form_4473_status` | Select | 4473 Status |  | N/A, Pending, Completed |
@@ -398,6 +400,7 @@ app: `ffl_core` · module: FFL Core · single · roles: System Manager
 | `transfer_fee_amount` | Currency | Default Transfer Fee |  |  |
 | `enforce_sale_agreements` | Check | Require Agreements at Sale |  |  |
 | `used_item_agreement_template` | Link | Used Item Agreement |  | Agreement Template |
+| `serial_placeholders` | Small Text | No-Serial Spellings |  |  |
 | `live_check_provider` | Select | Provider |  | ATF Form Scraper, Data Service, Manual Only |
 | `live_check_rate_limit_per_hour` | Int | Rate Limit (req/hr) |  |  |
 | `live_check_cache_ttl_minutes` | Int | Cache TTL (minutes) |  |  |
@@ -588,6 +591,9 @@ Switch the MCP servers that AI assistants (Claude, ChatGPT and other MCP clients
 | `enable_full` | Check | Enable Full MCP Server |  |  |
 | `full_url` | Data | Full MCP Server URL |  |  |
 | `full_claude_code` | Data | Claude Code Command (Full) |  |  |
+| `enable_web_ro` | Check | Enable Website Read-only MCP Server |  |  |
+| `web_ro_url` | Data | Website Read-only MCP Server URL |  |  |
+| `web_ro_claude_code` | Data | Claude Code Command (Website Read-only) |  |  |
 
 ## Membership
 
@@ -649,6 +655,23 @@ A membership a customer can buy: what it costs, how often it bills, and its regi
 | `terms_template` | Link | Membership Terms |  | Agreement Template |
 | `grace_enabled` | Check | Grace Period on Failed Renewal |  |  |
 | `grace_days` | Int | Grace Days |  |  |
+| `benefits` | Table | Benefits |  | Membership Plan Benefit |
+
+## Membership Plan Benefit
+
+app: `ffl_core` · module: FFL Core · child table
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `applies_to` | Select | Applies To | ✓ | Item, Item Group, Price List |
+| `item` | Link | Item |  | Item |
+| `item_group` | Link | Item Group (with Sub-groups) |  | Item Group |
+| `price_list` | Link | Items Priced in Price List |  | Price List |
+| `benefit_type` | Select | Benefit | ✓ | Percent off, Amount off, Fixed price, Price-list price |
+| `value` | Float | Percent, Amount or Price |  |  |
+| `uses_per_day` | Int | Daily Limit per Member (0 = None) |  |  |
+| `days` | Data | Only on Days |  |  |
+| `label` | Data | Reason Shown on the Sale |  |  |
 
 ## Membership Settings
 
@@ -817,6 +840,8 @@ app: `ffl_integrations` · module: FFL Integrations · child table
 | `refunded_amount` | Currency | Refunded Amount |  |  |
 | `attempt` | Int | Attempt |  |  |
 | `processor` | Data | Processor |  |  |
+| `card_reader` | Data | Card Reader |  |  |
+| `device_serial_number` | Data | Device Serial Number |  |  |
 | `instruction_id` | Data | Instruction ID |  |  |
 | `response` | Code | Gateway Response |  |  |
 | `save_card` | Check | Save Card Requested |  |  |
@@ -831,6 +856,16 @@ app: `ffl_integrations` · module: FFL Integrations · single · roles: System M
 |---|---|---|---|---|
 | `card_on_file_enabled` | Check | Offer to Save Cards |  |  |
 | `card_on_file_template` | Link | Card-on-File Authorization |  | Agreement Template |
+
+## Card Reader
+
+app: `ffl_integrations` · module: FFL Integrations · child table
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `reader_name` | Data | Reader Name | ✓ |  |
+| `serial_number` | Data | Device Serial Number | ✓ |  |
+| `enabled` | Check | Enabled |  |  |
 
 ## Card Terminal Payment
 
@@ -851,6 +886,8 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sal
 | `reversal_entry` | Dynamic Link | Void Entry |  | reversal_entry_type |
 | `reversal_lock` | Small Text | Unconfirmed Void / Refund |  |  |
 | `processor` | Data | Processor |  |  |
+| `card_reader` | Data | Card Reader |  |  |
+| `device_serial_number` | Data | Device Serial Number |  |  |
 | `instruction_id` | Data | Instruction ID |  |  |
 | `response` | Code | Gateway Response |  |  |
 | `save_card` | Check | Save Card Requested |  |  |
@@ -1329,6 +1366,7 @@ app: `ffl_integrations` · module: FFL Integrations · single · roles: System M
 | `saved_card_terminal` | Data | Saved-Card Terminal Number |  |  |
 | `payment_page_secret` | Password | Payment Page Secret |  |  |
 | `sandbox_mode` | Check | Sandbox Mode |  |  |
+| `card_readers` | Table | Card Readers |  | Card Reader |
 | `last_token_refreshed_at` | Datetime | Last Token Refreshed At |  |  |
 | `last_charge_at` | Datetime | Last Charge At |  |  |
 | `integration_id` | Data | X-Integration-ID (ISV only) |  |  |

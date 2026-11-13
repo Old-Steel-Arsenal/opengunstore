@@ -12,7 +12,11 @@
   "column_break_1",
   "enable_full",
   "full_url",
-  "full_claude_code"
+  "full_claude_code",
+  "column_break_2",
+  "enable_web_ro",
+  "web_ro_url",
+  "web_ro_claude_code"
  ],
  "fields": [
   {
@@ -69,11 +73,35 @@
    "depends_on": "enable_full",
    "label": "Claude Code Command (Full)",
    "description": "Run this in a terminal, then open /mcp in Claude Code and choose Authenticate to sign in."
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "enable_web_ro",
+   "fieldtype": "Check",
+   "default": "0",
+   "label": "Enable Website Read-only MCP Server"
+  },
+  {
+   "fieldname": "web_ro_url",
+   "fieldtype": "Data",
+   "read_only": 1,
+   "label": "Website Read-only MCP Server URL",
+   "depends_on": "enable_web_ro"
+  },
+  {
+   "fieldname": "web_ro_claude_code",
+   "fieldtype": "Data",
+   "read_only": 1,
+   "depends_on": "enable_web_ro",
+   "label": "Claude Code Command (Website Read-only)"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-09-30 23:30:00.000000",
+ "modified": "2026-11-12 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "MCP Settings",

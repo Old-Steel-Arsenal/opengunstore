@@ -117,7 +117,8 @@ class CardProcessor:
 	# ------------------------------------------------------------ card-present charge
 
 	def start_charge(self, *, document: str, attempt: int, amount: float, terminal: str | None,
-			description: str, operator: str, save_card: dict | None = None) -> tuple[str, str]:
+			description: str, operator: str, save_card: dict | None = None,
+			device: str | None = None) -> tuple[str, str]:
 		"""Put ``amount`` on the card device for ``document`` (a POS Invoice / Sales Invoice name);
 		``attempt`` counts every instruction ever started for that document, declines included.
 
@@ -125,6 +126,11 @@ class CardProcessor:
 		``{"reference": <merchant reference>, "usage": "RECURRING" | "UNSCHEDULED"}`` — keep the
 		card at the gateway if the sale is approved; ``poll`` then answers its token in
 		``CardResult.stored_credential``.
+
+		``device`` (card readers; passed only when the store lists several readers in the
+		processor's settings Single, table ``card_readers``): the device serial number of the
+		reader this computer charges on. Without it, the processor's own configured device. The
+		returned handle must be enough to poll / cancel the charge whatever device took it.
 
 		Returns (handle, status): the handle ``poll`` / ``cancel`` take, and the gateway's status
 		word for the new instruction ("" = in progress). Throws when the gateway returned no handle.
