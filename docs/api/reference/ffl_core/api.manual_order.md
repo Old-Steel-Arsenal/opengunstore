@@ -235,7 +235,7 @@ exemption.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:5097`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:5100`</sub>
 
 ## `get_order_draft`
 
@@ -304,7 +304,7 @@ server, no tax on or inside its shipping.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:5046`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:5049`</sub>
 
 ## `list_order_drafts`
 
@@ -486,7 +486,7 @@ shipping address.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:5005`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:5008`</sub>
 
 ## `record_payment`
 
@@ -693,7 +693,7 @@ and reused.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:5121`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:5124`</sub>
 
 ## `update_order`
 

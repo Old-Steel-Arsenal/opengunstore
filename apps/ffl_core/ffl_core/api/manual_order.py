@@ -4238,7 +4238,10 @@ def _validate_items(items: list, customer: str | None = None) -> tuple[list[dict
 					"Firearm '{0}' must be one unit per line with exactly one serial."
 				).format(item_code))
 			serial = picked[0]
-			serial_wh = _validate_serial(serial, item_code, serials_seen, serial_ctx, customer=customer)
+			# customer only when there is one: the four-argument call stays as it was for anyone
+			# standing in for _validate_serial.
+			serial_wh = _validate_serial(serial, item_code, serials_seen, serial_ctx,
+				**({"customer": customer} if customer else {}))
 			serials_seen.add(serial)
 			rows.append({"item_code": item_code, "qty": 1, "rate": rate,
 				"serials": [serial], "warehouse": serial_wh})

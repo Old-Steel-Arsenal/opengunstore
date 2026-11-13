@@ -10678,7 +10678,7 @@
           "ffl_core"
         ],
         "summary": "Tax-exempt flag + certificate URL for a customer.",
-        "description": "Lets the Create Order page pre-fill a Business buyer's existing\nexemption.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:5097`",
+        "description": "Lets the Create Order page pre-fill a Business buyer's existing\nexemption.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:5100`",
         "operationId": "ffl_core.api.manual_order.get_customer_tax_status",
         "responses": {
           "200": {
@@ -10822,7 +10822,7 @@
           "ffl_core"
         ],
         "summary": "Per-item sales-tax rate for the Create Order preview.",
-        "description": "The summed \"On Net Total\" rate of the company's default sales-tax template\nas it applies to each item once ERPNext's Item Tax Template resolution\n(the item's own templates, then its item groups') has overridden the\ntemplate rows — the same rate compliance.shipping_charge._effective_rate\nreads off the saved line. A 0% (or Not Applicable) template gives 0, so\nthe preview shows no goods tax on a service-only order and, like the\nserver, no tax on or inside its shipping.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:5046`",
+        "description": "The summed \"On Net Total\" rate of the company's default sales-tax template\nas it applies to each item once ERPNext's Item Tax Template resolution\n(the item's own templates, then its item groups') has overridden the\ntemplate rows — the same rate compliance.shipping_charge._effective_rate\nreads off the saved line. A 0% (or Not Applicable) template gives 0, so\nthe preview shows no goods tax on a service-only order and, like the\nserver, no tax on or inside its shipping.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:5049`",
         "operationId": "ffl_core.api.manual_order.item_tax_rates",
         "responses": {
           "200": {
@@ -11186,7 +11186,7 @@
           "ffl_core"
         ],
         "summary": "Tax preview config for the Create Order page.",
-        "description": "The home state and the default On-Net-Total sales-tax rate, so the page\ncan show the running tax without a round-trip per keystroke. The\nauthoritative tax is still computed server-side at create time from the\nshipping address.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:5005`",
+        "description": "The home state and the default On-Net-Total sales-tax rate, so the page\ncan show the running tax without a round-trip per keystroke. The\nauthoritative tax is still computed server-side at create time from the\nshipping address.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:5008`",
         "operationId": "ffl_core.api.manual_order.quote_config",
         "responses": {
           "200": {
@@ -11630,7 +11630,7 @@
           "ffl_core"
         ],
         "summary": "Persist a customer's sales-tax-exempt status (+ optional certificate).",
-        "description": "Checking the exemption is enough to exempt; the certificate is optional\nand, once on file, is attached to the Customer (retrievable any time)\nand reused.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:5121`",
+        "description": "Checking the exemption is enough to exempt; the certificate is optional\nand, once on file, is attached to the Customer (retrievable any time)\nand reused.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/manual_order.py:5124`",
         "operationId": "ffl_core.api.manual_order.set_customer_tax_exempt",
         "responses": {
           "200": {
