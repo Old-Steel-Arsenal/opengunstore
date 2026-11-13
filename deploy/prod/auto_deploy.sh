@@ -171,7 +171,7 @@ deploy_mcp() {
 	env -u COMPOSE_PROJECT_NAME docker compose "${files[@]}" --env-file "$dir/.env" pull -q &&
 		env -u COMPOSE_PROJECT_NAME docker compose "${files[@]}" --env-file "$dir/.env" up -d || return 1
 	for _ in $(seq 1 24); do
-		[ "$(env -u COMPOSE_PROJECT_NAME docker compose "${files[@]}" --env-file "$dir/.env" ps --format '{{.Health}}' | grep -c healthy)" -ge "$want" ] && { echo "==> MCP servers healthy"; return 0; }
+		[ "$(env -u COMPOSE_PROJECT_NAME docker compose "${files[@]}" --env-file "$dir/.env" ps --format '{{.Health}}' | grep -cx healthy)" -ge "$want" ] && { echo "==> MCP servers healthy"; return 0; }
 		sleep 5
 	done
 	env -u COMPOSE_PROJECT_NAME docker compose "${files[@]}" --env-file "$dir/.env" ps || true

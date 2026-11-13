@@ -23,11 +23,12 @@ case "$*" in
 esac
 SH
 chmod +x "$T/up.sh"
-# fake docker: log the call; `ps --format` reports FAKE_HEALTHY (default 2) healthy containers
+# fake docker: log the call; `ps --format` reports FAKE_HEALTHY (default 2) healthy and FAKE_UNHEALTHY (default 0) unhealthy containers
 cat > "$T/docker" <<'SH'
 #!/usr/bin/env bash
 echo "docker $* [COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME-unset}]" >> "$FAKE_LOG"
-case "$*" in *"ps --format"*) for _ in $(seq 1 "${FAKE_HEALTHY:-2}"); do echo healthy; done ;; esac
+case "$*" in *"ps --format"*) for _ in $(seq 1 "${FAKE_HEALTHY:-2}"); do echo healthy; done
+	for _ in $(seq 1 "${FAKE_UNHEALTHY:-0}"); do echo unhealthy; done ;; esac
 SH
 chmod +x "$T/docker"
 # fake sleep: the health wait's retries cost no time
@@ -102,6 +103,12 @@ WEB_ENV_MODE=600 FAKE_HEALTHY=3 run ''
 grep -q 'MCP servers healthy' "$T/out" && ok "3 healthy containers pass" || bad "out: $(cat "$T/out")"
 WEB_ENV_MODE=600 FAKE_HEALTHY=2 run ''
 ! grep -q 'MCP servers healthy' "$T/out" && grep -q 'deploy_mcp exit' "$T/out" && ok "with it on, 2 healthy is not enough" || bad "out: $(cat "$T/out")"
+
+echo "== an unhealthy container is not counted as healthy"
+WEB_ENV_MODE=600 FAKE_HEALTHY=2 FAKE_UNHEALTHY=1 run ''
+! grep -q 'MCP servers healthy' "$T/out" && grep -q 'deploy_mcp exit' "$T/out" && ok "2 healthy + 1 unhealthy fails the wait" || bad "out: $(cat "$T/out")"
+FAKE_HEALTHY=1 FAKE_UNHEALTHY=1 run ''
+! grep -q 'MCP servers healthy' "$T/out" && ok "without web.env too: 1 healthy + 1 unhealthy fails" || bad "out: $(cat "$T/out")"
 
 echo "== a web.env others can read is not used"
 WEB_ENV_MODE=644 run ''
