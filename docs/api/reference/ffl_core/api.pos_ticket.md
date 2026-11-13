@@ -8,13 +8,15 @@ Source: `apps/ffl_core/ffl_core/api/pos_ticket.py` · 1 endpoint(s)
 
 `POST /api/method/ffl_core.api.pos_ticket.open_ticket`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager
 
 Open a draft register ticket (POS Invoice) on the open POS shift.
 
 A rate under the line's list price needs a manager's approval while the store requires one,
 as at the register: a manager signed in approves their own; anyone else sends the token a
-manager's approval gave for this ticket. A rate past the item's Max Discount is refused.
+manager's approval gave for this ticket. A rate past the item's Max Discount is refused. The
+customer's member price, worked out here, is the system's and asks nothing; a typed rate under
+it asks like any other.
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
@@ -25,4 +27,4 @@ manager's approval gave for this ticket. A rate past the item's Max Discount is 
 
 **Returns:** {"pos_invoice", "grand_total", "payment_modes": the profile's modes of payment on the ticket}. Refused when no shift is open, or when a lowered price has no approval.
 
-<sub>`apps/ffl_core/ffl_core/api/pos_ticket.py:112`</sub>
+<sub>`apps/ffl_core/ffl_core/api/pos_ticket.py:123`</sub>

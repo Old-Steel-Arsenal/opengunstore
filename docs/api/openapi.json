@@ -2202,12 +2202,76 @@
           "grace_days": {
             "type": "integer",
             "description": "Grace Days"
+          },
+          "benefits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Membership_Plan_Benefit"
+            },
+            "description": "Benefits"
           }
         },
         "required": [
           "plan_name",
           "billing_period",
           "price"
+        ]
+      },
+      "Membership_Plan_Benefit": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Membership%20Plan%20Benefit — see docs/api/frappe-rest.md.",
+        "properties": {
+          "applies_to": {
+            "type": "string",
+            "enum": [
+              "Item",
+              "Item Group",
+              "Price List"
+            ],
+            "description": "Applies To"
+          },
+          "item": {
+            "type": "string",
+            "description": "Item (Link: Item)"
+          },
+          "item_group": {
+            "type": "string",
+            "description": "Item Group (with Sub-groups) (Link: Item Group)"
+          },
+          "price_list": {
+            "type": "string",
+            "description": "Items Priced in Price List (Link: Price List)"
+          },
+          "benefit_type": {
+            "type": "string",
+            "enum": [
+              "Percent off",
+              "Amount off",
+              "Fixed price",
+              "Price-list price"
+            ],
+            "description": "Benefit"
+          },
+          "value": {
+            "type": "number",
+            "description": "Percent, Amount or Price"
+          },
+          "uses_per_day": {
+            "type": "integer",
+            "description": "Daily Limit per Member (0 = None)"
+          },
+          "days": {
+            "type": "string",
+            "description": "Only on Days"
+          },
+          "label": {
+            "type": "string",
+            "description": "Reason Shown on the Sale"
+          }
+        },
+        "required": [
+          "applies_to",
+          "benefit_type"
         ]
       },
       "Membership_Settings": {
@@ -11914,7 +11978,7 @@
           "ffl_core"
         ],
         "summary": "Open a draft register ticket (POS Invoice) on the open POS shift.",
-        "description": "A rate under the line's list price needs a manager's approval while the store requires one,\nas at the register: a manager signed in approves their own; anyone else sends the token a\nmanager's approval gave for this ticket. A rate past the item's Max Discount is refused.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/pos_ticket.py:112`",
+        "description": "A rate under the line's list price needs a manager's approval while the store requires one,\nas at the register: a manager signed in approves their own; anyone else sends the token a\nmanager's approval gave for this ticket. A rate past the item's Max Discount is refused. The\ncustomer's member price, worked out here, is the system's and asks nothing; a typed rate under\nit asks like any other.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/pos_ticket.py:123`",
         "operationId": "ffl_core.api.pos_ticket.open_ticket",
         "responses": {
           "200": {
@@ -11947,7 +12011,7 @@
                     "description": "Customer name."
                   },
                   "items": {
-                    "description": "JSON list of lines ``[{item_code, qty=1, rate?, serial_no?, storage_location?}]``; rate blank = the item's price for the customer, a serial is one unit."
+                    "description": "JSON list of lines ``[{item_code, qty=1, rate?, serial_no?, storage_location?}]``; rate blank = the item's price for the customer, a serial is one unit. A member price lower than the line's rate replaces it."
                   },
                   "company": {
                     "type": [
@@ -13655,7 +13719,7 @@
           "ffl_core"
         ],
         "summary": "Which Pending Order rows belong to a Banned customer, for the page's red badge.",
-        "description": "A web or GunBroker order is booked to a customer only once it has shipped, so\nits buyer is looked up the way that booking will: a Woo order by its billing\nemail (customer email, then merged-email alias); a GunBroker order by its linked\ncustomer, then the buyer's GunBroker id (field, then alias), then email.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:376`",
+        "description": "A web or GunBroker order is booked to a customer only once it has shipped, so\nits buyer is looked up the way that booking will: a Woo order by its billing\nemail (customer email, then merged-email alias); a GunBroker order by its linked\ncustomer, then the buyer's GunBroker id (field, then alias), then email.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:380`",
         "operationId": "ffl_core.customer_flags.banned_order_rows",
         "responses": {
           "200": {
@@ -13705,7 +13769,7 @@
           "ffl_core"
         ],
         "summary": "Customers holding this ID number (a licence scanned at the register).",
-        "description": "Only while FFL Settings → Store Customer ID Numbers is on (otherwise none are\nstored, and the answer is an empty list). Compared without case, spaces or dashes.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:239`",
+        "description": "Only while FFL Settings → Store Customer ID Numbers is on (otherwise none are\nstored, and the answer is an empty list). Compared without case, spaces or dashes.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:243`",
         "operationId": "ffl_core.customer_flags.find_customers_by_id_number",
         "responses": {
           "200": {
@@ -13753,7 +13817,7 @@
           "ffl_core"
         ],
         "summary": "Customers a scanned licence may belong to (the gunsmith work order's Scan ID): by",
-        "description": "its number (only while ID numbers are stored, as :func:`find_customers_by_id_number`),\nthen by first + last name. A name match is only a guess, so the caller lets the clerk\npick; a number match is the person.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:265`",
+        "description": "its number (only while ID numbers are stored, as :func:`find_customers_by_id_number`),\nthen by first + last name. A name match is only a guess, so the caller lets the clerk\npick; a number match is the person.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:269`",
         "operationId": "ffl_core.customer_flags.find_customers_by_scan",
         "responses": {
           "200": {
@@ -13815,7 +13879,7 @@
           "ffl_core"
         ],
         "summary": "Existing customers a new one may duplicate, for the New Customer dialog.",
-        "description": "Matches the customer's email (or an email merged into it), mobile number\n(last 10 digits) and — while the store keeps ID numbers — an ID number.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:321`",
+        "description": "Matches the customer's email (or an email merged into it), mobile number\n(last 10 digits) and — while the store keeps ID numbers — an ID number.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:325`",
         "operationId": "ffl_core.customer_flags.find_possible_duplicates",
         "responses": {
           "200": {
@@ -13881,7 +13945,7 @@
         "operationId": "ffl_core.customer_flags.get_customer_flags",
         "responses": {
           "200": {
-            "description": "{\"name\", \"customer_name\", \"status\", \"status_reason\" (only when not Active), \"banned\": Banned with no open override, \"override_until\": end of an open manager override or None, \"can_override\": whether the caller may override, \"alerts\": [{\"message\", \"created_by\", \"created_on\"}] (active ones, oldest first), \"tags\": [str], \"family\": {\"primary\": {\"name\", \"customer_name\"} or None, \"relationship\", \"members\": int}, \"ids\": [{\"id_type\", \"expiry_date\", \"expired\": bool}] for ID documents expired or expiring within 30 days, \"agreements\": [{\"template\", \"state\", \"expires_on\", \"agreement\"}] for each active Agreement Template shown on the counter panel — state is signed, expiring (within 30 days), expired, pending or missing}. Never carries an ID number or date of birth.",
+            "description": "{\"name\", \"customer_name\", \"status\", \"status_reason\" (only when not Active), \"banned\": Banned with no open override, \"override_until\": end of an open manager override or None, \"can_override\": whether the caller may override, \"alerts\": [{\"message\", \"created_by\", \"created_on\"}] (active ones, oldest first), \"tags\": [str], \"family\": {\"primary\": {\"name\", \"customer_name\"} or None, \"relationship\", \"members\": int}, \"ids\": [{\"id_type\", \"expiry_date\", \"expired\": bool}] for ID documents expired or expiring within 30 days, \"agreements\": [{\"template\", \"state\", \"expires_on\", \"agreement\"}] for each active Agreement Template shown on the counter panel — state is signed, expiring (within 30 days), expired, pending or missing, \"membership\": the member badge (``membership_benefits.membership_badge``: {\"text\", \"memberships\"}) or None}. Never carries an ID number or date of birth.",
             "content": {
               "application/json": {
                 "schema": {
@@ -13925,7 +13989,7 @@
           "ffl_core"
         ],
         "summary": "Manager lets a Banned customer be served for the next 30 minutes.",
-        "description": "Opens the window every counter screen and the server-side sale gate read\n(``ban_override_until`` / ``ban_override_by``) and records who and why on the\ncustomer's timeline. The customer stays Banned.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:199`",
+        "description": "Opens the window every counter screen and the server-side sale gate read\n(``ban_override_until`` / ``ban_override_by``) and records who and why on the\ncustomer's timeline. The customer stays Banned.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:203`",
         "operationId": "ffl_core.customer_flags.override_customer_ban",
         "responses": {
           "200": {
@@ -15207,7 +15271,7 @@
           "ffl_core"
         ],
         "summary": "Cancel a membership. By default it runs to the end of the period it is paid for and is not",
-        "description": "renewed. ``end_now`` ends it today: the current invoice's deferred lines get today as their\nservice stop date, so what is still deferred becomes income today. The invoice itself is never\ncancelled; a refund is a credit note.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:608`",
+        "description": "renewed. ``end_now`` ends it today: the current invoice's deferred lines get today as their\nservice stop date, so what is still deferred becomes income today. The invoice itself is never\ncancelled; a refund is a credit note.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:607`",
         "operationId": "ffl_core.membership.cancel_membership",
         "responses": {
           "200": {
@@ -15264,7 +15328,7 @@
           "ffl_core"
         ],
         "summary": "Charge a membership's renewals to another of the customer's cards saved for recurring",
-        "description": "charges.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:582`",
+        "description": "charges.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:581`",
         "operationId": "ffl_core.membership.change_card",
         "responses": {
           "200": {
@@ -15317,7 +15381,7 @@
           "ffl_core"
         ],
         "summary": "Drop a Pending membership the customer did not pay for. Its unpaid invoice is cancelled —",
-        "description": "refused once any payment or card charge touched it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:682`",
+        "description": "refused once any payment or card charge touched it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:681`",
         "operationId": "ffl_core.membership.discard_membership",
         "responses": {
           "200": {
@@ -15370,7 +15434,7 @@
           "ffl_core"
         ],
         "summary": "A customer's memberships and the plans on sale, for the Customer form's Memberships panel.",
-        "description": "A membership whose invoice has since been paid another way is settled here.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:469`",
+        "description": "A membership whose invoice has since been paid another way is settled here.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:468`",
         "operationId": "ffl_core.membership.get_memberships",
         "responses": {
           "200": {
@@ -15418,7 +15482,7 @@
           "ffl_core"
         ],
         "summary": "Build and submit the Pending membership's first Sales Invoice (or hand back the unpaid one",
-        "description": "already made), after the plan's terms are signed. The counter takes payment against it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:240`",
+        "description": "already made), after the plan's terms are signed. The counter takes payment against it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:239`",
         "operationId": "ffl_core.membership.invoice_membership",
         "responses": {
           "200": {
@@ -15466,7 +15530,7 @@
           "ffl_core"
         ],
         "summary": "The overdue renewal's invoice (the open one, else a new one for the next period from the",
-        "description": "original due date), for the counter to take payment by any tender. Paid: Active again.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1180`",
+        "description": "original due date), for the counter to take payment by any tender. Paid: Active again.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1179`",
         "operationId": "ffl_core.membership.invoice_renewal",
         "responses": {
           "200": {
@@ -15514,7 +15578,7 @@
           "ffl_core"
         ],
         "summary": "Memberships a manager should look at: Past Due, Suspended, a renewal charge the gateway never",
-        "description": "confirmed, a renewal the job could not charge, and sign-ups still unpaid after a few days.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1224`",
+        "description": "confirmed, a renewal the job could not charge, and sign-ups still unpaid after a few days.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1223`",
         "operationId": "ffl_core.membership.needs_attention",
         "responses": {
           "200": {
@@ -15544,7 +15608,7 @@
           "ffl_core"
         ],
         "summary": "One page of the Memberships page's member list, by customer name.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1410`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1413`",
         "operationId": "ffl_core.membership.page_members",
         "responses": {
           "200": {
@@ -15611,11 +15675,11 @@
           "ffl_core"
         ],
         "summary": "Everything the Memberships page shows above the member list, in one round trip.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1367`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1366`",
         "operationId": "ffl_core.membership.page_overview",
         "responses": {
           "200": {
-            "description": "{plans: [{name, active, billing_period, price, registration_fee, auto_renew_default, grace_enabled, grace_days, terms_template, description, members}], totals: {active, monthly, renewing_soon, attention}, attention: the Needs attention answer (managers only, else null), can_manage: may act on memberships, can_edit_plans: may create and change plans}. ``monthly`` is what the Active and Past Due members bill per month (a yearly price counts a twelfth); ``renewing_soon`` counts auto-renewing Active members charged in the next 7 days.",
+            "description": "{plans: [{name, active, billing_period, price, registration_fee, auto_renew_default, grace_enabled, grace_days, terms_template, description, members, benefits: one line per member benefit}], totals: {active, monthly, renewing_soon, attention}, attention: the Needs attention answer (managers only, else null), can_manage: may act on memberships, can_edit_plans: may create and change plans}. ``monthly`` is what the Active and Past Due members bill per month (a yearly price counts a twelfth); ``renewing_soon`` counts auto-renewing Active members charged in the next 7 days.",
             "content": {
               "application/json": {
                 "schema": {
@@ -15641,7 +15705,7 @@
           "ffl_core"
         ],
         "summary": "Charge a membership's saved card now for its overdue renewal (Past Due, Suspended, or Active",
-        "description": "past its period end). Paid: Active again, the new period starting at the original due date. A\ncard charge still waiting for the gateway's answer is looked up, never sent again.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1151`",
+        "description": "past its period end). Paid: Active again, the new period starting at the original due date. A\ncard charge still waiting for the gateway's answer is looked up, never sent again.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1150`",
         "operationId": "ffl_core.membership.retry_renewal",
         "responses": {
           "200": {
@@ -15689,7 +15753,7 @@
           "ffl_core"
         ],
         "summary": "Turn a membership's auto-renew on or off. On needs a card saved for recurring charges",
-        "description": "(the membership's own, else the customer's default one); a membership ending at period end\nis a manager's cancellation and stays off.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:540`",
+        "description": "(the membership's own, else the customer's default one); a membership ending at period end\nis a manager's cancellation and stays off.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:539`",
         "operationId": "ffl_core.membership.set_auto_renew",
         "responses": {
           "200": {
@@ -15741,7 +15805,7 @@
           "ffl_core"
         ],
         "summary": "Start selling a membership: the customer's Pending membership of the plan (a Pending one",
-        "description": "already there is picked up again, with the new auto-renew choice).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:182`",
+        "description": "already there is picked up again, with the new auto-renew choice).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:181`",
         "operationId": "ffl_core.membership.start_membership",
         "responses": {
           "200": {
@@ -15791,13 +15855,60 @@
         }
       }
     },
+    "/api/method/ffl_core.membership_benefits.preview": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "The member prices a save would give a register sale, for the screen to show at once.",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership_benefits.py:874`",
+        "operationId": "ffl_core.membership_benefits.preview",
+        "responses": {
+          "200": {
+            "description": "{\"rows\": {line name: {\"rate\", \"price_list_rate\", \"discount_percentage\", \"discount_amount\", \"ffl_member_benefit\", \"ffl_membership\", \"ffl_benefit_customer\", \"ffl_member_rate\", \"ffl_discount_reason\"}}, \"notices\": [str]}. The save works it out again; nothing is stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "doc": {
+                    "description": "The POS Invoice / Sales Invoice as JSON, as on the screen."
+                  }
+                },
+                "required": [
+                  "doc"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.price_approval.approve": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "A manager approves the lowered prices of a sale, or a return, before it is saved.",
-        "description": "The approver picks themselves and types their own counter PIN, or their password when they\nhave no PIN (or it is off). What is approved is worked out here from the same document, never\ntaken from the screen. The token is good for 15 minutes, once, for the user who asked.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/price_approval.py:693`",
+        "description": "The approver picks themselves and types their own counter PIN, or their password when they\nhave no PIN (or it is off). What is approved is worked out here from the same document, never\ntaken from the screen. The token is good for 15 minutes, once, for the user who asked.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/price_approval.py:700`",
         "operationId": "ffl_core.price_approval.approve",
         "responses": {
           "200": {
@@ -15877,7 +15988,7 @@
           "ffl_core"
         ],
         "summary": "What a save would need a manager for — the screens ask before saving.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/price_approval.py:645`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/price_approval.py:652`",
         "operationId": "ffl_core.price_approval.check",
         "responses": {
           "200": {
