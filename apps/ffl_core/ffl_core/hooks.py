@@ -236,6 +236,8 @@ doc_events = {
 		"before_validate": "ffl_core.assignment_notice.stamp",
 		"on_update": "ffl_core.assignment_notice.announce",
 	},
+	# A connector client (dynamic registration) also lets the website connector roles sign in (api/oauth_dcr.py).
+	"OAuth Client": {"before_insert": "ffl_core.api.oauth_dcr.allow_website_roles"},
 	# A copy requested for a gunsmith work order is its intake authorization (gunsmith.py).
 	"Customer Agreement": {"on_update": "ffl_core.gunsmith.link_intake_agreement"},
 	# A store flipping an integration's switch re-shapes the Gun Shop sidebar and home page
@@ -911,6 +913,8 @@ after_install = [
 	"ffl_core.setup.cash_drawer.ensure_fields_only",
 	# Frappe CRM wired to the POS: custom fields, ERPNext CRM Settings, the product backfill (ffl_core.crm.setup).
 	"ffl_core.crm.setup.after_install",
+	# The website connector roles (mcp_settings.WEB_ROLES).
+	"ffl_core.ffl_core.doctype.mcp_settings.mcp_settings.ensure_web_roles",
 ]
 before_migrate = [
 	# Extension upgrades: any migrate that runs an upgrade's new code (a deploy's
@@ -923,6 +927,8 @@ after_migrate = [
 	"ffl_core.extensions.registry.sync",
 	# OAuth Settings follow the MCP server switches (mcp_settings.sync_oauth).
 	"ffl_core.ffl_core.doctype.mcp_settings.mcp_settings.sync_oauth",
+	# The website connector roles (mcp_settings.WEB_ROLES), so a manager can give them.
+	"ffl_core.ffl_core.doctype.mcp_settings.mcp_settings.ensure_web_roles",
 	# Item form layout belongs to the custom_field fixtures (insert_after). A
 	# Customize Form save pins a field_order Property Setter that overrides them
 	# for every field it saw — drop it each migrate (setup/item_layout.py).

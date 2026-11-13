@@ -27,7 +27,9 @@ from frappe.utils.data import get_system_timezone
 
 from ffl_core.ffl_core.doctype.mcp_settings.mcp_settings import (
 	SURFACES,
+	WEB_SURFACES,
 	surface_enabled,
+	web_access,
 )
 
 # Argument values under these keys never reach the log — the same bounded rule
@@ -57,12 +59,16 @@ def _connector_gate() -> frappe._dict:
 		expires_at=frappe.db.get_value("OAuth Bearer Token", token.strip(), "expiration_time"))
 
 
-def _require_surface(surface) -> None:
+def _require_surface(surface, user: str) -> None:
 	"""The surface must be switched on in MCP Settings (a connector that names
-	none — an older build — counts as off)."""
+	none — an older build — counts as off), and a website surface also needs a
+	website role (mcp_settings.WEB_ROLES)."""
 	if not surface_enabled(surface):
 		frappe.throw(_("The {0} MCP server is switched off in MCP Settings.")
 			.format(surface if isinstance(surface, str) else "requested"), frappe.PermissionError)
+	if surface in WEB_SURFACES and not web_access(user, surface):
+		frappe.throw(_("{0} has no website access: a Website Connector Viewer or Website "
+			"Connector Manager role is needed.").format(user), frappe.PermissionError)
 
 
 def _redact(value):
@@ -95,15 +101,16 @@ def connector_identity(surface: str | None = None) -> dict:
 	"""Who this bearer token belongs to, and whether it was issued to a connector.
 
 	Args:
-		surface: "cpa" or "full" — the connector asking; refused unless that
-			surface is switched on in MCP Settings.
+		surface: "cpa", "full" or "web_ro" — the connector asking.
 
 	Returns:
-		{user, full_name, client_id, client_name, connector, enabled, expires_at} —
-		connector is true only for a client created by dynamic registration;
-		enabled says whether that surface is switched on (answered, not refused:
-		a switched-off server must not look like a bad token, or clients would
-		loop on sign-in); expires_at is the token's expiry as a Unix timestamp.
+		{user, full_name, client_id, client_name, connector, enabled, web_access,
+		expires_at} — connector is true only for a client created by dynamic
+		registration; enabled says whether that surface is switched on (answered,
+		not refused: a switched-off server must not look like a bad token, or
+		clients would loop on sign-in); web_access is the user's level on a
+		website surface ("manager", "viewer" or "", by role alone; always "" for
+		cpa and full); expires_at is the token's expiry as a Unix timestamp.
 	"""
 	c = _connector_gate()
 	expires = None
@@ -114,7 +121,8 @@ def connector_identity(surface: str | None = None) -> dict:
 			tzinfo=ZoneInfo(get_system_timezone())).timestamp()
 	return {"user": c.user, "full_name": frappe.utils.get_fullname(c.user),
 		"client_id": c.client_id, "client_name": c.client_name, "connector": c.connector,
-		"enabled": surface_enabled(surface), "expires_at": int(expires) if expires else None}
+		"enabled": surface_enabled(surface), "web_access": web_access(c.user, surface),
+		"expires_at": int(expires) if expires else None}
 
 
 @frappe.whitelist(methods=["POST"])
@@ -130,7 +138,7 @@ def log_connector_call(tool: str, surface: str, phase: str = "started",
 
 	Args:
 		tool: Tool name.
-		surface: "cpa" or "full".
+		surface: "cpa", "full" or "web_ro".
 		phase: "started", "ok" or "failed".
 		arguments: The tool arguments as JSON; secret-looking keys are masked.
 		log: The Connector Audit Log returned by the "started" call (for "ok"/"failed").
@@ -153,7 +161,7 @@ def log_connector_call(tool: str, surface: str, phase: str = "started",
 		frappe.throw(_("surface must be one of {0}.").format(", ".join(SURFACES)))
 	# A call already running when the switch goes off may still close its record.
 	if phase == "started":
-		_require_surface(surface)
+		_require_surface(surface, c.user)
 	if phase != "started":
 		# Row lock: two concurrent closes cannot both see Started.
 		rows = frappe.db.sql("select user, status from `tabConnector Audit Log` "

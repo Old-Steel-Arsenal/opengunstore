@@ -1,11 +1,13 @@
 """MCP Settings — the on/off switches for the remote MCP servers that AI
 assistants (Claude, ChatGPT, any MCP client with OAuth) connect to.
 
-Two surfaces, switched separately: the read-only one (accounting) and the full
-one (writes, within each user's own role). The switches are enforced by the POS
+Three surfaces, switched separately: the read-only one (accounting), the full
+one (writes, within each user's own role) and the website read-only one (the
+store's website, through a bridge that reads it as one site user; who may use it
+is decided here by role, WEB_ROLES). The switches are enforced by the POS
 itself (ffl_core.api.connector), and they own the OAuth settings the servers sign
-in through: with either on, the authorization-server metadata and dynamic client
-registration are on; with both off, they are off. Consent is never skipped —
+in through: with any on, the authorization-server metadata and dynamic client
+registration are on; with all off, they are off. Consent is never skipped —
 every user approves on the POS. Re-applied on every migrate (sync_oauth), so a
 deploy or a hand edit of OAuth Settings cannot drift from the switches.
 """
@@ -14,8 +16,16 @@ from __future__ import annotations
 import frappe
 from frappe.model.document import Document
 
-SURFACES = {"cpa": "enable_cpa", "full": "enable_full"}
+SURFACES = {"cpa": "enable_cpa", "full": "enable_full", "web_ro": "enable_web_ro"}
 DOCTYPE = "MCP Settings"
+
+# Who may use a website surface, and at which level: "manager" may also call the
+# bridge's restricted abilities. Any other role has no website access — Frappe's own
+# "Website Manager" (it edits the POS's web pages and scripts) included.
+WEB_SURFACES = ("web_ro",)
+WEB_VIEWER_ROLE = "Website Connector Viewer"
+WEB_MANAGER_ROLE = "Website Connector Manager"
+WEB_ROLES = {WEB_MANAGER_ROLE: "manager", "System Manager": "manager", WEB_VIEWER_ROLE: "viewer"}
 
 
 def surface_enabled(surface) -> bool:
@@ -31,11 +41,30 @@ def surface_enabled(surface) -> bool:
 
 # The names the servers report (the MCP server's serverInfo) and that the skills
 # and agents address tools by (mcp__gunstore-pos__*), so every install matches.
-SERVER_NAMES = {"cpa": "gunstore-pos-cpa", "full": "gunstore-pos"}
+SERVER_NAMES = {"cpa": "gunstore-pos-cpa", "full": "gunstore-pos", "web_ro": "gunstore-web-ro"}
+
+
+def web_access(user: str, surface) -> str:
+	"""The user's level on a website surface: "manager", "viewer" or "" (none).
+
+	Roles only; the switch is reported separately (connector_identity's enabled).
+	Always "" for a surface that is not a website one."""
+	if surface not in WEB_SURFACES:
+		return ""
+	levels = {WEB_ROLES[r] for r in frappe.get_roles(user) if r in WEB_ROLES}
+	return "manager" if "manager" in levels else "viewer" if levels else ""
+
+
+def ensure_web_roles() -> None:
+	"""after_install / after_migrate: the website connector roles exist, so a manager can give them."""
+	for role in (WEB_VIEWER_ROLE, WEB_MANAGER_ROLE):
+		if not frappe.db.exists("Role", role):
+			frappe.get_doc({"doctype": "Role", "role_name": role, "desk_access": 0}).insert(
+				ignore_permissions=True)
 
 
 def connector_urls() -> dict:
-	"""The two server URLs and the Claude Code command for each."""
+	"""Each surface's server URL and the Claude Code command for it."""
 	base = frappe.utils.get_url().rstrip("/")
 	out = {}
 	for surface in SURFACES:
@@ -48,7 +77,7 @@ def connector_urls() -> dict:
 
 def sync_oauth() -> None:
 	"""OAuth Settings follow the switches; consent is never skipped (after_migrate)."""
-	on = int(surface_enabled("cpa") or surface_enabled("full"))
+	on = int(any(surface_enabled(s) for s in SURFACES))
 	oauth = frappe.get_single("OAuth Settings")
 	want = {"show_auth_server_metadata": on, "enable_dynamic_client_registration": on,
 		"skip_authorization": 0}

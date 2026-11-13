@@ -63,6 +63,8 @@ volumes/
 
 # Prod secrets — never commit
 deploy/prod/.env
+# website connector credentials (deploy/prod/mcp/web.env.example)
+deploy/prod/mcp/web.env
 deploy/prod/backups/
 # Old demo-kit inventory exports held real serial numbers: never commit them, even though the kit is gone
 deploy/demo/demo-data/
