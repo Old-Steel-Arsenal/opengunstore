@@ -325,7 +325,9 @@ def _channel_fees(header):
 	return flt(header.get("gb_final_value_fee")) + flt(header.get("gb_ffl_doc_fee"))
 
 
-def _fetch_lines(headers, extended=False):
+def _fetch_lines(headers, extended=False, more=()):
+	"""{invoice: [line rows]}. *more*: further line columns a caller needs (the Sales Summary's
+	pricing facts), each fetched where the child doctype has it."""
 	out: dict[str, list] = {}
 	# Each line carries its invoice's date: whether a sold gun was consigned is a
 	# fact of that sale, read differently before and after the commission freeze
@@ -345,7 +347,7 @@ def _fetch_lines(headers, extended=False):
 		# exist on Sales Invoice Item ONLY — neither lane reaches a POS Invoice, and
 		# asking for a column a doctype does not have raises. Same guard as
 		# _OPTIONAL_HEADER_FIELDS, applied per child doctype.
-		child_fields = fields + [f for f in _HOUSE_FIELDS if _has_column(child_dt, f)]
+		child_fields = fields + [f for f in (*_HOUSE_FIELDS, *more) if f not in fields and _has_column(child_dt, f)]
 		for r in frappe.get_all(
 			child_dt,
 			filters={"parent": ["in", names]},
@@ -1168,7 +1170,11 @@ def _execute_product_view(filters, detail):
 		transfer_serials=transfer_serials,
 		dropship_cost=_fetch_dropship_costs(headers, lines),
 		marketplace_exempt=_fetch_marketplace_exempt(headers))
-	return _product_columns(detail), rows
+	columns = _product_columns(detail)
+	# The Excise Tax column only where the period collected some: a store without one sees none.
+	if not any(flt(r.get("excise_tax")) for r in rows):
+		columns = [c for c in columns if c["fieldname"] != "excise_tax"]
+	return columns, rows
 
 
 def _fetch_item_wise_tax(headers):

@@ -134,6 +134,16 @@ class ExciseSplit(ExciseStoreFixtures):
 		self.assertEqual((lines[SERVICE]["line_tax"], lines[SERVICE]["excise_tax"]), (0, 0))
 		self.assertEqual((flt(lines[GUN]["line_tax"], 2), flt(lines[GUN]["excise_tax"], 2)), (43.75, 55.0))
 
+	def test_the_excise_column_shows_only_when_excise_was_collected(self):
+		si = self._si((GUN, 500))
+		day = str(si.posting_date)
+		for view in ("Product", "Order Detail"):
+			cols, *_ = sr.execute({"from_date": day, "to_date": day, "view": view})
+			self.assertIn("excise_tax", [c["fieldname"] for c in cols], view)
+			# A period with no excise (years back, before any test sale): no empty column.
+			cols, *_ = sr.execute({"from_date": "2001-01-01", "to_date": "2001-01-31", "view": view})
+			self.assertNotIn("excise_tax", [c["fieldname"] for c in cols], view)
+
 	def test_the_excise_card_shows_only_when_excise_was_collected(self):
 		total = {"is_total": True, "gross_merch": 500.0, "cost": 0, "profit": 500.0, "sales_tax": 43.75,
 			"shipping": 0, "excise_tax": 55.0}
