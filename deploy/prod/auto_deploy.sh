@@ -155,7 +155,7 @@ deploy_mcp() {
 		grep -h '^MCP_IMAGE=' "$ENV_FILE" || true
 	} > "$dir/.env"
 	echo "==> MCP servers: $(grep '^MCP_TAG=' "$dir/.env")"
-	# The website read-only connector (mcp/compose.web.yaml) joins only on a host that holds the
+	# The website connector (mcp/compose.web.yaml) joins only on a host that holds the
 	# site credentials in mcp/web.env, readable by its owner alone. Without that file every docker
 	# call below is the same as before it existed.
 	files=(-f "$dir/compose.yaml")
@@ -163,7 +163,7 @@ deploy_mcp() {
 		mode="$(stat -c %a "$dir/web.env" 2>/dev/null || stat -f %Lp "$dir/web.env")"
 		if [ "${mode: -2}" = "00" ]; then
 			files+=(-f "$dir/compose.web.yaml"); want=3
-			echo "==> MCP servers: website read-only connector on (mcp/web.env)"
+			echo "==> MCP servers: website connector on (mcp/web.env)"
 		else
 			echo "::warning title=Website connector not started on $SITE::mcp/web.env is readable by others (mode $mode). Run 'chmod 600' on it and deploy again."
 		fi

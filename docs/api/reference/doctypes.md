@@ -591,9 +591,9 @@ Switch the MCP servers that AI assistants (Claude, ChatGPT and other MCP clients
 | `enable_full` | Check | Enable Full MCP Server |  |  |
 | `full_url` | Data | Full MCP Server URL |  |  |
 | `full_claude_code` | Data | Claude Code Command (Full) |  |  |
-| `enable_web_ro` | Check | Enable Website Read-only MCP Server |  |  |
-| `web_ro_url` | Data | Website Read-only MCP Server URL |  |  |
-| `web_ro_claude_code` | Data | Claude Code Command (Website Read-only) |  |  |
+| `enable_web_ro` | Check | Enable Website MCP Server |  |  |
+| `web_ro_url` | Data | Website MCP Server URL |  |  |
+| `web_ro_claude_code` | Data | Claude Code Command (Website) |  |  |
 
 ## Membership
 

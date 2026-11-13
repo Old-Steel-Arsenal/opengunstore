@@ -56,7 +56,7 @@ Below them, the **Card on file** card turns on [saving a card to charge later](.
 | Page | Where to open it | What it controls |
 |---|---|---|
 | FFL Settings | **FFL & Compliance** card | Our FFL number, alerts, counter rules, shipping tax, 4473 mode, transfer fee, customer ID numbers, FFL verification. See [FFL Settings](../admin/ffl-settings.md) |
-| MCP Settings | **FFL & Compliance** card | Whether AI assistants can connect: read-only, full, or the website read-only |
+| MCP Settings | **FFL & Compliance** card | Whether AI assistants can connect: read-only, full, or the website |
 | ATF FFL Record | **FFL & Compliance** card | The ATF license records other dealers are checked against |
 | ShipStation Settings | **POS & Sales** card | Shipping labels, ship-from address, parcel defaults |
 | Cash Drawer Settings | **POS & Sales** card | The drawer's limits (below) |
@@ -81,9 +81,11 @@ The connection pages are described field by field in [Integrations](../admin/int
 
 ## MCP Settings
 
-**MCP Settings** switches on the read-only, the full and the website read-only MCP server, the connection an AI assistant such as Claude uses. Once a switch is on, it shows its server address and a command ready to copy.
+**MCP Settings** switches on the read-only, the full and the website MCP server, the connection an AI assistant such as Claude uses. Once a switch is on, it shows its server address and a command ready to copy.
 
-Staff sign in with their own account, and the assistant can do only what their role allows. The website server needs the Website Connector Viewer or Website Connector Manager role. **Connector Audit Log** on the form opens the permanent record of every action taken through a connector. System Manager only. See [the MCP server](../../ai/mcp.md).
+Staff sign in with their own account, and the assistant can do only what their role allows. The website server needs a website role: Website Connector Viewer reads, Website Connector Manager can also change the website.
+
+**Connector Audit Log** on the form opens the permanent record of every action taken through a connector. System Manager only. See [the MCP server](../../ai/mcp.md).
 
 ## Cash Drawer Settings
 

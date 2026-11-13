@@ -1,6 +1,8 @@
-# The website read-only connector (opengunstore-mcp in web mode): an MCP server that
-# reads the store's website as one site user and answers each signed-in POS user
-# by their website role (MCP Settings › Website Read-only). Optional, per store.
+# The website connector (opengunstore-mcp in web mode): an MCP server that works on
+# the store's website as one site user and answers each signed-in POS user by their
+# website role (MCP Settings › Website): viewers read, managers may also run the
+# write abilities web.env lists. Optional, per store. The service keeps its
+# web_ro name from when it could only read.
 #
 # auto_deploy.sh adds this file to the MCP stack only when the host holds the
 # site credentials in web.env next to it (mode 600; see web.env.example). A store
