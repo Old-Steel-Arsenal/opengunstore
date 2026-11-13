@@ -21,7 +21,9 @@ from ffl_core.api import pos_ticket
 from ffl_core.setup.member_benefits import (BENEFICIARY_FIELD, BENEFIT_FIELD, MEMBER_RATE_FIELD,
 	MEMBERSHIP_FIELD, REASON_FIELD)
 from ffl_core.tests import test_gunsmith_work_order as gw
+from ffl_core.tests import test_price_approval as tpa
 from ffl_core.tests.test_customer_profile import _uniq
+from ffl_core.tests.settings_sandbox import SettingsSandbox
 
 COMPANY = gw.COMPANY
 PRICE_LIST = "Standard Selling"
@@ -597,6 +599,59 @@ class ExtensionSurface(_Base):
 		out = pos_ticket.build_ticket(self.cust, [{"item_code": self.lane, "rate": 30}], company=COMPANY)
 		self.assertEqual(flt(frappe.get_doc("POS Invoice", out["pos_invoice"]).items[0].rate), 20,
 			"a member price under the caller's rate replaces it")
+
+
+class OpenTicketApproval(SettingsSandbox, _Base):
+	"""open_ticket's typed rates under price approval, by a clerk: the customer's member price, worked
+	out on the server, asks nothing; a typed rate under it, or another person's member price, asks.
+	build_ticket's member prices are our own pricing."""
+
+	def setUp(self):
+		super().setUp()
+		self.set_single("FFL Settings", price_approval.SETTING, 1)
+		tpa._staff()
+		self.cust = gw._customer().name
+		self.payer = gw._customer().name
+		self.lane = _item("LANE", 40, group=SUB_GROUP, exempt=self.exempt)
+		plan = _plan(_benefit(mb.ON_GROUP, GROUP, mb.PERCENT, 50, label="Range"))
+		self.benefit = plan.benefits[0].name
+		_member(self.cust, plan)
+
+	def _clerk(self, customer, lines, fn=None):
+		frappe.set_user(tpa.CLERK)
+		self.addCleanup(frappe.set_user, "Administrator")
+		fn = fn or (lambda c, l, **kw: pos_ticket.open_ticket(c, frappe.as_json(l), **kw))
+		out = fn(customer, lines, company=COMPANY)
+		return frappe.get_doc("POS Invoice", out["pos_invoice"])
+
+	def _priced(self, inv) -> tuple:
+		row = inv.items[0]
+		return flt(row.rate), row.get(BENEFIT_FIELD), row.get(BENEFICIARY_FIELD), inv.get(price_approval.BY)
+
+	def test_a_rate_under_the_member_price_is_asked(self):
+		with self.assertRaisesRegex(price_approval.PriceApprovalRequired, "Ask a manager"):
+			self._clerk(self.cust, [{"item_code": self.lane, "rate": 19}])
+
+	def test_the_member_price_the_server_gives_is_not_asked(self):
+		self.assertEqual(self._priced(self._clerk(self.cust, [{"item_code": self.lane}])),
+			(20, self.benefit, self.cust, None))
+		self.assertEqual(self._priced(self._clerk(self.cust, [{"item_code": self.lane, "rate": 30}])),
+			(20, self.benefit, self.cust, None), "a member price under the typed rate replaces it")
+		self.assertEqual(self._priced(self._clerk(self.cust, [{"item_code": self.lane, "rate": 20}]))[0::3],
+			(20, None), "typed at the member price this customer gets: not a lowered price")
+
+	def test_another_persons_member_price_is_asked(self):
+		with self.assertRaisesRegex(price_approval.PriceApprovalRequired, "Ask a manager"):
+			self._clerk(self.payer, [{"item_code": self.lane, "rate": 20, "benefit_customer": self.cust}])
+
+	def test_build_ticket_prices_the_guest_unasked_and_the_register_save_keeps_it(self):
+		inv = self._clerk(self.payer, [{"item_code": self.lane, "benefit_customer": self.cust}],
+			fn=pos_ticket.build_ticket)
+		self.assertEqual(self._priced(inv), (20, self.benefit, self.cust, None))
+		tpa._request(self)   # the register's own save, by the clerk
+		inv = frappe.get_doc("POS Invoice", inv.name)
+		inv.save()
+		self.assertEqual(self._priced(frappe.get_doc("POS Invoice", inv.name)), (20, self.benefit, self.cust, None))
 
 
 SALES_RATE, EXCISE_RATE = 7.75, 11
