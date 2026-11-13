@@ -76,19 +76,30 @@ def record_firearm_acquisition(
 	carries the per-unit stamp data (JSON) the booking step needs then.
 
 	`serial` is the gun's KEY (its Serial No name); `ledger_serial` is the serial
-	as the bound book writes it, defaulting to the key's own ledger serial. A bare
-	"no serial" spelling (NONE, NSN, ...) is refused as a key: two such guns would
-	collapse into one record here. Keys come from ffl_core.serials.allocate_serial_key.
+	as the bound book writes it, defaulting to the key's own ledger serial. Refused as
+	a key: a bare "no serial" spelling (NONE, NSN, ...), since two such guns would
+	collapse into one record here; and text shaped like a tagged key ("NSN (POS 0001)")
+	whose ledger serial would be that same text, i.e. a label typed in by hand, which
+	the bound book would then record as the gun's serial. Tagged keys come only from
+	ffl_core.serials.allocate_serial_key, with their ledger serial passed or stamped.
 	"""
 	from ffl_core import serials as _serials
 
 	_validate_source_matrix(source_type, source_ffl, source_id_type, source_id_number)
 	key = (serial or "").strip()
+	not_yet = _("A gun with no serial number, or with the same serial as another gun, can't "
+		"be received in the POS yet. Record it in the bound book directly and keep it out "
+		"of POS stock until the POS supports it.")
 	if key and _serials.is_placeholder(key):
-		frappe.throw(_("{0} is a \"no serial number\" entry, not a serial. Each such gun "
-			"needs its own key (for example \"{0} (POS 0001)\") so two of them are never "
-			"booked as one gun.").format(key), title=_("Serial Key Needed"))
+		frappe.throw(_("{0} means the gun has no serial number. Typing a made-up serial or a "
+			"label instead would put that text in the bound book as the gun's serial.").format(key)
+			+ " " + not_yet, title=_("Gun Without a Serial Number"))
 	ledger = (ledger_serial or "").strip() or (_serials.ledger_serial(key) if key else "")
+	if key and _serials.looks_like_tagged_key(key) and _serials.same_serial(key, ledger):
+		frappe.throw(_("{0} looks like a label the POS gives a gun, not the serial marked on "
+			"the gun. Typed in by hand, it would go into the bound book as the gun's serial. "
+			"Enter the serial exactly as the gun is marked.").format(key)
+			+ " " + not_yet, title=_("Not a Serial Number"))
 
 	existing = _existing(item_code, serial)
 	if existing:

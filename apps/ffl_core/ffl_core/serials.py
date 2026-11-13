@@ -46,6 +46,11 @@ _NAME_UNSAFE = re.compile(r"[,\r\n<>]")
 # the tag survives, the invariant "key starts with the ledger" then holds for the cut text only.
 _KEY_BASE_MAX = 100
 _POS_SERIES = "SNTAG-"
+# The shape allocate_serial_key gives a tagged key: "<ledger> (FB <number>)" or
+# "<ledger> (POS <number>)", the tag last. Only the FB / POS prefix inside the final
+# parentheses counts, so a real serial that merely ends in parentheses ("A123 (2)")
+# does not look like a key. Case-blind, as typed text may be.
+_TAG_SHAPE = re.compile(r"^.*\S \((?:FB|POS) [^()\s][^()]*\)$", re.IGNORECASE)
 
 
 def _norm(text: str | None) -> str:
@@ -142,6 +147,11 @@ def ledger_serial_text(serial_no_text: str | None, sep: str = ", ") -> str:
 	keys = split_serials(serial_no_text)
 	mapped = ledger_serials(keys)
 	return sep.join(mapped.get(k, k) for k in keys)
+
+
+def looks_like_tagged_key(text: str | None) -> bool:
+	"""`text` has the shape of a key allocate_serial_key mints ("NSN (POS 0001)")."""
+	return bool(_TAG_SHAPE.match(str(text or "").strip()))
 
 
 def is_tagged(name: str | None) -> bool:

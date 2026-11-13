@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
@@ -158,9 +158,50 @@ class AcquisitionGuards(_Guns):
 	in an open cycle. It must never be the place two different guns become one."""
 
 	def test_a_bare_placeholder_is_refused(self):
+		"""No receiving screen can mint a tagged key yet: the refusal says so and names
+		no example key a person could copy into the serial field."""
 		for text in ("NONE MARKED", "nsn"):
-			with self.assertRaisesRegex(frappe.ValidationError, "no serial number"):
+			with self.assertRaisesRegex(frappe.ValidationError, "can't be received in the POS yet") as cm:
 				self._acquire(text)
+			self.assertNotIn("(POS", str(cm.exception))
+			self.assertNotIn("(FB", str(cm.exception))
+
+	def test_tag_shape(self):
+		for text in ("NSN (POS 0001)", "NONE MARKED (FB 0901)", "nsn (pos 7)", "A1 (2) (FB 3-2)"):
+			self.assertTrue(serials.looks_like_tagged_key(text), text)
+		for text in ("A123 (2)", "A123(FB 1)", "(FB 1)", "AB (FBI 1)", "A123", "X (POS)"):
+			self.assertFalse(serials.looks_like_tagged_key(text), text)
+		# What the allocator mints always has the shape.
+		self.assertTrue(serials.looks_like_tagged_key(serials.allocate_serial_key("NSN", fb_item_number="77")))
+
+	def test_a_hand_typed_tag_is_refused(self):
+		"""A person copying a key's shape into the serial field: no ledger serial passed,
+		none stamped, so the bound book would get the label as the serial."""
+		key = self._gun(f"NSN (POS H{self._testMethodName[-6:]})")
+		with self.assertRaisesRegex(frappe.ValidationError, "not the serial marked on the gun"):
+			self._acquire(key)
+		with self.assertRaisesRegex(frappe.ValidationError, "not the serial marked on the gun"):
+			self._acquire(key, ledger_serial=key)
+		with self.assertRaisesRegex(frappe.ValidationError, "not the serial marked on the gun"):
+			self._acquire(f"NONE MARKED (FB H{self._testMethodName[-6:]})")
+		self.assertFalse(frappe.db.exists("FFL Acquisition", {"serial": key}))
+
+	def test_an_allocated_tagged_key_is_accepted(self):
+		"""The importer's way in: a minted key with its ledger serial passed (or already
+		stamped on the gun)."""
+		key = serials.allocate_serial_key("NONE MARKED", fb_item_number=f"I{self._testMethodName[-6:]}")
+		self._gun(key)
+		acq = self._acquire(key, ledger_serial="NONE MARKED")
+		self.assertEqual(frappe.db.get_value("FFL Acquisition", acq, "ledger_serial"), "NONE MARKED")
+		stamped = self._gun(f"NSN (FB J{self._testMethodName[-6:]})", "NSN")
+		acq = self._acquire(stamped)
+		self.assertEqual(frappe.db.get_value("FFL Acquisition", acq, "ledger_serial"), "NSN")
+
+	def test_a_real_serial_with_parentheses_is_accepted(self):
+		plain = self._gun(f"A{self._testMethodName[-6:]} (2)")
+		acq = self._acquire(plain)
+		self.assertEqual(frappe.db.get_value("FFL Acquisition", acq, "ledger_serial"), plain)
+		self.assertFalse(serials.is_tagged(plain))
 
 	def test_same_key_with_a_different_fastbound_entry_is_refused(self):
 		key = self._gun(f"NONE MARKED (FB G{self._testMethodName[-6:]})", "NONE MARKED")
@@ -270,3 +311,84 @@ class Gates(_Guns):
 			block = re.search(rf'\n\t"{doctype}": \{{(.*?)\n\t\}},', hooks, re.S)
 			self.assertIsNotNone(block, doctype)
 			self.assertIn("ffl_core.serials.refuse_tagged_serial_sale", block.group(1), doctype)
+
+
+class LegacyPlaceholderNamedGun(_Guns):
+	"""A store may already hold a gun received before this change whose Serial No is
+	named exactly by a "no serial" spelling. After the backfill its name IS its ledger
+	serial, so it is an ordinary, untagged gun: it sells, lists, corrects and disposes
+	as before. Only receiving another such gun is refused."""
+
+	CUSTOMER = "LS-TEST-CUSTOMER"
+
+	@classmethod
+	def setUpClass(cls) -> None:
+		super().setUpClass()
+		if not frappe.db.exists("Customer", cls.CUSTOMER):
+			frappe.get_doc({"doctype": "Customer", "customer_name": cls.CUSTOMER,
+				"customer_type": "Individual", "customer_group": "Individual",
+				"territory": "All Territories"}).insert(ignore_permissions=True)
+
+	def _legacy_gun(self, name: str) -> tuple[str, str]:
+		"""Received the old way (no acquisition guard), then the upgrade's backfill."""
+		from ffl_core.patches import backfill_ledger_serial
+
+		self._gun(name)
+		with patch("frappe.db.commit"):
+			acq = frappe.get_doc({"doctype": "FFL Acquisition", "acquisition_date": now_datetime(),
+				"source_type": "Individual", "source_name": "Pat Example",
+				"source_id_type": "Driver License", "source_id_number": "DL-0000",
+				"company": self.company, "item": self.ITEM, "serial": name, "cost": 100})
+			acq.insert(ignore_permissions=True)
+			acq.submit()
+		frappe.db.set_value("FFL Acquisition", acq.name, "ledger_serial", "", update_modified=False)
+		frappe.db.set_value("Serial No", name, {"ledger_serial": "", "fastbound_item_id": f"fb-{name}"},
+			update_modified=False)
+		backfill_ledger_serial.execute()
+		self.assertEqual(frappe.db.get_value("Serial No", name, "ledger_serial"), name)
+		self.assertEqual(frappe.db.get_value("FFL Acquisition", acq.name, "ledger_serial"), name)
+		self.assertFalse(serials.is_tagged(name))
+		return name, acq.name
+
+	def test_it_sells_and_lists(self):
+		from ffl_integrations.gunbroker import listings as gb
+
+		gun, _acq = self._legacy_gun("NONE")
+		serials.refuse_tagged_serial_sale(frappe._dict(is_return=0, items=[frappe._dict(
+			item_code=self.ITEM, serial_no=gun, serial_and_batch_bundle=None)]))
+		self.assertIsNone(serials.listing_block_reason(gun))
+		self.assertNotEqual((gb.check_push_guards(gun) or {}).get("skipped"), gb.TAGGED_SERIAL)
+
+	def test_it_corrects_like_an_ordinary_gun(self):
+		from ffl_core.api.serial_correction import correct_serial
+
+		gun, acq = self._legacy_gun("UNKNOWN")
+		self.set_single("FastBound Settings", "enabled", 1)
+		new = f"LG-{self._testMethodName[-8:]}"
+		client = MagicMock()
+		with patch("ffl_integrations.fastbound.client.FastBoundClient.from_settings",
+				return_value=client), patch("frappe.enqueue"):
+			res = correct_serial(gun, new, "serial found under the grip")
+		self.assertEqual((res["new_serial"], res["ledger_serial"]), (new, new))
+		self.assertFalse(frappe.db.exists("Serial No", gun))
+		self.assertEqual(frappe.db.get_value("Serial No", new, "ledger_serial"), new)
+		self.assertEqual(frappe.db.get_value("FFL Acquisition", acq, ["serial", "ledger_serial"]), (new, new))
+		self.assertEqual(client.update_item_serial.call_args.args[:2], (f"fb-{gun}", new))
+
+	def test_it_disposes_like_an_ordinary_gun(self):
+		gun, _acq = self._legacy_gun("NO SERIAL")
+		with patch("frappe.db.commit"):
+			disp = frappe.get_doc({"doctype": "FFL Disposition", "disposition_date": now_datetime(),
+				"disposition_type": "Retail Sale", "customer": self.CUSTOMER,
+				"company": self.company, "item": self.ITEM, "serial": gun,
+				"form_4473_status": "Completed", "nics_status": "Proceed",
+				"fastbound_id": f"FB-DISP-{self._testMethodName[-8:]}"})
+			disp.insert(ignore_permissions=True)
+			disp.submit()
+		self.assertEqual(disp.docstatus, 1)
+		self.assertEqual(frappe.db.get_value("FFL Disposition", disp.name, "ledger_serial"), gun)
+
+	def test_receiving_another_one_is_refused(self):
+		gun, _acq = self._legacy_gun("NONE MARKED")
+		with self.assertRaisesRegex(frappe.ValidationError, "can't be received in the POS yet"):
+			self._acquire(gun, fastbound_id=f"fb-other-{self._testMethodName}")
