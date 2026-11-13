@@ -113,14 +113,20 @@
 		}) + '</div><div class="text-danger ffl-assignment-error" style="margin-top:8px"></div>');
 	}
 
+	var $gotIt = null;
+
 	function make() {
 		dialog = new frappe.ui.Dialog({
 			title: __('Assigned to you'),
 			static: true,   // no Esc, no close icon, no click outside: only the button
 			fields: [{ fieldtype: 'HTML', fieldname: 'list' }],
-			primary_action_label: __('Got it'),
-			primary_action: acknowledge,
 		});
+		// Not the dialog's primary action: Frappe's Ctrl+S presses the open dialog's primary button
+		// (frappe.app.trigger_primary_action), which would record "seen" with nobody reading it.
+		// Only a click, a tap, or tabbing to the button and pressing it counts.
+		$gotIt = frappe.ui.button({ label: __('Got it'), variant: 'solid', onclick: acknowledge });
+		dialog.custom_actions.append($gotIt);
+		dialog.footer.removeClass('hide');
 		// Hidden without the button (a page change hides any dialog): show it again if still waiting.
 		dialog.onhide = function () { open = false; setTimeout(apply, 500); };
 	}
@@ -136,14 +142,14 @@
 	function acknowledge() {
 		var names = shown.map(function (r) { return r.name; });
 		var $err = dialog.$wrapper.find('.ffl-assignment-error').text('');
-		dialog.disable_primary_action();
+		$gotIt.prop('disabled', true);
 		ffl.staffSwitch.post(M + 'acknowledge', { names: names }, __('Could not save that. Try again.')).then(function (body) {
 			rows = (body && body.message) || [];
 			try { if (channel) channel.postMessage({ type: 'ack', user: frappe.session.user }); } catch (e) { /* best effort */ }
 			apply();
 		}, function (e) {
 			$err.text((e && e.message) || __('Could not save that. Try again.'));
-		}).then(function () { dialog.enable_primary_action(); });
+		}).then(function () { $gotIt.prop('disabled', false); });
 	}
 
 	function look(force) {
