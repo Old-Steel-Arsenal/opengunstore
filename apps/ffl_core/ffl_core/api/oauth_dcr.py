@@ -13,6 +13,9 @@ from __future__ import annotations
 import frappe
 import frappe.integrations.utils as oauth_utils
 from frappe.integrations.oauth2 import register_client as frappe_register_client
+from frappe.permissions import SYSTEM_USER_ROLE
+
+from ffl_core.ffl_core.doctype.mcp_settings.mcp_settings import WEB_ROLES
 
 _frappe_is_secure = oauth_utils._is_secure_redirect_uri
 
@@ -38,3 +41,18 @@ def register_client():
 		Frappe's registration response (201 with the client metadata, or 400).
 	"""
 	return frappe_register_client()
+
+
+def allow_website_roles(doc, method=None):
+	"""doc_events OAuth Client before_insert: a connector client (dynamic registration,
+	owner Guest) may also be used by a user whose only POS roles are the website
+	connector ones. Those roles have no Desk access, and Frappe lets a client with no
+	allowed roles serve Desk users only ("Desk User"), so such a user could never
+	sign in to the website connector. Desk users keep exactly the access they had;
+	what each surface lets a user do is still decided per call (api/connector.py)."""
+	if doc.owner != "Guest" or doc.get("allowed_roles"):
+		return
+	for role in (SYSTEM_USER_ROLE, *(r for r in WEB_ROLES if r != "System Manager")):
+		# A role not made yet (new code before its migrate) is left out, never a failed registration.
+		if frappe.db.exists("Role", role):
+			doc.append("allowed_roles", {"role": role})

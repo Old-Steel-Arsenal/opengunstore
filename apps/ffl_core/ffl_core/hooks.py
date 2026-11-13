@@ -236,6 +236,8 @@ doc_events = {
 		"before_validate": "ffl_core.assignment_notice.stamp",
 		"on_update": "ffl_core.assignment_notice.announce",
 	},
+	# A connector client (dynamic registration) also lets the website connector roles sign in (api/oauth_dcr.py).
+	"OAuth Client": {"before_insert": "ffl_core.api.oauth_dcr.allow_website_roles"},
 	# A copy requested for a gunsmith work order is its intake authorization (gunsmith.py).
 	"Customer Agreement": {"on_update": "ffl_core.gunsmith.link_intake_agreement"},
 	# A store flipping an integration's switch re-shapes the Gun Shop sidebar and home page
