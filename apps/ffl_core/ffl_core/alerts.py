@@ -88,6 +88,8 @@ def alert_once(reference_type: str, reference_name: str, *, title: str, message:
 	document; give each distinct event its own title."""
 	from frappe.desk.form.assign_to import add as assign_to_add
 
+	from ffl_core.assignment_notice import SYSTEM_ALERT, marked
+
 	if dedupe_on_title:
 		if frappe.db.exists("Error Log", {"method": title,
 				**({"creation": (">=", since)} if since else {})}):
@@ -103,14 +105,16 @@ def alert_once(reference_type: str, reference_name: str, *, title: str, message:
 	if not assignees:
 		return True  # logged; nobody to assign to
 	try:
-		assign_to_add({
-			"assign_to": assignees,
-			"doctype": reference_type,
-			"name": reference_name,
-			"priority": priority,
-			"notify": 1,
-			"description": description,
-		})
+		# Marked a system alert: assignment_notice.SYSTEM_ALERTS_ASK decides whether it pops.
+		with marked(SYSTEM_ALERT):
+			assign_to_add({
+				"assign_to": assignees,
+				"doctype": reference_type,
+				"name": reference_name,
+				"priority": priority,
+				"notify": 1,
+				"description": description,
+			})
 	except Exception:
 		# The assignment reaches the desk + mail; every caller is already in a
 		# failure path and the Error Log above is the part that must survive.

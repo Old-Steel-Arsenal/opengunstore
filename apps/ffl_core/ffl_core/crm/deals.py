@@ -9,6 +9,8 @@ from __future__ import annotations
 import frappe
 from frappe.desk.form.assign_to import _add as assign
 
+from ffl_core.assignment_notice import FOLLOW_UP, marked
+
 DEAL = "CRM Deal"
 STATUS = "CRM Deal Status"
 CLOSED = ("Won", "Lost")
@@ -65,6 +67,8 @@ def new_task(title: str, description: str, assignee: str | None = None, deal: st
 	# Not by assigned_to on the insert: CRM's after_insert checks the session user's rights on the
 	# task, and a Stock Manager cancelling an order has none.
 	if assignee:
-		assign({"assign_to": [assignee], "doctype": "CRM Task", "name": task.name, "description": title},
-			ignore_permissions=True)
+		# Marked a follow-up: assignment_notice.FOLLOW_UPS_ASK decides whether it pops.
+		with marked(FOLLOW_UP):
+			assign({"assign_to": [assignee], "doctype": "CRM Task", "name": task.name, "description": title},
+				ignore_permissions=True)
 	return task.name
