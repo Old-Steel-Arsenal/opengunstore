@@ -16,7 +16,11 @@ from __future__ import annotations
 import frappe
 from frappe.model.document import Document
 
-SURFACES = {"cpa": "enable_cpa", "full": "enable_full", "web_ro": "enable_web_ro"}
+# The POS's own surfaces and their switch fields. First-party extensions import and
+# iterate this name (the AI service checks and mints a token for each), so it never
+# grows a website surface: ALL_SURFACES is the full set the core itself switches.
+SURFACES = {"cpa": "enable_cpa", "full": "enable_full"}
+ALL_SURFACES = {**SURFACES, "web_ro": "enable_web_ro"}
 DOCTYPE = "MCP Settings"
 
 # Who may use a website surface, and at which level: "manager" may also call the
@@ -29,7 +33,7 @@ WEB_ROLES = {WEB_MANAGER_ROLE: "manager", "System Manager": "manager", WEB_VIEWE
 
 
 def surface_enabled(surface) -> bool:
-	field = SURFACES.get(surface) if isinstance(surface, str) else None
+	field = ALL_SURFACES.get(surface) if isinstance(surface, str) else None
 	if not field:
 		return False
 	try:
@@ -67,7 +71,7 @@ def connector_urls() -> dict:
 	"""Each surface's server URL and the Claude Code command for it."""
 	base = frappe.utils.get_url().rstrip("/")
 	out = {}
-	for surface in SURFACES:
+	for surface in ALL_SURFACES:
 		url = f"{base}/connector/{surface}/mcp"
 		out[f"{surface}_url"] = url
 		out[f"{surface}_claude_code"] = (
@@ -77,7 +81,7 @@ def connector_urls() -> dict:
 
 def sync_oauth() -> None:
 	"""OAuth Settings follow the switches; consent is never skipped (after_migrate)."""
-	on = int(any(surface_enabled(s) for s in SURFACES))
+	on = int(any(surface_enabled(s) for s in ALL_SURFACES))
 	oauth = frappe.get_single("OAuth Settings")
 	want = {"show_auth_server_metadata": on, "enable_dynamic_client_registration": on,
 		"skip_authorization": 0}
