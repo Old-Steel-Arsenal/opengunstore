@@ -130,7 +130,7 @@ confirmed, a renewal the job could not charge, and sign-ups still unpaid after a
 
 **Returns:** {renewals_on: whether the daily renewal job runs, rows: [{membership, customer, customer_name, plan, status, reason, detail, current_period_end, sales_invoice, outstanding, can_retry, can_cancel, can_drop}]}.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:1223`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:1229`</sub>
 
 ## `page_members`
 
@@ -149,7 +149,7 @@ One page of the Memberships page's member list, by customer name.
 
 **Returns:** {rows: [{name, customer, customer_name, plan, status, next_charge_date, ends_on, auto_renew, card_summary}], more: whether another page follows}.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:1413`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:1419`</sub>
 
 ## `page_overview`
 
@@ -161,7 +161,7 @@ Everything the Memberships page shows above the member list, in one round trip.
 
 **Returns:** {plans: [{name, active, billing_period, price, registration_fee, auto_renew_default, grace_enabled, grace_days, terms_template, description, members, benefits: one line per member benefit}], totals: {active, monthly, renewing_soon, attention}, attention: the Needs attention answer (managers only, else null), can_manage: may act on memberships, can_edit_plans: may create and change plans}. ``monthly`` is what the Active and Past Due members bill per month (a yearly price counts a twelfth); ``renewing_soon`` counts auto-renewing Active members charged in the next 7 days.
 
-<sub>`apps/ffl_core/ffl_core/membership.py:1366`</sub>
+<sub>`apps/ffl_core/ffl_core/membership.py:1372`</sub>
 
 ## `retry_renewal`
 

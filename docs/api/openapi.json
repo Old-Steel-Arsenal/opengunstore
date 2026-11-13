@@ -15578,7 +15578,7 @@
           "ffl_core"
         ],
         "summary": "Memberships a manager should look at: Past Due, Suspended, a renewal charge the gateway never",
-        "description": "confirmed, a renewal the job could not charge, and sign-ups still unpaid after a few days.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1223`",
+        "description": "confirmed, a renewal the job could not charge, and sign-ups still unpaid after a few days.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1229`",
         "operationId": "ffl_core.membership.needs_attention",
         "responses": {
           "200": {
@@ -15608,7 +15608,7 @@
           "ffl_core"
         ],
         "summary": "One page of the Memberships page's member list, by customer name.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1413`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1419`",
         "operationId": "ffl_core.membership.page_members",
         "responses": {
           "200": {
@@ -15675,7 +15675,7 @@
           "ffl_core"
         ],
         "summary": "Everything the Memberships page shows above the member list, in one round trip.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1366`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/membership.py:1372`",
         "operationId": "ffl_core.membership.page_overview",
         "responses": {
           "200": {
@@ -15861,7 +15861,7 @@
           "ffl_core"
         ],
         "summary": "The member prices a save would give a register sale, for the screen to show at once.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership_benefits.py:874`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership_benefits.py:969`",
         "operationId": "ffl_core.membership_benefits.preview",
         "responses": {
           "200": {
