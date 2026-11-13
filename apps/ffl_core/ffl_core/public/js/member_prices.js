@@ -7,9 +7,13 @@
 // line's answer: the record fields and the list price silently, the rate through set_value (ERPNext
 // re-totals). A line whose member uses are spent shows the server's notice once.
 //
+// The live preview stays quiet in a store with no plan benefits (frappe.boot.ffl_member_benefits =
+// 0, membership_benefits.extend_bootinfo, as of page load).
+//
 // ffl.memberPrices.sync(frm) runs that now and resolves to {changed, failed}: changed when a line's
 // rate moved. The register calls it before Complete Order (ffl_core.bundle.js wrapSubmitInvoice) and
-// does not complete a sale whose total just changed: a submit is never repriced on the server.
+// does not complete a sale whose total just changed: a submit is never repriced on the server. It
+// always asks, whatever boot says, so a benefit added after the page loaded is still caught.
 //
 // The pure half (rowFix, plan, changeMessage) is Node-tested.
 (function (root, factory) {
@@ -82,6 +86,7 @@
 	}
 
 	function schedule(frm) {
+		if (frappe.boot && frappe.boot.ffl_member_benefits === 0) return;   // no plan has a benefit
 		if (!eligible(frm)) return;
 		clearTimeout(timers[frm.doctype]);
 		// Usually after ERPNext's own re-pricing of the line; when its reply lands later, the

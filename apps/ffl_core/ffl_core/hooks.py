@@ -170,6 +170,9 @@ extend_bootinfo = [
 	"ffl_core.price_approval.extend_bootinfo",
 	# The US state codes for the address forms' State dropdowns (interstate_tax.US_STATES).
 	"ffl_core.compliance.interstate_tax.extend_bootinfo",
+	# Whether any plan has a member benefit: the cart's live preview stays quiet without one
+	# (membership_benefits.py).
+	"ffl_core.membership_benefits.extend_bootinfo",
 ]
 
 

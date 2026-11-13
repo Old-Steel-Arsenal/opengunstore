@@ -15861,7 +15861,7 @@
           "ffl_core"
         ],
         "summary": "The member prices a save would give a register sale, for the screen to show at once.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership_benefits.py:969`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership_benefits.py:977`",
         "operationId": "ffl_core.membership_benefits.preview",
         "responses": {
           "200": {

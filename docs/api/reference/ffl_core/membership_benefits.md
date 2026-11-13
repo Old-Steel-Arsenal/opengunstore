@@ -18,4 +18,4 @@ The member prices a save would give a register sale, for the screen to show at o
 
 **Returns:** {"rows": {line name: {"rate", "price_list_rate", "discount_percentage", "discount_amount", "ffl_member_benefit", "ffl_membership", "ffl_benefit_customer", "ffl_member_rate", "ffl_discount_reason"}}, "notices": [str]}. The save works it out again; nothing is stored.
 
-<sub>`apps/ffl_core/ffl_core/membership_benefits.py:969`</sub>
+<sub>`apps/ffl_core/ffl_core/membership_benefits.py:977`</sub>

@@ -152,6 +152,9 @@ class Wiring(FrappeTestCase):
 				validate.index("ffl_core.compliance.locked_lines.assert_locked_lines"), dt)
 		for when in ("after_install", "after_migrate"):
 			self.assertIn("ffl_core.setup.member_benefits.ensure", hooks[when])
+		from ffl_core.tests.test_staff_switch import _hooks_list
+
+		self.assertIn("ffl_core.membership_benefits.extend_bootinfo", _hooks_list("extend_bootinfo"))
 
 
 class PlanConfig(_Base):
@@ -195,6 +198,19 @@ class PlanConfig(_Base):
 		item = _item("TXD", 30)
 		_plan(_benefit(mb.ON_ITEM, item, mb.PERCENT, 10))
 		self.assertTrue(any("accountant" in str(m) for m in frappe.message_log), frappe.message_log)
+
+	def test_boot_says_whether_any_plan_has_a_benefit(self):
+		frappe.db.delete(mb.BENEFIT, {"parenttype": "Membership Plan"})   # rolled back with the class
+		boot = frappe._dict()
+		mb.extend_bootinfo(boot)
+		self.assertEqual(boot.ffl_member_benefits, 0)
+		plan = _plan()
+		mb.extend_bootinfo(boot)
+		self.assertEqual(boot.ffl_member_benefits, 0, "a plan without benefits")
+		plan.append("benefits", _benefit(mb.ON_ITEM, _item("BOOT", 30), mb.PERCENT, 10))
+		plan.save(ignore_permissions=True)
+		mb.extend_bootinfo(boot)
+		self.assertEqual(boot.ffl_member_benefits, 1, "its first benefit")
 
 	def test_summary_lines(self):
 		item = _item("SUM", 30)

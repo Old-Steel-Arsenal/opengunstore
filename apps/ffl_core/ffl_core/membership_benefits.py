@@ -736,6 +736,14 @@ def _has_benefits() -> bool:
 	return bool(frappe.db.sql(f"select 1 from `tab{BENEFIT}` where parenttype = 'Membership Plan' limit 1"))
 
 
+def extend_bootinfo(bootinfo) -> None:
+	"""Whether any plan has a member benefit (``ffl_member_benefits``): without one the cart's live
+	preview asks nothing (public/js/member_prices.js); Complete Order still asks."""
+	if frappe.session.user == "Guest":
+		return
+	bootinfo.ffl_member_benefits = 1 if _has_benefits() else 0
+
+
 def reprice(doc, before=None, *, submitting: bool = False, lock: bool = False) -> dict:
 	"""Work out every line of *doc* and write the answer onto it (module docstring, "The line").
 	*before*: the document as stored. Returns {"notices": [...], "refused": [...], "floors": {line
