@@ -4206,6 +4206,18 @@ frappe.provide('frappe.ui.form');
 				const bad = await unpricedPerGunLines(controller.frm);
 				if (bad.length) return showPickTheGun(bad);
 			}
+			// MEMBER PRICES (member_prices.js): the server refuses a submit whose member price would
+			// move, so look now, before any money moves. A total that changed is shown, not completed:
+			// the cashier collects the new total and presses again. A failed look lets the submit go
+			// on — the server still decides.
+			if (window.ffl && ffl.memberPrices && ffl.memberPrices.sync) {
+				const priced = await ffl.memberPrices.sync(controller.frm);
+				if (priced.changed) {
+					try { controller.cart.load_invoice(); controller.payment.render_payment_section(); } catch (e) { /* cosmetic */ }
+					frappe.show_alert({ message: __(priced.message), indicator: 'orange' }, 10);
+					return;
+				}
+			}
 			// Any Zelle tender must carry its Transaction Number before we take a
 			// card portion or complete the order. Prompt now; cancel aborts checkout.
 			const zelle = await ensureZelleReference(controller.frm);
