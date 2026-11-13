@@ -54,6 +54,22 @@ With the store's card terminal connected, **Complete Order** runs the card befor
 
 Only the **Cancel** button closes the waiting dialog. Cancelling mid-charge is safe: if the card went through anyway, the charge is recorded and a manager can void it.
 
+### Stores with more than one card reader
+
+When the store has several card readers, the first card charge on each register computer opens **Card reader** with a button per reader. Click the reader at this counter. The computer remembers it, and **Waiting for terminal** names the reader on every charge.
+
+To use another reader, click the reader's name in **Waiting for terminal** and pick again. If the charge on the first reader already finished, **Card reader not changed** says so and nothing new is charged.
+
+### Key in a card number
+
+For a card that will not read, or an order taken over the phone, a manager can tick **Key in card number (no terminal)** in the card dialog, on Create Order, or in **Record Payment**. Card-not-present rates apply, so use the terminal whenever the card is in hand.
+
+1. Tick **Key in card number (no terminal)** and charge as usual.
+2. The card processor's payment page opens in a new window, with the customer's name and address filled in. **Waiting for the payment page** stays open.
+3. Type the card on the payment page and submit it. If the window was blocked or closed, click **Open payment page**.
+
+The payment is recorded as soon as the card is approved, and it is voided or refunded like any other card payment. The box shows only after an administrator sets up the payment page (see [Integrations](../admin/integrations.md)).
+
 When the order already has card money on it, such as a deposit or the first card of a split, the **Credit Card** tile says "Already charged … — enter only the amount to charge now." Type only today's charge.
 
 When a ticket's trade-ins are worth more than the sale, there is nothing to charge. See [Trade-ins](trade-ins.md#trade-ins-worth-more-than-the-sale).
@@ -98,7 +114,7 @@ Every terminal try on a counter order is kept with the amount, the status, the c
 
 <figure markdown>
 ![Card payments](../screenshots/list-card-payments.webp){ .screenshot }
-<figcaption>Every terminal try on a counter order: the invoice, the amount, the status and the processor's reference.</figcaption>
+<figcaption>Every terminal try on a counter or GunBroker order: the invoice, the amount, the status and the processor's reference.</figcaption>
 </figure>
 
 On a register sale, each card used is a row in the **Card Charges** table on the ticket, with **Captured Amount**, **Status**, **Card**, **Payroc Reference** and **Refunded Amount**. A sale split across three cards has three rows.

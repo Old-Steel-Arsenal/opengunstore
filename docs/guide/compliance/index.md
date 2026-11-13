@@ -47,5 +47,5 @@ In the sidebar, the **Compliance** group holds **4473 records**, **Acquisitions*
 
 <figure markdown>
 ![FFL Settings, Compliance tab](../screenshots/settings-ffl-compliance.webp){ .screenshot }
-<figcaption>Compliance behavior starts here: Paper 4473 Mode, the customer transfer fee, and whether customer ID numbers are kept.</figcaption>
+<figcaption>Compliance behavior starts here: Paper 4473 Mode, the customer transfer fee, whether customer ID numbers are kept, and the no-serial spellings.</figcaption>
 </figure>
