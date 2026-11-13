@@ -25,11 +25,11 @@ structural fix is listed in `corrected`; a gun that can't be safely auto-moved
 | `dry_run` | integer | no | `0` | 1 writes nothing and returns a `projected` map (item_code → count / makers / serials) to preview the grouping before committing. |
 | `commit_each` | integer | no | `1` | 1 (default, production) commits after each successful item so a crash mid-import doesn't lose work; 0 (tests) relies on the caller to manage transactions. |
 | `aggregate_by` | string | no | `AGGREGATE_AUTO` | How FB items group into ERPNext Items — "auto" (default): SKU → UPC → MPN → model-slug → fb_id fallback; "model": the model+caliber slug ONLY — SKU/UPC/MPN and manufacturer are ignored — so the same model from different manufacturers/importers (surplus M1 Garands, Mausers, …) folds into one Item; each gun's true maker + importer is stamped on its Serial No. Spelling variants are canonicalised (see fastbound.normalize). |
-| `skip_disposed` | integer | no | `1` | 1 (default) imports only CURRENT INVENTORY — guns FastBound marks disposed (sold) or deleted are skipped (the importer creates acquisitions + receipts, not dispositions, so importing a sold gun would wrongly re-stock it). Pass 0 to import the entire historical book. |
+| `skip_disposed` | integer | no | `1` | 1 (default) imports only CURRENT INVENTORY — guns FastBound marks disposed (sold) or deleted are skipped (the importer creates acquisitions + receipts, not dispositions, so importing a sold gun would wrongly re-stock it). Pass 0 to import the entire historical book. Guns the book records with no serial ("NONE MARKED", "NSN", ...) or with the same serial as another in-stock item are each imported as their own gun under a tagged Serial No ("<serial> (FB <item number>)"); the serial as the book writes it is kept in Serial No.ledger_serial. |
 
-**Returns:** Import stats dict (created/synced/corrected/regroup_needed counts; plus `projected` on a dry run).
+**Returns:** Import stats dict (created/synced/corrected/regroup_needed counts; plus `projected` on a dry run) and `duplicate_groups`: [{ledger_serial, no_serial, items: [{fastbound_id, itemNumber, serial, manufacturer, model, caliber}]}] — the guns that get tagged keys, to review first.
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/importer.py:94`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/importer.py:97`</sub>
 
 ## `reassign_serial_to_item`
 
@@ -60,4 +60,4 @@ pick (`ffl_woo_sync.woocommerce.tasks.rebucket_and_apply_serial_task`).
 
 **Returns:** {ok, serial, from, to, fastbound_item_id}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/fastbound/importer.py:331`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/fastbound/importer.py:453`</sub>

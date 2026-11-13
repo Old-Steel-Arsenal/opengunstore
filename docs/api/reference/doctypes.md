@@ -342,6 +342,7 @@ app: `ffl_core` · module: FFL Core · submittable · roles: Sales Manager, Sale
 | `source_id_document` | Attach | ID Document |  |  |
 | `item` | Link | Item | ✓ | Item |
 | `serial` | Data | Serial |  |  |
+| `ledger_serial` | Data | Ledger Serial |  |  |
 | `cost` | Currency | Cost |  |  |
 | `fastbound_id` | Data | FastBound ID |  |  |
 | `fastbound_synced_at` | Datetime | Last Synced |  |  |
@@ -364,6 +365,7 @@ app: `ffl_core` · module: FFL Core · submittable · roles: Stock Manager, Stoc
 | `destroyed_witness2` | Data | Witness 2 |  |  |
 | `item` | Link | Item | ✓ | Item |
 | `serial` | Autocomplete | Serial |  |  |
+| `ledger_serial` | Data | Ledger Serial |  |  |
 | `sales_invoice` | Link | Sales Invoice |  | Sales Invoice |
 | `sales_order` | Link | Sales Order |  | Sales Order |
 | `form_4473_status` | Select | 4473 Status |  | N/A, Pending, Completed |
@@ -398,6 +400,7 @@ app: `ffl_core` · module: FFL Core · single · roles: System Manager
 | `transfer_fee_amount` | Currency | Default Transfer Fee |  |  |
 | `enforce_sale_agreements` | Check | Require Agreements at Sale |  |  |
 | `used_item_agreement_template` | Link | Used Item Agreement |  | Agreement Template |
+| `serial_placeholders` | Small Text | No-Serial Spellings |  |  |
 | `live_check_provider` | Select | Provider |  | ATF Form Scraper, Data Service, Manual Only |
 | `live_check_rate_limit_per_hour` | Int | Rate Limit (req/hr) |  |  |
 | `live_check_cache_ttl_minutes` | Int | Cache TTL (minutes) |  |  |

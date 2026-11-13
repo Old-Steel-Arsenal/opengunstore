@@ -189,17 +189,37 @@ class SerialCorrection(SettingsSandbox, FrappeTestCase):
 
 	# ------------------------------------------------------------------ rejections
 
-	def test_target_serial_conflict_rejected(self):
+	def test_target_serial_held_by_another_gun_tags_instead_of_merging(self):
+		"""Two guns can carry one serial. Correcting this gun to a serial another gun
+		already has gives it a tagged key; the other gun is untouched, nothing merges,
+		and FastBound gets the serial itself with the key as externalId."""
 		tag = self._testMethodName
-		serial, _acq, _fb = self._make_gun(tag)
+		serial, acq, fb = self._make_gun(tag)
 		other, _a2, _f2 = self._make_gun(tag + "B")
+		frappe.db.set_value("Serial No", serial, "fastbound_item_number", "07701", update_modified=False)
 		client = MagicMock()
-		with patch(_FB_FROM_SETTINGS, return_value=client):
-			with self.assertRaisesRegex(frappe.ValidationError, "already exists"):
-				correct_serial(serial, other, "typo")
-		self.assertTrue(frappe.db.exists("Serial No", serial))
-		self.assertTrue(frappe.db.exists("Serial No", other))
-		client.update_item_serial.assert_not_called()
+		with patch(_FB_FROM_SETTINGS, return_value=client), patch("frappe.enqueue"):
+			res = correct_serial(serial, other, "two guns, one serial")
+		key = f"{other} (FB 07701)"
+		self.assertEqual((res["new_serial"], res["ledger_serial"]), (key, other))
+		self.assertFalse(frappe.db.exists("Serial No", serial))
+		self.assertEqual(frappe.db.get_value("Serial No", key, ["ledger_serial", "status"]), (other, "Active"))
+		self.assertEqual(frappe.db.get_value("Serial No", other, "ledger_serial") or other, other)
+		self.assertEqual(frappe.db.get_value("FFL Acquisition", acq, ["serial", "ledger_serial"]), (key, other))
+		args, kwargs = client.update_item_serial.call_args
+		self.assertEqual((args[0], args[1]), (fb, other))
+		self.assertEqual((kwargs.get("new_key"), kwargs.get("old_key")), (key, serial))
+
+	def test_a_tagged_gun_with_a_listing_is_delisted_not_repushed(self):
+		tag = self._testMethodName
+		serial, _acq, _fb = self._make_gun(tag, woo_product_id="5555")
+		other, _a2, _f2 = self._make_gun(tag + "B")
+		with patch(_FB_FROM_SETTINGS, return_value=MagicMock()), patch("frappe.enqueue") as enq:
+			res = correct_serial(serial, other, "two guns, one serial")
+		paths = [str(c.args[0]) for c in enq.call_args_list if c.args]
+		self.assertFalse([p for p in paths if "push_serial_task" in p])
+		delist = [c for c in enq.call_args_list if c.args and "delist_serial_task" in str(c.args[0])]
+		self.assertEqual(delist[0].kwargs.get("serial_no"), res["new_serial"])
 
 	def test_same_serial_rejected(self):
 		tag = self._testMethodName

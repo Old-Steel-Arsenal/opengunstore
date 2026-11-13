@@ -93,3 +93,5 @@ ffl_core.patches.backfill_agreement_firearms
 ffl_core.patches.add_lead_mail_settings_workspace_entry
 # Frappe CRM mail: mail already on a lead or deal keeps its line breaks (plain text) and its links open in a new tab.
 ffl_core.patches.tidy_received_crm_mail
+# Same-serial and no-serial guns: every gun already on file gets its bound-book serial (= its name).
+ffl_core.patches.backfill_ledger_serial

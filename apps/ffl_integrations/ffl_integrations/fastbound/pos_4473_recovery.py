@@ -26,6 +26,7 @@ from ffl_core.compliance.firearm import (
 	covered_serials_for_invoice,
 	regulated_firearm_serials,
 )
+from ffl_core import serials as _serials
 from ffl_core.firearm import is_regulated_firearm_item
 from ffl_core.utils import commit
 
@@ -183,7 +184,8 @@ def _probe_fastbound(serials: list[str]) -> tuple[list[dict], str | None]:
 	rows: list[dict] = []
 	for serial in serials:
 		try:
-			item = client.find_item_by_serial(serial) or {}
+			# FastBound knows the gun by its ledger serial, not our key.
+			item = client.find_item_by_serial(_serials.ledger_serial(serial)) or {}
 		except (FastBoundError, FastBoundConfigError) as exc:
 			return rows, str(exc)
 		except Exception as exc:  # noqa: BLE001 — network / library surprises

@@ -12,7 +12,7 @@ from frappe.model.document import Document
 
 from ffl_core.compliance.mode import paper_4473_mode
 from ffl_core.roles import COUNTER_4473_ROLES
-from ffl_core.serials import only_active_serial
+from ffl_core.serials import ledger_serial, only_active_serial
 
 
 # Disposition types that exist in FastBound's DisposeType SmartList (and may be
@@ -29,6 +29,9 @@ class FFLDisposition(Document):
 	def validate(self) -> None:
 		if not self.serial:
 			self.serial = only_active_serial(self.item) or self.serial
+		if self.serial and not (self.ledger_serial or "").strip():
+			# The bound-book serial of the gun this record names (= the name for an untagged gun).
+			self.ledger_serial = ledger_serial(self.serial)
 		self._validate_manual_override()
 		self._reject_manual_retail_sale()
 		self._reject_unsupported_disposition_types()
