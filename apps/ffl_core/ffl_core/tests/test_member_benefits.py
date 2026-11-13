@@ -133,7 +133,20 @@ class _Base(gw._Base):
 
 	def setUp(self):
 		super().setUp()
-		frappe.message_log = []
+		# clear_messages(), never `frappe.message_log = []`: that replaces frappe's
+		# request-local proxy with a plain list for the rest of the worker, and later
+		# modules then assert on this module's leftover warnings.
+		frappe.clear_messages()
+
+	def tearDown(self):
+		frappe.clear_messages()
+		super().tearDown()
+
+
+def tearDownModule():
+	# Saving a plan warns ("This plan discounts items the store taxes ..."); classes
+	# outside _Base save plans too. Leave no message for the next module in the worker.
+	frappe.clear_messages()
 
 
 class Wiring(FrappeTestCase):
@@ -352,7 +365,7 @@ class DailyUses(_Base):
 	def test_one_a_day_then_list_price_with_a_notice(self):
 		first = _ticket(self.cust, (self.item, 1), submit=True)
 		self.assertEqual(flt(first.items[0].rate), 15)
-		frappe.message_log = []
+		frappe.clear_messages()
 		second = _ticket(self.cust, (self.item, 1))
 		self.assertEqual(_line(second.items[0]), (30, 30, 0, 0, None))
 		self.assertTrue(any("no uses left today" in str(m) for m in frappe.message_log), frappe.message_log)
@@ -368,14 +381,14 @@ class DailyUses(_Base):
 		cust = gw._customer().name
 		_member(cust, plan)
 		_ticket(cust, (self.item, 1))
-		frappe.message_log = []
+		frappe.clear_messages()
 		inv = _ticket(cust, (self.item, 2))
 		self.assertEqual(flt(inv.items[0].rate), 30)
 		self.assertTrue(any("1 left today, this line has 2" in str(m) for m in frappe.message_log), frappe.message_log)
 
 	def test_a_draft_holds_its_use_and_the_notice_names_it(self):
 		draft = _ticket(self.cust, (self.item, 1))
-		frappe.message_log = []
+		frappe.clear_messages()
 		self.assertEqual(flt(_ticket(self.cust, (self.item, 1)).items[0].rate), 30)
 		self.assertTrue(any(f"Used on: {draft.name} (not completed)." in str(m) for m in frappe.message_log),
 			frappe.message_log)
@@ -387,7 +400,7 @@ class DailyUses(_Base):
 		self.assertNotIn(draft.name, mb.member_price(other, self.item)["notice"])
 
 	def test_the_notice_names_this_sales_earlier_line(self):
-		frappe.message_log = []
+		frappe.clear_messages()
 		_ticket(self.cust, (self.item, 1), (self.item, 1))
 		self.assertTrue(any("Used on: earlier lines of this sale." in str(m) for m in frappe.message_log),
 			frappe.message_log)
