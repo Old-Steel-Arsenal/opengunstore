@@ -60,3 +60,22 @@ test('rowsHtml: no link when the document is gone', () => {
 	assert.ok(!html.includes('<a '));
 	assert.ok(html.includes('Call the customer'));
 });
+
+test('groupsHtml: only new ones show as before; reminders sit under their own heading after the new', () => {
+	const t = (s) => s;
+	assert.strictEqual(an.groupsHtml([row('T1')], { translate: t }), an.rowsHtml([row('T1')], { translate: t }));
+	const html = an.groupsHtml([row('R1', { reminder: true }), row('N1')], { when: () => 'x' });
+	const order = ['New', 'data-name="N1"', 'Not done yet', 'data-name="R1"'].map((s) => html.indexOf(s));
+	assert.ok(order.every((i) => i >= 0), html);
+	assert.deepStrictEqual(order, [...order].sort((a, b) => a - b), 'new first, then the reminders');
+	const only = an.groupsHtml([row('R1', { reminder: true })]);
+	assert.ok(only.includes('Not done yet') && !only.includes('>New<'), only);
+	assert.strictEqual(an.groupsHtml(null), '');
+});
+
+test('badgeText: blank for none, the number, capped at 99+', () => {
+	assert.strictEqual(an.badgeText(0), '');
+	assert.strictEqual(an.badgeText(undefined), '');
+	assert.strictEqual(an.badgeText(3), '3');
+	assert.strictEqual(an.badgeText(150), '99+');
+});

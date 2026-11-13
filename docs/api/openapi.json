@@ -13748,7 +13748,7 @@
           "ffl_core"
         ],
         "summary": "Say you saw these assignments. Each one is yours or the call is refused; one that is closed,",
-        "description": "cancelled, gone, already acknowledged or never asked is skipped. The time is stored on the ToDo\nand the document gets a timeline comment.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/assignment_notice.py:151`",
+        "description": "cancelled, gone or never asked is skipped. The first time, the time is stored on the ToDo and\nthe document gets a timeline comment; after that it only dismisses today's reminder.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/assignment_notice.py:190`",
         "operationId": "ffl_core.assignment_notice.acknowledge",
         "responses": {
           "200": {
@@ -13790,17 +13790,65 @@
         }
       }
     },
-    "/api/method/ffl_core.assignment_notice.pending": {
+    "/api/method/ffl_core.assignment_notice.done": {
       "post": {
         "tags": [
           "ffl_core"
         ],
-        "summary": "Your assignments waiting for you to say you saw them, oldest first (at most 50).",
-        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/assignment_notice.py:139`",
-        "operationId": "ffl_core.assignment_notice.pending",
+        "summary": "Close one of your tasks. Only the person it is assigned to can; one already closed or",
+        "description": "cancelled is left as it is. Closing goes through Frappe's own assignment close, so the\nassignment comes off the document, and the document gets a timeline comment.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/assignment_notice.py:259`",
+        "operationId": "ffl_core.assignment_notice.done",
         "responses": {
           "200": {
-            "description": "[{\"name\": ToDo, \"assigned_by\": full name, \"reference_type\", \"reference_name\", \"title\" (all three None when the document is gone or there is none), \"description\": plain text, \"priority\", \"date\": due date or None, \"creation\"}].",
+            "description": "{\"closed\": False when it was already closed or cancelled, \"open\": how many open tasks you have left}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "ToDo name."
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.assignment_notice.my_tasks": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Your open tasks: every Open ToDo assigned to you, including system alerts that never pop",
+        "description": "up; oldest first (at most 200).\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/assignment_notice.py:228`",
+        "operationId": "ffl_core.assignment_notice.my_tasks",
+        "responses": {
+          "200": {
+            "description": "[{\"name\": ToDo, \"assigned_by\": full name, \"reference_type\", \"reference_name\", \"title\" (all three None when the document is gone or there is none), \"description\": plain text, \"priority\", \"date\": due date or None, \"creation\", \"seen_on\": when you said you saw it or None, \"asks\": whether it asked you to say you saw it}].",
             "content": {
               "application/json": {
                 "schema": {
@@ -13808,6 +13856,66 @@
                   "properties": {
                     "message": {
                       "type": "array"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.assignment_notice.pending": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Your assignments waiting for you to say you saw them, and the ones you saw but have not",
+        "description": "closed that are due today's reminder; oldest first (at most 50).\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/assignment_notice.py:176`",
+        "operationId": "ffl_core.assignment_notice.pending",
+        "responses": {
+          "200": {
+            "description": "[{\"name\": ToDo, \"assigned_by\": full name, \"reference_type\", \"reference_name\", \"title\" (all three None when the document is gone or there is none), \"description\": plain text, \"priority\", \"date\": due date or None, \"creation\", \"seen_on\": when you said you saw it or None, \"reminder\": True for one you already saw}].",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "array"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.assignment_notice.task_count": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "How many open tasks you have (the number next to My tasks).",
+        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/assignment_notice.py:249`",
+        "operationId": "ffl_core.assignment_notice.task_count",
+        "responses": {
+          "200": {
+            "description": "The count of Open ToDos assigned to you.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "integer"
                     }
                   }
                 }
