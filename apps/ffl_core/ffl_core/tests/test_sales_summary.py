@@ -114,8 +114,8 @@ class SummaryFixtures(NegFixtures):
 		return draft
 
 	def _si(self, lines, *, submit=True, **fields):
-		si = frappe.get_doc({"doctype": "Sales Invoice", "company": self.company, "customer": "_Test CD Customer",
-			"taxes_and_charges": self.template, "items": [dict(item_code=c, qty=1, rate=r, price_list_rate=r, **extra)
+		si = frappe.get_doc({"doctype": "Sales Invoice", "company": self.company,
+			"customer": fields.pop("customer", "_Test CD Customer"), "taxes_and_charges": self.template, "items": [dict(item_code=c, qty=1, rate=r, price_list_rate=r, **extra)
 				for c, r, *rest in lines for extra in [rest[0] if rest else {}]], **fields})
 		from erpnext.controllers.accounts_controller import get_taxes_and_charges
 		si.set("taxes", get_taxes_and_charges("Sales Taxes and Charges Template", self.template))
@@ -365,6 +365,49 @@ class Cases:
 		for note in ss._notes():
 			self.assertIn(frappe.utils.escape_html(note), message)
 
+	def test_a_foreign_currency_invoice_reads_in_the_companys_currency(self):
+		"""100 EUR of goods at 1.10, unpaid: everything in USD, E1 and E2 0.00."""
+		abbr = frappe.get_cached_value("Company", self.company, "abbr")
+		receivable = f"Debtors EUR - {abbr}"
+		if not frappe.db.exists("Account", receivable):
+			frappe.get_doc({"doctype": "Account", "account_name": "Debtors EUR", "company": self.company,
+				"parent_account": frappe.db.get_value("Account", {"company": self.company, "is_group": 1,
+					"account_type": "Receivable"}) or frappe.db.get_value("Account", {"company": self.company,
+					"is_group": 1, "root_type": "Asset", "account_name": "Accounts Receivable"}),
+				"account_type": "Receivable", "account_currency": "EUR"}).insert(ignore_permissions=True)
+		customer = "_Test SS EUR Customer"
+		if not frappe.db.exists("Customer", customer):
+			frappe.get_doc({"doctype": "Customer", "customer_name": customer, "default_currency": "EUR",
+				"accounts": [{"company": self.company, "account": receivable}]}).insert(ignore_permissions=True)
+		si = self._si([(GOODS, 100)], customer=customer, currency="EUR", conversion_rate=1.1,
+			plc_conversion_rate=1, debit_to=receivable)
+		self.assertEqual(si.party_account_currency, "EUR")
+		self.assertEqual((si.currency, flt(si.conversion_rate)), ("EUR", 1.1))
+		s = _summary(self.company)
+		base = flt(si.base_rounded_total) or flt(si.base_grand_total)
+		self.assertEqual([_amount(s, k) for k in ("Net sales", "Total of tickets", "Unpaid / on account")],
+			[flt(si.base_net_total, 2), flt(base, 2), flt(base, 2)])
+		self.assertNotEqual(flt(base, 2), flt(si.grand_total, 2))
+		self._checks_clear(s)
+		self._views_agree(s)
+
+	def test_a_method_that_nets_to_zero_still_has_its_column(self):
+		"""Cash taken by the cashier and paid back on a return by someone else: the period's Cash is 0.00,
+		but each employee's is not, and the Employee view shows it."""
+		sale = self._paid_sale([(GOODS, 100)])
+		from erpnext.accounts.doctype.pos_invoice.pos_invoice import make_sales_return
+
+		ret = make_sales_return(sale.name)
+		ret.payments[0].amount = -self._total(sale)
+		ret.flags.ignore_permissions = True
+		ret.insert()   # by Administrator: Unattributed
+		ret.submit()
+		self.assertNotIn("Cash", _summary(self.company))
+		cols, rows, *_ = _run(self.company, "Employee")
+		field = next(c["fieldname"] for c in cols if c["label"] == "Cash")
+		self.assertEqual(sorted(flt(r[field], 2) for r in rows if not r.get("is_total")),
+			sorted([flt(self._total(sale), 2), -flt(self._total(sale), 2)]))
+
 	def test_filters_are_checked(self):
 		with self.assertRaises(frappe.ValidationError):
 			ss.execute({"company": self.company, "from_date": nowdate(), "to_date": nowdate(), "view": "Bogus"})
@@ -382,6 +425,20 @@ class Cases:
 		s = _summary(self.company, add_days(nowdate(), -400))
 		self.assertEqual(_amount(s, "Net sales"), 0)
 		self._checks_clear(s)
+
+
+class PaymentColumns(FrappeTestCase):
+	def test_methods_that_scrub_alike_get_their_own_columns(self):
+		def doc(owner, payments):
+			return frappe._dict(register="R1", owner=owner, gross=0, discounts=0, returns=0, net=0, sales_tax=0,
+				excise=0, total=sum(payments.values()), payments=payments)
+
+		docs = [doc("Administrator", {"Gift Card": 10.0, "Gift-Card": 5.0})]
+		totals = frappe._dict(payments={"Gift Card": 10.0, "Gift-Card": 5.0})
+		cols, rows = ss._group_view(frappe._dict(docs=docs, totals=totals), "register")
+		pay = {c["label"]: c["fieldname"] for c in cols if c["fieldname"].startswith("pay_")}
+		self.assertEqual(len(set(pay.values())), 2)
+		self.assertEqual((rows[0][pay["Gift Card"]], rows[0][pay["Gift-Card"]]), (10.0, 5.0))
 
 
 StoreASalesSummary = _store_tests("StoreASalesSummary", "store_a", SummaryFixtures, Cases)

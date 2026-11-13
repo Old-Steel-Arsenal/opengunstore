@@ -62,6 +62,8 @@ CREDIT_NOTES_APPLIED = "Credit notes applied"
 TRADE_IN_PAYOUTS = "Trade-in payouts"
 WRITE_OFF = "Write-off"
 UNPAID = "Unpaid / on account"
+# The pricing columns this report needs beyond the Sales Report's line fetch.
+_LINE_FACTS = ("base_rate", "base_price_list_rate", "distributed_discount_amount", "enable_deferred_revenue")
 
 
 def execute(filters=None):
@@ -100,8 +102,7 @@ def _validate(filters) -> frappe._dict:
 def _collect(filters) -> frappe._dict:
 	"""Every invoice of the period with its figures, one dict each, plus the period totals."""
 	headers = [h for h in sr._fetch_headers(filters, extended=True) if h.get("company") == filters.company]
-	lines = sr._fetch_lines(headers, extended=True)
-	_add_line_facts(lines)
+	lines = sr._fetch_lines(headers, extended=True, more=_LINE_FACTS)
 	item_meta = sr._fetch_item_meta(lines)
 	taxes = sr._fetch_taxes(headers)
 	acct_class = sr._fetch_account_classes(taxes)
@@ -114,6 +115,7 @@ def _collect(filters) -> frappe._dict:
 	excise_accounts = sales_tax_and_excise_accounts(filters.company)[1]
 	top_group = _top_groups()
 	locked = set(locked_items())
+	company_currency = frappe.get_cached_value("Company", filters.company, "default_currency")
 
 	docs = []
 	for h in sorted(headers, key=lambda x: (str(x.get("posting_date") or ""), x.get("name") or "")):
@@ -127,10 +129,12 @@ def _collect(filters) -> frappe._dict:
 		channel = sr._channel(h.get("voucher_type"), h.get("woo_online_order"), h.get("gunbroker_order"))
 		is_return = bool(cint(h.get("is_return")))
 		rate = flt(x.get("conversion_rate")) or 1.0
+		# Every figure in the company's currency: the header fetch's totals are the ticket's own.
 		d = frappe._dict(
 			name=name, voucher_type=h["voucher_type"], channel=channel, is_return=is_return,
-			net=net, trade_in_allowance=-f["trade_in_net"], payout=payout,
-			total=invoice_total(h), grand_total=flt(h.get("grand_total")),
+			net=net, trade_in_allowance=-f["trade_in_net"], payout=payout * rate,
+			total=invoice_total({"rounded_total": x.get("base_rounded_total"), "grand_total": x.get("base_grand_total")}),
+			grand_total=flt(x.get("base_grand_total")),
 			shipping=bd["shipping_total"], sales_tax=bd["sales_tax_charged"] + bd["freight_tax_total"],
 			freight_tax=bd["freight_tax_total"], excise=bd["excise_total"],
 			marketplace_tax=bd["marketplace_tax_total"], marketplace_fee=bd["marketplace_fee_total"],
@@ -172,27 +176,16 @@ def _collect(filters) -> frappe._dict:
 		d.gross = net + d.discounts + d.returns
 		_non_taxable(d, h, ls, x, bd, taxes.get(name, []), acct_class, exempt_customers, oos_templates,
 			excise_accounts, locked)
-		_settle(d, x, payments.get(name, []), settlements.get(name, []))
+		_settle(d, x, payments.get(name, []), settlements.get(name, []), company_currency)
 		docs.append(d)
 	return frappe._dict(filters=filters, docs=docs, totals=_totals(docs, filters))
-
-
-def _add_line_facts(lines_by_invoice) -> None:
-	"""The pricing columns this report needs beyond the Sales Report's line fetch, merged by row name."""
-	rows = {l["name"]: l for ls in lines_by_invoice.values() for l in ls}
-	if not rows:
-		return
-	fields = ["name", "base_rate", "base_price_list_rate", "distributed_discount_amount", "enable_deferred_revenue"]
-	for child in ("POS Invoice Item", "Sales Invoice Item"):
-		for r in frappe.get_all(child, filters={"name": ["in", list(rows)]}, fields=fields):
-			rows[r["name"]].update(r)
 
 
 def _header_facts(headers) -> dict:
 	"""{invoice: facts} the Sales Report's header fetch does not carry."""
 	out = {}
 	base = ["name", "owner", "pos_profile", "conversion_rate", "base_change_amount", "base_write_off_amount",
-		"outstanding_amount", "taxes_and_charges"]
+		"outstanding_amount", "party_account_currency", "base_grand_total", "base_rounded_total", "taxes_and_charges"]
 	for dt, extra in ((sr._POS, []), (sr._SI, ["is_pos"])):
 		names = [h["name"] for h in headers if h["voucher_type"] == dt]
 		if not names:
@@ -255,8 +248,13 @@ def _ledger_settlements(company, invoices) -> dict:
 	return out
 
 
-def _settle(d, x, pos_rows, ledger) -> None:
-	"""The ticket's payments by method (cash net of change), payout, write-off and what is unpaid."""
+def _settle(d, x, pos_rows, ledger, company_currency) -> None:
+	"""The ticket's payments by method (cash net of change), payout, write-off and what is unpaid, in
+	the company's currency. The unpaid balance is stored in the customer's account currency (the
+	company's, or the invoice's own).
+	# lazy: an invoice-currency balance is converted at the invoice's own rate, so a payment taken at
+	# another rate leaves its exchange difference in E2; upgrade path: the payment ledger's
+	# company-currency outstanding (Payment Ledger Entry.amount summed per invoice)."""
 	change = flt(x.get("base_change_amount"))
 	if pos_rows and change:
 		cash = next((r for r in pos_rows if r.get("type") == "Cash"), pos_rows[0])
@@ -269,7 +267,10 @@ def _settle(d, x, pos_rows, ledger) -> None:
 	if d.payout:
 		d.payments[TRADE_IN_PAYOUTS] -= d.payout
 	d.payments[WRITE_OFF] += flt(x.get("base_write_off_amount"))
-	d.payments[UNPAID] += flt(x.get("outstanding_amount"))
+	unpaid = flt(x.get("outstanding_amount"))
+	if x.get("party_account_currency") and x.get("party_account_currency") != company_currency:
+		unpaid *= flt(x.get("conversion_rate")) or 1.0
+	d.payments[UNPAID] += unpaid
 
 
 def _exempt_customers(headers) -> set:
@@ -519,8 +520,18 @@ def _group_view(ctx, by):
 		g.total += d.total
 		for k, v in d.payments.items():
 			g.payments[k] += v
-	pay = [k for k, _v in _payment_order(ctx.totals)]
-	fields = {k: "pay_" + frappe.scrub(k) for k in pay}
+	# A method shows when any group has it, even if the groups cancel out in the period's total.
+	used = {k for g in groups.values() for k, v in g.payments.items() if flt(v, 2)}
+	totals = ctx.totals.payments
+	pay = sorted((k for k in used if k not in _FIXED_TAIL), key=lambda k: (-flt(totals.get(k)), k)) \
+		+ [k for k in _FIXED_TAIL if k in used]
+	fields = {}
+	for k in pay:   # two names can scrub alike ("Gift Card", "Gift-Card")
+		field, n = "pay_" + frappe.scrub(k), 1
+		while field in fields.values():
+			n += 1
+			field = f"pay_{frappe.scrub(k)}_{n}"
+		fields[k] = field
 	rows = []
 	tot = frappe._dict(orders=0, gross=0.0, discounts=0.0, returns=0.0, net_sales=0.0, tax=0.0, total=0.0,
 		payments=defaultdict(float))
