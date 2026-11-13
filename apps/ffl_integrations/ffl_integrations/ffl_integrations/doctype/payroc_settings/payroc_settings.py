@@ -6,6 +6,9 @@ from frappe.model.document import Document
 
 class PayrocSettings(Document):
 	def validate(self):
+		from ffl_integrations.payments.card_readers import validate_table
+
+		validate_table(self)
 		# One card processor takes cards at a time (payments.registry): arming Payroc (switched
 		# on WITH a key) while another processor is on would leave the POS not knowing where a
 		# swipe goes. Switched on without a key does not count, as in the registry.

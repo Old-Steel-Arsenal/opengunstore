@@ -194,14 +194,16 @@ class PayrocProcessor(CardProcessor):
 	# ------------------------------------------------------------ card-present charge
 
 	def start_charge(self, *, document, attempt, amount, terminal, description, operator,
-			save_card=None):
+			save_card=None, device=None):
 		cof = None
 		if save_card:
 			cof = {"tokenize": True, "merchantReference": save_card["reference"],
 				"usageAgreement": save_card.get("usage") or "UNSCHEDULED"}
 		created = self.client.create_payment_instruction(
 			amount=amount, order_id=_order_id(document, attempt), terminal=terminal,
-			operator=operator, description=description, credential_on_file=cof)
+			operator=operator, description=description, credential_on_file=cof,
+			# A chosen card reader's device; without one, the client's configured device.
+			**({"serial_number": device} if device else {}))
 		iid = (created or {}).get("paymentInstructionId") or ""
 		if not iid:
 			frappe.throw(_("Payroc returned no paymentInstructionId."))

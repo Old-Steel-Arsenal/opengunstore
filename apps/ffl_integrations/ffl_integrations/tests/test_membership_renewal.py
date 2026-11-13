@@ -301,6 +301,89 @@ class MembershipRenewal(_CardOnFileBase):
 		self.assertEqual(client.charge_stored_credential.call_count, 1)
 		self.assertEqual((self._doc(m).status, getdate(self._doc(m).current_period_end)), (ms.ACTIVE, date(2027, 1, 14)))
 
+	# ---------------------------------------------------------------- the job: reruns, kills, batches
+
+	def _charged(self, client):
+		"""Order ids the gateway was asked to charge, in order."""
+		return [c.kwargs["order_id"] for c in client.charge_stored_credential.call_args_list]
+
+	def test_running_the_job_twice_the_same_day_charges_once(self, cc):
+		client = cc.from_settings.return_value
+		self._approve_all(client)
+		m, _card = self._member()
+		with _on("2026-12-15"), patch("ffl_core.receipts.frappe.enqueue"):
+			self.assertEqual(ms.renew_memberships().get(ms.RENEWED), 1)
+			self.assertEqual(ms.renew_memberships().get(ms.RENEWED), None)   # nothing left to charge
+			ms.run_renewals()                                                 # the job wrapper too
+		self.assertEqual(len(self._charged(client)), 1)
+		self.assertEqual([r.status for r in self._renewals(m)], [ms.PAID])
+
+	def test_a_run_killed_at_the_gateway_is_finished_by_the_next_run_without_charging_twice(self, cc):
+		"""The worker dies (timeout, restart) while the gateway holds the second member's card. The
+		charge record and "tried today" were committed before the gateway call, so the next run
+		renews the members it never reached and leaves the interrupted one to Needs attention —
+		that card is never charged a second time."""
+		client = cc.from_settings.return_value
+		members = [self._member()[0] for _ in range(3)]
+		calls = []
+
+		class Killed(BaseException):
+			"""Not an Exception: nothing on the way catches it, as with a killed worker."""
+
+		def gateway(**kw):
+			calls.append(kw["order_id"])
+			if len(calls) == 2:
+				raise Killed()
+			return _payment(f"REF-{frappe.generate_hash(length=6)}", kw["amount"])
+
+		client.charge_stored_credential.side_effect = gateway
+		with _on("2026-12-15"), patch("ffl_core.receipts.frappe.enqueue"):
+			with self.assertRaises(Killed):
+				ms.renew_memberships()
+			self.assertEqual(len(calls), 2)
+			tally = ms.renew_memberships()                       # the next run, same day
+		# The first member is renewed (no longer due), the interrupted one was tried today.
+		self.assertEqual((tally.get(ms.RENEWED), tally.get(ms.SKIPPED)), (1, 1))
+		self.assertEqual(len(calls), 3)
+		self.assertEqual(len(set(calls)), 3)                     # three invoices, each charged once
+		interrupted = calls[1]
+		waiting = frappe.db.get_value(api.TERMINAL_PAYMENT, {"sales_invoice": interrupted}, "status")
+		self.assertEqual(waiting, "IN_PROGRESS")
+		with _on("2026-12-16"):
+			self.assertEqual(ms.renew_memberships().get(ms.UNKNOWN), 1)   # looked up by a manager, not charged
+		self.assertEqual(len(calls), 3)
+		paid = {m for m in members if [r.status for r in self._renewals(m)] == [ms.PAID]}
+		self.assertEqual(len(paid), 2)
+
+	def test_a_batch_out_of_time_queues_the_next_one_which_carries_on(self, cc):
+		client = cc.from_settings.return_value
+		self._approve_all(client)
+		for _ in range(3):
+			self._member()
+		queued = []
+
+		def enqueue(method, **kw):
+			if method == "ffl_core.membership.run_renewals":
+				queued.append(kw)
+
+		with _on("2026-12-15"), patch("ffl_core.receipts.frappe.enqueue"), \
+				patch("ffl_core.membership.frappe.enqueue", side_effect=enqueue), \
+				patch.object(ms, "RENEWAL_BUDGET_SECONDS", -1):  # out of time after each membership
+			first = ms.run_renewals()
+			self.assertEqual((first.get(ms.RENEWED), first.get(ms.MORE)), (1, 2))
+			self.assertEqual(len(queued), 1)
+			self.assertEqual((queued[0]["queue"], queued[0]["timeout"], queued[0]["batch"]),
+				("long", ms.RENEWAL_TIMEOUT, 2))
+			second = ms.run_renewals(batch=2)
+			third = ms.run_renewals(batch=3)
+		self.assertEqual((second.get(ms.RENEWED), second.get(ms.MORE)), (1, 1))
+		self.assertEqual(third.get(ms.RENEWED), 1)
+		self.assertNotIn(ms.MORE, third)
+		self.assertIn("reminded", first)                         # the reminders go out with the first batch
+		self.assertEqual(len(queued), 2)
+		self.assertEqual(len(set(self._charged(client))), 3)
+		self.assertEqual(len(self._charged(client)), 3)
+
 	def test_a_released_charge_is_retried_on_the_same_invoice(self, cc):
 		client = cc.from_settings.return_value
 		client.charge_stored_credential.side_effect = requests.exceptions.ReadTimeout("read timed out")

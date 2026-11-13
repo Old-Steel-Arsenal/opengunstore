@@ -184,6 +184,9 @@ app_include_js = [
 	_hashed("js/customer_display_logic.js"),
 	_hashed("js/pos_tender_guard.js"),
 	_hashed("js/card_charges.js"),
+	# card_reader.js: window.ffl.cardReader — this computer's card reader (picked once, kept in
+	# localStorage) for the bundle's terminal charges; pure choose() is Node-tested.
+	_hashed("js/card_reader.js"),
 	_hashed("js/pos_recycle_bin.js"),
 	# Recent Orders › Work Orders: open gunsmith jobs and their Complete (ffl.gunsmithRegister in the
 	# bundle above); needs ffl.installClassHook from pos_tender_guard.js above.
@@ -1058,9 +1061,10 @@ scheduler_events = {
 		],
 		# Membership renewals at 7 AM store-local (site timezone): charge the saved cards that are
 		# due, retry past-due ones once a day, suspend when the grace runs out, yearly reminders
-		# (membership.py). Morning, so a decline reaches the staff the same day.
+		# (membership.py). Morning, so a decline reaches the staff the same day. The gate only
+		# queues the run on the long queue (the default queue's 300 s would cut a busy morning short).
 		"0 7 * * *": [
-			"ffl_core.membership.renew_memberships",
+			"ffl_core.membership.schedule_renewals",
 		],
 		# Team mailboxes are pulled every minute; Frappe's own 10-minute pull of every Email Account
 		# (staff mailboxes included) is left as is (crm/mail.py).

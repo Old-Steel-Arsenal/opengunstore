@@ -16,6 +16,8 @@
   "saved_card_terminal",
   "payment_page_secret",
   "sandbox_mode",
+  "section_card_readers",
+  "card_readers",
   "tab_status",
   "section_status",
   "last_token_refreshed_at",
@@ -103,6 +105,17 @@
    "label": "Sandbox Mode"
   },
   {
+   "fieldname": "section_card_readers",
+   "fieldtype": "Section Break",
+   "label": "Multiple Card Readers"
+  },
+  {
+   "fieldname": "card_readers",
+   "fieldtype": "Table",
+   "label": "Card Readers",
+   "options": "Card Reader"
+  },
+  {
    "fieldname": "tab_status",
    "fieldtype": "Tab Break",
    "label": "Status"
@@ -163,7 +176,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-04 12:00:00",
+ "modified": "2026-11-12 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "Payroc Settings",

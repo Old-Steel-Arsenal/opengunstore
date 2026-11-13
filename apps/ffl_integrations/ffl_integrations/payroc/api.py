@@ -18,7 +18,7 @@ from ffl_integrations.payments.api import _check_manager, _check_perm, _check_re
 
 @frappe.whitelist(methods=["POST"])
 def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
-		amount=None, description: str | None = None) -> dict:
+		amount=None, description: str | None = None, reader: str | None = None) -> dict:
 	"""Old path of ffl_integrations.payments.api.charge_pos_invoice (start a card charge).
 
 	Args:
@@ -26,13 +26,15 @@ def charge_pos_invoice(invoice_name: str, terminal: str | None = None,
 		terminal: Optional terminal id; defaults to the configured one.
 		amount: Optional charge amount; defaults to the card-tender target.
 		description: Optional statement descriptor.
+		reader: The card reader to charge on (its name); required when the store lists card
+			readers, as on the new endpoint.
 
 	Returns:
-		The new endpoint's answer: {ok, instruction_id, status, amount} or {"skip": True}.
+		The new endpoint's answer: {ok, instruction_id, reader, status, amount} or {"skip": True}.
 	"""
 	_check_perm()
 	return api.charge_pos_invoice(invoice_name, terminal=terminal, amount=amount,
-		description=description)
+		description=description, reader=reader)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -67,19 +69,22 @@ def cancel_pos_charge(invoice_name: str, instruction_id: str) -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
-def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None = None) -> dict:
+def charge_sales_invoice(sales_invoice: str, amount=None, terminal: str | None = None,
+		reader: str | None = None) -> dict:
 	"""Old path of ffl_integrations.payments.api.charge_sales_invoice (card charge on a counter order).
 
 	Args:
 		sales_invoice: Submitted Sales Invoice with an outstanding balance.
 		amount: Charge amount, at most the outstanding balance (blank = the whole balance).
 		terminal: Optional terminal id; defaults to the configured one.
+		reader: The card reader to charge on (its name); required when the store lists card
+			readers, as on the new endpoint.
 
 	Returns:
 		The new endpoint's answer.
 	"""
 	_check_perm()
-	return api.charge_sales_invoice(sales_invoice, amount=amount, terminal=terminal)
+	return api.charge_sales_invoice(sales_invoice, amount=amount, terminal=terminal, reader=reader)
 
 
 @frappe.whitelist()

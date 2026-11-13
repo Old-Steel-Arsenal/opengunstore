@@ -817,6 +817,8 @@ app: `ffl_integrations` · module: FFL Integrations · child table
 | `refunded_amount` | Currency | Refunded Amount |  |  |
 | `attempt` | Int | Attempt |  |  |
 | `processor` | Data | Processor |  |  |
+| `card_reader` | Data | Card Reader |  |  |
+| `device_serial_number` | Data | Device Serial Number |  |  |
 | `instruction_id` | Data | Instruction ID |  |  |
 | `response` | Code | Gateway Response |  |  |
 | `save_card` | Check | Save Card Requested |  |  |
@@ -831,6 +833,16 @@ app: `ffl_integrations` · module: FFL Integrations · single · roles: System M
 |---|---|---|---|---|
 | `card_on_file_enabled` | Check | Offer to Save Cards |  |  |
 | `card_on_file_template` | Link | Card-on-File Authorization |  | Agreement Template |
+
+## Card Reader
+
+app: `ffl_integrations` · module: FFL Integrations · child table
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `reader_name` | Data | Reader Name | ✓ |  |
+| `serial_number` | Data | Device Serial Number | ✓ |  |
+| `enabled` | Check | Enabled |  |  |
 
 ## Card Terminal Payment
 
@@ -851,6 +863,8 @@ app: `ffl_integrations` · module: FFL Integrations · roles: Sales Manager, Sal
 | `reversal_entry` | Dynamic Link | Void Entry |  | reversal_entry_type |
 | `reversal_lock` | Small Text | Unconfirmed Void / Refund |  |  |
 | `processor` | Data | Processor |  |  |
+| `card_reader` | Data | Card Reader |  |  |
+| `device_serial_number` | Data | Device Serial Number |  |  |
 | `instruction_id` | Data | Instruction ID |  |  |
 | `response` | Code | Gateway Response |  |  |
 | `save_card` | Check | Save Card Requested |  |  |
@@ -1329,6 +1343,7 @@ app: `ffl_integrations` · module: FFL Integrations · single · roles: System M
 | `saved_card_terminal` | Data | Saved-Card Terminal Number |  |  |
 | `payment_page_secret` | Password | Payment Page Secret |  |  |
 | `sandbox_mode` | Check | Sandbox Mode |  |  |
+| `card_readers` | Table | Card Readers |  | Card Reader |
 | `last_token_refreshed_at` | Datetime | Last Token Refreshed At |  |  |
 | `last_charge_at` | Datetime | Last Charge At |  |  |
 | `integration_id` | Data | X-Integration-ID (ISV only) |  |  |

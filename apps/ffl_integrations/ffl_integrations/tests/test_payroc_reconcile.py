@@ -374,3 +374,83 @@ class TestReconcileRun(FrappeTestCase):
 			dict(name="RA", docstatus=2, card_refunded_amount=50.0),
 			dict(name="RA-1", docstatus=1, amended_from="RA", card_refunded_amount=50.0)]),
 			50.0)
+
+
+class TestReconcileJob(FrappeTestCase):
+	"""The daily reconcile runs on the long queue (one gateway read per charge would outlive the
+	default queue's 300 s timeout) and reads at most MAX_CHECKS charges a run."""
+
+	def test_the_scheduler_queues_it_on_the_long_queue(self):
+		self.assertIn("ffl_integrations.payroc.reconcile.schedule_reconcile",
+			frappe.get_hooks("scheduler_events", app_name="ffl_integrations")["daily"])
+		with patch.object(rec, "payroc_ready", return_value=True), \
+				patch.object(rec.frappe, "enqueue") as enqueue:
+			rec.schedule_reconcile()
+		enqueue.assert_called_once_with("ffl_integrations.payroc.reconcile.reconcile_payroc_charges",
+			queue="long", timeout=rec.RECONCILE_TIMEOUT, job_name=rec.RECONCILE_JOB,
+			job_id=rec.RECONCILE_JOB, deduplicate=True)
+		self.assertGreater(rec.RECONCILE_TIMEOUT, 300)
+		with patch.object(rec, "payroc_ready", return_value=False), \
+				patch.object(rec.frappe, "enqueue") as enqueue:
+			rec.schedule_reconcile()
+		enqueue.assert_not_called()
+
+	def test_one_run_reads_at_most_max_checks_newest_first(self):
+		charges = [frappe._dict(ref=f"R{i}", at=f"2026-11-0{i + 1} 10:00:00") for i in range(5)]
+		with patch.object(rec, "MAX_CHECKS", 3), patch.object(rec, "safe_log_error") as logged, \
+				patch.object(rec, "_already_flagged", return_value=False):
+			self.assertEqual([c.ref for c in rec._to_check(charges)], ["R4", "R3", "R2"])
+			logged.assert_called_once()
+			self.assertEqual([c.ref for c in rec._to_check(charges[:3])], ["R2", "R1", "R0"])
+			logged.assert_called_once()
+
+	def _window(self, card_charges, terminal_payments):
+		"""_captured_charges over these rows (only the three sources answer)."""
+		from frappe.utils import add_days, now_datetime
+
+		def fake_get_all(doctype, filters=None, fields=None, pluck=None, **kw):
+			if doctype == "Card Charge":
+				return [frappe._dict(r) for r in card_charges]
+			if doctype == "Card Terminal Payment" and fields:
+				return [frappe._dict(r) for r in terminal_payments]
+			return []
+
+		with patch.object(rec.frappe, "get_all", side_effect=fake_get_all), \
+				patch.object(rec.frappe.db, "exists", return_value=False), \
+				patch.object(rec.frappe.db, "count", return_value=2):
+			return rec._captured_charges(add_days(now_datetime(), -7))
+
+	def test_a_counter_terminal_payment_behind_many_till_charges_is_still_read(self):
+		"""The till's card rows come first in the window; a busy week of them must not crowd out
+		the counter order / dues paid on the terminal yesterday."""
+		till = [dict(ref=f"TILL{i}", amount=10.0, refunded_amount=0, name=f"PSINV-{i}", docstatus=1,
+			processor="payroc", at=f"2026-11-0{i + 1} 09:00:00") for i in range(5)]
+		counter = [dict(ref="CTP1", amount=99.0, refunded_amount=0, name="SINV-1", gunbroker_order=None,
+			processor="payroc", at="2026-11-08 09:00:00")]
+		charges = self._window(till, counter)
+		self.assertEqual(charges[-1].ref, "CTP1")                      # last in the window's order
+		with patch.object(rec, "MAX_CHECKS", 3), patch.object(rec, "safe_log_error"), \
+				patch.object(rec, "_already_flagged", return_value=False):
+			checked = [c.ref for c in rec._to_check(charges)]
+		self.assertEqual(checked, ["CTP1", "TILL4", "TILL3"])
+
+	def test_flagged_charges_take_no_place_under_the_cap(self):
+		charges = [frappe._dict(ref=f"R{i}", at=f"2026-11-0{i + 1} 10:00:00") for i in range(5)]
+		flagged = {"R4", "R3"}
+		with patch.object(rec, "MAX_CHECKS", 3), patch.object(rec, "safe_log_error") as logged, \
+				patch.object(rec, "_already_flagged", side_effect=lambda c: c.ref in flagged):
+			self.assertEqual([c.ref for c in rec._to_check(charges)], ["R2", "R1", "R0"])
+		logged.assert_not_called()                                      # three unflagged: none left out
+
+	def test_a_run_never_reads_a_flagged_charge(self):
+		"""reconcile_payroc_charges reads only what _to_check hands it (flagged ones are out)."""
+		charges = [frappe._dict(ref="FLAGGED", amount=50.0, refunded_amount=0, doctype="Company",
+			name="x", draft=False, at="2026-11-02"), frappe._dict(ref="OPEN", amount=50.0,
+			refunded_amount=0, doctype="Company", name="x", draft=False, at="2026-11-01")]
+		with patch.object(rec, "payroc_ready", return_value=True), \
+				patch.object(rec, "_captured_charges", return_value=charges), \
+				patch.object(rec, "_already_flagged", side_effect=lambda c: c.ref == "FLAGGED"), \
+				patch.object(rec, "PayrocClient") as pc:
+			pc.from_settings.return_value.retrieve_payment.return_value = _payment("READY")
+			rec.reconcile_payroc_charges()
+		pc.from_settings.return_value.retrieve_payment.assert_called_once_with("OPEN")

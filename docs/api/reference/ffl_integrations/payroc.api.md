@@ -19,7 +19,7 @@ Old path of ffl_integrations.payments.api.cancel_pos_charge (cancel an in-flight
 
 **Returns:** The new endpoint's answer.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:55`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:57`</sub>
 
 ## `cancel_sales_invoice_charge`
 
@@ -36,7 +36,7 @@ Old path of ffl_integrations.payments.api.cancel_sales_invoice_charge.
 
 **Returns:** The new endpoint's answer.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:101`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:106`</sub>
 
 ## `charge_pos_invoice`
 
@@ -52,8 +52,9 @@ Old path of ffl_integrations.payments.api.charge_pos_invoice (start a card charg
 | `terminal` | string \| null | no | `None` | Optional terminal id; defaults to the configured one. |
 | `amount` | — | no | `None` | Optional charge amount; defaults to the card-tender target. |
 | `description` | string \| null | no | `None` | Optional statement descriptor. |
+| `reader` | string \| null | no | `None` | The card reader to charge on (its name); required when the store lists card readers, as on the new endpoint. |
 
-**Returns:** The new endpoint's answer: {ok, instruction_id, status, amount} or {"skip": True}.
+**Returns:** The new endpoint's answer: {ok, instruction_id, reader, status, amount} or {"skip": True}.
 
 <sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:20`</sub>
 
@@ -70,10 +71,11 @@ Old path of ffl_integrations.payments.api.charge_sales_invoice (card charge on a
 | `sales_invoice` | string | yes | — | Submitted Sales Invoice with an outstanding balance. |
 | `amount` | — | no | `None` | Charge amount, at most the outstanding balance (blank = the whole balance). |
 | `terminal` | string \| null | no | `None` | Optional terminal id; defaults to the configured one. |
+| `reader` | string \| null | no | `None` | The card reader to charge on (its name); required when the store lists card readers, as on the new endpoint. |
 
 **Returns:** The new endpoint's answer.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:70`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:72`</sub>
 
 ## `confirm_out_of_band_refund`
 
@@ -91,7 +93,7 @@ Old path of ffl_integrations.payments.api.confirm_out_of_band_refund.
 
 **Returns:** The new endpoint's answer.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:174`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:179`</sub>
 
 ## `discover_terminals`
 
@@ -103,7 +105,7 @@ Old path of ffl_integrations.payments.api.list_terminals (connectivity smoke tes
 
 **Returns:** The new endpoint's answer: the processor's terminal list, {"error": ...} or {"skip": True}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:116`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:121`</sub>
 
 ## `poll_pos_charge`
 
@@ -121,7 +123,7 @@ Old path of ffl_integrations.payments.api.poll_pos_charge (poll a card charge on
 
 **Returns:** The new endpoint's answer.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:39`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:41`</sub>
 
 ## `poll_sales_invoice_charge`
 
@@ -138,7 +140,7 @@ Old path of ffl_integrations.payments.api.poll_sales_invoice_charge.
 
 **Returns:** The new endpoint's answer.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:86`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:91`</sub>
 
 ## `refund_pos_invoice`
 
@@ -155,7 +157,7 @@ Old path of ffl_integrations.payments.api.refund_pos_invoice (refund a POS retur
 
 **Returns:** The new endpoint's answer.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:144`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:149`</sub>
 
 ## `unlock_refund_lock`
 
@@ -172,7 +174,7 @@ Old path of ffl_integrations.payments.api.unlock_refund_lock (manager unlock of 
 
 **Returns:** The new endpoint's answer.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:159`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:164`</sub>
 
 ## `void_pos_invoice`
 
@@ -190,4 +192,4 @@ Old path of ffl_integrations.payments.api.void_pos_invoice (reverse an unsettled
 
 **Returns:** The new endpoint's answer.
 
-<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:127`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/payroc/api.py:132`</sub>

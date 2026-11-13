@@ -28,9 +28,9 @@ is what it was.
   deferred to income that day. A membership invoice is never cancelled for a refund: refunds
   are credit notes, made by hand (:func:`refuse_invoice_cancel`).
 
-* **Renewal** (:func:`renew_memberships`, every morning): an auto-renewing membership whose period
-  has ended gets the next period's invoice — from the day after the old period ends, never
-  shifted, ending the day before the next anniversary of the start day (:func:`renewal_period`) —
+* **Renewal** (:func:`renew_memberships`, every morning on the long queue —
+  :func:`schedule_renewals`): an auto-renewing membership whose period has ended gets the next
+  period's invoice — from the day after the old period ends, never shifted, ending the day before the next anniversary of the start day (:func:`renewal_period`) —
   and the saved card is charged for it through the card-on-file service (the
   ``ffl_membership_charge_saved_card`` hook). Approved: Paid, the period advances, Active.
   Declined: the invoice is voided (:func:`void_invoice`) and the membership goes Past Due for the
@@ -46,6 +46,8 @@ is what it was.
 Member benefits are not here yet.
 """
 from __future__ import annotations
+
+import time
 
 import frappe
 from frappe import _
@@ -898,25 +900,84 @@ def _save(doc) -> None:
 	doc.save(ignore_permissions=True)
 
 
-def renew_memberships() -> dict:
-	"""Daily, store-local morning: charge the renewals that are due, retry the past-due ones once a
-	day, suspend those whose grace ran out, then send the yearly reminders. Nothing runs with no plan
+# The daily renewal run is a background job on the long queue: one membership after another, each
+# a gateway call (seconds), would outlive the default queue's 300 s timeout on a busy day and be
+# killed halfway. A run stops starting new memberships after RENEWAL_BUDGET_SECONDS and queues the
+# next batch, which carries on where it stopped: everyone already tried today is skipped.
+RENEWAL_JOB = "ffl_core.membership.renewals"
+RENEWAL_QUEUE = "long"
+RENEWAL_TIMEOUT = 3600
+RENEWAL_BUDGET_SECONDS = 2400
+# lazy: 20 batches of 40 minutes a day, one membership at a time (~2–4 s each, so ~12,000+ a day);
+# charge in parallel workers if a store ever renews more than that in a morning.
+RENEWAL_MAX_BATCHES = 20
+MORE = "more"
+
+
+def schedule_renewals() -> None:
+	"""Scheduler gate (every morning): queue the renewal run on the long queue. Queues nothing with
+	no plan or with renewals switched off; never two runs from the scheduler at once."""
+	if not frappe.db.count(PLAN) or not renewals_enabled():
+		return
+	frappe.enqueue("ffl_core.membership.run_renewals", queue=RENEWAL_QUEUE, timeout=RENEWAL_TIMEOUT,
+		job_name=RENEWAL_JOB, job_id=RENEWAL_JOB, deduplicate=True)
+
+
+def run_renewals(batch: int = 1) -> dict:
+	"""The renewal job: one batch of :func:`renew_memberships`; when the time budget ran out with
+	memberships left, the next batch is queued (a fresh job, so the queue's timeout never reaches
+	a membership halfway)."""
+	tally = renew_memberships(time_budget=RENEWAL_BUDGET_SECONDS)
+	if tally.get(MORE):
+		if int(batch) >= RENEWAL_MAX_BATCHES:
+			frappe.log_error(title="Membership renewals: batch limit reached",
+				message=f"{tally[MORE]} membership(s) not reached today; tomorrow's run carries on.")
+		else:
+			frappe.enqueue("ffl_core.membership.run_renewals", queue=RENEWAL_QUEUE,
+				timeout=RENEWAL_TIMEOUT, job_name=RENEWAL_JOB, batch=int(batch) + 1,
+				enqueue_after_commit=True)
+	return tally
+
+
+def renew_memberships(time_budget: float | None = None) -> dict:
+	"""Daily, store-local morning: send the yearly reminders, then charge the renewals that are due,
+	retry the past-due ones once a day and suspend those whose grace ran out. Nothing runs with no plan
 	or with Membership Settings → Charge renewals automatically off. Each membership is its own
 	transaction (one failure is logged and leaves the others alone); running it twice the same day
-	tries nobody twice. Returns a tally of the outcomes."""
+	tries nobody twice — nor does a run killed halfway and run again: a membership is marked tried
+	today, together with its charge record, before its card is charged. With ``time_budget``
+	(seconds) no new membership is started once it has run out: the tally then counts the ones
+	left under ``more``. The reminders go first, so a batch that runs out of time (or the last
+	batch never running) cannot hold them up; they are sent once per renewal, so every batch
+	asking again sends nothing twice, and a reminder that fails is logged and charges nothing
+	less. Returns a tally of the outcomes."""
 	if not frappe.db.count(PLAN) or not renewals_enabled():
 		return {}
+	started = time.monotonic()
 	today = getdate(nowdate())
 	due = frappe.get_all(DOCTYPE, filters={"auto_renew": 1, "status": ("in", (ACTIVE, PAST_DUE)),
 		"current_period_end": ("<", today)}, pluck="name", order_by="current_period_end asc")
 	# Past due with auto-renew since switched off: not charged, but its grace still runs out.
 	lapsing = frappe.get_all(DOCTYPE, filters={"auto_renew": 0, "status": PAST_DUE}, pluck="name")
-	tally: dict = {}
-	for name in due + lapsing:
+	todo = due + lapsing
+	tally: dict = {"reminded": _send_reminders_safely(today)}
+	for i, name in enumerate(todo):
+		if i and time_budget is not None and time.monotonic() - started > time_budget:
+			tally[MORE] = len(todo) - i
+			return tally
 		out = _renew_safely(name, today)
 		tally[out] = tally.get(out, 0) + 1
-	tally["reminded"] = send_renewal_reminders(today)
 	return tally
+
+
+def _send_reminders_safely(today) -> int:
+	"""The yearly reminders, never stopping the renewals behind them (each reminder already logs
+	its own failure; this covers the run itself: a reminder sent is committed with its mark)."""
+	try:
+		return send_renewal_reminders(today)
+	except Exception:
+		frappe.log_error(title="Membership renewal reminders failed", message=frappe.get_traceback())
+		return 0
 
 
 def _renew_safely(name: str, today) -> str:
