@@ -649,6 +649,23 @@ A membership a customer can buy: what it costs, how often it bills, and its regi
 | `terms_template` | Link | Membership Terms |  | Agreement Template |
 | `grace_enabled` | Check | Grace Period on Failed Renewal |  |  |
 | `grace_days` | Int | Grace Days |  |  |
+| `benefits` | Table | Benefits |  | Membership Plan Benefit |
+
+## Membership Plan Benefit
+
+app: `ffl_core` · module: FFL Core · child table
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `applies_to` | Select | Applies To | ✓ | Item, Item Group, Price List |
+| `item` | Link | Item |  | Item |
+| `item_group` | Link | Item Group (with Sub-groups) |  | Item Group |
+| `price_list` | Link | Items Priced in Price List |  | Price List |
+| `benefit_type` | Select | Benefit | ✓ | Percent off, Amount off, Fixed price, Price-list price |
+| `value` | Float | Percent, Amount or Price |  |  |
+| `uses_per_day` | Int | Daily Limit per Member (0 = None) |  |  |
+| `days` | Data | Only on Days |  |  |
+| `label` | Data | Reason Shown on the Sale |  |  |
 
 ## Membership Settings
 

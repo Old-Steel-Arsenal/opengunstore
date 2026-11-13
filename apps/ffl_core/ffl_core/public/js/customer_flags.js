@@ -10,7 +10,7 @@
 //     a 30-minute window (override_customer_ban) — and the answer becomes true.
 //     The server refuses the sale on its own too (refuse_banned_customer).
 //   • Active alerts: shown once per `key` (the POS uses the invoice + customer).
-//   • Everything else (status, family, tags, IDs about to expire, agreements
+//   • Everything else (status, the member badge, family, tags, IDs about to expire, agreements
 //     shown on the panel): a one-line strip — ffl.customerFlags.strip(flags) —
 //     the register shows under the customer's name. An agreement still to sign
 //     is a clickable chip that opens ffl.agreements.request (agreement_actions.js).
@@ -53,6 +53,8 @@
 		} else if (f.status && f.status !== 'Active') {
 			chips.push({ label: L(f.status), tone: 'orange' });
 		}
+		// The member badge (membership_benefits.membership_badge): plans, their end, today's uses.
+		if (f.membership && f.membership.text) chips.push({ label: f.membership.text, tone: 'green' });
 		(f.ids || []).forEach(function (d) {
 			chips.push(d.expired
 				? { label: L('{0} expired {1}', [L(d.id_type), d.expiry_date]), tone: 'orange' }

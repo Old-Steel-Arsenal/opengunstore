@@ -13,7 +13,8 @@ when they have none) with a reason — ``staff_switch``'s PIN and its lockouts.
   price (:func:`list_rate`: a firearm's own price with its sale running — the cheapest
   such gun of the model while the line has no serial yet — else the Item Price of the
   document's price list), lowered by any Pricing Rule ERPNext applied to the
-  line on this save; never above the rate the line was saved at before, nor (an invoice
+  line on this save and by the line's member price (``membership_benefits.member_floors``,
+  worked out again on the server); never above the rate the line was saved at before, nor (an invoice
   line made from a Sales Order line) the rate that line was approved at on the order. So
   raising a price, keeping one, or a discount the system gives asks nothing: only what a
   person lowered in THIS save does. The invoice discount the same way: above what was
@@ -336,6 +337,9 @@ def reductions(doc, before=None, *, against_list: bool = False) -> dict:
 	flags = getattr(doc, "flags", None) or {}
 	prior = {} if against_list else (flags.get(PRIOR_RATES) or {})
 	cache: dict = {}
+	# What a member pays, worked out again here: a member price is the system's, not a person's.
+	from ffl_core.membership_benefits import member_floors
+	members = member_floors(doc, before)
 	lines = []
 	for row in doc.get("items") or []:
 		was = saved.get(row.get("name"))
@@ -350,6 +354,9 @@ def reductions(doc, before=None, *, against_list: bool = False) -> dict:
 		rule = _rule_floor(doc, row, listed)
 		if rule is not None:
 			floor = min(floor, flt(rule, p))
+		member = members.get(row.get("name") or row.get("idx"))
+		if member is not None:
+			floor = min(floor, flt(member, p))
 		if was is not None and not against_list:
 			floor = min(floor, flt(was.rate, p))
 		# The order line was asked against the same Item Price; a gun's own price it never saw.

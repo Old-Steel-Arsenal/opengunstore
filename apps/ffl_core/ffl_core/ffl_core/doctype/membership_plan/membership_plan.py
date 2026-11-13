@@ -52,6 +52,9 @@ class MembershipPlan(Document):
 			if not tpl or tpl.scope != "Per document":
 				frappe.throw(_("{0} must be a Per document agreement: it is signed for each membership.").format(
 					escape_html(self.terms_template)))
+		from ffl_core.membership_benefits import validate_plan_benefits
+
+		validate_plan_benefits(self)
 		before = self.get_doc_before_save()
 		if before and (before.item != self.item or before.billing_period != self.billing_period) \
 				and frappe.db.exists("Membership", {"plan": self.name}):

@@ -170,6 +170,9 @@ extend_bootinfo = [
 	"ffl_core.price_approval.extend_bootinfo",
 	# The US state codes for the address forms' State dropdowns (interstate_tax.US_STATES).
 	"ffl_core.compliance.interstate_tax.extend_bootinfo",
+	# Whether any plan has a member benefit: the cart's live preview stays quiet without one
+	# (membership_benefits.py).
+	"ffl_core.membership_benefits.extend_bootinfo",
 ]
 
 
@@ -217,6 +220,9 @@ app_include_js = [
 	# A lowered price asks a manager (PIN + reason) before the save: POS, the three forms, Create
 	# Order (price_approval.py). Needs staff_switch.js above (authMode / serverMessage / post).
 	_hashed("js/price_approval.js"),
+	# Member prices shown on the cart as lines are added or the customer changes; the server's save
+	# is the authority (membership_benefits.py).
+	_hashed("js/member_prices.js"),
 ]
 
 doc_events = {
@@ -374,6 +380,9 @@ doc_events = {
 			# Locked lines (trade-in credit) pinned to their amount BEFORE core
 			# prices, totals and taxes the rows.
 			"ffl_core.compliance.locked_lines.pin_locked_lines",
+			# Member prices onto the lines before core totals and taxes them (membership_benefits.py);
+			# after the consignment freeze, which marks the consignment lines it skips.
+			"ffl_core.membership_benefits.apply_member_prices",
 		],
 		"validate": [
 			# No counter sale to a Banned customer without a manager's open override
@@ -416,6 +425,8 @@ doc_events = {
 			"ffl_core.compliance.trade_in_settlement.keep_merged_change",
 			# A gunsmith deposit line only on a register invoice (gunsmith.py).
 			"ffl_core.gunsmith.guard_deposit_lines",
+			# A line ERPNext priced otherwise than its member price keeps no benefit record (membership_benefits.py).
+			"ffl_core.membership_benefits.settle_member_lines",
 			# Locked lines: refuse what ERPNext's own validate did to them after the
 			# before_validate pin (pricing rules, coupons). Last, after every other hook.
 			"ffl_core.compliance.locked_lines.assert_locked_lines",
@@ -532,6 +543,9 @@ doc_events = {
 			# Locked lines pinned before core prices/totals the rows — see the
 			# Sales Invoice entry.
 			"ffl_core.compliance.locked_lines.pin_locked_lines",
+			# Member prices onto the lines (membership_benefits.py): after the consignment freeze, before
+			# anything below reads the line amounts.
+			"ffl_core.membership_benefits.apply_member_prices",
 			# A peace officer's sale: the excise rows off before ERPNext totals the ticket
 			# (compliance/le_excise_exempt), and before the trade-in floor reads the rows.
 			"ffl_core.compliance.le_excise_exempt.apply_le_excise_exemption_before",
@@ -592,6 +606,8 @@ doc_events = {
 			"ffl_core.api.counter_pickup.assert_ticket_free",
 			# A gunsmith deposit line comes only from its work order, within what it holds (gunsmith.py).
 			"ffl_core.gunsmith.guard_deposit_lines",
+			# A line ERPNext priced otherwise than its member price keeps no benefit record (membership_benefits.py).
+			"ffl_core.membership_benefits.settle_member_lines",
 			# Locked lines: refuse what ERPNext's own validate did to them after the
 			# before_validate pin (pricing rules, coupons). Last, after every other hook.
 			"ffl_core.compliance.locked_lines.assert_locked_lines",
@@ -877,6 +893,8 @@ after_install = [
 	# Manager approval for lowered prices: its fields, and the switch ON for a new store.
 	"ffl_core.setup.price_approval.ensure",
 	"ffl_core.price_approval.ensure_default",
+	# Member price line fields (setup/member_benefits).
+	"ffl_core.setup.member_benefits.ensure",
 	# Cash drawer: the two POS Closing Entry fields (accounts wait for a company, at after_migrate).
 	"ffl_core.setup.cash_drawer.ensure_fields_only",
 	# Frappe CRM wired to the POS: custom fields, ERPNext CRM Settings, the product backfill (ffl_core.crm.setup).
@@ -919,6 +937,8 @@ after_migrate = [
 	# Deferred Membership Revenue + Membership Revenue per company (accounts only; Accounts
 	# Settings change only when a store saves its first active Membership Plan).
 	"ffl_core.setup.membership.ensure",
+	# Member price line fields (setup/member_benefits).
+	"ffl_core.setup.member_benefits.ensure",
 	"ffl_core.setup.consignment.ensure",
 	# Stock at Consignee per company — the account every consignment
 	# warehouse points at (ffl_core.warehouses); core-owned custody primitive.

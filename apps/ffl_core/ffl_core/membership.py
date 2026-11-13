@@ -40,10 +40,9 @@ is what it was.
   (Memberships page). At most one open renewal invoice per membership and period: a retry
   charges that one.
 * **Member or not** — :func:`is_member`: Active, or Past Due within its grace days.
+* **Member prices** — a plan's Benefits, priced at the register by ``ffl_core.membership_benefits``.
 * **Memberships page** (Gun Shop sidebar → Customers): :func:`page_overview` (totals, plans, Needs
   attention) and :func:`page_members` (the member list).
-
-Member benefits are not here yet.
 """
 from __future__ import annotations
 
@@ -1216,8 +1215,14 @@ def is_member(customer: str, plan: str | None = None) -> bool:
 	if plan:
 		filters["plan"] = plan
 	today = getdate(nowdate())
-	return any(r.status == ACTIVE or (r.grace_until and getdate(r.grace_until) >= today)
+	return any(gives_benefits(r.status, r.grace_until, today)
 		for r in frappe.get_all(DOCTYPE, filters=filters, fields=["status", "grace_until"]))
+
+
+def gives_benefits(status: str, grace_until, day) -> bool:
+	"""Whether a membership in *status* gives its benefits on *day*: Active, or Past Due while its
+	grace (to *grace_until*) lasts. The one rule for :func:`is_member` and the member prices."""
+	return status == ACTIVE or (status == PAST_DUE and bool(grace_until) and getdate(grace_until) >= getdate(day))
 
 
 @frappe.whitelist()
@@ -1369,7 +1374,8 @@ def page_overview() -> dict:
 
 	Returns:
 	    {plans: [{name, active, billing_period, price, registration_fee, auto_renew_default,
-	    grace_enabled, grace_days, terms_template, description, members}], totals: {active,
+	    grace_enabled, grace_days, terms_template, description, members, benefits: one line per
+	    member benefit}], totals: {active,
 	    monthly, renewing_soon, attention}, attention: the Needs attention answer (managers only,
 	    else null), can_manage: may act on memberships, can_edit_plans: may create and change plans}.
 	    ``monthly`` is what the Active and Past Due members bill per month (a yearly price counts a
@@ -1382,9 +1388,12 @@ def page_overview() -> dict:
 	today = getdate(nowdate())
 	live = frappe.get_all(DOCTYPE, filters={"status": ("in", (ACTIVE, PAST_DUE))}, fields=["plan", "status",
 		"auto_renew", "cancel_at_period_end", "current_period_end"])
+	from ffl_core.membership_benefits import summarize_benefits
+
 	by_plan = {p.name: p for p in plans}
 	for p in plans:
 		p.members = 0
+		p.benefits = summarize_benefits(p.name)
 	monthly = renewing = 0
 	for m in live:
 		p = by_plan.get(m.plan)

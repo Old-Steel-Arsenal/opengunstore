@@ -53,6 +53,14 @@ Besides the hooks on this page, an extension may call: `ffl_core.extensions.*`, 
 - `price_readonly_reason(item_code) -> str | None`: why the regular price cannot be changed outside the POS (a gun priced one by one, a sale running today, a drop-ship listing, the transfer fee), translated for staff; None when it can.
 - `set_regular_price(item_code, price) -> None`: a price approver (`roles.PRICE_APPROVER_ROLES`) sets the regular price; saves the Item (validate, website pushes, the Version trail) and the selling Item Price, and notes the old and new register price on the Item. Raises `PermissionError` for anyone else and `ValidationError` while `price_readonly_reason` answers or when the price is not above 0.
 
+Member prices, `ffl_core.membership_benefits` (a Membership Plan's Benefits; the register prices every line with them on save):
+
+- `member_price(customer, item_code, qty=1, on_date=None, *, exclude_invoice=None) -> dict`: what *customer* (the member who uses the benefit, not necessarily the payer) pays for *qty* stock units on *on_date* (store-local day, default today). Returns `{"list_rate", "rate", "benefit", "membership", "reason", "uses_left", "notice"}`. With no benefit (not a member that day, item not covered, too few uses left, a sale price already lower) `rate == list_rate` and `benefit` is None. `uses_left`: the benefit's uses left that day before this line, None without a limit. `notice`: why a member price was not given (no uses left, naming the member's sales that took them, drafts marked not completed), else None. `exclude_invoice`: a POS Invoice / Sales Invoice whose own lines must not count as used (the ticket you are pricing again).
+- `benefit_usage(customer, benefit, on_date=None) -> dict`: `{"limit", "used", "left"}` for a benefit (`member_price`'s `benefit`); `limit` 0 and `left` None mean no limit. Uses count stock units (qty × conversion factor) on lines carrying the benefit for that member that day, drafts included; a line returned in full gives its uses back.
+- `membership_badge(customer) -> dict | None`: `{"text": "Premium · to 2027-04 · Range 1/2 today", "memberships": [{"membership", "plan", "status", "until", "uses": [{"benefit", "label", "used", "limit"}]}]}` for a customer with a membership giving benefits today (Active, or Past Due within its grace), else None. The counter's customer panel shows `text`.
+
+Build a ticket with `ffl_core.api.pos_ticket.build_ticket(customer, items, company=None)` (Python, same answer as `open_ticket`) to price a line for someone other than the payer: a line may carry `benefit_customer`, the member whose benefits price it (a guest checked in at your counter). The API endpoint `open_ticket` ignores that key. On either, a member price lower than the line's rate replaces it, and a rate you send below the member price stays without the benefit (the better of the two, never both).
+
 ## Named hooks
 
 Declare them in `hooks.py` like any Frappe hook. The value is a dotted path to a function unless the entry says otherwise. The core calls every provider inside `try/except`; **On failure** says what it assumes then (logged to Error Log unless stated). Contract tests: `ffl_core/tests/test_extension_hooks.py`.
@@ -229,7 +237,7 @@ frappe.set_route('point-of-sale');
 
 The register opens it in the cart the way Recent Orders › Draft does (a sale already in the cart is parked first, after asking); the clerk adds lines and takes payment as usual. A name that is not an open draft is refused with a notice.
 
-A rate you put on the ticket is your code's price: the register does not ask a manager to approve it afterwards. When a person chose a price below list on your page, take the manager's approval in your own flow before you build the ticket.
+A rate you put on the ticket is your code's price (unless the line's member price is lower): the register does not ask a manager to approve it afterwards. When a person chose a price below list on your page, take the manager's approval in your own flow before you build the ticket.
 
 Also available: `gunstore.extensions.isEnabled(id, boot)`, `ffl.featureOffPage(page, featureTitle, whereToTurnOn)` for your own Desk pages, `gunstore.renderReleaseNotes(entries)`.
 

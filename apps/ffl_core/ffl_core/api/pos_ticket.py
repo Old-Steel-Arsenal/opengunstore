@@ -19,12 +19,17 @@ from frappe import _
 from frappe.utils import flt
 
 from ffl_core import price_approval
+from ffl_core.membership_benefits import TRUSTED_MEMBERS
 from ffl_core.pos_draft import open_shift, profile_defaults
 from ffl_core.roles import COUNTER_ROLES
+from ffl_core.setup.member_benefits import BENEFICIARY_FIELD, BENEFIT_FIELD
 
 # What a caller may put on a ticket line; anything else (accounts, locked rates,
 # work-order links) is the builders' to set, never the caller's.
 _LINE_KEYS = frozenset({"item_code", "qty", "rate", "serial_no", "storage_location"})
+# The member whose benefits price a line: only code in this process may name one (build_ticket); a
+# request's is dropped (membership_benefits: another person's membership is not the caller's to use).
+_MEMBER_KEY = "benefit_customer"
 
 
 def _company(company: str | None) -> str:
@@ -35,8 +40,9 @@ def _company(company: str | None) -> str:
 	return company
 
 
-def _lines(items) -> list[dict]:
-	"""The caller's lines as POS Invoice Item rows, checked at the trust boundary."""
+def _lines(items, *, trusted: bool = False) -> list[dict]:
+	"""The caller's lines as POS Invoice Item rows, checked at the trust boundary. *trusted* (code in
+	this process): a line may name its member (``benefit_customer``); otherwise the key is ignored."""
 	items = frappe.parse_json(items) if isinstance(items, str) else items
 	if not isinstance(items, list) or not items:
 		frappe.throw(_("A ticket needs at least one line."))
@@ -44,7 +50,7 @@ def _lines(items) -> list[dict]:
 	for i, raw in enumerate(items, 1):
 		if not isinstance(raw, dict):
 			frappe.throw(_("Line {0} is not an item.").format(i))
-		stray = set(raw) - _LINE_KEYS
+		stray = set(raw) - _LINE_KEYS - {_MEMBER_KEY}
 		if stray:
 			frappe.throw(_("Line {0}: unknown field(s) {1}.").format(i, ", ".join(sorted(stray))))
 		item_code = str(raw.get("item_code") or "").strip()
@@ -70,6 +76,11 @@ def _lines(items) -> list[dict]:
 		location = str(raw.get("storage_location") or "").strip()
 		if location:
 			row["ffl_storage_location"] = location
+		member = str(raw.get(_MEMBER_KEY) or "").strip() if trusted else ""
+		if member:
+			if not frappe.db.exists("Customer", member):
+				frappe.throw(_("Line {0}: customer {1} was not found.").format(i, member))
+			row[BENEFICIARY_FIELD] = member
 		rows.append(row)
 	return rows
 
@@ -114,13 +125,16 @@ def open_ticket(customer: str, items, company: str | None = None, approval_token
 
 	A rate under the line's list price needs a manager's approval while the store requires one,
 	as at the register: a manager signed in approves their own; anyone else sends the token a
-	manager's approval gave for this ticket. A rate past the item's Max Discount is refused.
+	manager's approval gave for this ticket. A rate past the item's Max Discount is refused. The
+	customer's member price, worked out here, is the system's and asks nothing; a typed rate under
+	it asks like any other.
 
 	Args:
 	    customer: Customer name.
 	    items: JSON list of lines ``[{item_code, qty=1, rate?, serial_no?,
 	        storage_location?}]``; rate blank = the item's price for the
-	        customer, a serial is one unit.
+	        customer, a serial is one unit. A member price lower than the
+	        line's rate replaces it.
 	    company: Company the shift is on; blank = the user's default company.
 	    approval_token: The token ``ffl_core.price_approval.approve`` returned for
 	        this ticket (its doc: a POS Invoice with these customer and lines).
@@ -136,8 +150,10 @@ def open_ticket(customer: str, items, company: str | None = None, approval_token
 
 def build_ticket(customer: str, items, company: str | None = None) -> dict:
 	""":func:`open_ticket` for code in this process (an extension's own endpoint) whose rates are its
-	own pricing: not asked for a manager's approval, and may pass an item's Max Discount. Never
-	whitelisted: a request cannot reach it. Same answer."""
+	own pricing: not asked for a manager's approval, and may pass an item's Max Discount. A line may
+	also carry ``benefit_customer``, the member whose benefits price it when that is not the ticket's
+	customer (a guest checked in at the range, on a ticket someone else pays). Never whitelisted: a
+	request cannot reach it. Same answer."""
 	return _open(customer, items, company, trusted=True)
 
 
@@ -148,14 +164,16 @@ def _open(customer: str, items, company: str | None, *, trusted: bool = False,
 	customer = (customer or "").strip()
 	if not customer or not frappe.db.exists("Customer", customer):
 		frappe.throw(_("Customer {0} was not found.").format(customer or "?"))
-	lines = _lines(items)
+	lines = _lines(items, trusted=trusted)
 	shift = open_shift(company)
 	inv = frappe.get_doc({
 		"doctype": "POS Invoice", "company": company, "pos_profile": shift.pos_profile,
 		"customer": customer, "items": lines, **profile_defaults(shift.pos_profile),
 	})
 	inv.flags.ignore_permissions = True
-	if not trusted:
+	if trusted:
+		inv.flags[TRUSTED_MEMBERS] = True   # the lines' benefit_customer is ours (membership_benefits)
+	else:
 		# The caller's typed rates: judged like a register save, under the token when one came.
 		price_approval.attach(inv)
 		inv.set(price_approval.TOKEN_FIELD, (approval_token or "").strip() or None)
@@ -170,6 +188,8 @@ def _open(customer: str, items, company: str | None, *, trusted: bool = False,
 	# this insert took covers this save; the register's later saves start from the rate saved here.)
 	moved = False
 	for row, line in zip(inv.items, lines):
+		if row.get(BENEFIT_FIELD) and flt(row.rate) < line.get("rate", 0):
+			continue   # a member price under the caller's rate is the line's
 		if "rate" in line and flt(row.rate) != line["rate"]:
 			_set_rate(row, line["rate"], trusted=trusted)
 			moved = True
