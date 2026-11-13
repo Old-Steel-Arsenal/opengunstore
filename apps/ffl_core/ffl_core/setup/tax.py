@@ -127,7 +127,10 @@ def sales_tax_and_excise_accounts(company: str) -> tuple[list[str], list[str]]:
 	company's) and any account of the default template named EXCISE_ACCOUNT_NAME; the sales-tax
 	accounts are the default template's accounts less those. Reporting only:
 	`_company_sales_tax_accounts` stays the full list, because the 0% service template and the
-	freight-tax mirror must cover the excise account too."""
+	freight-tax mirror must cover the excise account too.
+	# lazy: an excise account is known by store_setup's account name; one made by hand or renamed
+	# is known only while FFL Settings' peace-officer account points at it (otherwise it reports as
+	# sales tax); upgrade path: an "excise" check on Account, or the template rows' own flag."""
 	accounts = _company_sales_tax_accounts(company)
 	if not accounts:
 		return [], []

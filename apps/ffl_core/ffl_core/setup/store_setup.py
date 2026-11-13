@@ -57,6 +57,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, escape_html, flt
 
+from ffl_core.setup.tax import EXCISE_ACCOUNT_NAME
 from ffl_core.utils import commit, single_flag
 
 MARKER = "STORE_SETUP COMMITTED"
@@ -212,7 +213,7 @@ def _accounts(c: dict) -> dict:
 		"cfet": None,
 	}
 	if c["CFET_RATE"] > 0:
-		a["cfet"] = _ensure_account(c, "CA Firearm Excise Tax Payable", "Duties and Taxes", "Tax")
+		a["cfet"] = _ensure_account(c, EXCISE_ACCOUNT_NAME, "Duties and Taxes", "Tax")
 	# Only when the company has none: the cash drawer (and the accountant) may already have chosen one.
 	if not frappe.db.get_value("Company", c["COMPANY_NAME"], "default_bank_account"):
 		frappe.db.set_value("Company", c["COMPANY_NAME"], "default_bank_account", a["bank"])
