@@ -916,7 +916,7 @@ after_install = [
 	"ffl_core.price_approval.ensure_default",
 	# Member price line fields (setup/member_benefits).
 	"ffl_core.setup.member_benefits.ensure",
-	# The assignment notice's two ToDo fields (setup/assignment_notice).
+	# The assignment notice's ToDo fields (setup/assignment_notice).
 	"ffl_core.setup.assignment_notice.ensure",
 	# Cash drawer: the two POS Closing Entry fields (accounts wait for a company, at after_migrate).
 	"ffl_core.setup.cash_drawer.ensure_fields_only",
@@ -1005,7 +1005,7 @@ after_migrate = [
 	"ffl_core.setup.cash_drawer.ensure",
 	# Manager approval for lowered prices: the record + token fields (setup/price_approval).
 	"ffl_core.setup.price_approval.ensure",
-	# The assignment notice's two ToDo fields (setup/assignment_notice).
+	# The assignment notice's ToDo fields (setup/assignment_notice).
 	"ffl_core.setup.assignment_notice.ensure",
 	# Frappe CRM wired to the POS (ffl_core.crm.setup); does nothing while CRM is not on the site.
 	"ffl_core.crm.setup.ensure",

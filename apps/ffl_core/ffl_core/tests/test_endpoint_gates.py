@@ -56,6 +56,11 @@ OPEN_BY_DESIGN = {
 	# stopped by the whitelist itself.
 	"ffl_core.assignment_notice.pending",
 	"ffl_core.assignment_notice.acknowledge",
+	# Reviewed 2026-11-13: the My tasks page, same rule — every user can hold a task; the list,
+	# the count and Done read or close only the caller's own ToDos (Done refuses anyone else's).
+	"ffl_core.assignment_notice.my_tasks",
+	"ffl_core.assignment_notice.task_count",
+	"ffl_core.assignment_notice.done",
 }
 
 

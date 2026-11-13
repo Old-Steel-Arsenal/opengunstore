@@ -96,8 +96,9 @@ class TestShippedSidebar(FrappeTestCase):
 		sections = [i["label"] for i in items if i["type"] == "Section Break"]
 		self.assertEqual(sections, ["Sales", "Customers", "Compliance", "Inventory", "Purchasing", "Online"])
 		# No Notifications row: Frappe's own sidebar entry opens the same Notification Log.
-		self.assertEqual([(i["label"], i["link_type"], i["link_to"]) for i in items[:2]], [
-			("Dashboard", "Page", "store-overview"), ("Point of sale", "Page", "point-of-sale")])
+		self.assertEqual([(i["label"], i["link_type"], i["link_to"]) for i in items[:3]], [
+			("Dashboard", "Page", "store-overview"), ("Point of sale", "Page", "point-of-sale"),
+			("My tasks", "Page", "my-tasks")])
 		self.assertEqual((items[-1]["link_type"], items[-1]["link_to"]), ("Workspace", "Settings"))
 		self.assertFalse(any(i["keep_closed"] for i in items))
 		self.assertTrue(all(i["collapsible"] for i in items if i["type"] == "Section Break"))
@@ -105,7 +106,7 @@ class TestShippedSidebar(FrappeTestCase):
 	def test_each_section_holds_the_links_of_the_design(self):
 		items = _app_json("ffl_core", "sidebar", "gun_shop", "gun_shop.json")["items"]
 		sections, current = {}, None
-		for i in items[2:-1]:
+		for i in items[3:-1]:
 			if i["type"] == "Section Break":
 				current = sections.setdefault(i["label"], [])
 			else:

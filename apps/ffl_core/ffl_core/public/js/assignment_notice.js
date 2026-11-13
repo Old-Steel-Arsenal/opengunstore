@@ -8,8 +8,12 @@
 // • Delivery after first paint: the server's realtime event, a look on page change and when the
 //   tab comes back (at most once a minute), and every 5 minutes for a register that stays put.
 // • Another tab of this browser acknowledging closes the dialog here (BroadcastChannel).
+// • A seen task that is still open comes back once a day under "Not done yet" (the server decides
+//   which); "Open My tasks" says Got it and goes to the page where tasks are closed.
+// • The Gun Shop sidebar's My tasks link carries the number of open tasks. Frappe's sidebar has no
+//   count of its own for a link, so this adds a small badge next to the label after each draw.
 //
-// The pure half (step, due, merge, rowsHtml) is Node-tested.
+// The pure half (step, due, merge, rowsHtml, groupsHtml, badgeText) is Node-tested.
 (function (root, factory) {
 	var api = factory();
 	if (typeof module === 'object' && module.exports) module.exports = api;
@@ -70,7 +74,26 @@
 		}).join('');
 	}
 
-	return { step: step, due: due, merge: merge, rowsHtml: rowsHtml, esc: esc };
+	// New assignments first, then the daily reminders of seen ones still open, each under a small
+	// heading once there are reminders (only new ones: the rows alone, as before).
+	function groupsHtml(rows, opts) {
+		var t = (opts && opts.translate) || function (s) { return s; };
+		var fresh = (rows || []).filter(function (r) { return !r.reminder; });
+		var again = (rows || []).filter(function (r) { return r.reminder; });
+		if (!again.length) return rowsHtml(fresh, opts);
+		var head = function (label) {
+			return '<div class="ffl-assignment-group text-muted" style="margin-top:8px; font-size:var(--text-sm); font-weight:600">' + esc(t(label)) + '</div>';
+		};
+		return (fresh.length ? head('New') + rowsHtml(fresh, opts) : '') + head('Not done yet') + rowsHtml(again, opts);
+	}
+
+	// The sidebar badge: nothing for none, the number up to 99.
+	function badgeText(n) {
+		n = Number(n) || 0;
+		return n <= 0 ? '' : (n > 99 ? '99+' : String(n));
+	}
+
+	return { step: step, due: due, merge: merge, rowsHtml: rowsHtml, groupsHtml: groupsHtml, badgeText: badgeText, esc: esc };
 });
 
 (function fflAssignmentNoticeWire() {
@@ -83,7 +106,8 @@
 	var WAIT = 3000;
 	var rows = [];       // what the server last said is waiting
 	var shown = [];      // what the dialog lists
-	var dialog = null, open = false, lastLook = 0, waitTimer = null;
+	var dialog = null, open = false, lastLook = 0, waitTimer = null, openTasks = 0;
+	var PAGE = 'my-tasks';
 	var channel = window.BroadcastChannel ? new BroadcastChannel('ffl-assignment-notice') : null;
 
 	function screen() {
@@ -107,13 +131,13 @@
 		var m = api.merge(shown, rows);
 		if (!m.changed && dialog.$wrapper.find('.ffl-assignment').length) return;
 		shown = m.rows;
-		dialog.fields_dict.list.$wrapper.html('<div style="max-height:60vh; overflow-y:auto">' + api.rowsHtml(shown, {
+		dialog.fields_dict.list.$wrapper.html('<div style="max-height:60vh; overflow-y:auto">' + api.groupsHtml(shown, {
 			translate: __,
 			when: function (r) { return frappe.datetime.prettyDate(r.creation); },
 		}) + '</div><div class="text-danger ffl-assignment-error" style="margin-top:8px"></div>');
 	}
 
-	var $gotIt = null;
+	var $gotIt = null, $toTasks = null;
 
 	function make() {
 		dialog = new frappe.ui.Dialog({
@@ -124,8 +148,11 @@
 		// Not the dialog's primary action: Frappe's Ctrl+S presses the open dialog's primary button
 		// (frappe.app.trigger_primary_action), which would record "seen" with nobody reading it.
 		// Only a click, a tap, or tabbing to the button and pressing it counts.
-		$gotIt = frappe.ui.button({ label: __('Got it'), variant: 'solid', onclick: acknowledge });
-		dialog.custom_actions.append($gotIt);
+		$gotIt = frappe.ui.button({ label: __('Got it'), variant: 'solid', onclick: function () { acknowledge(); } });
+		$toTasks = frappe.ui.button({ label: __('Open My tasks'), onclick: function () {
+			acknowledge().then(function (ok) { if (ok) frappe.set_route(PAGE); });
+		} });
+		dialog.custom_actions.append($toTasks).append($gotIt);
 		dialog.footer.removeClass('hide');
 		// Hidden without the button (a page change hides any dialog): show it again if still waiting.
 		dialog.onhide = function () { open = false; setTimeout(apply, 500); };
@@ -142,14 +169,31 @@
 	function acknowledge() {
 		var names = shown.map(function (r) { return r.name; });
 		var $err = dialog.$wrapper.find('.ffl-assignment-error').text('');
-		$gotIt.prop('disabled', true);
-		ffl.staffSwitch.post(M + 'acknowledge', { names: names }, __('Could not save that. Try again.')).then(function (body) {
+		var $buttons = $gotIt.add($toTasks).prop('disabled', true);
+		return ffl.staffSwitch.post(M + 'acknowledge', { names: names }, __('Could not save that. Try again.')).then(function (body) {
 			rows = (body && body.message) || [];
 			try { if (channel) channel.postMessage({ type: 'ack', user: frappe.session.user }); } catch (e) { /* best effort */ }
 			apply();
+			return true;
 		}, function (e) {
 			$err.text((e && e.message) || __('Could not save that. Try again.'));
-		}).then(function () { $gotIt.prop('disabled', false); });
+			return false;
+		}).then(function (ok) { $buttons.prop('disabled', false); return ok; });
+	}
+
+	// The count next to the sidebar's My tasks link; the sidebar redraws on navigation, so this
+	// runs again after each route change.
+	function badge(n) {
+		if (n != null) openTasks = n;
+		var text = api.badgeText(openTasks);
+		$('.sidebar-item-container a.item-anchor[href$="/app/' + PAGE + '"]').each(function () {
+			var $a = $(this), $b = $a.find('.ffl-task-count');
+			if (!$b.length) {
+				$b = $('<span class="ffl-task-count indicator-pill orange" style="margin-left:auto; padding:0 6px; font-size:var(--text-xs)"></span>');
+				$a.find('.sidebar-item-label').after($b);
+			}
+			$b.text(text).toggle(!!text);
+		});
 	}
 
 	function look(force) {
@@ -160,16 +204,28 @@
 			rows = (body && body.message) || [];
 			apply();
 		}, function () { /* offline or signed out: the next look tries again */ });
+		// lazy: a second small request per look for the count; fold it into pending if looks ever cost.
+		ffl.staffSwitch.post(M + 'task_count', {}, '').then(function (body) {
+			badge(body && body.message);
+		}, function () { /* the next look tries again */ });
 	}
+
+	// The My tasks page reports its own count after a Done.
+	ffl.assignmentNotice.setCount = function (n) { badge(n); };
 
 	$(document).on('app_ready', function () {
 		if (!window.frappe || !frappe.boot || frappe.session.user === 'Guest') return;
 		rows = frappe.boot.ffl_assignments || [];
+		openTasks = frappe.boot.ffl_open_tasks || 0;
 		lastLook = Date.now();
+		setTimeout(function () { badge(); }, 500);
 		// After the What's New popup (app_ready + 1 s), which this then waits behind.
 		setTimeout(apply, 1500);
 		if (frappe.realtime && frappe.realtime.on) frappe.realtime.on('ffl_assignment', function () { look(true); });
-		if (frappe.router && frappe.router.on) frappe.router.on('change', function () { look(false); });
+		if (frappe.router && frappe.router.on) frappe.router.on('change', function () {
+			look(false);
+			setTimeout(function () { badge(); }, 300);
+		});
 		document.addEventListener('visibilitychange', function () { if (!document.hidden) look(false); });
 		setInterval(function () { look(true); }, TIMER);
 		if (channel) channel.onmessage = function (e) {

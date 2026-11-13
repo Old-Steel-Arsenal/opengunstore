@@ -55,6 +55,14 @@ When someone assigns you a task, such as a document to look at or a CRM follow-u
 
 Read the list, then click **Got it**. Nothing else closes the box. The person who assigned the task sees a note on the document that you saw it.
 
+A task you saw but have not finished comes back in the same box once a day, the first time you open a page that day, under **Not done yet**. New tasks are listed above it under **New**. Click **Got it** to put it away for the day, or **Open My tasks** to go to your list.
+
+### My tasks
+
+**My tasks** near the top of the sidebar lists every open task assigned to you, with the number of open tasks next to it. Each row shows who assigned it, when, what to do and the document it is about. Click the document to open it.
+
+When the work is finished, click **Done** on its row. The task leaves your list, the assignment comes off the document, and the person who assigned it sees a note on the document that you completed it. Only you can close your own tasks. Store alerts that never open the box are on this list too.
+
 ## Find anything
 
 Press ++ctrl+k++ (++cmd+k++ on a Mac) anywhere to open the search bar. The same search sits at the top of the sidebar as **Search**. Type part of a customer name, a serial number, an invoice number or a page name, and pick from the list.
