@@ -82,24 +82,21 @@
    "fieldname": "enable_web_ro",
    "fieldtype": "Check",
    "default": "0",
-   "label": "Enable Website Read-only MCP Server",
-   "description": "Lets users with a Website Connector Viewer or Website Connector Manager role read the website from an AI assistant; nothing can be changed through it."
+   "label": "Enable Website Read-only MCP Server"
   },
   {
    "fieldname": "web_ro_url",
    "fieldtype": "Data",
    "read_only": 1,
    "label": "Website Read-only MCP Server URL",
-   "depends_on": "enable_web_ro",
-   "description": "Add this URL as a connector in Claude or ChatGPT, then sign in with your POS account."
+   "depends_on": "enable_web_ro"
   },
   {
    "fieldname": "web_ro_claude_code",
    "fieldtype": "Data",
    "read_only": 1,
    "depends_on": "enable_web_ro",
-   "label": "Claude Code Command (Website Read-only)",
-   "description": "Run this in a terminal, then open /mcp in Claude Code and choose Authenticate to sign in."
+   "label": "Claude Code Command (Website Read-only)"
   }
  ],
  "issingle": 1,
