@@ -99,9 +99,15 @@ Turned off, agreements are only offered: nothing is required, nothing blocks, an
 
 **Used Item Agreement.** The agreement every item marked Used needs, unless the item or its item group names its own. Empty turns this off. Shown only while Require Agreements at Sale is on.
 
-A customer with **Is FFL Dealer** ticked needs none of these agreements, consignment settlements included. They are written for retail buyers.
+A customer with **Is FFL Dealer** ticked needs none of these agreements, consignment settlements included. They are written for retail buyers. A customer's own gun handed over on an FFL transfer never needs the Used Item Agreement.
+
+A manager can skip the agreements for one sale at the register (see [Customers](../counter/customers.md#skip-agreements-for-one-sale)).
 
 When one sale holds several used guns, the customer signs one copy listing every gun, if the agreement's **Signed** field is **Each firearm sold**. For a separate copy per gun, open the agreement under **Customers**, then **Agreement templates**, and tick **One copy per gun**. It is off by default.
+
+### Serial Numbers
+
+**No-Serial Spellings.** More ways your bound book writes that a gun has no serial number, one per line. NONE, NONE MARKED, NSN, NO SERIAL, N/A and UNKNOWN are always recognized. A gun whose serial matches one of these is treated as having no serial number (see [FastBound](fastbound.md#import-bound-book)).
 
 ## FFL Verification tab
 
