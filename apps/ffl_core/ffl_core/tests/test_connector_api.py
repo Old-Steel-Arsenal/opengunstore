@@ -188,7 +188,7 @@ class TestConnectorApi(ConnectorFixtures):
 			"gunstore-pos https://pos.example.com/connector/full/mcp")
 		self.assertEqual(urls["web_ro_url"], "https://pos.example.com/connector/web_ro/mcp")
 		self.assertEqual(urls["web_ro_claude_code"], "claude mcp add -s user --transport http "
-			"gunstore-web-ro https://pos.example.com/connector/web_ro/mcp")
+			"gunstore-web https://pos.example.com/connector/web_ro/mcp")
 
 	def test_rows_cannot_be_deleted(self):
 		with self._as(self.connector_token):
@@ -211,7 +211,7 @@ class TestConnectorApi(ConnectorFixtures):
 
 
 class TestWebConnector(ConnectorFixtures):
-	"""The website read-only surface (web_ro): its switch AND a website role gate a call;
+	"""The website surface (web_ro): its switch AND a website role gate a call;
 	connector_identity reports the role level as web_access. Uses the token helpers in ConnectorFixtures."""
 
 	VIEWER, MANAGER = mcp_settings.WEB_VIEWER_ROLE, mcp_settings.WEB_MANAGER_ROLE
@@ -285,7 +285,21 @@ class TestWebConnector(ConnectorFixtures):
 					with self.assertRaises(frappe.PermissionError) as e:
 						connector.log_connector_call("woocommerce_orders_query", "web_ro")
 				self.assertIn(reason, str(e.exception))
-				self.assertFalse(frappe.db.exists("Connector Audit Log", {"user": self.user}))
+				# The refused attempt is on the record, as Failed with the reason.
+				rows = frappe.get_all("Connector Audit Log", filters={"user": self.user},
+					fields=["tool", "surface", "status", "error", "finished_at"])
+				self.assertEqual([(r.tool, r.surface, r.status) for r in rows],
+					[("woocommerce_orders_query", "web_ro", "Failed")])
+				self.assertIn(reason, rows[0].error)
+				self.assertTrue(rows[0].finished_at)
+
+	def test_a_refused_cpa_or_full_call_still_leaves_no_row(self):
+		self._switch(cpa=0, full=0, web_ro=1)
+		with self._as_user(self.MANAGER):
+			for surface in ("cpa", "full"):
+				with self.assertRaises(frappe.PermissionError):
+					connector.log_connector_call("x", surface)
+		self.assertFalse(frappe.db.exists("Connector Audit Log", {"user": self.user}))
 
 	def test_viewer_and_manager_calls_are_logged_under_web_ro(self):
 		self._switch(web_ro=1)
@@ -342,7 +356,7 @@ class TestWebConnector(ConnectorFixtures):
 		doc = frappe.get_doc("MCP Settings")
 		doc.run_method("onload")
 		self.assertTrue(doc.web_ro_url.endswith("/connector/web_ro/mcp"))
-		self.assertIn("gunstore-web-ro", doc.web_ro_claude_code)
+		self.assertIn("gunstore-web ", doc.web_ro_claude_code)
 
 
 class TestSurfacesContract(FrappeTestCase):

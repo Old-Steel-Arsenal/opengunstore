@@ -2016,15 +2016,15 @@
               0,
               1
             ],
-            "description": "Enable Website Read-only MCP Server"
+            "description": "Enable Website MCP Server"
           },
           "web_ro_url": {
             "type": "string",
-            "description": "Website Read-only MCP Server URL"
+            "description": "Website MCP Server URL"
           },
           "web_ro_claude_code": {
             "type": "string",
-            "description": "Claude Code Command (Website Read-only)"
+            "description": "Claude Code Command (Website)"
           }
         }
       },
@@ -7540,7 +7540,7 @@
           "ffl_core"
         ],
         "summary": "Who this bearer token belongs to, and whether it was issued to a connector.",
-        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/connector.py:100`",
+        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/connector.py:101`",
         "operationId": "ffl_core.api.connector.connector_identity",
         "responses": {
           "200": {
@@ -7584,7 +7584,7 @@
           "ffl_core"
         ],
         "summary": "Record one connector tool call in Connector Audit Log.",
-        "description": "Called before the tool runs (phase \"started\" — the connector refuses to run\nthe tool if this fails, so nothing happens unrecorded) and once after it\n(phase \"ok\" / \"failed\", with the log name returned by the first call). A row\nmoves from Started to its outcome exactly once; it cannot be rewritten.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/connector.py:129`",
+        "description": "Called before the tool runs (phase \"started\" — the connector refuses to run\nthe tool if this fails, so nothing happens unrecorded) and once after it\n(phase \"ok\" / \"failed\", with the log name returned by the first call). A row\nmoves from Started to its outcome exactly once; it cannot be rewritten. On the\nwebsite surface a call refused here (switch off, no website role) is still\nrecorded, as Failed with the reason, before the refusal.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/connector.py:130`",
         "operationId": "ffl_core.api.connector.log_connector_call",
         "responses": {
           "200": {
