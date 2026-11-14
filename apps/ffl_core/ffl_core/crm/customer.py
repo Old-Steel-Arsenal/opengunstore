@@ -315,7 +315,7 @@ def _web_orders(customer: str) -> list[dict]:
 	if not frappe.db.has_column(WEB_ORDER, "customer"):
 		return []   # the first deploy of this release, before the migrate
 	rows = frappe.get_all(WEB_ORDER, filters={"customer": customer, "order_status": "Pending Fulfillment"},
-		fields=["name", "woo_status", "creation", "order_total"], order_by="creation desc", limit=RECENT_ORDERS)
+		fields=["name", "woo_status", "creation", "order_total"], order_by="creation desc")
 	names = [r.name for r in rows]
 	invoiced = set()
 	for doctype in ("Sales Invoice", "POS Invoice"):
@@ -323,7 +323,8 @@ def _web_orders(customer: str) -> list[dict]:
 			invoiced.update(frappe.get_all(doctype, filters={"woo_online_order": ["in", names], "docstatus": 1},
 				pluck="woo_online_order"))
 	return [{"name": r.name, "status": (r.woo_status or "").replace("-", " ").capitalize(),
-		"date": str(getdate(r.creation)), "grand_total": flt(r.order_total)} for r in rows if r.name not in invoiced]
+		"date": str(getdate(r.creation)), "grand_total": flt(r.order_total)}
+		for r in rows if r.name not in invoiced][:RECENT_ORDERS]
 
 
 def _ffl_status(customer: str) -> dict:

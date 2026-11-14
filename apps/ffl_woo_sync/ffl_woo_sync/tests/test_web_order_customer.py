@@ -205,12 +205,30 @@ class TheInvoiceUsesIt(WebOrderCustomerCase):
 		self.assertEqual(revenue._resolve_web_customer(order), order.customer)
 		self.assertEqual(find_customer_by_email(email).name, order.customer)   # the old code's pick
 
-	def test_the_stored_customer_wins(self):
-		order = self._intake(_email())
+	def test_the_stored_customer_does_not_decide(self):
+		email = _email()
+		order = self._intake(email)
+		mine = order.customer
 		other = _customer(_email())
 		frappe.db.set_value(ORDER, order.name, "customer", other)
 		order.reload()
-		self.assertEqual(revenue._resolve_web_customer(order), other)
+		self.assertEqual(revenue._resolve_web_customer(order), mine)   # by the email, as before
+		self.assertEqual(frappe.db.get_value(ORDER, order.name, "customer"), mine)   # written back
+
+	def test_a_buyer_merged_into_a_dealer_is_not_booked_on_the_dealer(self):
+		from ffl_core.customer_profile import merge_customer
+
+		email = _email()
+		order = self._intake(email)
+		dealer = _customer(_email(), is_ffl_dealer=1)
+		merge_customer(order.customer, dealer)   # writes the email alias on the dealer
+		order.reload()
+		self.assertEqual(order.customer, dealer, "the link followed the merge")
+		booked = revenue._resolve_web_customer(order)
+		self.assertNotEqual(booked, dealer)
+		self.assertEqual(frappe.db.get_value("Customer", booked, "is_ffl_dealer"), 0)
+		self.assertEqual(frappe.db.get_value("Customer", booked, "email_id"), email)
+		self.assertEqual(frappe.db.get_value(ORDER, order.name, "customer"), booked)
 
 	def test_a_customer_gone_since_is_found_again_and_written_back(self):
 		email = _email()
@@ -255,6 +273,15 @@ class TheDealCardShowsIt(WebOrderCustomerCase):
 		self.assertIn(order.name, card["html"])
 		self.assertIn("Web order, On hold", card["html"])
 		self.assertNotIn("No orders yet.", card["html"])
+
+	def test_newer_invoiced_orders_do_not_hide_an_older_pending_one(self):
+		email = _email()
+		pending = self._intake(email)
+		for _i in range(deal_customer.RECENT_ORDERS):
+			order = self._intake(email)
+			self._invoice(order.name, order.customer)
+		card = self._card(pending.customer)
+		self.assertEqual([r["name"] for r in card["web_orders"]], [pending.name])
 
 	def test_an_invoiced_or_finished_order_is_not_listed_twice(self):
 		invoiced = self._intake(_email())

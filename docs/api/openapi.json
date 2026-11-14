@@ -26436,7 +26436,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Manually retry the revenue Sales Invoice for a Transferred web order.",
-        "description": "For a web order whose revenue booking failed (error log / draft\nmismatch).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (same as the fulfillment actions).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/revenue.py:873`",
+        "description": "For a web order whose revenue booking failed (error log / draft\nmismatch).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (same as the fulfillment actions).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/revenue.py:871`",
         "operationId": "ffl_woo_sync.woocommerce.revenue.create_web_invoice_now",
         "responses": {
           "200": {

@@ -96,12 +96,10 @@ def _resolve_web_customer(order) -> str:
 	on ``woo_online_order``), so even a cross-channel email match never re-touches
 	the tax.
 
-	The customer the order was given at intake (``order.customer``,
-	:func:`intake_customer`) is used while it exists: the same rules picked it.
-	Otherwise the buyer is resolved here and written back to the order."""
-	stored = getattr(order, "customer", None)
-	if stored and frappe.db.exists("Customer", stored):
-		return stored
+	Always resolved here by these rules, never taken from ``order.customer``: that
+	link (set at intake, :func:`intake_customer`) is what the CRM shows, and a
+	merge or an email change since must not move the sale (an address merged into
+	a dealer is not the dealer). The result is written back to it when it differs."""
 	customer = _buyer_customer(order)
 	if not customer:
 		frappe.log_error(
@@ -111,7 +109,7 @@ def _resolve_web_customer(order) -> str:
 				"buyer). Review the order.")
 		return _ensure_web_customer()
 	# The shared aggregate is never written back: it is nobody's customer card.
-	if frappe.db.has_column("Woo Online Order", "customer"):
+	if customer != getattr(order, "customer", None) and frappe.db.has_column("Woo Online Order", "customer"):
 		frappe.db.set_value("Woo Online Order", order.name, "customer", customer, update_modified=False)
 	order.customer = customer
 	return customer
