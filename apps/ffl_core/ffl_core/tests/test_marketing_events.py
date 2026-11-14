@@ -111,7 +111,7 @@ class TestContactSubscribed(MarketingTestCase):
 		events.receive([event])
 		doc = frappe.get_doc(CONTACT, email)
 		self.assertEqual((doc.status, doc.first_name, doc.last_name, doc.source, doc.consent_channel),
-			(contacts.SUBSCRIBED, "Jane", "Doe", "New Arrivals capture (slidein)", "New Arrivals capture (slidein)"))
+			(contacts.SUBSCRIBED, "Jane", "Doe", "New Arrivals capture (slidein)", "web"))
 		self.assertEqual(str(doc.consent_at), str(contacts.to_system_datetime(event["occurred_at"])))
 		self.assertEqual(tags.of(email), ["new-arrivals", "interest-rifles"])
 		(logged,) = events_of(email)
@@ -127,15 +127,42 @@ class TestContactSubscribed(MarketingTestCase):
 		self.assertEqual(frappe.db.get_value(CONTACT, email, "customer"), customer.name,
 			"the status save after the insert must not write the empty link back")
 
-	def test_a_suppressed_contact_stays_suppressed_but_the_form_is_on_record(self):
+	def test_a_suppressed_contact_stays_suppressed_untagged_and_the_form_is_logged_as_skipped(self):
+		for status in (contacts.UNSUBSCRIBED, contacts.BOUNCED, contacts.COMPLAINED):
+			with self.subTest(status=status):
+				email = address()
+				contacts.get_or_create(email)
+				contacts.set_status(email, status)
+				event = _subscribed(email, tags=["new-arrivals"], interests=["rifles"], page_url="https://shop.example/x",
+					ip="203.0.113.7", coupon={"code": "WELCOME-AB12"})
+				self.assertEqual(events.receive([event])["accepted"], [event["id"]])
+				self.assertEqual(status_of(email), status)
+				self.assertEqual(tags.of(email), [], "a suppressed contact is not tagged")
+				self.assertIsNone(frappe.db.get_value(CONTACT, email, "consent_at"))
+				self.assertEqual(events_of(email, contacts.SUBSCRIBED), [])
+				(skipped,) = events_of(email, contacts.SKIPPED)
+				self.assertEqual(skipped.dedupe_key, f"web:{event['id']}")
+				self.assertEqual(json.loads(skipped.detail), {"reason": "suppressed", "kept_status": status,
+					"source": "New Arrivals capture (slidein)", "page_url": "https://shop.example/x", "ip": "203.0.113.7",
+					"coupon": "WELCOME-AB12"})
+				events.receive([event])   # sent again: nothing more is recorded
+				self.assertEqual(len(events_of(email, contacts.SKIPPED)), 1)
+
+	def test_a_contact_already_subscribed_is_tagged_logged_and_its_consent_time_refreshed(self):
 		email = address()
-		contacts.get_or_create(email)
-		contacts.set_status(email, contacts.UNSUBSCRIBED)
-		events.receive([_subscribed(email, tags=["new-arrivals"])])
-		self.assertEqual(status_of(email), contacts.UNSUBSCRIBED)
-		last = events_of(email)[-1]
-		self.assertEqual(last.kind, contacts.SUBSCRIBED)
-		self.assertEqual(json.loads(last.detail)["kept_status"], contacts.UNSUBSCRIBED)
+		first = _event("contact.subscribed", {"email": email, "source": "Slide-in", "tags": ["new-arrivals"]},
+			occurred_at="2026-11-01T10:00:00+00:00")
+		again = _event("contact.subscribed", {"email": email, "source": "Footer form", "tags": ["in-store"]},
+			occurred_at="2026-11-10T10:00:00+00:00")
+		events.receive([first, again])
+		doc = frappe.get_doc(CONTACT, email)
+		self.assertEqual((doc.status, doc.consent_channel), (contacts.SUBSCRIBED, "web"))
+		self.assertEqual(str(doc.consent_at), str(contacts.to_system_datetime("2026-11-10T10:00:00+00:00")))
+		self.assertEqual(tags.of(email), ["new-arrivals", "in-store"])
+		logged = events_of(email)
+		self.assertEqual([e.kind for e in logged], [contacts.SUBSCRIBED, contacts.SUBSCRIBED])
+		self.assertEqual(json.loads(logged[1].detail)["source"], "Footer form")
+		self.assertNotIn("kept_status", logged[1].detail)
 
 	def test_public_input_is_stored_as_plain_capped_text_and_urls_must_be_plain_http(self):
 		email = address()
@@ -154,7 +181,7 @@ class TestContactSubscribed(MarketingTestCase):
 			_alert(email, kind="back_in_stock", product_name="Mosin\nM91/30\x1b", sku="SKU\x00-1")])
 		doc = frappe.get_doc(CONTACT, email)
 		self.assertEqual((doc.first_name, doc.last_name, doc.source, doc.consent_channel),
-			("Patrick", "Buyer", "Footerform", "Footerform"))
+			("Patrick", "Buyer", "Footerform", "web"))
 		(req,) = requests_of(email)
 		self.assertEqual((req.label, req.sku), ("MosinM91/30", "SKU-1"))
 		self.assertEqual(json.loads(events_of(email)[0].detail)["source"], "Footerform")

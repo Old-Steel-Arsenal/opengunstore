@@ -26,6 +26,7 @@ from frappe import _
 from ffl_core.marketing import EVENT, contacts, enabled, requests, tags
 
 UNKNOWN_TYPE, INVALID_EMAIL, INVALID_DATA = "unknown_type", "invalid_email", "invalid_data"
+WEB = "web"   # the consent channel of everything the website sends
 # lazy: 100 events per call (the shop sends one today); upgrade path: raise it with the shop's batch size.
 MAX_EVENTS = 100
 CAP = {"id": 80, "name": 140, "source": 140, "url": 500, "ip": 45, "code": 60, "label": 140, "key": 140}
@@ -67,24 +68,31 @@ def _list(value) -> list:
 
 def contact_subscribed(data: dict, key: str, when) -> None:
 	"""``contact.subscribed``: someone gave their email on a website form. The contact is made or
-	updated and becomes ``Subscribed`` (one already unsubscribed, bounced or complained stays so),
-	takes the event's tags, and the event is logged with its source page, IP and coupon: the record of
-	the consent."""
+	updated and becomes ``Subscribed`` (consent channel ``web``; the form and page stay in ``source`` and
+	on the event), takes the event's tags, and the event is logged with its source page, IP and coupon:
+	the record of the consent.
+
+	A contact already unsubscribed, bounced or complained is left exactly as it is: no tags, no status
+	change, and the form is logged as a ``Skipped`` event (``reason`` ``suppressed``, ``kept_status``)
+	with the same consent fields, so what the visitor did stays on record without counting as consent."""
 	email = _email(data)
-	source = _text(data.get("source"), "source") or "web"
+	source = _text(data.get("source"), "source") or WEB
 	wanted = tags.clean(data.get("tags")) + [t for t in map(tags.interest, _list(data.get("interests"))) if t]
 	coupon = data.get("coupon") if isinstance(data.get("coupon"), dict) else {}
 	contact = contacts.get_or_create(email, first_name=_text(data.get("first_name"), "name"),
 		last_name=_text(data.get("last_name"), "name"), source=source)
-	tags.add(contact.name, *wanted)
-	detail = dict(source=source, page_url=url(data.get("page_url")), ip=_text(data.get("ip"), "ip"),
-		tags=wanted, coupon=_text(coupon.get("code"), "code"), coupon_amount=_text(coupon.get("amount"), "code"),
+	form = dict(source=source, page_url=url(data.get("page_url")), ip=_text(data.get("ip"), "ip"),
+		coupon=_text(coupon.get("code"), "code"), coupon_amount=_text(coupon.get("amount"), "code"),
 		coupon_expires_at=_text(coupon.get("expires_at"), "code"))
-	if not contacts.set_status(contact, contacts.SUBSCRIBED, channel=source, occurred_at=when,
-			detail=contacts.event_detail(**detail), dedupe_key=key):
-		kept = contact.status if contacts.is_suppressed(contact.status) else None
-		contacts.log_event(contact.name, contacts.SUBSCRIBED, occurred_at=when,
-			detail=contacts.event_detail(**detail, kept_status=kept), dedupe_key=key)
+	if contacts.is_suppressed(contact.status):
+		contacts.log_event(contact.name, contacts.SKIPPED, occurred_at=when, dedupe_key=key,
+			detail=contacts.event_detail(**form, reason="suppressed", kept_status=contact.status))
+		return
+	tags.add(contact.name, *wanted)
+	detail = contacts.event_detail(**form, tags=wanted)
+	if not contacts.set_status(contact, contacts.SUBSCRIBED, channel=WEB, occurred_at=when, detail=detail,
+			dedupe_key=key):   # already Subscribed: the consent time is refreshed, the event still logged
+		contacts.log_event(contact.name, contacts.SUBSCRIBED, occurred_at=when, detail=detail, dedupe_key=key)
 
 
 def alert_requested(data: dict, key: str, when) -> None:
