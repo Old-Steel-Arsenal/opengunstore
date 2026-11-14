@@ -11,8 +11,9 @@
   (``crm.customer``); an address that belongs to more than one customer is linked to none.
   :func:`relink` recomputes it when a contact is made, a Customer or Contact is saved, and a customer
   is merged or renamed.
-* **A new address** for a customer takes over a suppression from the old one
-  (``contacts.carry_suppression``): an unsubscribe follows the person.
+* **A new address** for a customer takes over an unsubscribe or a complaint from the old one
+  (``contacts.carry_suppression``): what the person chose follows them. A bounce does not: it belongs to
+  the old address.
 * :func:`card` is what the Deal page's customer card shows.
 
 The Customer / Contact hooks never fail the save they ride on: a problem goes to the Error Log and
@@ -25,10 +26,12 @@ from frappe import _
 
 from ffl_core.mailing_address import clean_email, shop_host, split_name
 from ffl_core.marketing import CONTACT, SETTINGS, enabled, tags
-from ffl_core.marketing.contacts import SUBSCRIBED, carry_suppression, event_detail, get_or_create, normalize_email, set_status
+from ffl_core.marketing.contacts import (
+	POS_SOURCE, SUBSCRIBED, carry_suppression, event_detail, get_or_create, normalize_email, set_status,
+)
 from ffl_core.utils import commit, single_flag
 
-SOURCE = "pos"
+SOURCE = POS_SOURCE
 CHANNEL = "pos"
 CREATED, EXISTING, SKIPPED = "created", "existing", "skipped"
 SAVEPOINT = "mkt_customer_hook"
@@ -81,7 +84,7 @@ def add_customer(email, *, customer: str | None = None, first_name: str = "", la
 
 
 def customer_saved(doc, method=None) -> None:
-	"""Customer on_update: a changed address takes the old one's suppression; a customer with an
+	"""Customer on_update: a changed address takes over the old one's unsubscribe or complaint; a customer with an
 	address is listed (when the switch is on); the contact's customer link follows."""
 	_guarded("Customer saved", _customer_saved, doc)
 
@@ -123,7 +126,7 @@ def _contact_saved(doc) -> None:
 
 
 def _changed_address(old, new) -> None:
-	"""A customer's address changed: a suppression on the old one goes to the new one."""
+	"""A customer's address changed: an unsubscribe or complaint on the old one goes to the new one."""
 	old, new = normalize_email(old), normalize_email(new)
 	if old and new and old != new:
 		carry_suppression(old, new)

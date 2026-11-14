@@ -182,14 +182,24 @@ class TestMailBlock(MarketingTestCase):
 
 
 class TestNewAddress(MarketingTestCase):
-	def test_a_new_address_inherits_a_suppression_but_not_a_subscription(self):
-		old, new = _contact(BOUNCED), address()
+	def test_a_new_address_inherits_an_unsubscribe_or_complaint_but_not_a_subscription(self):
+		old, new = _contact(UNSUBSCRIBED), address()
 		self.assertTrue(contacts.carry_suppression(old, new))
-		self.assertEqual(status_of(new), BOUNCED)
+		self.assertEqual(status_of(new), UNSUBSCRIBED)
+		self.assertEqual(frappe.db.get_value(CONTACT, new, "source"), "pos")
 		self.assertEqual([(r.reference_name, r.global_unsubscribe) for r in _unsubscribe_rows(new)], [(new, 0)])
 		subscribed, other = _contact(SUBSCRIBED), address()
 		self.assertFalse(contacts.carry_suppression(subscribed, other))
 		self.assertFalse(frappe.db.exists(CONTACT, other))
 		already = _contact(SUBSCRIBED)
 		self.assertTrue(contacts.carry_suppression(_contact(COMPLAINED), already))
-		self.assertEqual(status_of(already), COMPLAINED, "an unsubscribe follows the person")
+		self.assertEqual(status_of(already), COMPLAINED, "a complaint follows the person")
+
+	def test_a_bounce_belongs_to_the_old_address_and_is_not_carried(self):
+		old, new = _contact(BOUNCED), address()
+		self.assertFalse(contacts.carry_suppression(old, new))
+		self.assertFalse(frappe.db.exists(CONTACT, new), "nothing is made for the new address")
+		already = _contact(SUBSCRIBED)
+		self.assertFalse(contacts.carry_suppression(old, already))
+		self.assertEqual(status_of(already), SUBSCRIBED)
+		self.assertEqual(status_of(old), BOUNCED)

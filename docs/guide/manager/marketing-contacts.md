@@ -55,7 +55,7 @@ When it is on, saving a customer who has an email address puts that address on t
 
 - An address that is already a contact keeps its status. A person who unsubscribed stays unsubscribed.
 - The store's own email domain is left out.
-- When a customer's email changes, an unsubscribe on the old address carries over to the new one. A subscription does not.
+- When a customer's email changes, an unsubscribe or a complaint on the old address carries over to the new one. A bounce does not (it belongs to the old address), and neither does a subscription.
 - Customers who were already on file are not added by turning it on. Ask your administrator to list them in one pass.
 
 Turn it on only if your store treats a sale as agreement to receive its email.
@@ -66,5 +66,5 @@ Turn it on only if your store treats a sale as agreement to receive its email.
 |---|---|
 | **Marketing contacts** is not in the sidebar | Ask your administrator to turn on **Enabled** in **Marketing Settings** |
 | No **Unsubscribe** button | Only managers see it. A contact that is already **Unsubscribed**, **Bounced** or **Complained** shows **Resubscribe** instead |
-| A new email address for a customer shows **Unsubscribed** | The old address had unsubscribed. Resubscribe only if the customer asks |
+| A new email address for a customer shows **Unsubscribed** | The old address had unsubscribed or complained. Resubscribe only if the customer asks |
 | A customer has no marketing line on the deal | The customer's address is not a contact yet, or two customers share it |

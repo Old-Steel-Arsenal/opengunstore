@@ -10,7 +10,7 @@ import frappe
 
 from ffl_core import customer_profile
 from ffl_core.marketing import CONTACT, SETTINGS, customers, tags
-from ffl_core.marketing.contacts import NOT_SUBSCRIBED, SUBSCRIBED, UNSUBSCRIBED, get_or_create, set_status
+from ffl_core.marketing.contacts import BOUNCED, NOT_SUBSCRIBED, SUBSCRIBED, UNSUBSCRIBED, get_or_create, set_status
 from ffl_core.tests.marketing_support import MarketingTestCase, address, events_of, make_customer as _customer, status_of
 
 SHOP = "shop.example.test"
@@ -158,6 +158,16 @@ class TestChangedAddress(IntakeCase):
 		_save(customer.name, ffl_email=new)
 		self.assertEqual(status_of(new), UNSUBSCRIBED)
 		self.assertNotIn(tags.NEW_ARRIVALS, tags.of(new))
+
+	def test_a_bounce_does_not_follow_the_customer_to_a_new_address(self):
+		self.set_single(SETTINGS, "auto_subscribe_customers", 0)
+		old, new = address("cust"), address("cust")
+		get_or_create(old)
+		set_status(old, BOUNCED)
+		customer = _customer(old)
+		_save(customer.name, ffl_email=new)
+		self.assertEqual(status_of(old), BOUNCED)
+		self.assertFalse(frappe.db.exists(CONTACT, new), "the bounce was the old mailbox's")
 
 	def test_a_subscription_does_not_follow_the_person(self):
 		old, new = address("cust"), address("cust")

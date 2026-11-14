@@ -39,6 +39,10 @@ COMPLAINED = "Complained"
 STATUSES = (NOT_SUBSCRIBED, SUBSCRIBED, UNSUBSCRIBED, BOUNCED, COMPLAINED)
 RANK = {status: rank for rank, status in enumerate(STATUSES)}
 SUPPRESSED = (UNSUBSCRIBED, BOUNCED, COMPLAINED)
+# What a customer's new address takes over from the old one: a choice the person made. A bounce belongs
+# to the old address (the mailbox), not to the person.
+CARRIED = (UNSUBSCRIBED, COMPLAINED)
+POS_SOURCE = "pos"   # where a contact came from when the store's own records made it
 
 # Marketing Event kinds besides the five statuses' own names.
 REQUESTED, SENT, SKIPPED, OPENED, CLICKED, IMPORTED = "Requested", "Sent", "Skipped", "Opened", "Clicked", "Imported"
@@ -194,14 +198,15 @@ def _suppress_mail(email: str) -> None:
 
 
 def carry_suppression(old_email: str, new_email: str) -> bool:
-	"""A customer's new address takes their old address's suppression (an unsubscribe follows the
-	person; a subscription does not, the new address never consented). True when the new address's
-	contact was suppressed by this call."""
+	"""A customer's new address takes over the old address's ``Unsubscribed`` or ``Complained`` (what the
+	person chose follows them; a subscription does not, the new address never consented). A ``Bounced``
+	old address carries nothing: the bounce is the old mailbox's. True when the new address's contact was
+	suppressed by this call."""
 	old = normalize_email(old_email)
 	status = frappe.db.get_value(CONTACT, old, "status") if old else None
-	if not is_suppressed(status) or normalize_email(new_email) in ("", old):
+	if status not in CARRIED or normalize_email(new_email) in ("", old):
 		return False
-	contact = get_or_create(new_email)
+	contact = get_or_create(new_email, source=POS_SOURCE)
 	return set_status(contact, status, reason=_("Carried over from {0}").format(old))
 
 
