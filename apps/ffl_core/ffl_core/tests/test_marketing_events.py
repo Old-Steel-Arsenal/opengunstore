@@ -10,7 +10,8 @@ import frappe
 
 from ffl_core.marketing import CONTACT, EVENT, REQUEST, SETTINGS, contacts, events, requests, tags
 from ffl_core.tests.crm_support import make_item
-from ffl_core.tests.marketing_support import MarketingTestCase, address, events_of, requests_of, status_of
+from ffl_core.tests.marketing_support import (MarketingTestCase, address, events_of, make_customer, requests_of,
+	status_of)
 
 _n = [0]
 
@@ -117,6 +118,14 @@ class TestContactSubscribed(MarketingTestCase):
 		detail = json.loads(logged.detail)
 		self.assertEqual((detail["page_url"], detail["ip"], detail["coupon"], detail["coupon_amount"]),
 			("https://shop.example/x", "203.0.113.7", "WELCOME-AB12", "10"))
+
+	def test_a_new_contact_for_a_customers_address_stays_linked_to_the_customer(self):
+		email = address("cust")
+		customer = make_customer(email)
+		events.receive([_subscribed(email)])
+		self.assertEqual(status_of(email), contacts.SUBSCRIBED)
+		self.assertEqual(frappe.db.get_value(CONTACT, email, "customer"), customer.name,
+			"the status save after the insert must not write the empty link back")
 
 	def test_a_suppressed_contact_stays_suppressed_but_the_form_is_on_record(self):
 		email = address()

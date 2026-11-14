@@ -12,7 +12,7 @@ import frappe
 
 from ffl_core.marketing import CONTACT, EVENT, REQUEST, contacts, migrate, requests, tags
 from ffl_core.tests.crm_support import make_item
-from ffl_core.tests.marketing_support import MarketingTestCase, address, events_of, requests_of, status_of
+from ffl_core.tests.marketing_support import MarketingTestCase, address, events_of, make_customer, requests_of, status_of
 
 DASH = "—"
 
@@ -34,6 +34,16 @@ def _export(rows: list[dict], campaigns: list[dict] | None = None) -> dict:
 def _counts() -> tuple[int, int, int, int, int]:
 	return (frappe.db.count(CONTACT), frappe.db.count(EVENT), frappe.db.count(REQUEST), frappe.db.count("Tag Link"),
 		frappe.db.count("Email Unsubscribe"))
+
+
+class TestCustomerLink(MarketingTestCase):
+	def test_an_imported_address_of_a_customer_is_linked_to_it(self):
+		email = address("cust")
+		customer = make_customer(email)
+		migrate.import_document(_export([_row(email)]), write=True)
+		self.assertEqual(status_of(email), contacts.SUBSCRIBED)
+		self.assertEqual(frappe.db.get_value(CONTACT, email, "customer"), customer.name,
+			"the legacy-hash and status saves after the insert must not write the empty link back")
 
 
 class TestNotes(MarketingTestCase):

@@ -30,6 +30,16 @@ def requests_of(email: str) -> list[dict]:
 		order_by="creation asc, name asc")
 
 
+def make_customer(email: str | None = None, name: str | None = None, **fields):
+	"""A Customer (individual) listed under *email*, inserted through the real hooks."""
+	doc = frappe.get_doc({"doctype": "Customer", "customer_name": name or f"_Test Mkt {frappe.generate_hash(length=6)}",
+		"customer_type": "Individual", "customer_group": "Individual", "territory": "All Territories",
+		**({"ffl_email": email} if email else {}), **fields})
+	doc.flags.ignore_permissions = True
+	doc.insert()
+	return doc
+
+
 def status_of(email: str) -> str | None:
 	return frappe.db.get_value(CONTACT, email, "status")
 

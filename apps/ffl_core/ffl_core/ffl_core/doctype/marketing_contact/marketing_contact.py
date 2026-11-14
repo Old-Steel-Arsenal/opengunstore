@@ -33,6 +33,10 @@ class MarketingContact(Document):
 			self.source = before.source   # the first source is kept
 
 	def after_insert(self):
+		from ffl_core.marketing import CONTACT
 		from ffl_core.marketing.customers import relink_safely
 
 		relink_safely(self.name)   # which Customer this address belongs to, if exactly one
+		# The link is written to the database only; the caller still holds this document, and its next
+		# save would write the empty value back.
+		self.customer = frappe.db.get_value(CONTACT, self.name, "customer")

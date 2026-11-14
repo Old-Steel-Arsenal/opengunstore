@@ -11,19 +11,10 @@ import frappe
 from ffl_core import customer_profile
 from ffl_core.marketing import CONTACT, SETTINGS, customers, tags
 from ffl_core.marketing.contacts import NOT_SUBSCRIBED, SUBSCRIBED, UNSUBSCRIBED, get_or_create, set_status
-from ffl_core.tests.marketing_support import MarketingTestCase, address, events_of, status_of
+from ffl_core.tests.marketing_support import MarketingTestCase, address, events_of, make_customer as _customer, status_of
 
 SHOP = "shop.example.test"
 STORE_URL = ("WooCommerce Settings", "store_url")
-
-
-def _customer(email: str | None = None, name: str | None = None, **fields):
-	doc = frappe.get_doc({"doctype": "Customer", "customer_name": name or f"_Test Mkt {frappe.generate_hash(length=6)}",
-		"customer_type": "Individual", "customer_group": "Individual", "territory": "All Territories",
-		**({"ffl_email": email} if email else {}), **fields})
-	doc.flags.ignore_permissions = True
-	doc.insert()
-	return doc
 
 
 def _save(name: str, **fields):
