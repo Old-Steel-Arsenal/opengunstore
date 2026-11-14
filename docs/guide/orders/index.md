@@ -10,6 +10,7 @@ Every such order ends up on one screen, **Pending Order**. Open it from **Orders
 |---|---|
 | Build an order away from the register | [Build an order and its splits](build-an-order.md) |
 | Turn a CRM deal into a sale | [Open an order from a CRM deal](open-an-order-from-a-deal.md) |
+| Keep a gun for a deal's customer for two days | [Hold a gun for a deal](hold-a-gun-for-a-deal.md) |
 | Ship a gun to another dealer | [Ship a firearm to another dealer](ship-to-dealer.md) |
 | Ship ammunition or accessories to a customer | [Ship accessories to a customer](ship-to-customer.md) |
 | Take a deposit on something the store does not have | [Deposits and special orders](special-orders.md) |

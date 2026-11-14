@@ -3,7 +3,8 @@ opens the contact's deal to write to them, since CRM shows and sends mail only o
 **Connect my mailbox** on a staff member's own My Settings (``public/js/user_form.js``) starts the
 sign-in that connects their own mailbox; **Make lead** on a Communication (``public/js/communication_form.js``)
 files a mail the AI screening left without a lead; the Deal page's customer card, **Open order** and **Add want**
-(``ffl_core.crm.setup.DEAL_SCRIPT``), behind Lead Mail Settings' switch; the stand-ins that take quotes off the Deal page and other mail off the Leads list."""
+(``ffl_core.crm.setup.DEAL_SCRIPT``), behind Lead Mail Settings' switch; guns held for a deal (the Deal page's
+**Hold gun**, and the counter's check and manager override, ``ffl_core.crm.holds``); the stand-ins that take quotes off the Deal page and other mail off the Leads list."""
 from __future__ import annotations
 
 import frappe
@@ -11,7 +12,7 @@ from frappe import _
 from frappe.utils import cint
 
 from ffl_core.crm import customer as deal_customer
-from ffl_core.crm import deals, mail, pos_link_on
+from ffl_core.crm import deals, holds, mail, pos_link_on
 from ffl_core.roles import CRM_ROLES
 
 
@@ -117,7 +118,8 @@ def deal_customer_summary(deal: str) -> dict:
 	    {"customer", "customer_name", "flags": {"status", "status_reason", "banned",
 	    "override_until", "alerts", "tags"}, "ffl": {"is_dealer", "on_file", "expiry_date",
 	    "expired"}, "orders": last orders, "open_orders": orders on Pending Order, "lifetime_spend":
-	    Net Sales as the Sales Report reads it, "html"}. Refused while the switch is off.
+	    Net Sales as the Sales Report reads it, "holds": guns held for the deal [{"serial",
+	    "expires_label"}], "html"}. Refused while the switch is off.
 	"""
 	frappe.only_for(CRM_ROLES)
 	return deal_customer.customer_summary(_deal_for_pos_link(deal, "read"))
@@ -229,3 +231,178 @@ def deals_use_no_quotes() -> bool:
 	    bool: Always False.
 	"""
 	return False
+
+
+# ---------------------------------------------------------------- guns held for a deal (crm/holds.py)
+
+
+def _serial_list(serials) -> list[str]:
+	value = frappe.parse_json(serials) if isinstance(serials, str) and serials.strip().startswith("[") else serials
+	if isinstance(value, str):
+		value = [value]
+	return [str(s) for s in (value or []) if isinstance(s, (str, int)) and str(s).strip()][:50]
+
+
+def _hold_deal(hold: str, ptype: str):
+	deal = isinstance(hold, str) and frappe.db.get_value(holds.HOLD, hold, "deal")
+	if not deal:
+		frappe.throw(_("This hold no longer exists."), frappe.DoesNotExistError)
+	return _deal_for_pos_link(deal, ptype)
+
+
+@frappe.whitelist()
+def deal_holds(deal: str) -> dict:
+	"""The Deal page's Hold guns dialog: each gun on the deal's lines, its hold and what can be done.
+	Answers while Hold guns for deals is off too, so holds still running stay in view.
+
+	Args:
+	    deal: The CRM Deal's name.
+
+	Returns:
+	    dict: {"guns": [{"serial", "item_code", "item_name", "hold": None or {"name", "expires_at",
+	    "expires_label", "held_by", "held_by_name", "extensions", "extend_needs_manager",
+	    "release_needs_manager"}, "blocked": why it cannot be held or None, "needs_manager": holding it
+	    takes a manager}], "enabled": whether new holds are on, "self_approves": the caller is a
+	    manager, "approvers": [{"user", "full_name", "has_pin", "pin_off"}] otherwise}.
+	"""
+	frappe.only_for(CRM_ROLES)
+	return holds.deal_guns(_deal_for_pos_link(deal, "read"))
+
+
+@frappe.whitelist(methods=["POST"])
+def hold_guns(deal: str, serials, approver: str | None = None, pin: str | None = None,
+		password: str | None = None) -> dict:
+	"""Hold guns on a deal for 48 hours: only the deal's customer can buy them meanwhile, at the
+	counter and on the website. Each gun is judged on its own.
+
+	Args:
+	    deal: The CRM Deal's name. It needs its POS customer.
+	    serials: The guns' serial numbers (a list, or JSON), each on one of the deal's lines.
+	    approver: The manager approving, when a gun needs one (held for this deal before).
+	    pin: The approver's counter PIN.
+	    password: Or their password.
+
+	Returns:
+	    dict: {"held": [{"name", "serial", "deal", "status", "expires_at", "expires_label", "held_by",
+	    "extensions", "end_reason"}], "refused": [{"serial", "reason", "needs_manager"?}]}. Refused
+	    while Hold guns for deals is off.
+	"""
+	frappe.only_for(CRM_ROLES)
+	return holds.hold_guns(_deal_for_pos_link(deal, "write"), _serial_list(serials), approver=approver or None,
+		pin=pin or None, password=password or None)
+
+
+@frappe.whitelist(methods=["POST"])
+def extend_hold(hold: str, approver: str | None = None, pin: str | None = None,
+		password: str | None = None) -> dict:
+	"""Another 48 hours on a hold. The person who placed it extends it once; after that, or for anyone
+	else, a manager does (signed in, or picked with their PIN).
+
+	Args:
+	    hold: The CRM Deal Hold's name.
+	    approver: The manager approving.
+	    pin: The approver's counter PIN.
+	    password: Or their password.
+
+	Returns:
+	    dict: The hold: {"name", "serial", "deal", "status", "expires_at", "expires_label", "held_by",
+	    "extensions", "end_reason"}.
+	"""
+	frappe.only_for(CRM_ROLES)
+	_hold_deal(hold, "write")
+	return holds.extend(hold, approver=approver or None, pin=pin or None, password=password or None)
+
+
+@frappe.whitelist(methods=["POST"])
+def release_hold(hold: str, reason: str | None = None, approver: str | None = None, pin: str | None = None,
+		password: str | None = None) -> dict:
+	"""End a hold: the gun is for sale to anyone again. Whoever placed it, the deal owner or a manager;
+	anyone else with a manager's PIN.
+
+	Args:
+	    hold: The CRM Deal Hold's name.
+	    reason: Why (optional).
+	    approver: The manager approving.
+	    pin: The approver's counter PIN.
+	    password: Or their password.
+
+	Returns:
+	    dict: The hold, now Released: {"name", "serial", "deal", "status", "expires_at",
+	    "expires_label", "held_by", "extensions", "end_reason"}.
+	"""
+	frappe.only_for(CRM_ROLES)
+	_hold_deal(hold, "read")
+	return holds.release(hold, reason=reason, approver=approver or None, pin=pin or None,
+		password=password or None)
+
+
+@frappe.whitelist()
+def serial_hold(serial: str) -> dict:
+	"""The live deal hold on one gun, for the counter. Carries no ID, 4473 or NICS data.
+
+	Args:
+	    serial: The Serial No.
+
+	Returns:
+	    dict: {"hold": None or {"serial", "hold", "deal", "customer", "customer_name", "expires_at",
+	    "expires_label", "held_by", "held_by_name", "message"}, "self_approves": the caller is a
+	    manager, "approvers": [{"user", "full_name", "has_pin", "pin_off"}] otherwise}.
+	"""
+	from ffl_core.price_approval import is_approver
+	from ffl_core.roles import COUNTER_ROLES
+
+	frappe.only_for(COUNTER_ROLES)
+	entry = holds.serial_entry(str(serial or "").strip()) if serial else None
+	manager = is_approver()
+	return {"hold": entry, "self_approves": manager, "approvers": [] if manager or not entry else holds.approvers()}
+
+
+@frappe.whitelist(methods=["POST"])
+def check_sale(doc) -> dict:
+	"""Before a POS / Sales Invoice is saved: the guns on it held for a deal whose customer is not this
+	sale's.
+
+	Args:
+	    doc: The form's document (POS Invoice or Sales Invoice) as JSON.
+
+	Returns:
+	    dict: {"blocked": [{"serial", "hold", "deal", "customer", "customer_name", "expires_at",
+	    "expires_label", "held_by", "held_by_name", "message"}], "self_approves": the caller is a
+	    manager, "approvers": [{"user", "full_name", "has_pin", "pin_off"}] when something is blocked}.
+	"""
+	from ffl_core.price_approval import _target, is_approver
+	from ffl_core.roles import PRICE_CHECK_ROLES
+
+	frappe.only_for(PRICE_CHECK_ROLES)
+	d = _target(doc)[0]
+	if d.doctype not in ("POS Invoice", "Sales Invoice"):
+		frappe.throw(_("Only a sale is checked."))
+	blocked = holds.blocked_on_sale(d)
+	manager = is_approver()
+	return {"blocked": blocked, "self_approves": manager,
+		"approvers": holds.approvers() if blocked and not manager else []}
+
+
+@frappe.whitelist(methods=["POST"])
+def override_hold(serial: str, reason: str, approver: str | None = None, pin: str | None = None,
+		password: str | None = None) -> dict:
+	"""A manager ends a deal's hold at the counter so the gun can be sold to someone else; the deal's
+	owner gets a task. A manager signed in approves their own; anyone else names one, who types their
+	counter PIN (or password).
+
+	Args:
+	    serial: The held gun's Serial No.
+	    reason: Why (required).
+	    approver: The manager approving.
+	    pin: The approver's counter PIN.
+	    password: Or their password.
+
+	Returns:
+	    dict: {"released": the hold, now Released, or None when nothing held the gun, "task": the CRM
+	    Task given to the deal owner, or None}.
+	"""
+	from ffl_core.roles import COUNTER_ROLES
+
+	frappe.only_for(COUNTER_ROLES)
+	return holds.override(str(serial or "").strip(), reason, approver=approver or None, pin=pin or None,
+		password=password or None)

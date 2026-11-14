@@ -118,7 +118,7 @@ If a team address is a Google Group, set its **Post replies to** to **Sender cho
 
 **Blocked sender domains** and **Our own domains** take one domain per line. Team mail from them goes to [other mail](other-mail.md). A staff member's own mailbox leaves it out.
 
-**Link deals to POS orders** puts the **Open order** and **Add want** buttons and the **Customer** section on a CRM deal, and writes each deal's invoices back to it. It is off until you tick it. See [Open an order from a CRM deal](../orders/open-an-order-from-a-deal.md).
+**Link deals to POS orders** puts the **Open order** and **Add want** buttons and the **Customer** section on a CRM deal, and writes each deal's invoices back to it. **Hold guns for deals** adds **Hold gun**. Both start off. See [Open an order from a CRM deal](../orders/open-an-order-from-a-deal.md) and [Hold a gun for a deal](../orders/hold-a-gun-for-a-deal.md).
 
 Team mail that is not a customer inquiry, the **Category rules** and the **Spam folder** are on [Other mail](other-mail.md).
 

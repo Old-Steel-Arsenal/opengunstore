@@ -1,0 +1,189 @@
+{
+ "actions": [],
+ "autoname": "format:HOLD-{#####}",
+ "naming_rule": "Expression",
+ "creation": "2026-11-13 12:00:00.000000",
+ "description": "A gun held for a CRM deal: the counter, the website and GunBroker do not sell it to anyone else until the hold ends.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "serial_no",
+  "item_code",
+  "deal",
+  "column_break_who",
+  "status",
+  "held_by",
+  "held_at",
+  "expires_at",
+  "extensions",
+  "section_end",
+  "ended_at",
+  "ended_by",
+  "end_reason",
+  "column_break_end",
+  "approved_by",
+  "note",
+  "active_serial"
+ ],
+ "fields": [
+  {
+   "fieldname": "serial_no",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Serial No",
+   "options": "Serial No",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "label": "Item",
+   "options": "Item",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "deal",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Deal",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "column_break_who",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Active",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Active\nReleased\nExpired",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "held_by",
+   "fieldtype": "Link",
+   "label": "Held by",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "held_at",
+   "fieldtype": "Datetime",
+   "label": "Held at",
+   "read_only": 1
+  },
+  {
+   "fieldname": "expires_at",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Held until",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "extensions",
+   "fieldtype": "Int",
+   "label": "Extensions",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_end",
+   "fieldtype": "Section Break",
+   "label": "Ended"
+  },
+  {
+   "fieldname": "ended_at",
+   "fieldtype": "Datetime",
+   "label": "Ended at",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ended_by",
+   "fieldtype": "Link",
+   "label": "Ended by",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "end_reason",
+   "fieldtype": "Select",
+   "label": "Why it ended",
+   "options": "\nReleased\nExpired\nDeal won\nDeal lost\nDeal deleted\nOff the deal\nSold to the customer\nManager override\nGun left stock\nTaken by another order",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_end",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "label": "Approved by",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "note",
+   "fieldtype": "Small Text",
+   "label": "Note",
+   "read_only": 1
+  },
+  {
+   "fieldname": "active_serial",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Active serial",
+   "no_copy": 1,
+   "read_only": 1,
+   "unique": 1
+  }
+ ],
+ "in_create": 1,
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-13 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FFL Core",
+ "name": "CRM Deal Hold",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "read": 1,
+   "report": 1,
+   "role": "System Manager"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Sales User"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Stock Manager"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "serial_no",
+ "track_changes": 1
+}

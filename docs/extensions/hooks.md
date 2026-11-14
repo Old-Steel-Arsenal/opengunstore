@@ -170,6 +170,18 @@ Declare them in `hooks.py` like any Frappe hook. The value is a dotted path to a
 - **Purpose:** judge mail to a team address (Lead Mail Settings) from someone with no lead and no customer contact yet. With at least one provider registered, such mail does not become a lead while it is pulled: a short background job asks the providers first. The first `customer: False` makes it other mail: a lead with the status Other mail and the answer's category, with a Comment "Not a customer inquiry (category): reason" on the mail; `None` is no opinion. Any other outcome makes an ordinary lead and shares it as without the hook. The job checks again before it asks: if the mail was linked or the sender has become a lead or a customer, the mail goes by the normal rules and no provider is asked. Later mail from that sender goes on the same lead and is not screened. Category rules, blocked domains, automated senders, known customers and known leads run before this and are not screened. With Lead Mail Settings › Spam folder set, the same providers also judge that folder's mail before anything is stored (`communication` is empty): `category: "spam"` leaves no record, `None` tries the mail again on the next run. Blocking network calls are fine (background job); wrap in `@extension_hook`.
 - **On failure:** logged; counts as no opinion, so the lead is made.
 
+### `gunshop_serial_hold_changed`
+
+- **Signature:** `(serial_no) -> None`
+- **Purpose:** a gun was held for a CRM deal, or its hold was extended or ended (`ffl_core.crm.holds`). Re-read the gun's state (`ffl_core.reservations.serial_shelf_state`) and update what you publish; a held gun is a counter hold of kind `crm_deal`. Called inside the hold's transaction: enqueue after commit, no network call here. `ffl_woo_sync` registers the website's listing reconcile.
+- **On failure:** logged; the hold stands.
+
+### `gunshop_deal_hold_refusal`
+
+- **Signature:** `(serial_no) -> str | None`
+- **Purpose:** the reason this gun must not be held for a CRM deal (it is on sale where your app sells it), or `None`. The first reason refuses the hold and is shown to staff as it is. Asked before the hold is written, under the gun's lock: read your own records, no network call. `ffl_integrations` refuses a gun listed on GunBroker.
+- **On failure:** the hold is refused ("Couldn't check the other sales channels").
+
 ### `gunshop_catalog_change_cursors`
 
 - **Value:** `"DocType.field"` (string): a product change-feed cursor on one of your Singles.
