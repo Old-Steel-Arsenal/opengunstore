@@ -36,7 +36,7 @@ CLICK_PATH = "/api/method/ffl_core.marketing.track.click"
 CAMPAIGN_CAP = 80
 URL_CAP = 2000
 PIXEL = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
-_UNSAFE_URL = re.compile(r"[\s\"'<>\\\x00-\x1f\x7f]")
+_UNSAFE_URL = re.compile(r"[\s\"'<>\\`\x00-\x1f\x7f]")
 # Mail clients fetch images through shared proxies (one address for many readers), so the per-address
 # limits are wide; they stop one client hammering, not ordinary reading.
 OPEN_LIMIT = CLICK_LIMIT = 5000

@@ -13,7 +13,7 @@ Each event runs in its own savepoint, so one that fails leaves nothing behind an
 rest. Adding an event type is adding a handler to :data:`HANDLERS`. Nothing here sends mail.
 
 Every field is public input: capped, tags kept only when they are slugs, URLs only when they are
-plain http(s) (no quotes, brackets or spaces), and text kept to one line (``contacts.plain_text``).
+plain http(s) (``track.is_web_url``: a host, no quotes, angle brackets or spaces), and text kept to one line (``contacts.plain_text``).
 Text is stored as plain text; whatever renders it (Desk, a mail template) escapes it.
 """
 from __future__ import annotations
@@ -24,6 +24,7 @@ import frappe
 from frappe import _
 
 from ffl_core.marketing import EVENT, contacts, enabled, requests, tags
+from ffl_core.marketing.track import is_web_url
 
 UNKNOWN_TYPE, INVALID_EMAIL, INVALID_DATA = "unknown_type", "invalid_email", "invalid_data"
 WEB = "web"   # the consent channel of everything the website sends
@@ -47,12 +48,10 @@ def _text(value, cap: str) -> str:
 
 
 def url(value) -> str:
-	"""*value* when it is a plain http(s) URL of at most 500 characters, else ""."""
+	"""*value* when it is a plain http(s) URL (``track.is_web_url``, the one rule for a web address) of at
+	most 500 characters, else ""."""
 	text = value.strip() if isinstance(value, str) else ""
-	if len(text) > CAP["url"] or not text.lower().startswith(("http://", "https://")) \
-			or any(c.isspace() or c in "\"'<>\\`" for c in text):
-		return ""
-	return text
+	return text if len(text) <= CAP["url"] and is_web_url(text) else ""
 
 
 def _email(data: dict) -> str:

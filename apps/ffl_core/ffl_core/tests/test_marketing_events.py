@@ -186,7 +186,7 @@ class TestContactSubscribed(MarketingTestCase):
 		self.assertEqual((req.label, req.sku), ("MosinM91/30", "SKU-1"))
 		self.assertEqual(json.loads(events_of(email)[0].detail)["source"], "Footerform")
 		for bad in ("javascript:alert(1)", "/relative", 'https://e.example/"onmouseover=x', "https://e.example/a b",
-				"https://e.example/" + "u" * 500):
+				"https://e.example/" + "u" * 500, "https:///no-host", "http://", "https://e.example/`x"):
 			self.assertEqual(events.url(bad), "", bad)
 		self.assertEqual(events.url(" HTTPS://e.example/p?a=1&b=2 "), "HTTPS://e.example/p?a=1&b=2")
 

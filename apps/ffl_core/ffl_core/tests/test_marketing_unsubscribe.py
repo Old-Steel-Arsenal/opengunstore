@@ -237,7 +237,7 @@ class TestClick(MailTestCase):
 
 	def test_only_web_addresses_even_when_signed(self):
 		for target in ("javascript:alert(1)", "data:text/html,x", "//evil.example.net/", "ftp://x.example/",
-				"https://x.example/\" onmouseover=\"x", "https://x.example/\r\nSet-Cookie: a=b", "https:///nohost"):
+				"https://x.example/\" onmouseover=\"x", "https://x.example/\r\nSet-Cookie: a=b", "https:///nohost", "https://x.example/`x"):
 			with self.subTest(target=target):
 				response = track.click(u=target, c="c1", t=contact_token(self.email), s=sign(CLICK, target))
 				self.assertEqual(response.status_code, 400)
