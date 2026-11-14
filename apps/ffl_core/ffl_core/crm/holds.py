@@ -437,6 +437,9 @@ def hold_guns(deal, serials, approver: str | None = None, pin: str | None = None
 	from ffl_core.crm.deal import SERIAL_FIELD
 	from ffl_core.reservations import shelf_state_columns
 
+	from ffl_core.crm.sell_requests import refuse_selling
+
+	refuse_selling(deal)
 	if not holds_on():
 		frappe.throw(_("Holding guns for deals is off. A manager can turn it on in Lead Mail Settings."),
 			title=_("Turned off"))

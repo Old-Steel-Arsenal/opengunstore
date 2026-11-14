@@ -15,7 +15,7 @@ Some things happen without anyone clicking. Every job below runs on the server's
 | Hourly | Stale trade-in draft alert, signed 4473 PDF copies, GunBroker listing sweep, distributor invoice pull, storage location sweep |
 | Every 30 minutes | Distributor order poll |
 | Every 15 minutes | Register consolidation safety net, feed staleness watchdog, category mirror, local catalog sync, GunBroker order poll, GunBroker end-listing confirmation, auction bid watch |
-| Every 10 minutes | GunBroker tracking poll |
+| Every 10 minutes | GunBroker tracking poll, CRM spam folder check, CRM sent mail read |
 | Every 2 hours | WooCommerce reconcile, order audit, serial reservation retry, shipped-undisposed check, web revenue backstop |
 
 A job for an integration does nothing while that integration is switched off. A GunBroker job, for example, does nothing while **Enable GunBroker** is off in GunBroker Settings.

@@ -35,11 +35,13 @@ from frappe.utils import flt
 
 from ffl_core.alerts import safe_log_error
 from ffl_core.compliance.ffl_number import FFL_NUMBER_RE, is_cr_license
+from ffl_core.crm.customer import auto_link_after_commit
 from ffl_core.crm.web_orders import (
 	CANCELLED,
 	PLACED,
 	REFUNDED,
 	TRANSFERRED,
+	after_commit as crm_after_commit,
 	note_web_order,
 	payment_failed,
 	payment_recovered,
@@ -59,6 +61,7 @@ from ffl_core.warehouses import custody_warehouse_names
 from ffl_woo_sync.woocommerce.cr_transfer import _clear_cr_verification
 
 from ffl_woo_sync.woocommerce.client import resolve_site, store_entry
+from ffl_woo_sync.woocommerce.revenue import intake_customer
 from ffl_woo_sync.woocommerce.sync import _f
 
 
@@ -1790,9 +1793,15 @@ def _handle_order_created(body: dict) -> None:
 	# Inserted straight into Transferred, so validate stamps transferred_at.
 	auto_cleared = _auto_clear_non_firearm_if_completed(order)
 
+	# The buyer's POS customer now, by the invoice's own rules, so the CRM sees the
+	# order before it is invoiced. Never fails the order (see intake_customer).
+	order.customer = intake_customer(order)
 	order.flags.ignore_permissions = True
 	order.insert()
 	note_web_order(order.name, PLACED)
+	if order.customer:
+		# Deals with this email and no customer, linked once this order commits.
+		auto_link_after_commit(email=order.customer_email)
 
 	# Tag the order 'web' (Desk-filterable) so it's distinguishable from counter
 	# orders. Write _user_tags directly: Document.add_tag() runs a permission check
@@ -2678,6 +2687,8 @@ def _handle_order_updated(body: dict) -> None:
 		for row in order.refunds:
 			if str(row.woo_refund_id) not in known_refunds:
 				note_web_order(order.name, REFUNDED, key=str(row.woo_refund_id), amount=row.refund_amount)
+		# Refunds that reach the order's total undo its deal like a cancel; a partial one changes nothing.
+		crm_after_commit(order.name, paid=False)
 	if new_refund or has_pending_breakdown(order):
 		# One job per order: redeliveries while it waits add nothing. A refund
 		# that lands while the job is already RUNNING is dropped here (Frappe
@@ -2854,6 +2865,8 @@ def _handle_order_cancelled(body: dict) -> None:
 	event = {"cancelled": CANCELLED, "refunded": REFUNDED}.get(_order_status(body))
 	if event:
 		note_web_order(order_name, event)
+		# The deal this order won goes back to open, once this commits (crm.web_orders).
+		crm_after_commit(order_name, paid=False)
 
 	# #9 — the write above is db.set_value, which fires NO doc_events, so anything
 	# that must react to a cancellation has to be called explicitly. The
@@ -3013,6 +3026,9 @@ def _handle_order_upsert(body: dict) -> None:
 
 		if _is_paid_woo_status(_order_status(body)):
 			payment_recovered(str(body.get("id") or ""), (body.get("billing") or {}).get("email") or "")
+			# A paid order wins the deal or the lead it closes, once this commits (crm.web_orders).
+			crm_after_commit(frappe.db.get_value("Woo Online Order", {"woo_order_id": str(body.get("id") or "").strip(),
+				"site": frappe.flags.get("woo_sync_site") or "retail"}, "name"), paid=True)
 
 
 _HANDLERS: dict[str, Any] = {

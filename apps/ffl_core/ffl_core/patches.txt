@@ -97,3 +97,7 @@ ffl_core.patches.tidy_received_crm_mail
 ffl_core.patches.backfill_ledger_serial
 # Marketing: the Marketing Settings link in the Settings workspace.
 ffl_core.patches.add_marketing_settings_workspace_entry
+# Frappe CRM: a deal the POS opened for a contact carries the person's name (first, last, full), as a converted deal does.
+ffl_core.patches.name_crm_deals
+# Website sell-your-gun requests become CRM deals of their own; inquiry notes keep their event id in a field, not the title.
+ffl_core.patches.crm_sell_request_deals

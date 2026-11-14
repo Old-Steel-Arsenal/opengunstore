@@ -20,6 +20,7 @@ class TestContactEmail(CRMTestCase):
 		deal = api.open_deal(contact)
 		doc = frappe.get_doc("CRM Deal", deal)
 		self.assertEqual([(c.contact, c.is_primary) for c in doc.contacts], [(contact, 1)])
+		self.assertEqual((doc.first_name, doc.last_name, doc.lead_name), ("Walk", "In", "Walk In"))
 		self.assertEqual(api.open_deal(contact), deal)
 
 	def test_a_closed_deal_is_not_reused(self):

@@ -123,6 +123,7 @@ class TestIncomingMail(CRMTestCase):
 		self.assertEqual(doctype, "CRM Deal")
 		doc = frappe.get_doc("CRM Deal", deal)
 		self.assertEqual([c.contact for c in doc.contacts], [_contact_of(customer)])
+		self.assertEqual((doc.first_name, doc.last_name, doc.lead_name), ("Known", "", "Known"))
 		if doc.meta.has_field("erpnext_customer"):
 			self.assertEqual(doc.erpnext_customer, customer)
 		self.assertFalse(_leads("known@buyer.test"))

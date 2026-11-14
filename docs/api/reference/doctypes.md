@@ -1671,6 +1671,7 @@ app: `ffl_woo_sync` · module: FFL Woo Sync · roles: System Manager
 | `customer_name` | Data | Customer Name |  |  |
 | `customer_phone` | Data | Phone |  |  |
 | `customer_email` | Data | Email |  | Email |
+| `customer` | Link | POS Customer |  | Customer |
 | `lines` | Table | Lines |  | Woo Online Order Line |
 | `serials` | Table | Firearm Serials |  | Woo Online Order Serial |
 | `currency` | Data | Currency |  |  |

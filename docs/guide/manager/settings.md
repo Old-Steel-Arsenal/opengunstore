@@ -124,7 +124,7 @@ Team mail that is not a customer inquiry, the **Category rules** and the **Spam 
 
 Two kinds of inquiry reach CRM on their own:
 
-- **Website inquiries.** Price requests, sell-your-gun forms and questions sent from the website go on the customer's open deal, or else on a lead, with the gun asked about on it. This needs the website plugin that sends them.
+- **Website inquiries.** Price requests and questions from the website go on the customer's open deal, else on a lead, with the gun on it. A [sell-your-gun form](../orders/buy-from-a-sell-request.md) is a deal of its own. This needs the website plugin.
 - **GunBroker buyer questions.** A buyer's question about one of the store's listings becomes its own lead, with the gun on it. Later messages in the same conversation go to the same lead.
 
 Nothing is emailed to the customer either way.
@@ -136,9 +136,9 @@ Nothing is emailed to the customer either way.
 3. Fill in **Team addresses** and **Reply-To for staff mail**, then click **Save**. Every staff mailbox gets the Reply-To, and everyone with Sales User or Sales Manager can answer as each **Mailbox** address.
 4. Each staff member opens their own **My Settings** and clicks **Connect my mailbox**, then signs in to their own mail account.
 
-Every lead and deal that gets team mail shows to everyone with Sales User or Sales Manager, without a notice or an email to anyone. A deal converted from such a lead shows to them too. Whoever answers a new lead first from CRM becomes its owner. To take one over, change its owner in CRM.
+Every lead and deal that gets team mail shows to everyone with Sales User or Sales Manager, without a notice or an email to anyone. A deal converted from such a lead shows to them too. Whoever answers a new lead first becomes its owner, from CRM or [their own mailbox](other-mail.md#mail-sent-outside-crm). To take one over, change its owner in CRM.
 
-A lead or deal that only got mail sent to one staff member shows to its owner and to Sales Managers. A customer's answer to a reply sent from CRM goes to the Reply-To team address, and the record then shows to everyone too.
+A lead or deal that only got mail sent to one staff member shows to its owner and to Sales Managers. A customer's answer to a reply sent from CRM goes to the Reply-To team address, and the record then shows to everyone.
 
 Save these settings again after you add a staff member. They see existing team leads once the next team mail reaches each one. Removing someone who leaves from a **Mailbox** address is done on their user record.
 

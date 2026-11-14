@@ -317,15 +317,21 @@ doc_events = {
 	"CRM Lead": {"validate": "ffl_core.crm.mail.other_mail_on_validate"},
 	"CRM Deal": {
 		# The quote's lines priced; the value pinned to the deal's invoices (ffl_core.crm.orders).
-		"validate": ["ffl_core.crm.deal.price_lines", "ffl_core.crm.orders.pin_deal_value"],
-		# A deal converted from a lead the team shares stays shared (ffl_core.crm.mail).
-		"after_insert": "ffl_core.crm.mail.share_converted_deal",
+		# A deal with no title gets the person's name (ffl_core.crm.deals).
+		"validate": ["ffl_core.crm.deal.price_lines", "ffl_core.crm.orders.pin_deal_value",
+			"ffl_core.crm.deals.name_deal"],
+		# A deal converted from a lead the team shares stays shared (ffl_core.crm.mail); a deal whose
+		# email is one customer's is linked to it once it commits (ffl_core.crm.customer).
+		"after_insert": ["ffl_core.crm.mail.share_converted_deal", "ffl_core.crm.customer.deal_inserted"],
 		# A gun held for the deal (crm/holds.py): Won / Lost, a gun off its lines, deleted or renamed
 		# ends or follows its holds.
 		"on_update": "ffl_core.crm.holds.on_deal_update",
 		"on_trash": "ffl_core.crm.holds.on_deal_trash",
 		"after_rename": "ffl_core.crm.holds.on_deal_rename",
 	},
+	# A trade-in taken as credit for a CRM sell request is booked at checkout: the deal is won then
+	# (ffl_core.crm.sell_requests).
+	"FFL Acquisition": {"on_submit": ["ffl_core.crm.sell_requests.acquisition_submitted"]},
 	# A new staff account lands on the POS, not on the /apps picker CRM's own app brings (ffl_core.crm).
 	"User": {"validate": "ffl_core.crm.staff_default_app"},
 	"Quotation": {
@@ -922,6 +928,8 @@ after_install = [
 	"ffl_core.setup.pos_compat.ensure_cashier_pos_profile_select",
 	# Permissions granted by user decision (pos_compat.ROLE_GRANTS): the counter's 4473 / pickup reports.
 	"ffl_core.setup.pos_compat.ensure_role_grants",
+	# The register page's ERPNext domain (Retail) active, or the Gun Shop sidebar drops its link (pos_compat).
+	"ffl_core.setup.pos_compat.ensure_register_domain",
 	"ffl_core.setup.customer_tax.ensure",
 	"ffl_core.setup.customer_identity.ensure",
 	# Customer Profile tab (status, alerts, IDs, family) + existing customers → Active.
@@ -981,6 +989,8 @@ after_migrate = [
 	"ffl_core.setup.pos_compat.ensure_cashier_pos_profile_select",
 	# Permissions granted by user decision (pos_compat.ROLE_GRANTS): the counter's 4473 / pickup reports.
 	"ffl_core.setup.pos_compat.ensure_role_grants",
+	# The register page's ERPNext domain (Retail) active, or the Gun Shop sidebar drops its link (pos_compat).
+	"ffl_core.setup.pos_compat.ensure_register_domain",
 	# After the grants: report POS Profile / Serial and Batch Bundle rules that drifted from ERPNext's (frozen Custom DocPerm).
 	"ffl_core.setup.pos_compat.check_perm_drift",
 	# Report a Company with no usable address (the home state has no default).
@@ -1153,6 +1163,8 @@ scheduler_events = {
 		# The AI's look at each team mailbox's spam folder (crm/mail.py).
 		"*/10 * * * *": [
 			"ffl_core.crm.mail.check_spam_folders",
+			# Mail staff send from their own mail client, filed on its lead or deal (crm/mail.py).
+			"ffl_core.crm.mail.check_sent_folders",
 		],
 		# Guns held for deals: write the ones that ran out or whose gun left, and tell the website
 		# (crm/holds.py). The counter already reads expiry as it happens.
@@ -1166,6 +1178,8 @@ scheduler_events = {
 		"ffl_core.storage.sweep_departed",
 	],
 	"daily": [
+		# A website sell request's photos not copied yet are tried again (crm/sell_requests.py).
+		"ffl_core.crm.sell_requests.retry_photos",
 		# A membership that does not renew turns Cancelled / Expired after its period (membership.py).
 		"ffl_core.membership.close_ended_memberships",
 		# Self-heal Item.actual_qty (the list-view "Quantity" column) from

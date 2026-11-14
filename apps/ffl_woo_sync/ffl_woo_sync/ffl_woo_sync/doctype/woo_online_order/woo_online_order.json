@@ -17,6 +17,7 @@
   "customer_phone",
   "column_break_customer",
   "customer_email",
+  "customer",
   "section_lines",
   "lines",
   "section_serials",
@@ -145,6 +146,14 @@
    "fieldtype": "Data",
    "label": "Email",
    "options": "Email"
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "POS Customer",
+   "options": "Customer",
+   "read_only": 1,
+   "search_index": 1
   },
   {
    "fieldname": "section_lines",
@@ -424,7 +433,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-30 12:30:00",
+ "modified": "2026-11-14 12:00:00",
  "modified_by": "Administrator",
  "module": "FFL Woo Sync",
  "name": "Woo Online Order",

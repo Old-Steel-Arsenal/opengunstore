@@ -59,6 +59,25 @@ each folder counts its own uids. So this keeps its own place, stores a kept mail
 asks before storing. Spam leaves no record; a customer's mail is filed as usual, and any other mail
 becomes other mail. With no answer it stops there and tries that mail again on the next run.
 
+Sent folder: staff often answer from their mail client, not from CRM. Every 10 minutes each in-scope
+mailbox's Sent folder (the one the server flags ``\\Sent``, RFC 6154) is read the same read-only way
+(:func:`check_sent_folders`), the first time from 30 days back. For each sent mail, in order
+(:func:`_sent_place`):
+
+1. its Message-ID is already a Communication (sent from CRM, or filed before): skipped;
+2. it answers a mail on a CRM Lead / Deal (In-Reply-To / References): filed there; else the first
+   To address outside the store that is a Customer's contact (their open deal) or a CRM Lead (that
+   lead, other mail included): filed there;
+3. that first address is in a blocked domain or automated: skipped; so is a mail its headers mark
+   automated or bulk (Auto-Submitted, Precedence, List-Id / List-Unsubscribe), whatever rule 2 says;
+4. anyone else: from a collector, a new lead (the category rules apply, as to a new sender of team
+   mail; no owner); from a staff mailbox, skipped, and nothing about it is stored.
+
+A filed mail is a Sent Communication dated as the mail (:func:`_insert_sent`). It sends nothing: a
+Communication is only mailed by ``make()``. CRM marks the record answered as for a reply sent from it;
+a staff mailbox's mail owns an owner-less record (:func:`claim_on_reply`), a collector's is shared with
+the team instead. The same mail coming in later (a reply that copied a team address) is "one we sent".
+
 "Skipped" means never stored: the Communication ``before_insert`` raises Frappe's own
 ``SentEmailInInboxError``, which ``EmailAccount.receive`` answers with a plain rollback (no Error
 Log, no failed count). Frappe's IMAP "ALL" sync starts each pull after the highest uid it has stored
@@ -96,13 +115,14 @@ from frappe.core.utils import html_to_plain_text
 from frappe.email.doctype.email_account.email_account import pull_from_email_account
 from frappe.email.receive import InboundMail, SentEmailInInboxError
 from frappe.integrations.doctype.connected_app.connected_app import has_token
-from frappe.utils import cint, get_datetime, now, now_datetime, nowdate, parse_addr, split_emails
+from frappe.utils import add_days, cint, get_datetime, getdate, now, now_datetime, nowdate, parse_addr, split_emails
 from frappe.utils.background_jobs import enqueue, get_jobs
+from frappe.utils.html_utils import sanitize_html
 from frappe.utils.synchronization import filelock
 
 from ffl_core.crm import TITLE, gunbroker, installed, team
 from ffl_core.crm.deal import add_product_row
-from ffl_core.crm.deals import DEAL, open_deal_for
+from ffl_core.crm.deals import DEAL, _split_name, open_deal_for
 from ffl_core.utils import commit
 
 SETTINGS = team.SETTINGS
@@ -128,6 +148,13 @@ SPAM_PLACE = "ffl_crm_spam_place:"            # site global per Email Account: "
 SPAM_BATCH = 25                               # mails per account per run
 SPAM_FIRST_LOOK = 200                         # a new folder: only its latest mails are read
 SPAM_ANSWER_FLAG = "ffl_crm_spam_answer"
+SENT_JOB = "ffl_crm_sent_folder"
+SENT_PLACE = "ffl_crm_sent_place:"            # as SPAM_PLACE; "none" once an account was found without one
+SENT_BATCH = 100                              # mails per account per run: no provider to wait on
+SENT_FIRST_DAYS = 30                          # a new Sent folder: only its mail of the last 30 days is read
+SENT_BY_FLAG = "ffl_crm_sent_by"              # Communication flag: a mail read from a Sent folder, and its user
+NO_SENT_FOLDER = "none"
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 # Machine mail. Communication keeps no headers (Auto-Submitted, List-Unsubscribe), so the
 # address's local part is the signal there is.
 _AUTOMATED_LOCAL_PARTS = frozenset({
@@ -345,12 +372,6 @@ def decide(doc) -> tuple | None:
 	return (SKIP, "direct mail from someone new")
 
 
-def _split_name(full_name: str | None) -> tuple[str, str]:
-	"""A display name as (first name, last name): the first word, then the rest."""
-	parts = (full_name or "").split()
-	return (parts[0], " ".join(parts[1:])) if parts else ("", "")
-
-
 def _new_lead(email: str, full_name: str | None, category: str | None = None, source: str = "Email",
 		**fields) -> str:
 	"""A new CRM Lead named *full_name* (the local part of *email* when blank); *fields* are set as given."""
@@ -437,15 +458,21 @@ def route(doc, decision=None, screened: bool = False) -> tuple[str, str] | None:
 			lead = _new_lead(email.strip().lower(), doc.get("sender_full_name") or name)
 		target = (LEAD, lead)
 		_link(doc, *target)
-	if row and target[0] in OWNER_FIELD and not _is_other_mail(*target):
-		frappe.db.savepoint("ffl_crm_share")
-		try:
-			share_with_team(*target)
-		except Exception:   # the mail stays where it went; the next team mail tries again
-			frappe.db.rollback(save_point="ffl_crm_share")
-			frappe.log_error(title=f"[{TITLE}] Team mail not shared: {target[0]} {target[1]}",
-				message=frappe.get_traceback())
+	if row:
+		_share_team_mail(*target)
 	return target if decision[0] != "keep" else None
+
+
+def _share_team_mail(doctype: str, name: str) -> None:
+	"""Team mail's lead or deal is shared with the team, other mail is not. Never fails the mail."""
+	if doctype not in OWNER_FIELD or _is_other_mail(doctype, name):
+		return
+	frappe.db.savepoint("ffl_crm_share")
+	try:
+		share_with_team(doctype, name)
+	except Exception:   # the mail stays where it went; the next team mail tries again
+		frappe.db.rollback(save_point="ffl_crm_share")
+		frappe.log_error(title=f"[{TITLE}] Team mail not shared: {doctype} {name}", message=frappe.get_traceback())
 
 
 def _body_of(doc) -> str:
@@ -514,7 +541,14 @@ def tidy_received_mail(doc, method=None):
 
 def skip_unwanted(doc, method=None):
 	"""Communication before_insert, during a mail pull only: refuse the mail :func:`decide` skips.
-	A failure of the rules themselves keeps the mail (as before them): never lose a mail on our bug."""
+	A failure of the rules themselves keeps the mail (as before them): never lose a mail on our bug.
+	A mail read from a Sent folder (:func:`_insert_sent`) is dated as the mail, so CRM's timeline and its
+	"last mail" (``communication_status``) put it where it was sent, and owned by its mailbox's user."""
+	if doc.flags.get(SENT_BY_FLAG) is not None:
+		doc.creation = doc.communication_date
+		if doc.flags.get(SENT_BY_FLAG):
+			doc.owner = doc.flags.get(SENT_BY_FLAG)
+		return
 	if not doc.flags.get("in_receive") or not installed():
 		return
 	try:
@@ -736,53 +770,75 @@ def check_spam_folders():
 
 
 def check_spam_folder(account: str) -> None:
-	"""One mailbox's spam folder, from where the last run stopped. Selected read-only and fetched with
-	PEEK, so nothing in the mailbox changes. Each mail ends in its own commit with the place saved."""
+	"""One mailbox's spam folder, from where the last run stopped (:func:`_read_folder`)."""
 	folder = frappe.get_cached_doc(SETTINGS).get("spam_folder")
 	email_account = frappe.get_doc("Email Account", account)
-	try:
-		# in_receive: without it Frappe logs the connection out before returning it.
-		server = email_account.get_incoming_server(in_receive=True)
-	except Exception:
-		frappe.log_error(title=f"[{TITLE}] Spam folder not reached: {account}", message=frappe.get_traceback())
+	server = _connect(email_account, "Spam")
+	if not server:
 		return
 	try:
-		status, _data = server.imap.select(f'"{folder}"', readonly=True)
-		if status != "OK":
+		if not _read_folder(server, email_account, folder, SPAM_PLACE, SPAM_BATCH, _judge_spam_mail, "Spam",
+				start=lambda server, uidnext: max(uidnext - SPAM_FIRST_LOOK - 1, 0)):
 			frappe.log_error(title=f"[{TITLE}] No such folder in {account}: {folder}")
-			return
-		validity, last = _spam_place(server, account, folder)
-		_status, found = server.imap.uid("search", None, f"UID {last + 1}:*")
-		# "n:*" always answers the newest mail, even when it is older than n.
-		uids = [int(uid) for uid in (found[0] or b"").split() if int(uid) > last]
-		for uid in sorted(uids)[:SPAM_BATCH]:
-			_status, fetched = server.imap.uid("fetch", str(uid), "(BODY.PEEK[])")
-			raw = next((part[1] for part in fetched or [] if isinstance(part, tuple)), None)
-			# Nothing came back: the next run's search says whether the mail is still there.
-			if not raw or not _spam_mail_finished(raw, email_account, uid):
-				break
-			frappe.db.set_global(SPAM_PLACE + account, f"{validity}:{uid}")
-			commit()
 	finally:
 		server.logout()
 
 
-def _spam_place(server, account: str, folder: str) -> tuple[str, int]:
-	"""(the folder's UIDVALIDITY, the last uid read). A new folder, or one whose uids were renumbered,
-	starts near its end."""
-	_status, status = server.imap.status(f'"{folder}"', "(UIDVALIDITY UIDNEXT)")
+def _connect(email_account, what: str):
+	"""The account's IMAP connection, or None (logged)."""
+	try:
+		# in_receive: without it Frappe logs the connection out before returning it.
+		return email_account.get_incoming_server(in_receive=True)
+	except Exception:
+		frappe.log_error(title=f"[{TITLE}] {what} folder not reached: {email_account.name}", message=frappe.get_traceback())
+		return None
+
+
+def _quoted(folder: str) -> str:
+	return '"' + folder.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _read_folder(server, email_account, folder: str, place: str, batch: int, handle, what: str, start) -> bool:
+	"""Read a folder other than the one Frappe pulls, from where the last run stopped: False when it
+	cannot be selected. Selected read-only and fetched with PEEK, so nothing in the mailbox changes.
+	*handle* (raw, email_account) answers whether a mail is finished with: False stops the run there,
+	to try that mail again next time. Each mail ends in its own commit with the place saved
+	(site global *place* + account: "<uidvalidity>:<last uid read>"). A folder seen for the first time,
+	or whose uids were renumbered, starts after the uid *start* (server, UIDNEXT) gives."""
+	status, _data = server.imap.select(_quoted(folder), readonly=True)
+	if status != "OK":
+		return False
+	key = place + email_account.name
+	validity, last = _folder_place(server, folder, key, start)
+	_status, found = server.imap.uid("search", None, f"UID {last + 1}:*")
+	# "n:*" always answers the newest mail, even when it is older than n.
+	uids = [int(uid) for uid in (found[0] or b"").split() if int(uid) > last]
+	for uid in sorted(uids)[:batch]:
+		_status, fetched = server.imap.uid("fetch", str(uid), "(BODY.PEEK[])")
+		raw = next((part[1] for part in fetched or [] if isinstance(part, tuple)), None)
+		# Nothing came back: the next run's search says whether the mail is still there.
+		if not raw or not _mail_finished(handle, raw, email_account, uid, what):
+			break
+		frappe.db.set_global(key, f"{validity}:{uid}")
+		commit()
+	return True
+
+
+def _folder_place(server, folder: str, key: str, start) -> tuple[str, int]:
+	"""(the folder's UIDVALIDITY, the last uid read)."""
+	_status, status = server.imap.status(_quoted(folder), "(UIDVALIDITY UIDNEXT)")
 	validity = server.parse_imap_response("UIDVALIDITY", status[0]) or ""
 	uidnext = cint(server.parse_imap_response("UIDNEXT", status[0]))
-	saved, _sep, last = (frappe.db.get_global(SPAM_PLACE + account) or "").partition(":")
-	return validity, cint(last) if saved == validity else max(uidnext - SPAM_FIRST_LOOK - 1, 0)
+	saved, _sep, last = (frappe.db.get_global(key) or "").partition(":")
+	return validity, cint(last) if saved == validity else start(server, uidnext)
 
 
-def _spam_mail_finished(raw: bytes, email_account, uid: int) -> bool:
+def _mail_finished(handle, raw: bytes, email_account, uid: int, what: str) -> bool:
 	"""A mail that cannot be read or kept is logged and passed over: it must not stop the rest of the folder."""
 	try:
-		return _judge_spam_mail(raw, email_account)
+		return handle(raw, email_account)
 	except Exception:
-		frappe.log_error(title=f"[{TITLE}] Spam folder mail left out: {email_account.name} uid {uid}",
+		frappe.log_error(title=f"[{TITLE}] {what} folder mail left out: {email_account.name} uid {uid}",
 			message=frappe.get_traceback())
 		return True
 
@@ -824,6 +880,179 @@ def _judge_spam_mail(raw: bytes, email_account) -> bool:
 	finally:
 		frappe.flags.pop(SPAM_ANSWER_FLAG, None)
 	return True
+
+
+def check_sent_folders():
+	"""Cron, every 10 minutes: one job per in-scope IMAP mailbox, for its Sent folder."""
+	if not installed():
+		return
+	accounts = frappe.get_all("Email Account", filters={"name": ["in", team.in_scope_accounts() or [""]],
+		"enable_incoming": 1, "awaiting_password": 0, "use_imap": 1}, pluck="name")
+	for account in accounts:
+		enqueue("ffl_core.crm.mail.check_sent_folder", "long", job_id=f"{SENT_JOB}:{account}", deduplicate=True,
+			account=account)
+
+
+def check_sent_folder(account: str) -> None:
+	"""One mailbox's Sent folder, from where the last run stopped (:func:`_read_folder`); the first time
+	from :data:`SENT_FIRST_DAYS` back. A server that flags no folder ``\\Sent`` is logged once."""
+	email_account = frappe.get_doc("Email Account", account)
+	server = _connect(email_account, "Sent")
+	if not server:
+		return
+	try:
+		folder = _sent_folder(server)
+		if not folder:
+			if frappe.db.get_global(SENT_PLACE + account) != NO_SENT_FOLDER:
+				frappe.log_error(title=f"[{TITLE}] No Sent folder found in {account}",
+					message="The mail server flags no folder \\Sent (RFC 6154), so mail sent from this mailbox outside CRM is not filed.")
+				frappe.db.set_global(SENT_PLACE + account, NO_SENT_FOLDER)
+				commit()
+			return
+		if not _read_folder(server, email_account, folder, SENT_PLACE, SENT_BATCH, _file_sent_mail, "Sent",
+				start=_sent_start):
+			frappe.log_error(title=f"[{TITLE}] Sent folder not opened in {account}: {folder}")
+	finally:
+		server.logout()
+
+
+_LIST_LINE = re.compile(r'^\((?P<flags>[^)]*)\)\s+(?:"(?:[^"\\]|\\.)*"|NIL)\s+(?P<name>.+)$', re.I)
+
+
+def _sent_folder(server) -> str | None:
+	"""The folder the server flags ``\\Sent`` in its LIST answer (RFC 6154 special use).
+	lazy: a name sent as an IMAP literal ({n}) is not read, and a server that names special use only
+	under LIST (SPECIAL-USE) is not asked that way; upgrade path: a Sent folder setting per account."""
+	status, lines = server.imap.list()
+	if status != "OK":
+		return None
+	for line in lines or []:
+		if not isinstance(line, bytes):
+			continue
+		found = _LIST_LINE.match(line.decode("utf-8", "replace").strip())
+		if found and "\\sent" in found["flags"].lower().split():
+			name = found["name"].strip()
+			if name.startswith('"') and name.endswith('"'):
+				name = re.sub(r'\\(.)', r"\1", name[1:-1])
+			return name
+	return None
+
+
+def _sent_start(server, uidnext: int) -> int:
+	"""A Sent folder read for the first time starts at its mail of the last :data:`SENT_FIRST_DAYS` days."""
+	day = getdate(add_days(nowdate(), -SENT_FIRST_DAYS))
+	since = f"{day.day:02d}-{_MONTHS[day.month - 1]}-{day.year}"
+	_status, found = server.imap.uid("search", None, f"SINCE {since}")
+	uids = [int(uid) for uid in (found[0] or b"").split()] if found else []
+	return min(uids) - 1 if uids else max(uidnext - 1, 0)
+
+
+def _file_sent_mail(raw: bytes, email_account) -> bool:
+	"""One mail from a Sent folder (module doc, "Sent folder"): whether it is finished with."""
+	message = InboundMail(raw, email_account)
+	if _machine_written(message.mail):
+		return True   # an autoreply or a list mailing: nothing of it is stored, a thread reply included
+	# lazy: a mail with no Message-ID cannot be told from one already in, so it is left out; upgrade
+	# path: match on sender, recipients and date.
+	if not message.message_id or frappe.db.exists("Communication", {"message_id": message.message_id}):
+		return True
+	frappe.db.savepoint("ffl_crm_sent")
+	try:
+		place = _sent_place(message, email_account)
+		if place:
+			_insert_sent(message, email_account, place)
+	except frappe.QueryDeadlockError:
+		frappe.db.rollback()   # the transaction is gone: not finished, the next run tries it again
+		return False
+	except Exception:
+		frappe.db.rollback(save_point="ffl_crm_sent")
+		raise
+	return True
+
+
+_BULK_PRECEDENCE = frozenset({"bulk", "list", "junk", "auto_reply"})
+
+
+def _machine_written(headers) -> bool:
+	"""A mail its headers mark automated (Auto-Submitted other than "no", RFC 3834) or bulk (Precedence
+	bulk / list / junk / auto_reply, or a mailing list's List-Id / List-Unsubscribe)."""
+	auto = (headers.get("Auto-Submitted") or "").strip().lower()
+	if headers.get("Auto-Submitted") is not None and auto.split(";", 1)[0].strip() != "no":
+		return True
+	if (headers.get("Precedence") or "").strip().lower() in _BULK_PRECEDENCE:
+		return True
+	return headers.get("List-Id") is not None or headers.get("List-Unsubscribe") is not None
+
+
+def _message_ids(value: str | None) -> list[str]:
+	return re.findall(r"<([^<>\s]+)>", value or "")
+
+
+def _store_address(address: str) -> bool:
+	"""One of the store's own addresses: a team address, an Email Account, or a domain of ours."""
+	return _in(address.rsplit("@", 1)[-1], domain_lines(frappe.get_cached_doc(SETTINGS).own_domains)) \
+		or any(r.address == address for r in team.rows()) \
+		or bool(frappe.db.exists("Email Account", {"email_id": address}))
+
+
+def _sent_place(message, email_account) -> dict | None:
+	"""Where a sent mail is filed: {doctype, name, in_reply_to, owner, team}, or None (skipped)."""
+	account = email_account.name
+	collector = account in team.collectors()
+	place = {"owner": None if collector else _mailbox_user(account), "team": collector, "in_reply_to": None}
+	ids = _message_ids(message.mail.get("In-Reply-To")) + _message_ids(message.mail.get("References"))
+	if ids:
+		found = frappe.get_all("Communication", filters={"message_id": ["in", ids],
+			"reference_doctype": ["in", list(OWNER_FIELD)]}, fields=["name", "reference_doctype", "reference_name"],
+			order_by="creation desc", limit=1)
+		if found:
+			return {**place, "doctype": found[0].reference_doctype, "name": found[0].reference_name,
+				"in_reply_to": found[0].name}
+	to = []
+	for part in split_emails(message.decode_email(message.mail.get("To")) or ""):
+		name, address = parse_addr(part)
+		address = (address or "").strip().lower()
+		if "@" in address and not _store_address(address) and address not in [a for a, _n in to]:
+			to.append((address, name))
+	for address, _name in to:
+		contact = _customer_contact(address)
+		if contact:
+			# No owner here: CRM would assign it as the system and notify the user. A staff mailbox's
+			# user takes an owner-less deal quietly (claim_on_reply), as for a reply from CRM.
+			return {**place, "doctype": DEAL, "name": open_deal_for(contact)}
+		lead = frappe.db.get_value(LEAD, {"email": address}, "name")
+		if lead:
+			return {**place, "doctype": LEAD, "name": lead}
+	if not to or not collector or _unwanted_category(to[0][0]):
+		return None   # a staff member's mail to someone new is private: nothing of it is stored
+	address, name = to[0]
+	category = _rule_category(address.rsplit("@", 1)[-1])
+	return {**place, "doctype": LEAD, "name": _new_lead(address, name if name != address else None, category)}
+
+
+def _insert_sent(message, email_account, place: dict) -> str:
+	"""The sent mail as a Sent Communication on the place's record: sender, recipients, date, subject,
+	body and attachments as the mail has them, the body tidied as a received mail's is. Inserted, never
+	sent: Frappe mails a Communication only from ``make()``."""
+	data = message.as_dict()
+	name, address = parse_addr(message.decode_email(message.mail.get("From")) or email_account.email_id)
+	address = (address or email_account.email_id or "").strip().lower()
+	data.update({"doctype": "Communication", "communication_type": "Communication", "sent_or_received": "Sent",
+		"sender": address, "sender_full_name": name if name and name != address else None, "seen": 1, "uid": -1,
+		"delivery_status": "Sent", "subject": one_line(data.get("subject")), "in_reply_to": place["in_reply_to"],
+		"reference_doctype": place["doctype"], "reference_name": place["name"],
+		"content": mail_body_html(sanitize_html(message.replace_inline_images([]) or ""))})
+	doc = frappe.get_doc(data)
+	doc.flags[SENT_BY_FLAG] = place["owner"] or ""
+	doc.flags.skip_add_signature = True
+	doc.insert(ignore_permissions=True)   # the system's own mail record, as a pulled mail is inserted
+	files = message.save_attachments_in_doc(doc)
+	if files:
+		doc.db_set("content", mail_body_html(sanitize_html(message.replace_inline_images(files) or "")),
+			update_modified=False)
+	if place["team"]:
+		_share_team_mail(place["doctype"], place["name"])
+	return doc.name
 
 
 def _assign_quietly(doctype: str, name: str, user: str) -> None:

@@ -24,6 +24,7 @@ def _order(name="WOO-ORD-00007", customer_name="Alex Example",
 	o.customer_name = customer_name
 	o.customer_email = customer_email
 	o.customer_phone = customer_phone
+	o.customer = None   # no customer stored at intake
 	return o
 
 
@@ -34,6 +35,9 @@ def setUpModule():
 	from ffl_core.tests.channel_query_doubles import warm_channel_meta
 
 	warm_channel_meta("Customer Alias")
+	# The resolved customer is written back to the order: its doctype and column, read the same way.
+	warm_channel_meta("Woo Online Order")
+	frappe.db.has_column("Woo Online Order", "customer")
 
 
 class _CaptureCustomer:

@@ -36,6 +36,7 @@ from frappe.utils import flt
 from ffl_core.acquisition import TRADE_IN_SOURCE
 from ffl_core.api._helpers import coerce_payload
 from ffl_core.cash_drawer import PAYOUT_METHODS
+from ffl_core.crm.sell_requests import after_intake
 from ffl_core.customer_name import split_display_name
 from ffl_core.firearm import ACCESSORY, AMMUNITION, PARTS, _is_firearm_row, is_per_serial_priced
 from ffl_core.roles import COUNTER_ROLES, STOCK_ROLES, TRADE_IN_ROLES
@@ -141,7 +142,10 @@ def create_trade_in_intake(payload) -> dict:
 	Args:
 	    payload: Trade-in intake fields (same shape as
 	        firearm_intake.create_intake plus seller identity, apply_credit,
-	        has_firearm and accessories) — dict or JSON string.
+	        has_firearm and accessories) — dict or JSON string. ``crm_deal``
+	        (a sell-request CRM Deal the dialog was opened from) links the
+	        trade-in to that deal once it commits and wins the deal when the gun
+	        is booked (crm.sell_requests.after_intake); it changes nothing here.
 
 	Returns:
 	    {ok, item_code, acquisition} (None without a gun): with apply_credit
@@ -280,11 +284,12 @@ def create_trade_in_intake(payload) -> dict:
 				"rate": flt(-sum(flt(a["qty"]) * flt(a["rate"]) for a in accessories), precision),
 				"stock_entry": result["accessory_receipt"],
 			})
-		return result
+		return after_intake(payload.get("crm_deal"), customer, result)
 
 	# A reference typed for a bank payment and left behind when the method went back to Cash is not this payment's.
 	reference = None if payout_method == "Cash" else str(payload.get("payout_reference") or "").strip() or None
-	return _buy_now(intake_payload, has_gun, accessories, payout_method, reference, antique=antique)
+	return after_intake(payload.get("crm_deal"), customer,
+		_buy_now(intake_payload, has_gun, accessories, payout_method, reference, antique=antique))
 
 
 def _check_counter_item(item_code: str | None) -> None:

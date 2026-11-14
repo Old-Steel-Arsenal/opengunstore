@@ -231,6 +231,43 @@ class TestDealStages(CRMTestCase):
 		self.assertTrue(frappe.db.exists(setup.STATUS, "Negotiation"))
 
 
+class TestFollowUpStatus(CRMTestCase):
+	"""CRM's two communication-status switches, which My follow-ups needs: on once per site."""
+
+	def setUp(self):
+		super().setUp()
+		self.saved = {f: frappe.db.get_single_value(setup.FCRM_SETTINGS, f) for f in setup.FOLLOW_UP_SWITCHES}
+		self.flag = frappe.db.get_global(setup.FOLLOW_UPS_FLAG)
+		self.addCleanup(frappe.db.set_global, setup.FOLLOW_UPS_FLAG, self.flag or "")
+		self.addCleanup(frappe.db.set_single_value, setup.FCRM_SETTINGS, dict(self.saved))
+		frappe.db.set_single_value(setup.FCRM_SETTINGS, {f: 0 for f in setup.FOLLOW_UP_SWITCHES})
+		frappe.db.set_global(setup.FOLLOW_UPS_FLAG, "")
+
+	def _switches(self) -> dict:
+		return {f: frappe.db.get_single_value(setup.FCRM_SETTINGS, f) for f in setup.FOLLOW_UP_SWITCHES}
+
+	def test_both_go_on_once_and_a_manager_may_turn_one_off(self):
+		self.assertEqual(sorted(setup.ensure_follow_up_status()), sorted(setup.FOLLOW_UP_SWITCHES))
+		self.assertEqual(set(self._switches().values()), {1})
+		frappe.db.set_single_value(setup.FCRM_SETTINGS, "auto_reopen_on_new_communication", 0)
+		self.assertEqual(setup.ensure_follow_up_status(), [])
+		self.assertEqual(self._switches()["auto_reopen_on_new_communication"], 0)
+
+	def test_a_site_with_them_on_is_untouched(self):
+		frappe.db.set_single_value(setup.FCRM_SETTINGS, {f: 1 for f in setup.FOLLOW_UP_SWITCHES})
+		self.assertEqual(setup.ensure_follow_up_status(), [])
+		self.assertTrue(frappe.db.get_global(setup.FOLLOW_UPS_FLAG))
+
+	def test_a_switch_this_crm_lacks_is_skipped(self):
+		with patch.object(setup, "FOLLOW_UP_SWITCHES", ("auto_mark_replied_on_response", "no_such_switch")):
+			self.assertEqual(setup.ensure_follow_up_status(), ["auto_mark_replied_on_response"])
+
+	def test_it_runs_with_the_setup(self):
+		with patch.object(setup, "ensure_follow_up_status") as ensure, patch.object(setup, "enqueue_backfill"):
+			setup.ensure()
+		ensure.assert_called_once()
+
+
 class TestNoQuotes(FrappeTestCase):
 	def test_the_deal_page_shows_no_quote_controls(self):
 		from ffl_core.api.crm import deals_use_no_quotes

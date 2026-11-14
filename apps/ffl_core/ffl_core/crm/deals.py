@@ -32,11 +32,47 @@ def customer_of(contact: str) -> str | None:
 	return found[0] if len(found) == 1 else None
 
 
-def open_deal_for(contact: str, owner: str | None = None) -> str:
+def _split_name(full_name: str | None) -> tuple[str, str]:
+	"""A display name as (first name, last name): the first word, then the rest."""
+	parts = (full_name or "").split()
+	return (parts[0], " ".join(parts[1:])) if parts else ("", "")
+
+
+def person_name(contact: str | None, customer: str | None = None, email: str | None = None,
+		organization: str | None = None) -> dict:
+	"""Who a deal is for, in the fields CRM's lead conversion fills (first_name, last_name, lead_name):
+	the Contact's own name, else the Customer's, else the organization's (lead_name only), else the
+	local part of *email*. lead_name is the deal's title (setup.DEAL_PROPERTIES)."""
+	first, last = frappe.db.get_value("Contact", contact, ["first_name", "last_name"]) if contact else (None, None)
+	if not first or "@" in first:   # an address standing in for a name is no name
+		first, last = _split_name(customer and frappe.db.get_value("Customer", customer, "customer_name"))
+	if not first and organization:
+		return {"first_name": "", "last_name": "", "lead_name": organization}
+	if not first and email:
+		first, last = email.split("@", 1)[0], ""
+	last = last or ""
+	return {"first_name": first or "", "last_name": last, "lead_name": " ".join(n for n in (first, last) if n)}
+
+
+def name_deal(doc, method=None) -> None:
+	"""CRM Deal validate: a deal with no lead_name (its title) gets one, so no deal shows as its number:
+	from the first and last name it holds, else by :func:`person_name` from its primary contact, linked
+	Customer, organization and email. A lead_name that is set is never changed."""
+	if doc.get("lead_name"):
+		return
+	if doc.get("first_name") or doc.get("last_name"):
+		doc.lead_name = " ".join(n for n in (doc.first_name, doc.last_name) if n)
+		return
+	rows = doc.get("contacts") or []
+	contact = next((r.contact for r in rows if r.is_primary), None) or (rows[0].contact if rows else None)
+	doc.update(person_name(contact, doc.get("erpnext_customer"), doc.get("email"), doc.get("organization")))
+
+
+def open_deal_for(contact: str, owner: str | None = None, title: str | None = None, new: bool = False) -> str:
 	"""The newest open deal *contact* is on, or a new one with them as its primary contact
-	(owned by *owner* when that is an enabled user, linked to their Customer when they have one).
-	Returns the deal's name."""
-	on = frappe.get_all("CRM Contacts", filters={"parenttype": DEAL, "contact": contact}, pluck="parent")
+	(owned by *owner* when that is an enabled user, linked to their Customer when they have one),
+	named after them, or titled *title* when given. *new*: always a new one. Returns the deal's name."""
+	on = [] if new else frappe.get_all("CRM Contacts", filters={"parenttype": DEAL, "contact": contact}, pluck="parent")
 	if on:
 		found = frappe.get_all(DEAL, filters={"name": ["in", on], "status": ["not in", _statuses(closed=True) or [""]]},
 			pluck="name", order_by="modified desc", limit=1)
@@ -50,6 +86,10 @@ def open_deal_for(contact: str, owner: str | None = None) -> str:
 	if customer and deal.meta.has_field("erpnext_customer"):
 		deal.erpnext_customer = customer
 	deal.append("contacts", {"contact": contact, "is_primary": 1})
+	# Named as a deal CRM converts from a lead is, so the person shows on it and searches find it.
+	deal.update(person_name(contact, customer, frappe.db.get_value("Contact", contact, "email_id")))
+	if title:
+		deal.lead_name = title
 	# CRM's DocType, made for a mail the system received or for the user who asked (their own
 	# read right on the Contact is checked by the endpoint); CRM's own lead-from-mail inserts so too.
 	deal.insert(ignore_permissions=True)

@@ -317,6 +317,20 @@ class TestRecaptureFflIfEmpty(FrappeTestCase):
 		self.assertEqual(order.ffl_business_name, "ALREADY SET")
 
 
+_INTAKE = patch("ffl_woo_sync.woocommerce.webhook.intake_customer", return_value=None)
+
+
+def setUpModule():
+	# The buyer's POS customer at intake reads and writes Customers for real, which these doubles
+	# of frappe.db.get_value / new_doc cannot answer; it is tested on the real database in
+	# test_web_order_customer.
+	_INTAKE.start()
+
+
+def tearDownModule():
+	_INTAKE.stop()
+
+
 # ---------------------------------------------------------------------------
 # Soft-reserve + order creation (_handle_order_created)
 # ---------------------------------------------------------------------------

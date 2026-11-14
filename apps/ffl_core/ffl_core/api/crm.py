@@ -3,7 +3,8 @@ opens the contact's deal to write to them, since CRM shows and sends mail only o
 **Connect my mailbox** on a staff member's own My Settings (``public/js/user_form.js``) starts the
 sign-in that connects their own mailbox; **Make lead** on a Communication (``public/js/communication_form.js``)
 files a mail the AI screening left without a lead; the Deal page's customer card, **Open order** and **Add want**
-(``ffl_core.crm.setup.DEAL_SCRIPT``), behind Lead Mail Settings' switch; guns held for a deal (the Deal page's
+(``ffl_core.crm.setup.DEAL_SCRIPT``), behind Lead Mail Settings' switch; a sell request's Gun offered card,
+**Make offer**, **Seller accepted** and **Receive gun** (``ffl_core.crm.sell_requests``), behind the same switch; guns held for a deal (the Deal page's
 **Hold gun**, and the counter's check and manager override, ``ffl_core.crm.holds``); the stand-ins that take quotes off the Deal page and other mail off the Leads list."""
 from __future__ import annotations
 
@@ -12,7 +13,8 @@ from frappe import _
 from frappe.utils import cint
 
 from ffl_core.crm import customer as deal_customer
-from ffl_core.crm import deals, holds, mail, pos_link_on
+from ffl_core.crm import deals, holds, mail, pos_link_on, sell_requests
+from ffl_core.crm import setup as crm_setup
 from ffl_core.roles import CRM_ROLES
 
 
@@ -160,6 +162,72 @@ def open_deal_order(deal: str) -> dict:
 	return deal_customer.open_order(_deal_for_pos_link(deal, "write"))
 
 
+@frappe.whitelist()
+def sell_request_card(deal: str) -> dict:
+	"""What a sell request's Gun offered card shows: the gun, its photos and where the buy stands.
+
+	Args:
+	    deal: The CRM Deal's name, a sell request.
+
+	Returns:
+	    dict: {"html", "offer": the store's offer or 0, "accepted_on": the day the seller accepted or None,
+	    "received": the gun is received}. Refused while the switch is off.
+	"""
+	frappe.only_for(CRM_ROLES)
+	doc = _deal_for_pos_link(deal, "read")
+	if not sell_requests.is_sell_request(doc):
+		frappe.throw(_("This deal is not a sell request."), title=_("Not a sell request"))
+	return sell_requests.card(doc)
+
+
+@frappe.whitelist(methods=["POST"])
+def make_sell_offer(deal: str, amount: float) -> dict:
+	"""Store what the store offers for a gun someone sells it. No email is sent, and the amount never
+	counts as a sale (the deal's value).
+
+	Args:
+	    deal: The CRM Deal's name, an open sell request whose gun is not received yet.
+	    amount: The offer, more than 0.
+
+	Returns:
+	    dict: The Gun offered card, as sell_request_card.
+	"""
+	frappe.only_for(CRM_ROLES)
+	return sell_requests.make_offer(_deal_for_pos_link(deal, "write"), amount)
+
+
+@frappe.whitelist(methods=["POST"])
+def sell_offer_accepted(deal: str) -> dict:
+	"""The seller accepted the offer: the deal waits for the gun from today. A second call keeps the
+	first day.
+
+	Args:
+	    deal: The CRM Deal's name, an open sell request with an offer.
+
+	Returns:
+	    dict: The Gun offered card, as sell_request_card.
+	"""
+	frappe.only_for(CRM_ROLES)
+	return sell_requests.accepted(_deal_for_pos_link(deal, "write"))
+
+
+@frappe.whitelist()
+def sell_gun_intake(deal: str) -> dict:
+	"""What the register's Trade-in dialog is filled with to receive a sell request's gun. Writes
+	nothing: staff check the gun and submit the dialog, and that books it.
+
+	Args:
+	    deal: The CRM Deal's name, an open sell request with a customer and no gun received yet.
+
+	Returns:
+	    dict: {"deal", "source_name": the seller (the deal's customer), "manufacturer", "model_name",
+	    "caliber", "firearm_type", "serial_no", "acquisition_cost": the offer or None}. No condition:
+	    staff grade the gun after inspecting it.
+	"""
+	frappe.only_for(CRM_ROLES)
+	return sell_requests.intake(_deal_for_pos_link(deal, "read"))
+
+
 @frappe.whitelist(methods=["POST"])
 def add_want(deal: str, keywords: str | None = None, item: str | None = None, budget: float | None = None,
 		notes: str | None = None) -> str:
@@ -194,9 +262,10 @@ def add_want(deal: str, keywords: str | None = None, item: str | None = None, bu
 @frappe.whitelist()
 def crm_list_data(**kwargs) -> dict:
 	"""CRM's list data for its Leads and Deals pages (hooks.py overrides ``crm.api.doc.get_data``), with
-	two changes: a Leads list leaves out other mail unless it filters on the status or category, and
+	three changes: a Leads list leaves out other mail unless it filters on the status or category,
 	``@me`` inside a filter's list of values is the caller (CRM's page replaces only a plain ``@me``, and
-	**My follow-ups** asks for "mine or nobody's").
+	**My follow-ups** asks for "mine or nobody's"), and a Deals list on CRM's own columns shows the
+	person's name first.
 
 	Args:
 	    kwargs: CRM's own arguments, unchanged, chiefly doctype and filters.
@@ -214,7 +283,18 @@ def crm_list_data(**kwargs) -> dict:
 			filters[mail.CATEGORY_FIELD] = ["is", "not set"]
 		kwargs["filters"] = filters
 		kwargs["default_filters"] = fixed or None
-	return frappe.call(get_data, **kwargs)
+	view = frappe.parse_json(kwargs.get("view") or {}) or {}
+	named = kwargs.get("doctype") == "CRM Deal" and view.get("view_type", "list") != "kanban" \
+		and not kwargs.get("columns") and not kwargs.get("rows") \
+		and not frappe.db.exists("CRM View Settings", {"dt": "CRM Deal", "type": view.get("view_type") or "list",
+			"is_standard": 1, "user": frappe.session.user})
+	if named:
+		# CRM's own default (it would read CRMDeal.default_list_data): the same, the name first.
+		kwargs.update(crm_setup.deal_list_data())
+	data = frappe.call(get_data, **kwargs)
+	if named and not view.get("custom_view_name"):
+		data["is_default"] = True   # still the default list: no "reset" offered
+	return data
 
 
 def _with_caller(value):
