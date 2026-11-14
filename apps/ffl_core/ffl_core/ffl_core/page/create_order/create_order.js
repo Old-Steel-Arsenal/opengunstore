@@ -675,7 +675,8 @@ class CreateOrderApp {
 			serialLookup: (term) => new Promise((resolve) => {
 				frappe.call({
 					method: 'ffl_core.api.manual_order.check_serials_available',
-					args: { serials: JSON.stringify([term]), ignore_invoice: this._editing?.si || undefined },
+					args: { serials: JSON.stringify([term]), ignore_invoice: this._editing?.si || undefined,
+						customer: this.fields.customer.get_value() || undefined },
 					callback: (r) => {
 						const c = (r.message || {})[term];
 						resolve(c && c.ok ? c : null);
@@ -1477,7 +1478,8 @@ class CreateOrderApp {
 		if (withSerial.length) {
 			frappe.call({
 				method: 'ffl_core.api.manual_order.check_serials_available',
-				args: { serials: JSON.stringify(withSerial.map((i) => i.serials[0])), ignore_invoice: this._editing?.si || undefined },
+				args: { serials: JSON.stringify(withSerial.map((i) => i.serials[0])), ignore_invoice: this._editing?.si || undefined,
+					customer: p.customer || this.fields.customer.get_value() || undefined },
 				callback: (rr) => this._applyDraftLines(p, rr.message || {}),
 			});
 		} else {
@@ -1567,8 +1569,16 @@ class CreateOrderApp {
 		if (!term) return;
 		frappe.call({
 			method: 'ffl_core.api.manual_order.find_serial_for_order',
-			args: { serial: term, ignore_invoice: this._editing?.si || undefined },
+			args: { serial: term, ignore_invoice: this._editing?.si || undefined,
+				customer: this.fields.customer.get_value() || undefined },
 			freeze: true, freeze_message: __('Looking up serial…'),
+			// Held for another customer's CRM deal: a manager may release it (deal_hold.js), then scan again.
+			error_handlers: {
+				DealHoldError: () => {
+					if (!(window.ffl && ffl.dealHold)) return;
+					ffl.dealHold.forSerial(term).then((released) => { if (released) this._addBySerial(term); });
+				},
+			},
 			callback: (r) => {
 				const m = r.message;
 				if (!m) return;

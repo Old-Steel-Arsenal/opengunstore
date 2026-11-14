@@ -1023,7 +1023,8 @@ class PendingDispositionsApp {
 		}
 		frappe.call({
 			method: 'ffl_core.firearm.available_serials_for_items',
-			args: { item_codes: JSON.stringify([sub.item_code]) },
+			// customer: a gun held for this buyer's CRM deal can serve their own order.
+			args: { item_codes: JSON.stringify([sub.item_code]), customer: row.customer || undefined },
 			callback: (r) => {
 				const list = (r.message || {})[sub.item_code] || [];
 				if (!list.length) {

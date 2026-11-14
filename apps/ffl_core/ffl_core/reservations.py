@@ -113,7 +113,8 @@ def counter_holds(item_code: str) -> dict:
 
 	Holds come from an open counter order: a submitted Sales Invoice with a
 	destination FFL whose serial is not yet disposed (Create Order), a Draft POS
-	Invoice firearm line (parked POS sale), or a Draft Consignment Out line
+	Invoice firearm line (parked POS sale), a gun held for a CRM deal (kind
+	``crm_deal``, crm/holds.py), or a Draft Consignment Out line
 	("create only — dispose later"). One registry, so a hold added here is
 	enforced everywhere at once.
 
@@ -173,6 +174,13 @@ def counter_holds(item_code: str) -> dict:
 			"tooltip": _("In a parked POS sale ({0})").format(pos),
 			"url": f"/app/pos-invoice/{pos}",
 		})
+	# A gun held for a CRM deal (crm/holds.py), while the hold is live. After the counter's own
+	# orders: a gun on one of them cannot be held in the first place. Its entry also carries the
+	# deal and the deal's customer, whom the sale gates let through.
+	from ffl_core.crm.holds import counter_hold_rows
+
+	for serial, hold in counter_hold_rows(item_code).items():
+		out.setdefault(serial, hold)
 	# Folded LAST, via setdefault: a Draft-consignment hold is the softest of
 	# the three (it's a pre-dispose staging record, not a committed order), so a
 	# stronger SI/POS hold on the same gun wins — the counter is the source of

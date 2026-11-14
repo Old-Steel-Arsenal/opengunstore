@@ -11,6 +11,8 @@ symmetric and enforced by a test).
   down for us put it back on sale.
 * ``channel_presale_probe`` — ffl_core calls it, and we REGISTER for it. A
   cashier is about to ring a gun up; does GunBroker already have a buyer?
+* ``gunshop_deal_hold_refusal`` — ffl_core calls it, and we REGISTER for it. Staff
+  want to hold a gun for a CRM deal; is it on sale on GunBroker right now?
 
 The asymmetry in how failure is handled is deliberate and is the important
 thing in this module.
@@ -205,3 +207,29 @@ def channel_commitments_changed(item_code: str, *, source: str) -> None:
 	if doc_events._skip():
 		return
 	doc_events.sync_item_level_listing(item_code)
+
+
+# ---------------------------------------------------------------------------
+# gunshop_deal_hold_refusal registrant
+# ---------------------------------------------------------------------------
+
+# Listing states in which GunBroker may sell the gun: on sale, on its way up, on its way down
+# (still live until GunBroker confirms the end), or very probably already sold there.
+DEAL_HOLD_REFUSED_STATES = ("listed", "push_pending", "end_pending", "sold_unknown")
+
+
+def deal_hold_refusal(serial_no: str) -> str | None:
+	"""Why this gun cannot be held for a CRM deal, or None.
+
+	The store's rule: a gun on sale on GunBroker is not held; staff end the listing first, and
+	the hold never ends a listing by itself. Our own flags only (listings.listing_state): no
+	network call. Raising is fine; ffl_core refuses the hold then.
+	"""
+	from ffl_integrations.gunbroker.listings import listing_state, serial_state
+
+	row = serial_state(serial_no)
+	if not row or listing_state(row) not in DEAL_HOLD_REFUSED_STATES:
+		return None
+	item = row.get("gb_item_id") or ""
+	return _("{0} is listed on GunBroker (item {1}). End the listing first, then hold it.").format(
+		serial_no, item) if item else _("{0} is listed on GunBroker. End the listing first, then hold it.").format(serial_no)

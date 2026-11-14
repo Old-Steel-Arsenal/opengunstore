@@ -16,11 +16,12 @@ Counter staff see most of these as cards on the [Dashboard](../start/dashboard.m
 3. Type part of the report's name in the **Filter…** box.
 4. Click the report.
 
-Five reports also have their own row in the sidebar:
+Six reports also have their own row in the sidebar:
 
 | Sidebar row | Report |
 |---|---|
 | **Sales** → **Sales report** | Sales Report |
+| **Sales** → **Sales summary** | Sales Summary |
 | **Compliance** → **4473 records** | Form 4473 Records |
 | **Compliance** → **Transfer pickups** | Pending Transfer Pickups |
 | **Compliance** → **Firearms in stock** | Firearms In Stock |
@@ -37,6 +38,7 @@ Five reports also have their own row in the sidebar:
 | Cash Drawer Weekly | Manager, bookkeeper | What moved the drawer each day, and did the count agree? |
 | Inventory Receipts | Bookkeeper, inventory | What entered stock this period, from whom, at what cost? |
 | Sales Report | Manager, bookkeeper | What did we sell, on every channel, and what did we make? |
+| Sales Summary | Manager | What were sales, discounts, returns, tax and payments for a period, on one page? |
 | Hand-Asserted 4473 Dispositions | Manager | Which bound book entries did a person vouch for instead of FastBound? |
 | GunBroker Statement Reconciliation | Bookkeeper | Does GunBroker's bill agree with our books, order by order? |
 | GunBroker Cash Basis Adjustments | Tax preparer | What bridges the accrual books to a cash-basis return? |
@@ -96,6 +98,22 @@ The summary cards show Cost Received, firearm units, ammunition and accessory co
 <figcaption>Receipts view. The cards total the whole period. Set Level and Collapse All, under the table, open and close the tree.</figcaption>
 </figure>
 
+**Sales Summary** puts one period on one page, for a **Company** between **From Date** and **To Date**. It counts the same sales as the Sales Report, in the same numbers. Pick a **View**:
+
+| View | Shows |
+|---|---|
+| Summary | Sales, discounts, returns, then shipping and tax, then the payments taken on those sales |
+| Category | The same totals by item group |
+| Register | By register |
+| Employee | By who opened the ticket |
+
+<figure markdown>
+![The Sales Summary report](../screenshots/report-sales-summary.webp){ .screenshot }
+<figcaption>Sales Summary for one day, Summary view.</figcaption>
+</figure>
+
+In Summary, **Recorded discounts** counts only discounts the sale records. A sale price, a per-gun price or a price typed on Create Order is already in the selling price. **Tax owed** is sales tax plus excise. The two **Checks** rows at the foot come to 0.00; anything else is shown in red, so ask your bookkeeper.
+
 **Hand-Asserted 4473 Dispositions** is the review list of every bound book entry a person vouched for instead of FastBound. Two things write one: a manager forcing a stuck electronic 4473 through, and the counter recording a paper 4473 in Paper 4473 Mode.
 
 Each row shows when, the serial, the disposition type, the sale, who vouched, their reason, and whether FastBound has since caught up. It shows the latest 500 and has no filters. Read it on a schedule, or the check it gives you is worth nothing.
@@ -128,7 +146,7 @@ To export:
 | Pending 4473 Orders, Pending Transfer Pickups | Counter and stock roles |
 | Form 4473 Records | Sales User, Sales Manager, System Manager |
 | Firearms In Stock | Stock User, Stock Manager, System Manager |
-| Sales Report | Sales Manager, Accounts Manager, System Manager |
+| Sales Report, Sales Summary | Sales Manager, Accounts Manager, System Manager |
 | Cash Drawer Weekly | Sales Manager, Accounts User, Accounts Manager, System Manager |
 | Inventory Receipts | Stock Manager, Purchase Manager, Accounts User, Accounts Manager, System Manager |
 | The two GunBroker reports | Accounts Manager, System Manager |

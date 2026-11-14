@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Unsubscribe</title>
+<style>
+	body { margin: 0; background: #fff; color: #111; font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+	main { max-width: 480px; margin: 0 auto; padding: 48px 20px; }
+	.store { font-weight: 700; font-size: 20px; margin: 0 0 24px; }
+	h1 { font-size: 24px; margin: 0 0 12px; }
+	p { margin: 0 0 16px; }
+	label { display: block; margin: 0 0 6px; font-size: 14px; }
+	select { width: 100%; font: inherit; padding: 8px; margin: 0 0 20px; border: 1px solid #111; border-radius: 4px; background: #fff; color: #111; }
+	button { font: inherit; font-weight: 600; padding: 10px 20px; border: 1px solid #111; border-radius: 4px; background: #111; color: #fff; cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+	{% if store_name %}<p class="store">{{ store_name | e }}</p>{% endif %}
+	{% if state == "ask" %}
+	<h1>Unsubscribe</h1>
+	<p>Stop marketing emails from {{ (store_name or "this store") | e }}.</p>
+	<form method="post">
+		{% if t %}<input type="hidden" name="t" value="{{ t | e }}">{% endif %}
+		{% if legacy %}<input type="hidden" name="legacy" value="{{ legacy | e }}">{% endif %}
+		{% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token | e }}">{% endif %}
+		<label for="reason">Reason (optional)</label>
+		<select id="reason" name="reason">
+			<option value="">—</option>
+			{% for key, label in reasons.items() %}<option value="{{ key | e }}">{{ label | e }}</option>{% endfor %}
+		</select>
+		<button type="submit">Unsubscribe</button>
+	</form>
+	{% elif state == "done" %}
+	<h1>You are unsubscribed</h1>
+	<p>You will not get marketing emails from {{ (store_name or "this store") | e }} at this address.</p>
+	{% else %}
+	<h1>Unsubscribe</h1>
+	<p>{{ invalid_message | e }}</p>
+	{% endif %}
+</main>
+</body>
+</html>

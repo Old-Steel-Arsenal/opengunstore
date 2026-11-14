@@ -10,7 +10,7 @@ Ask your manager for the address, or open **Settings**, then the **MCP Settings*
 |---|---|
 | Read-only | **Read-only MCP Server URL**, ending in `/connector/cpa/mcp` |
 | Full | **Full MCP Server URL**, ending in `/connector/full/mcp` |
-| The website, read-only | **Website Read-only MCP Server URL**, ending in `/connector/web_ro/mcp` |
+| The website | **Website MCP Server URL**, ending in `/connector/web_ro/mcp` |
 
 Use the read-only address unless you need the assistant to change things.
 
@@ -38,7 +38,7 @@ On a **Team** or **Enterprise** plan, the account owner adds the connector once 
 
 ## Claude Code (command line)
 
-**MCP Settings** shows a ready-made command for each address under **Claude Code Command (Read-only)** and **Claude Code Command (Full)**. Copy it into a terminal. It looks like this:
+**MCP Settings** shows a ready-made command for each address under **Claude Code Command (Read-only)**, **Claude Code Command (Full)** and **Claude Code Command (Website)**. Copy it into a terminal. It looks like this:
 
 ```bash
 claude mcp add -s user --transport http gunstore-pos https://<your POS address>/connector/full/mcp

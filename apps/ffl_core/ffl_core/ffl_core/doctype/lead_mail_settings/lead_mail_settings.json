@@ -16,7 +16,8 @@
   "category_rules",
   "spam_folder",
   "pos_section",
-  "crm_pos_link"
+  "crm_pos_link",
+  "crm_deal_holds"
  ],
  "fields": [
   {
@@ -88,11 +89,18 @@
    "fieldname": "crm_pos_link",
    "fieldtype": "Check",
    "label": "Link deals to POS orders"
+  },
+  {
+   "default": "0",
+   "depends_on": "crm_pos_link",
+   "fieldname": "crm_deal_holds",
+   "fieldtype": "Check",
+   "label": "Hold guns for deals"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-06 12:00:00.000000",
+ "modified": "2026-11-13 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Lead Mail Settings",

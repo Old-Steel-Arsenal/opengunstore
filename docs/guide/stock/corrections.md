@@ -85,11 +85,13 @@ Use it for non-serialized units that come in without a purchase: opening stock, 
 1. Click **+ Add Stock**.
 2. Enter the **Quantity** to add.
 3. Confirm the **Warehouse**.
-4. Enter a **Cost / Rate** if you know it. It starts at the last purchase rate, then the distributor's dealer price.
+4. Enter a **Cost / Rate** if you know it. It starts at the last purchase rate, then the distributor's dealer price. Left blank, the cost already on file is used. With no cost on file, you are asked to enter one.
 5. Add **Remarks** if the reason is worth keeping.
 6. Click **Add to Stock**.
 
 Firearms are refused. A gun always goes through [Receive Goods](receive-goods.md), so it gets its own serial record and acquisition.
+
+A service, such as a fee or labor, has no stock to add. Untick **Maintain Stock** on the item instead.
 
 ## Reassign Item
 

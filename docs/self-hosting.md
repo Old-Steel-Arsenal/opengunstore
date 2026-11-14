@@ -344,23 +344,23 @@ A remote MCP server lets AI assistants (Claude, ChatGPT and other MCP clients) w
 - Two optional keys in `deploy/prod/.env` steer this step: `MCP_TAG=<tag>` runs that image tag instead of the one in `version.env`, and `MCP_ENABLED=0` skips the whole MCP step (no `mcp/.env`, existing containers are left as they are). `.env.example` sets `MCP_ENABLED=0`, so a new install never pulls an MCP image; to run the connector, remove that line (or set it to anything but 0) and set `MCP_IMAGE`. With the key unset, the pinned tag is deployed.
 - After the POS deploy + migrate, `auto_deploy.sh` writes `deploy/prod/mcp/.env` (site URL, the local frontend port, MCP_TAG, MCP_IMAGE when you set one, and two switches read from the site: the GunBroker write tools follow GunBroker Settings, the Range board tools follow whether the Range extension is on) and runs `up -d`, then waits for both containers to be healthy. A failure does not fail the POS deploy but prints a `::warning::` in the log.
 - **Upgrading the MCP server**: build and test a new image in the MCP server's own repository, then open a PR here changing `version.env`; it ships with the next POS release. Rolling the POS back also puts the MCP server back to the matching version.
-- The switches are in the POS's **MCP Settings** (Read-only / Full / Website Read-only separately, tied to OAuth Settings); every call is recorded in the **Connector Audit Log**.
+- The switches are in the POS's **MCP Settings** (Read-only / Full / Website separately, tied to OAuth Settings); every call is recorded in the **Connector Audit Log**.
 - Caddy: the site block for `pos.example.com` needs the four routes in `deploy/prod/caddy-connector.caddy` (the shared Caddyfile is edited by hand).
 - To look: `docker compose -f ~/gunstore-pos/deploy/prod/mcp/compose.yaml ps`.
 
-### Website read-only connector (optional)
+### Website connector (optional)
 
-A third server, `gunstore-web-ro`, lets signed-in POS users read the store's website (for example WooCommerce orders and products) through the site's own abilities, as one site user with an application password. Who may use it is set by POS role: **Website Connector Viewer** reads the abilities in `WEB_ABILITIES`; **Website Connector Manager** (and System Manager) also reads those in `WEB_ABILITIES_RESTRICTED`. Frappe's own *Website Manager* role gives no access. Nothing on the site can be changed through it. Every call is recorded in the Connector Audit Log under surface `web_ro`.
+A third server, `gunstore-web`, lets signed-in POS users work on the store's website (for example WooCommerce orders and products, SEO, CRM contacts) through the site's own abilities, as one site user with an application password. Who may use what is set by POS role: **Website Connector Viewer** reads the abilities in `WEB_ABILITIES`; **Website Connector Manager** (and System Manager) also reads those in `WEB_ABILITIES_RESTRICTED` and may run the write abilities in `WEB_ABILITIES_WRITE`. With `WEB_ABILITIES_WRITE` empty nothing on the site can be changed through it. Frappe's own *Website Manager* role gives no access. Every call is recorded in the Connector Audit Log under surface `web_ro` (the key and the address keep that name from when the server could only read); a write's row names its target, not the text it wrote.
 
 It runs only on a host that holds the site credentials. Without `deploy/prod/mcp/web.env`, `auto_deploy.sh` deploys exactly the two servers above.
 
 To turn it on for a store:
 
-1. On the website, create a dedicated user with read access to the abilities you will list, and an application password for it.
+1. On the website, create a dedicated user with the permissions the abilities you will list check (a write ability needs the matching write permission, for example editing orders or managing CRM contacts), and an application password for it.
 2. On the POS host, copy `deploy/prod/mcp/web.env.example` to `deploy/prod/mcp/web.env`, fill it in and run `chmod 600 deploy/prod/mcp/web.env`. The file is ignored by git and never enters the POS database. If others can read it, `auto_deploy.sh` leaves the connector off and prints a `::warning::`.
 3. Deploy (or run `auto_deploy.sh` again). The MCP step adds `deploy/prod/mcp/compose.web.yaml` and starts `mcp-web-ro` on 127.0.0.1:8783, then waits for three healthy containers.
 4. Add the two routes in `deploy/prod/caddy-connector-web.caddy` to the store's site block, validate and reload Caddy.
-5. In **MCP Settings**, tick **Enable Website Read-only MCP Server**, and give users the Website Connector Viewer or Website Connector Manager role.
-6. Add the **Website Read-only MCP Server URL** (`https://pos.example.com/connector/web_ro/mcp`) as a connector and sign in.
+5. In **MCP Settings**, tick **Enable Website MCP Server**, and give users the Website Connector Viewer or Website Connector Manager role.
+6. Add the **Website MCP Server URL** (`https://pos.example.com/connector/web_ro/mcp`) as a connector and sign in.
 
 To turn it off: untick the switch in MCP Settings (calls are refused at once). To remove the container, run `docker compose -f deploy/prod/mcp/compose.yaml -f deploy/prod/mcp/compose.web.yaml --env-file deploy/prod/mcp/.env rm -sf mcp-web-ro`, delete `web.env`, and remove the two Caddy routes.

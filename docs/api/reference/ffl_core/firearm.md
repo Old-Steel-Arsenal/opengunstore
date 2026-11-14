@@ -24,10 +24,11 @@ warn + block the sale.
 | `item_codes` | array | yes | — | Item codes — list or JSON string. |
 | `exclude_unavailable` | int | bool | no | `True` | Default True: drop guns that are held / consigned_out / in a consignment warehouse so the picker never offers a gun that can't actually be sold. Pass False for a caller that needs the raw on-hand list (never the POS pick-list itself). |
 | `current_invoice` | string \| null | no | `None` | Optional POS Invoice docname — the serial already parked on THIS invoice's own line stays offered (incident a past invoice, see _pos_picker_excluded_serials). The POS 4473 dialog passes it so the serial on the line the cashier is completing doesn't vanish from its own dropdown. |
+| `customer` | string \| null | no | `None` | Optional buyer — a gun held for this customer's CRM deal stays offered. |
 
 **Returns:** {item_code: [in-stock serial, ...]}.
 
-<sub>`apps/ffl_core/ffl_core/firearm.py:611`</sub>
+<sub>`apps/ffl_core/ffl_core/firearm.py:622`</sub>
 
 ## `available_serials_with_prices`
 
@@ -46,10 +47,11 @@ picker to render a price-first dropdown.
 | `item_codes` | array | yes | — | Item codes — list or JSON string. |
 | `exclude_unavailable` | int | bool | no | `True` | Default True: drop held / consigned_out / consignment-warehouse guns so the POS picker never offers an unsellable one. Callers that need the RAW list pass False — the scan-to-add / edit price lookup (_serial_ctx_for_item), the checkout-gate summary (pos_pricing_summary) and the Create Order picker (manual_order.available_serials), none of which is the POS pick-list and each of which must keep seeing every on-hand serial (e.g. a serial held only by the very invoice being edited). |
 | `current_invoice` | string \| null | no | `None` | Optional POS Invoice docname — the serial already parked on THIS invoice's own line stays offered (incident a past invoice); the Item-Details picker passes it so editing a firearm line doesn't drop its own serial from the dropdown. |
+| `customer` | string \| null | no | `None` | Optional buyer — a gun held for this customer's CRM deal stays offered, marked ``held_for_customer``. |
 
-**Returns:** {item_code: [{"serial", "sell_price", "purchase_rate"}, ...]}, sorted by sell_price ascending.
+**Returns:** {item_code: [{"serial", "sell_price", "purchase_rate", "held_for_customer"?}, ...]}, sorted by sell_price ascending.
 
-<sub>`apps/ffl_core/ffl_core/firearm.py:1349`</sub>
+<sub>`apps/ffl_core/ffl_core/firearm.py:1363`</sub>
 
 ## `firearm_items_in`
 
@@ -87,7 +89,7 @@ receive_goods.get_receive_sources for reading FFL Settings.
 
 **Returns:** {"fee_item": <service Item code>, "fee_amount": <default fee>}.
 
-<sub>`apps/ffl_core/ffl_core/firearm.py:1485`</sub>
+<sub>`apps/ffl_core/ffl_core/firearm.py:1505`</sub>
 
 ## `in_stock_firearm_serials`
 
@@ -111,10 +113,11 @@ warehouse receives, which is the opposite of the point.
 | arg | type | required | default | description |
 |---|---|---|---|---|
 | `exclude_unavailable` | int | bool | no | `True` | Default True: drop held / consigned_out / consignment-warehouse guns — a transfer must not offer a gun already spoken for or gone to a dealer. Pass False for the raw in-stock set. |
+| `customer` | string \| null | no | `None` | Optional transferee — a gun held for this customer's CRM deal stays offered. |
 
 **Returns:** [{serial, item_code, item_name, sell_price}], ordered item then serial.
 
-<sub>`apps/ffl_core/ffl_core/firearm.py:1544`</sub>
+<sub>`apps/ffl_core/ffl_core/firearm.py:1564`</sub>
 
 ## `pos_pricing_summary`
 
@@ -133,7 +136,7 @@ the checkout gate.
 
 **Returns:** {code: {"is_firearm": bool, "uniform": 0|1, "n": <active serials>, "min": float|None, "max": float|None}}. min/max range over the normalised per-serial prices (uniform mode → standard_rate; 0 → None un-priced, excluded from min/max). Non-firearm / unknown codes come back with n=0 so the frontend can cache the negative.
 
-<sub>`apps/ffl_core/ffl_core/firearm.py:1437`</sub>
+<sub>`apps/ffl_core/ffl_core/firearm.py:1457`</sub>
 
 ## `toggle_serial_service_need`
 
@@ -163,4 +166,4 @@ to roles that already own Serial No writes.
 
 **Permissions:** Frappe write permission on Serial No (a DocType permission check, not a fixed role list — whichever roles carry Serial No write).
 
-<sub>`apps/ffl_core/ffl_core/firearm.py:703`</sub>
+<sub>`apps/ffl_core/ffl_core/firearm.py:717`</sub>

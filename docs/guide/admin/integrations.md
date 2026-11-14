@@ -56,10 +56,10 @@ Connects to the Payroc card gateway and the terminal at the counter. See [Take p
 
 <figure markdown>
 ![Payroc Settings](../screenshots/settings-payroc.webp){ .screenshot }
-<figcaption>Credentials at the top, Advanced below. The two read-only Status fields follow further down.</figcaption>
+<figcaption>The Connection tab: credentials, then Multiple Card Readers. Status and Advanced are separate tabs.</figcaption>
 </figure>
 
-**Credentials.**
+**Connection tab.**
 
 | Field | What it is |
 |---|---|
@@ -68,8 +68,9 @@ Connects to the Payroc card gateway and the terminal at the counter. See [Take p
 | **Merchant API Key** | The credential |
 | **Gateway Terminal Number** | The gateway's terminal number, not the device serial |
 | **Device Serial Number** | The physical terminal's serial |
+| **Saved-Card Terminal Number** | Charges saved cards. Blank uses the Gateway Terminal Number |
+| **Payment Page Secret** | Lets managers key in a card number on Payroc's payment page. Blank keeps that off |
 | **Default Currency** | USD |
-| **X-Integration-ID (ISV only)** | Only for a key under a software vendor's integration |
 
 Untick **Enable Payroc Terminal Integration** to run without the integrated terminal. Cards are then run on a standalone terminal, the register records Credit Card as plain tender, and the **Card payments** row leaves the sidebar.
 
@@ -77,9 +78,15 @@ In that standalone mode, **Require Card Reference (manual terminal)** means a ca
 
 Leave **Device Serial Number** blank and card payments stay off, and a charge attempt errors. Fill it in only after the terminal is paired. Leave **X-Integration-ID (ISV only)** blank for a plain merchant key.
 
-**Advanced.** **Sandbox Mode** points calls at the Payroc test host; untick it for production. **Base URL Override** and **Request Timeout (seconds)** are for unusual setups.
+**Multiple Card Readers.** For a store with more than one card reader, add a row per reader to **Card Readers**: a **Reader Name** the counter will recognize, the reader's **Device Serial Number**, and **Enabled**. Untick **Enabled** to take a reader out of use.
 
-**Status.** **Last Token Refreshed At** and **Last Charge At** are read-only.
+With two or more enabled, each register computer asks once which reader it uses (see [Take payment](../counter/payments.md#stores-with-more-than-one-card-reader)).
+
+**Sandbox Mode**, on the Connection tab, points calls at the Payroc test host; untick it for production.
+
+**Advanced tab.** **X-Integration-ID (ISV only)**, **Base URL Override** and **Request Timeout (seconds)** are for unusual setups.
+
+**Status tab.** **Last Token Refreshed At** and **Last Charge At** are read-only.
 
 **Buttons.** This page has no test button. Test from the Payments hub, where the Payroc card has **Test Connection**, an **Enabled** switch and **Credentials**.
 
@@ -324,8 +331,9 @@ Connects to the retail web store. See [List a gun online](../stock/list-online.m
 | **Consumer key**, **Consumer secret** | From the web store's Settings, Advanced, REST API page |
 | **Webhook secret** | From the web store's Settings, Advanced, Webhooks page |
 | **Outbound status webhook secret** | Signs status events sent to the website. Blank sends none |
+| **Send customer emails to the shop** | Off by default. Every hour, sends customers added or changed at the counter to the website's marketing list |
 
-Leave **Outbound status webhook secret** blank unless an extension you installed asks you to set it.
+Leave **Outbound status webhook secret** blank unless an extension you installed asks you to set it. **Send customer emails to the shop** needs that secret, and a website plugin that accepts the list. People who unsubscribed on the website stay unsubscribed.
 
 **Sync tab.**
 

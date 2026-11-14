@@ -45,7 +45,7 @@ The steps below are the same for every receive. Some sources add their own steps
 2. With no barcode, type part of the SKU or item name. Use the arrow keys and <kbd>Enter</kbd> to pick.
 3. Pick a result. A card opens for that line.
 
-The list also searches the distributor catalogs. A barcode no item carries opens the Create Item dialog, filled in from the catalog when it is found there.
+The list also searches the distributor catalogs. A barcode no item carries opens the Create Item dialog, filled in from the catalog when it is found there: the product's name as the **Item Name**, and the barcode as the **Item Code** unless you change it.
 
 ### 3. Fill in the line card
 
@@ -129,6 +129,6 @@ A gun received against a customer's order is held for that order. When a manager
 | `Need N serial(s), got M.` | One serial per line in the box, no blank lines, matching Qty. |
 | `Firearm details required: ...` | Fill in the named fields on the card. |
 | `Row #N: cost of $0 for <serial> needs confirming.` | Enter the real cost, or tick **Cost really was $0** and pick a reason. |
-| FastBound rejected the receive and nothing was booked | Read the message, fix the firearm details or the supplier's FFL, and receive again. |
+| FastBound rejected the receive and nothing was booked | Fix what the message names and receive again. Guns it lists as already accepted are linked automatically. |
 
 More messages: [Troubleshooting](../help/troubleshooting.md).

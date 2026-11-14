@@ -4,8 +4,8 @@ Owns: the custom fields (``CUSTOM_FIELDS``), the Lead Mail Settings default, the
 setup (``crm.team.apply``: staff Reply-To, team mailboxes in User Emails), the same-site
 ERPNext CRM Settings (on, this site, ``sync_products`` off), CRM's currency, the deal stages, moving CRM's own
 "create lead from incoming email" switch to ours, the Contact page's Email button, the Deal page's customer card and
-Open order and Add want buttons (:func:`apply_pos_link`, following Lead Mail Settings › crm_pos_link), and the
-one-off backfill that makes every Item a CRM Product.
+Open order and Add want buttons and its Hold gun menu (:func:`apply_pos_link`, following Lead Mail Settings ›
+crm_pos_link and crm_deal_holds), and the one-off backfill that makes every Item a CRM Product.
 
 Runs at ffl_core's after_install and after_migrate, and when ``crm`` is installed on a site that
 already has ffl_core (after_app_install): an existing store gets Frappe CRM with the release that
@@ -65,14 +65,15 @@ CONTACT_SCRIPT_JS = """function setupForm({ doc, call, router }) {
 	}
 }
 """
-# The Deal page's customer card, Open order and Add want buttons: a CRM Form Script, on while the switch is.
+# The Deal page's customer card, Open order and Add want buttons, and Hold gun in its "..." menu while
+# Lead Mail Settings › Hold guns for deals is on (crm/holds.py): a CRM Form Script, on while the switch is.
 DEAL_SCRIPT = "OpenGunstore: Deal to POS"
-DEAL_SCRIPT_JS = """class CRMDeal {
+_DEAL_SCRIPT_TEMPLATE = """class CRMDeal {
 	onLoad() {
 		if (this.doc.__newDocument) return
 		this.actions.push({ label: __("Open order"), onClick: () => this.fflOpenOrder() })
 		this.actions.push({ label: __("Add want"), onClick: () => this.fflAddWant() })
-		this.fflLoadCard()
+%(hold_menu)s		this.fflLoadCard()
 	}
 	fflError(e) {
 		toast.error(e.messages?.[0] || e.message || __("Something went wrong."))
@@ -82,15 +83,16 @@ DEAL_SCRIPT_JS = """class CRMDeal {
 			.then((summary) => this.setFieldHtml("%(card)s", summary.html))
 			.catch((e) => this.fflError(e))
 	}
-	async fflOpenOrder() {
+	async fflWithCustomer(next) {
 		try {
 			const linked = await call("ffl_core.api.crm.ensure_deal_customer", { deal: this.doc.name })
-			if (linked.customer) return await this.fflGoToOrder()
+			if (linked.customer) return await next()
 			const choose = (args) => async (close) => {
 				close()
 				try {
 					await call("ffl_core.api.crm.ensure_deal_customer", { deal: this.doc.name, ...args })
-					await this.fflGoToOrder()
+					this.fflLoadCard()
+					await next()
 				} catch (e) {
 					this.fflError(e)
 				}
@@ -116,6 +118,9 @@ DEAL_SCRIPT_JS = """class CRMDeal {
 			this.fflError(e)
 		}
 	}
+	fflOpenOrder() {
+		return this.fflWithCustomer(() => this.fflGoToOrder())
+	}
 	fflAddWant() {
 		formDialog({
 			title: __("Add want"),
@@ -137,12 +142,112 @@ DEAL_SCRIPT_JS = """class CRMDeal {
 			},
 		})
 	}
+	fflEsc(s) {
+		return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
+	}
+	async fflManager(info) {
+		if (info.self_approves) return {}
+		const people = info.approvers || []
+		const data = await formDialog({
+			title: __("Manager approval"),
+			fields: [
+				{ fieldname: "approver", fieldtype: "Select", label: __("Manager"), reqd: 1,
+					options: people.map((p) => ({ label: p.full_name, value: p.user })) },
+				{ fieldname: "secret", fieldtype: "Password", label: __("PIN or password"), reqd: 1 },
+			],
+			submitLabel: __("Approve"),
+		})
+		if (!data || !data.approver || !data.secret) return null
+		const p = people.find((x) => x.user === data.approver) || {}
+		return p.has_pin && !p.pin_off ? { approver: data.approver, pin: data.secret } : { approver: data.approver, password: data.secret }
+	}
+	fflHoldGun() {
+		return this.fflWithCustomer(() => this.fflHoldDialog())
+	}
+	async fflHoldDialog() {
+		let info
+		try {
+			info = await call("ffl_core.api.crm.deal_holds", { deal: this.doc.name })
+		} catch (e) {
+			return this.fflError(e)
+		}
+		if (!info.guns.length) return toast.error(__("Pick the gun on the deal's product line first."))
+		const esc = (s) => this.fflEsc(s)
+		const fields = [], defaults = {}, free = [], mine = []
+		info.guns.forEach((g, i) => {
+			const label = g.item_name + " · " + g.serial
+			const key = "ffl_gun_" + i
+			if (g.hold) {
+				mine.push(g)
+				fields.push({ fieldname: key, fieldtype: "HTML", options: "<div>" + esc(label) + "</div><div class='text-ink-gray-5'>"
+					+ esc(__("Held until {0}", [g.hold.expires_label])) + "</div>" })
+			} else if (g.blocked || !info.enabled) {
+				fields.push({ fieldname: key, fieldtype: "HTML", options: "<div>" + esc(label) + "</div><div class='text-ink-gray-5'>"
+					+ esc(g.blocked || __("Holding guns for deals is off. A manager can turn it on in Lead Mail Settings.")) + "</div>" })
+			} else {
+				free.push([g, key])
+				fields.push({ fieldname: key, fieldtype: "Check", label: label })
+				defaults[key] = 1
+			}
+		})
+		const run = (fn) => async (ctx) => {
+			try {
+				await fn(ctx)
+			} catch (e) {
+				this.fflError(e)
+			}
+		}
+		const actions = []
+		if (free.length) {
+			actions.push({ label: __("Hold for 48 hours"), variant: "solid", onClick: run(async ({ data, close }) => {
+				const picked = free.filter(([, key]) => data[key]).map(([g]) => g)
+				if (!picked.length) return toast.error(__("Pick a gun to hold."))
+				const auth = picked.some((g) => g.needs_manager) ? await this.fflManager(info) : {}
+				if (!auth) return
+				const res = await call("ffl_core.api.crm.hold_guns", { deal: this.doc.name, serials: picked.map((g) => g.serial), ...auth })
+				close()
+				res.refused.forEach((r) => toast.error(r.reason))
+				if (res.held.length) toast.success(__("Held until {0}.", [res.held[0].expires_label]))
+				this.fflLoadCard()
+			}) })
+		}
+		mine.forEach((g) => {
+			const which = info.guns.length > 1 ? " " + g.serial : ""
+			actions.push({ label: __("Extend") + which, onClick: run(async ({ close }) => {
+				const auth = g.hold.extend_needs_manager ? await this.fflManager(info) : {}
+				if (!auth) return
+				const hold = await call("ffl_core.api.crm.extend_hold", { hold: g.hold.name, ...auth })
+				close()
+				toast.success(__("Hold extended to {0}.", [hold.expires_label]))
+				this.fflLoadCard()
+			}) })
+			actions.push({ label: __("Release") + which, theme: "red", onClick: run(async ({ close }) => {
+				const auth = g.hold.release_needs_manager ? await this.fflManager(info) : {}
+				if (!auth) return
+				await call("ffl_core.api.crm.release_hold", { hold: g.hold.name, ...auth })
+				close()
+				toast.success(__("Hold released."))
+				this.fflLoadCard()
+			}) })
+		})
+		formDialog({ title: __("Hold guns"), fields, defaults, actions, cancelLabel: __("Close") })
+	}
 	async fflGoToOrder() {
 		const order = await call("ffl_core.api.crm.open_deal_order", { deal: this.doc.name })
 		window.location.href = order.route
 	}
 }
-""" % {"card": CARD_FIELD}
+"""
+_HOLD_MENU = """		this.actions.push({ group: __("More"), hideLabel: true, items: [{ label: __("Hold gun"), onClick: () => this.fflHoldGun() }] })
+"""
+
+
+def deal_script_js(holds: bool) -> str:
+	"""The Deal page's script, with Hold gun in its "..." menu when *holds*."""
+	return _DEAL_SCRIPT_TEMPLATE % {"card": CARD_FIELD, "hold_menu": _HOLD_MENU if holds else ""}
+
+
+DEAL_SCRIPT_JS = deal_script_js(False)
 # Where the card sits on the Deal page: after Contacts, as CRM places its own Lost Reason section.
 SIDE_PANEL = f"{DEAL}-Side Panel"
 CARD_SECTION = "ffl_customer_section"
@@ -433,8 +538,10 @@ def apply_pos_link() -> None:
 	shows only while it is on. Migrate and that page's save, by whoever may change the settings."""
 	if not frappe.db.exists("DocType", "CRM Form Script"):
 		return
+	from ffl_core.crm.holds import holds_on
+
 	on = pos_link_on()
-	want = {"script": DEAL_SCRIPT_JS, "enabled": 1 if on else 0}
+	want = {"script": deal_script_js(holds_on()), "enabled": 1 if on else 0}
 	if not frappe.db.exists("CRM Form Script", DEAL_SCRIPT):
 		frappe.get_doc({"doctype": "CRM Form Script", "name": DEAL_SCRIPT, "dt": DEAL, "view": "Form", **want}
 			).insert(ignore_permissions=True)

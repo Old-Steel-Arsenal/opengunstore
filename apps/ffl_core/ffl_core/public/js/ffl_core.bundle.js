@@ -4843,7 +4843,8 @@ frappe.provide('frappe.ui.form');
 				// Pass the current invoice so a serial already parked on ITS OWN line
 				// stays offered (and default-selects below) — incident
 				// A past invoice self-lockout, serial 21696 vanishing.
-				args: { item_codes: fcodes, current_invoice: frm.doc.name },
+				// customer: a gun held for this buyer's CRM deal stays offered.
+				args: { item_codes: fcodes, current_invoice: frm.doc.name, customer: frm.doc.customer },
 			}).then((sr) => {
 				renderDialog(frm, firearmRows, firearmCodes, (sr && sr.message) || {});
 			});
@@ -5049,7 +5050,7 @@ frappe.provide('frappe.ui.form');
 			}
 			// Independent calls — fetch the stock list and the fee config together.
 			Promise.all([
-				frappe.call({ method: 'ffl_core.firearm.in_stock_firearm_serials' }),
+				frappe.call({ method: 'ffl_core.firearm.in_stock_firearm_serials', args: { customer: frm.doc.customer } }),
 				frappe.call({ method: 'ffl_core.firearm.get_transfer_config' }),
 			]).then(([sr, cr]) => {
 				const serials = (sr && sr.message) || [];
@@ -5797,9 +5798,10 @@ frappe.provide('frappe.ui.form');
         const priceLabel = s.sell_price != null
           ? ' — ' + frappe.format(s.sell_price, {fieldtype: 'Currency'})
           : '';
+        const heldLabel = s.held_for_customer ? ' — ' + __('held for this customer') : '';
         return '<option value="' + frappe.utils.escape_html(s.serial) + '"' +
           (s.serial === current ? ' selected' : '') + '>' +
-          frappe.utils.escape_html(s.serial) + priceLabel + '</option>';
+          frappe.utils.escape_html(s.serial) + priceLabel + frappe.utils.escape_html(heldLabel) + '</option>';
       })).join('');
     const $sel = $('<select class="ffl-serial-select form-control" style="margin-bottom:6px"></select>').html(opts);
     function applySerial(v) {
@@ -5854,7 +5856,9 @@ frappe.provide('frappe.ui.form');
     // makes availability invoice-specific, so a
     // bare code key could serve another cart's list.
     const invName = (window.cur_pos && cur_pos.frm && cur_pos.frm.doc && cur_pos.frm.doc.name) || '';
-    const cacheKey = code + '|' + invName;
+    // The buyer too: a gun held for their CRM deal is offered to them only.
+    const customer = (window.cur_pos && cur_pos.frm && cur_pos.frm.doc && cur_pos.frm.doc.customer) || '';
+    const cacheKey = code + '|' + invName + '|' + customer;
     const hit = cache[cacheKey];
     if (hit && hit.inflight) return;
     if (hit && (Date.now() - hit.ts) < TTL_MS) {
@@ -5866,7 +5870,7 @@ frappe.provide('frappe.ui.form');
       frappe.call({
         method: 'ffl_core.firearm.available_serials_with_prices',
         // current_invoice → the serial on this invoice's own line stays offered.
-        args: { item_codes: [code], current_invoice: invName || undefined },
+        args: { item_codes: [code], current_invoice: invName || undefined, customer: customer || undefined },
       }),
       // uniform-vs-per-gun flag for the auto-pick decision; tolerate absence
       (window.ffl && ffl.posPricingSummaries) ? ffl.posPricingSummaries([code]) : Promise.resolve({}),

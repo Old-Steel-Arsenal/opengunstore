@@ -521,3 +521,29 @@ def web_inquiry(kind: str, event_id: str, email: str, full_name: str = "", phone
 	return file_inquiry(kind, event_id, email, full_name=full_name, phone=phone, message=message, sku=sku,
 		url=url, details=frappe.parse_json(details) if details else None,
 		photos=frappe.parse_json(photos) if photos else None)
+
+
+@frappe.whitelist(methods=["POST"])
+def web_events(events) -> dict:
+	"""Take the website's visitor events: a newsletter signup, a back-in-stock or model alert request.
+
+	Each event is processed on its own; one that fails leaves nothing behind and does not stop the
+	rest. A repeated event id is answered as accepted again and processed only once. Nothing is
+	emailed. The whole call is refused while Marketing Settings › Enabled is off, and the website
+	sends the events again later.
+
+	Args:
+	    events: A list (or its JSON) of at most 100 events, each ``{"id", "type", "occurred_at",
+	        "data"}``. Types: ``contact.subscribed`` (data: email, first_name, last_name, source,
+	        page_url, ip, tags, interests, coupon) and ``alert.requested`` (data: email, kind
+	        ``back_in_stock`` or ``model``, sku, product_id, product_name, url, model_key, model_label).
+
+	Returns:
+	    {"accepted": [id, ...], "rejected": [{"id": ..., "reason": ...}, ...]}. ``reason`` is
+	    ``unknown_type``, ``invalid_email`` or ``invalid_data``; an event in neither list failed
+	    unexpectedly (an Error Log is written) and should be sent again.
+	"""
+	frappe.only_for(STOCK_ROLES)
+	from ffl_core.marketing.events import receive
+
+	return receive(events)

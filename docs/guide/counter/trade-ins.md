@@ -20,6 +20,7 @@ For counter staff, when a customer at the register trades a gun in against a sal
 5. Under **Identification**, pick the **ID Type** and type the **ID Number**.
 6. Under **Firearm**, search **Item** for the model this gun files under, or create one such as `Glock19 USED`. The search covers your own models and the distributor catalog.
 7. Fill in **Serial Number**, **Manufacturer**, **Model**, **Caliber**, **Firearm Type** and **Condition Grade**. **Importer** is optional, for imported guns.
+   For an antique, tick **Antique (receiver made before 1899)** and type the **Year Made**. Leave **Item** blank or pick an antique item.
 8. Pick a **Storage location** if you know where the gun goes. Only free slots are offered. Leave it blank to place it later from [Find and move stock](../stock/find-and-move.md).
 9. Under **Pricing**, enter the **Acquisition Cost ($)**: the credit or payment the seller gets. **Retail Price ($)** can be set later.
 10. Leave **Apply as credit to this sale** ticked to take it off this sale. Untick it to pay the seller now (see below).
@@ -79,6 +80,7 @@ The store can pay out only for guns bought from a private person. If a card was 
 
 - The gun gets its own record, with the condition grade you entered, so stock reports and the web listing describe it correctly.
 - The purchase goes into the bound book with the source **Trade-in** and the seller's name, address and ID, then on to FastBound. If FastBound refuses a pay-now buy, nothing is kept.
+- An antique is not a firearm under federal law. It is not entered in the bound book or sent to FastBound.
 - Add barrel length, finish and year made afterwards on the gun's own record (see [Models, serials and prices](../stock/items-and-serials.md)).
 
 A gun the store once sold and now takes back starts a new stay. An earlier consignor or supplier is never paid again for it.

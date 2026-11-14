@@ -55,6 +55,10 @@ CUSTOMER_MANAGER_ROLES = ("Sales Manager", "System Manager")
 # prices need no one else's approval.
 PRICE_APPROVER_ROLES = ("Sales Manager", "System Manager")
 
+# Who may put a marketing contact back to Subscribed after an unsubscribe, bounce or complaint
+# (marketing/contacts.set_status, by hand and with a reason).
+MARKETING_MANAGER_ROLES = ("Sales Manager", "System Manager")
+
 # Frappe CRM's own roles (its pages are granted to Sales User / Sales Manager): the CRM endpoints (api/crm.py).
 CRM_ROLES = ("Sales User", "Sales Manager", "System Manager")
 

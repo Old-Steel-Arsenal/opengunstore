@@ -242,6 +242,12 @@ ffl_counter_hold_changed = [
     "ffl_woo_sync.woocommerce.doc_events.on_invoice_change",
 ]
 
+# ffl_core fires this with a serial when a gun is held for a CRM deal, or its hold is
+# extended or ends (ffl_core.crm.holds): the same per-serial listing reconcile.
+gunshop_serial_hold_changed = [
+    "ffl_woo_sync.woocommerce.doc_events.on_serial_hold_changed",
+]
+
 # Document Events
 # ---------------
 # Auto-push to WooCommerce when POS records change.

@@ -45,11 +45,13 @@ import frappe
 from frappe.utils import add_to_date, get_datetime, now_datetime, time_diff_in_seconds
 from rq.timeouts import JobTimeoutException
 
+from ffl_core.crm.holds import KIND as DEAL_HOLD
 from ffl_core.firearm import _is_firearm_row
 from ffl_core.reservations import (
     CHANNEL_WOO,
     channel_reservation,
     channel_reserve_columns,
+    counter_holds,
     other_channel_reservation,
 )
 from ffl_core.utils import commit as safe_commit  # no-op inside the test transaction
@@ -594,9 +596,13 @@ def sync_serial_listing_task(serial_no: str, site: str = "retail") -> None:
         # it is staged for a partner dealer. `kind` comes off the hold record in
         # `reservations.counter_holds`; only a Draft POS Invoice reads "pos".
         #
+        # A gun held for a CRM deal (ffl_core.crm.holds) gets the same lane: the hold
+        # lapses or is released within days, and the page is the one the deal's customer
+        # was sent.
+        #
         # No `_relist`: a page an operator deliberately pulled stays pulled.
         if state["reason"] == "counter_hold" and \
-                (state["detail"] or {}).get("kind") == "pos":
+                (state["detail"] or {}).get("kind") in ("pos", DEAL_HOLD):
             sync.push_serial(serial_no, site=site, pos_fields_only=True)
             return
         sellable = state["sellable"]
@@ -1188,6 +1194,18 @@ def _run_reconcile(site: str = "retail") -> None:
             )
         }
     serial_products = _read_products(client, [sn[_f(site, "product_id")] for sn in serials])
+    # One counter-hold registry per Item, shared by its listed serials.
+    # lazy: one counter_holds call per Item per sweep (it walks that Item's open orders);
+    # upgrade path: a batched registry for many Items at once.
+    held_by_item: dict[str, dict] = {}
+
+    def _counter_held(sn) -> bool:
+        if not sn.item_code:
+            return False
+        if sn.item_code not in held_by_item:
+            held_by_item[sn.item_code] = counter_holds(sn.item_code)
+        return sn.name in held_by_item[sn.item_code]
+
     for sn in serials:
         try:
             wc = _product(client, serial_products, sn[_f(site, "product_id")])
@@ -1232,7 +1250,11 @@ def _run_reconcile(site: str = "retail") -> None:
             # for one sold on GunBroker; that has been this line's answer since
             # long before a second channel existed (`0 if sn.woo_reserved`).
             # What differs between the two holds is the REPAIR, not the count.
-            pos_stock = 0 if channel_reservation(sn.name, row=sn) else 1
+            #
+            # And any counter hold (a parked POS sale, a gun held for a CRM deal): the
+            # push publishes stock 0 for those (mapping `counter_held`), so a push that
+            # failed must read as drift here, or nothing ever repairs it.
+            pos_stock = 0 if channel_reservation(sn.name, row=sn) or _counter_held(sn) else 1
             drifted = wc_stock != pos_stock
             # Sale trio — resolved through the same two-level rule the payload
             # builder uses.

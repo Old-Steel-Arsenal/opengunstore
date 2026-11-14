@@ -38,13 +38,11 @@ not fill the Error Log. The job never raises.
 """
 from __future__ import annotations
 
-import re
-from urllib.parse import urlparse
-
 import frappe
 from frappe.utils import add_to_date, now_datetime
 from pypika.terms import CustomFunction
 
+from ffl_core.mailing_address import clean_email, split_name, store_host
 from ffl_core.utils import commit
 from ffl_woo_sync.woocommerce.client import RETAIL_SITE, STORES
 from ffl_woo_sync.woocommerce.status_events import deliver, outbound_config
@@ -65,42 +63,9 @@ SETTLE_SECONDS = 120
 
 _GREATEST = CustomFunction("GREATEST", ["a", "b"])
 _IFNULL = CustomFunction("IFNULL", ["a", "b"])
-_DEDUPE_SUFFIX = re.compile(r"\s+-\s*\d+$")
 
 
 # -- pure helpers ----------------------------------------------------------------
-
-
-def store_host(store_url: str) -> str:
-	"""The shop's host, lower-cased and without a leading ``www.``."""
-	host = (urlparse(store_url if "//" in store_url else "//" + store_url).hostname or "").lower()
-	return host[4:] if host.startswith("www.") else host
-
-
-def clean_email(raw, shop_host: str = "") -> str:
-	"""The address to send, or "" to skip the customer: blank, no ``@``, or an
-	address at the shop's own domain (staff and test mail, not shoppers)."""
-	email = str(raw or "").strip().lower()
-	if "@" not in email:
-		return ""
-	if shop_host and email.rsplit("@", 1)[1] == shop_host:
-		return ""
-	return email
-
-
-def split_name(contact_first, contact_last, customer_name) -> tuple[str, str]:
-	"""``(first, last)``. A Contact with both names wins. Otherwise the whole
-	name is split into its first and last words — the Contact's lone first name
-	when it has one (ERPNext often stores the full name there), else the
-	Customer's, minus a trailing `` - <digits>`` duplicate-name suffix."""
-	first, last = str(contact_first or "").strip(), str(contact_last or "").strip()
-	if first and last:
-		return first, last
-	full = _DEDUPE_SUFFIX.sub("", " ".join((first or str(customer_name or "")).split()))
-	words = full.split()
-	if not words:
-		return "", last
-	return words[0], last or (words[-1] if len(words) > 1 else "")
 
 
 def customer_payload(row, shop_host: str = "") -> dict | None:

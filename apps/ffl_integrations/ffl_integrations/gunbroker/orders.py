@@ -1304,6 +1304,10 @@ def _shelf_conflict(serial: str, state: dict) -> str:
 			"Release the other channel or refund one of them."
 		).format(detail.get("channel") or "another channel",
 			detail.get("ref") or "", serial)
+	if reason == "counter_hold" and detail.get("kind") == "crm_deal":
+		return _("Serial {0} is held for deal {1} — GunBroker has a buyer for it too. "
+			"A deal holds it: a manager can release the hold."
+		).format(serial, detail.get("ref") or "?")
 	if reason == "counter_hold":
 		return _("Serial {0} is on counter order {1} — GunBroker has a buyer for "
 			"it too."

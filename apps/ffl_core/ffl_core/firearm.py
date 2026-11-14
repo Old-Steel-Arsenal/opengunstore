@@ -494,7 +494,8 @@ def _current_invoice_own_serials(invoice_name: str | None, codes) -> set[str]:
 
 
 def _pos_picker_excluded_serials(item_codes, current_invoice: str | None = None,
-		exclude_custody: bool = True) -> set[str]:
+		exclude_custody: bool = True, customer: str | None = None,
+		kept_for_customer: set | None = None) -> set[str]:
 	"""The serials a POS firearm picker must NOT offer — a
 	gun that is spoken-for or already gone to a dealer. ONE rulebook shared by
 	all three pickers (available_serials_for_items / available_serials_with_
@@ -548,7 +549,13 @@ def _pos_picker_excluded_serials(item_codes, current_invoice: str | None = None,
 	own-order exemption): same concept — exempt the editing doc's OWN hold — in
 	two rulebooks. This one is gated to a kind='pos' hold because the POS picker
 	only owns parked-POS holds; the SI-hold exemption lives in the Create Order
-	rulebook. Keep the two in sync when the hold model changes."""
+	rulebook. Keep the two in sync when the hold model changes.
+
+	`customer` (optional): the sale's buyer. A gun held for a CRM deal whose
+	customer this is stays offered (it is held FOR them); every other hold still
+	excludes it. `kept_for_customer`, when given, collects those serials so a
+	picker can label them."""
+	from ffl_core.crm.holds import KIND as DEAL_HOLD
 	from ffl_core.reservations import channel_reserved_serials, counter_holds
 	from ffl_core.warehouses import consignment_warehouse_names, custody_warehouse_names
 
@@ -576,6 +583,10 @@ def _pos_picker_excluded_serials(item_codes, current_invoice: str | None = None,
 					(hold.get("kind") == "pos" and hold.get("ref") == current_invoice)
 					or (counter_order and hold.get("kind") == "sales_invoice"
 						and hold.get("ref") == counter_order)):
+				continue
+			if customer and hold.get("kind") == DEAL_HOLD and hold.get("customer") == customer:
+				if kept_for_customer is not None:
+					kept_for_customer.add(serial)
 				continue
 			excluded.add(serial)
 		# Rule 5. NOT exempted by current_invoice: that exemption exists for a
@@ -610,7 +621,8 @@ def _pos_picker_excluded_serials(item_codes, current_invoice: str | None = None,
 @frappe.whitelist()
 def available_serials_for_items(item_codes: list[str] | str,
 		exclude_unavailable: int | bool = True,
-		current_invoice: str | None = None) -> dict[str, list[str]]:
+		current_invoice: str | None = None,
+		customer: str | None = None) -> dict[str, list[str]]:
 	"""Return {item_code: [in-stock serial, ...]} so the POS 4473 dialog can offer
 	a pick-list of real on-hand serials instead of free-typing one.
 
@@ -631,6 +643,8 @@ def available_serials_for_items(item_codes: list[str] | str,
 	        a past invoice, see _pos_picker_excluded_serials). The
 	        POS 4473 dialog passes it so the serial on the line the cashier
 	        is completing doesn't vanish from its own dropdown.
+	    customer: Optional buyer — a gun held for this customer's CRM deal
+	        stays offered.
 
 	Returns:
 	    {item_code: [in-stock serial, ...]}.
@@ -639,8 +653,8 @@ def available_serials_for_items(item_codes: list[str] | str,
 	codes = list({c for c in _coerce_item_codes(item_codes) if c})
 	if not codes:
 		return {}
-	excluded = _pos_picker_excluded_serials(codes, current_invoice=current_invoice) \
-		if frappe.utils.cint(exclude_unavailable) else set()
+	excluded = _pos_picker_excluded_serials(codes, current_invoice=current_invoice,
+		customer=(customer or None)) if frappe.utils.cint(exclude_unavailable) else set()
 
 	by_code: dict[str, list[str]] = {c: [] for c in codes}
 	for row in frappe.get_all(
@@ -1348,7 +1362,8 @@ def assert_transfer_declaration_unambiguous(acquisition_type,
 @frappe.whitelist()
 def available_serials_with_prices(item_codes: list[str] | str,
 		exclude_unavailable: int | bool = True,
-		current_invoice: str | None = None) -> dict[str, list[dict]]:
+		current_invoice: str | None = None,
+		customer: str | None = None) -> dict[str, list[dict]]:
 	"""Like available_serials_for_items but enriches each serial with sell_price
 	and purchase_rate (cost), sorted by sell_price ascending so the POS picks
 	the cheapest in-stock unit by default. Used by the POS Item Details serial
@@ -1371,16 +1386,20 @@ def available_serials_with_prices(item_codes: list[str] | str,
 	        a past invoice); the Item-Details picker passes it so
 	        editing a firearm line doesn't drop its own serial from the
 	        dropdown.
+	    customer: Optional buyer — a gun held for this customer's CRM deal
+	        stays offered, marked ``held_for_customer``.
 
 	Returns:
-	    {item_code: [{"serial", "sell_price", "purchase_rate"}, ...]},
+	    {item_code: [{"serial", "sell_price", "purchase_rate", "held_for_customer"?}, ...]},
 	    sorted by sell_price ascending.
 	"""
 	frappe.only_for(COUNTER_ROLES)
 	codes = list({c for c in _coerce_item_codes(item_codes) if c})
 	if not codes:
 		return {}
-	excluded = _pos_picker_excluded_serials(codes, current_invoice=current_invoice) \
+	kept: set[str] = set()
+	excluded = _pos_picker_excluded_serials(codes, current_invoice=current_invoice,
+		customer=(customer or None), kept_for_customer=kept) \
 		if frappe.utils.cint(exclude_unavailable) else set()
 
 	by_code: dict[str, list[dict]] = {c: [] for c in codes}
@@ -1404,6 +1423,7 @@ def available_serials_with_prices(item_codes: list[str] | str,
 			# (POS picker rate, card range, checkout gate, Create Order) charges
 			# the promo automatically without knowing sales exist.
 			"_sale": (row.sale_sell_price, row.sale_from, row.sale_to),
+			**({"held_for_customer": 1} if row.name in kept else {}),
 		})
 	# (The legacy has_serial_no=0 / Item.firearm_serial fallback was removed
 	# when the Used Firearm path was unified — every firearm is serial-tracked.)
@@ -1541,7 +1561,8 @@ def is_own_license(value: str | None) -> bool:
 
 
 @frappe.whitelist()
-def in_stock_firearm_serials(exclude_unavailable: int | bool = True) -> list[dict]:
+def in_stock_firearm_serials(exclude_unavailable: int | bool = True,
+		customer: str | None = None) -> list[dict]:
 	"""Every in-stock firearm serial, for the POS customer-transfer picker.
 
 	The two cart-driven pickers (available_serials_for_items, firearm_items_in)
@@ -1560,6 +1581,8 @@ def in_stock_firearm_serials(exclude_unavailable: int | bool = True) -> list[dic
 	        consigned_out / consignment-warehouse guns — a transfer must
 	        not offer a gun already spoken for or gone to a dealer. Pass
 	        False for the raw in-stock set.
+	    customer: Optional transferee — a gun held for this customer's CRM
+	        deal stays offered.
 
 	Returns:
 	    [{serial, item_code, item_name, sell_price}], ordered item then
@@ -1581,7 +1604,7 @@ def in_stock_firearm_serials(exclude_unavailable: int | bool = True) -> list[dic
 		as_dict=True,
 	)
 	excluded = _pos_picker_excluded_serials(
-		{r.item_code for r in rows}, exclude_custody=False) \
+		{r.item_code for r in rows}, exclude_custody=False, customer=(customer or None)) \
 		if frappe.utils.cint(exclude_unavailable) else set()
 	out = []
 	for r in rows:

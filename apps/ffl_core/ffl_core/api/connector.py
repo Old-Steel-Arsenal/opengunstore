@@ -31,6 +31,7 @@ from ffl_core.ffl_core.doctype.mcp_settings.mcp_settings import (
 	surface_enabled,
 	web_access,
 )
+from ffl_core.utils import commit
 
 # Argument values under these keys never reach the log — the same bounded rule
 # the connector masks with before sending (gunstore_mcp.safety._CREDENTIAL_NAME),
@@ -134,7 +135,9 @@ def log_connector_call(tool: str, surface: str, phase: str = "started",
 	Called before the tool runs (phase "started" — the connector refuses to run
 	the tool if this fails, so nothing happens unrecorded) and once after it
 	(phase "ok" / "failed", with the log name returned by the first call). A row
-	moves from Started to its outcome exactly once; it cannot be rewritten.
+	moves from Started to its outcome exactly once; it cannot be rewritten. On the
+	website surface a call refused here (switch off, no website role) is still
+	recorded, as Failed with the reason, before the refusal.
 
 	Args:
 		tool: Tool name.
@@ -161,7 +164,15 @@ def log_connector_call(tool: str, surface: str, phase: str = "started",
 		frappe.throw(_("surface must be one of {0}.").format(", ".join(ALL_SURFACES)))
 	# A call already running when the switch goes off may still close its record.
 	if phase == "started":
-		_require_surface(surface, c.user)
+		try:
+			_require_surface(surface, c.user)
+		except frappe.PermissionError as e:
+			if surface in WEB_SURFACES:
+				# The website connector can change the site: a refused attempt is kept too.
+				# Committed, because the refusal rolls the request back.
+				_insert_log(c, tool, surface, arguments, status=STATUS["failed"], error=str(e))
+				commit()
+			raise
 	if phase != "started":
 		# Row lock: two concurrent closes cannot both see Started.
 		rows = frappe.db.sql("select user, status from `tabConnector Audit Log` "
@@ -176,21 +187,29 @@ def log_connector_call(tool: str, surface: str, phase: str = "started",
 			"error": _redact(str(error))[:1000] if error else None,
 		})
 		return {"log": log}
+	return {"log": _insert_log(c, tool, surface, arguments)}
+
+
+def _insert_log(c: frappe._dict, tool: str, surface: str, arguments: str | None,
+		status: str = STATUS["started"], error: str | None = None) -> str:
 	try:
 		args = _redact(json.loads(arguments)) if arguments else {}
 	except ValueError:
 		args = {"raw": "(unparseable)"}
+	now = now_datetime()
 	doc = frappe.get_doc({
 		"doctype": "Connector Audit Log",
-		"started_at": now_datetime(),
+		"started_at": now,
 		"user": c.user,
 		"full_name": frappe.utils.get_fullname(c.user),
 		"tool": str(tool)[:140],
 		"surface": surface,
-		"status": STATUS["started"],
+		"status": status,
 		"client_name": c.client_name,
 		"client_id": c.client_id,
 		"arguments": _args_text(args),
 	})
+	if status != STATUS["started"]:
+		doc.update({"finished_at": now, "error": _redact(str(error or ""))[:1000] or None})
 	doc.insert(ignore_permissions=True)
-	return {"log": doc.name}
+	return doc.name

@@ -14,7 +14,7 @@ Open **Settings**, then **WooCommerce (Online Store)** under **Integrations**. E
 
 <figure markdown>
 ![WooCommerce Settings](../screenshots/settings-woocommerce.webp){ .screenshot }
-<figcaption>The Connection tab: the store address, the REST API pair, the webhook secret and the outbound status webhook secret. Enable sync, the category switch and the status fields sit on the two tabs beside it.</figcaption>
+<figcaption>The Connection tab: the store address, the REST API pair, the webhook secrets and Send customer emails to the shop. Enable sync, the category switch and the status fields sit on the two tabs beside it.</figcaption>
 </figure>
 
 The form has three tabs. **Connection** holds the store address, the REST API pair, the webhook secret and the outbound status webhook secret. **Sync** holds **Enable sync**, the category switch and **Reconcile frequency**, and **Status** shows how the connection is doing.

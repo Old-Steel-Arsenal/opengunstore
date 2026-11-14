@@ -38,7 +38,32 @@ Saving a plan makes its product, and a fee product when there is a registration 
 - A new **Price per period** is what every current member pays at their next renewal.
 - **Billed** cannot be changed once the plan has members.
 
-## Sell a membership
+## Member prices
+
+A plan can give its members lower prices at the register and on invoices. A manager sets them on the plan form: click a plan's card, then **Member prices: set them on the plan form**. Add a row to **Benefits** under **Member Benefits** for each price.
+
+| Field | What it does |
+|---|---|
+| **Applies To** | **Item**, **Item Group** (sub-groups too) or **Price List** (the items priced in it) |
+| **Benefit** | **Percent off**, **Amount off**, **Fixed price**, or **Price-list price** (that list's own price) |
+| **Percent, Amount or Price** | The number for the benefit. Not used for Price-list price |
+| **Daily Limit per Member (0 = None)** | How many units a member gets at this price each day |
+| **Only on Days** | For example `Sat, Sun`. Blank means every day |
+| **Reason Shown on the Sale** | What the sale line says. Blank shows, for example, `Member 10% (Gold)` |
+
+The plan card on the Memberships page lists its benefits under the price.
+
+### At the register
+
+Pick the customer first. Each line a benefit covers is repriced by itself, and **Discount Reason** on the line says why. A member who holds an Active membership, or a Past Due one still in its grace, gets the price.
+
+- When more than one price applies, the lowest wins. A sale price lower than the member price is kept instead.
+- When the daily limit is used up, the line stays at its regular price and a message says which sales used it.
+- A gun priced one by one only gets a member price from a benefit that names its item. Trade-in credit, deposits and membership fees never do.
+- If the total changes as you click **Complete Order**, the register says so and stops. Collect the new total and click **Complete Order** again.
+
+Orders from Create Order, web orders and GunBroker orders keep their own prices.
+
 
 1. Open the customer, find **Memberships** under **Agreements**, and click **Sell membership**. From the Memberships page, click **Sell membership** at the top and pick the customer.
 2. Choose the **Plan**.

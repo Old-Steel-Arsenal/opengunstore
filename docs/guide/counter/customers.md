@@ -29,6 +29,31 @@ Type the name exactly as it reads on the customer's ID. That name goes on the 44
 
 If your store keeps ID numbers (see [Storing ID numbers](#storing-id-numbers)), the dialog also asks for **Date of Birth**, **Driver License #** and **License Expiry**, and a scan fills them. The license becomes a row under **ID Documents** on the Profile tab.
 
+## Email and phone
+
+**Email** and **Phone** sit on the customer's first tab, **Details**, under the name. A value you type there becomes the customer's main email or phone, and the old one stays on file as a second. Receipts, membership renewals and agreement links go to that email.
+
+## At the register
+
+When you pick a customer at the top of the cart, a line of colored labels shows under the name. It lists what you need to know before you ring the sale:
+
+- The status, when it is not Active. A **Banned** customer is stopped with a red box until a manager types an **Override reason** and clicks **Override ban (30 min)**.
+- A green member badge with the plan, the month the membership runs to, and any benefit with a daily limit, for example `Gold · to 2027-04 · Range 1/2 today`. See [Memberships](memberships.md#member-prices).
+- An ID about to expire or expired, the customer's agreements, and the family the customer belongs to.
+
+An agreement still to sign is a label you can click. It opens the agreement so you can send it to the tablet, show a QR code or email a link. **Agreements** under the name lists them all.
+
+### Skip agreements for one sale
+
+When a sale is waiting on an unsigned agreement and the customer cannot sign now, a manager can let this one sale go without it.
+
+1. Click **Agreements** under the customer's name.
+2. Click **Skip for this sale (manager)**. **Skip agreements for this sale** lists what is being skipped.
+3. The manager picks their name in **Manager** and types their **PIN** (or password). A **Reason (optional)** goes on the sale.
+4. Click **Skip**, then complete the sale within 15 minutes.
+
+The skip works once, for the next sale to that customer. The sale gets a note saying what was skipped and who approved it.
+
 ## The Profile tab
 
 <figure markdown>
@@ -59,7 +84,7 @@ A new customer is **Active**. Set **Customer Status** to:
 The status shows on the customer list and at the top of the record: **Banned** in red, **Prospect** in orange, **Inactive** in gray. Filter the list by **Customer Status** to find them.
 
 !!! note
-    The status is a record for staff. It does not stop a sale at the register. Check the Profile tab before you serve someone you do not know.
+    **Banned** stops a sale at the register and on Create Order until a manager overrides it for 30 minutes. **Inactive** and **Prospect** are records for staff and stop nothing.
 
 ### Family
 

@@ -57,6 +57,10 @@ A one-off migration. It pulls every item from your FastBound bound book and mirr
 
 A large book takes several minutes. The importer commits after every item, so a crash part way does not lose work. The result reports Fetched, Created (or Would create), Skipped (already imported) and Errors. Run it again without **Dry Run** once the counts look right.
 
+A gun recorded with no serial number, or with the same serial as another gun, comes in as its own gun with a label on its record name. **No-Serial Spellings** on [FFL Settings](ffl-settings.md#serial-numbers) lists how your book writes "no serial".
+
+These guns cannot be sold or listed online yet, and a gun with no serial number cannot be received at the counter yet: record it in the bound book directly. See [Models, serials and prices](../stock/items-and-serials.md#the-serial-no-form).
+
 ## The webhook
 
 FastBound calls a URL on this site when something happens there. Register it in FastBound under Settings → Webhooks for the events `form4473.completed` and `disposition.committed`. The URL is printed on the FastBound Settings form beside **Webhook secret**, with `<your-site>` standing for your site's address.
@@ -179,7 +183,8 @@ It previews first. With nothing to do: "In sync — no in-stock firearm is marke
 | A bell notice "A&D book: FastBound refused …" | FastBound refused a push for good. | [Fix the push](#fix-a-failed-push). |
 | `... firearm serial '<n>' not found in FastBound — was its acquisition pushed?` | The gun was never acquired in the bound book. | Fix the acquisition first, then retry the disposition. |
 | `... is already disposed in FastBound ... and cannot be disposed again.` | The bound book already records this gun leaving. | Manager work. Link the records or void the FastBound entry. |
-| `FastBound rejected this firearm, so nothing was received` | A receive was refused and rolled back. | Fix what the message names and receive again. |
+| `FastBound rejected this firearm, so nothing was received` | A receive was refused and rolled back. | Fix what the message names and receive again. Guns listed as already entered are linked on the next receive. |
+| A cancelled acquisition's **FastBound Sync Error** reads `DELETE failed: still in the book`, and a bell notice says its gun is still in FastBound | Cancelling does not take a committed entry out of FastBound. | Amending or receiving the gun again links it, with nothing to do. Otherwise delete the item in FastBound; the next daily check clears the error. |
 | **FastBound Sync Error** begins `[NOT A&D]` | A manager marked it as not in the bound book. | Nothing, unless it does belong. Then clear the mark. |
 | `Say why this record is not in the bound book.` | The mark was asked for without a reason. | Give the reason. |
 | `… is not a submitted record missing from the bound book — nothing to mark.` | The record is a draft, cancelled, or already in FastBound. | Nothing to mark. |

@@ -141,4 +141,6 @@ The **Serial Numbers** tab lists every gun under the item. Click **Sell Price** 
 | **Consignment**, **Consignment Commission %**, **Consignor** | The store is selling it for someone. See [Consignment](consignment.md) |
 | **GunBroker Free Shipping** | Lists on GunBroker with free shipping |
 
+A gun recorded with no serial, or with another gun's serial, gets a labeled record name, such as `NSN (FB 1234)`. **Ledger Serial** keeps the bound book's serial. It cannot be sold or listed online yet (**Gun not sellable yet**).
+
 The buttons **Correct Serial**, **Correct Cost** and **Reassign Item** are on [Fix a mistake](corrections.md). **Sync with FastBound** compares this gun with the bound book; see [FastBound](../admin/fastbound.md).
