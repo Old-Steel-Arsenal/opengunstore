@@ -336,6 +336,29 @@ def check_perm_drift() -> None:
 		_set_list(_DRIFT_SEEN_KEY, seen[-50:])
 
 
+REGISTER_PAGE = "point-of-sale"
+
+
+def ensure_register_domain() -> None:
+	"""Make the domain ERPNext restricts the register page to an active domain (Domain Settings).
+
+	ERPNext ships the ``point-of-sale`` Page with ``restrict_to_domain: Retail``, and a v16 site
+	starts with no active domain (nothing in ERPNext's install or setup wizard sets one any more).
+	Frappe's sidebar drops a Page link whose domain is not active for everyone but Administrator
+	(``frappe.desk.utils.is_item_allowed`` -> ``DeskViews.restricted_pages``), so the Gun Shop
+	sidebar's "Point of sale" link never reached a staff login, System Manager included, although
+	the page itself opens (``Page.is_permitted`` reads roles only). No installed app declares a
+	``domains`` hook at the pinned versions, so activating the domain runs no domain setup: it adds
+	the Has Domain row and clears the cache, nothing else. Only ever adds; idempotent.
+	"""
+	domain = frappe.db.get_value("Page", REGISTER_PAGE, "restrict_to_domain")
+	if not domain or not frappe.db.exists("Domain", domain):
+		return
+	doc = frappe.get_single("Domain Settings")
+	doc.flags.ignore_permissions = True
+	doc.set_active_domains([domain])         # saves only when the domain was not active yet
+
+
 def ensure_pos_invoice_mode() -> None:
 	"""Pin POS Settings.invoice_type to "POS Invoice".
 
