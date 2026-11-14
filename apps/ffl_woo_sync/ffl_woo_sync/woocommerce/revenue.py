@@ -44,7 +44,7 @@ from ffl_core.customer_profile import (
 	find_customer_by_email,
 	new_retail_customer,
 )
-from ffl_core.utils import default_company as _default_company, guest_job_elevated
+from ffl_core.utils import atomic, default_company as _default_company, guest_job_elevated
 
 WEB_CUSTOMER = WEB_STORE_CUSTOMER   # one name, shared with the merge refusal
 WOO_MODE_OF_PAYMENT = "WooCommerce"
@@ -94,15 +94,52 @@ def _resolve_web_customer(order) -> str:
 	WooCommerce's own tax and the exemption / interstate engines already skip web
 	SIs (``compliance.customer_tax_exempt`` / ``interstate_tax`` both short-circuit
 	on ``woo_online_order``), so even a cross-channel email match never re-touches
-	the tax."""
-	email = (getattr(order, "customer_email", None) or "").strip()
-	if not email:
+	the tax.
+
+	The customer the order was given at intake (``order.customer``,
+	:func:`intake_customer`) is used while it exists: the same rules picked it.
+	Otherwise the buyer is resolved here and written back to the order."""
+	stored = getattr(order, "customer", None)
+	if stored and frappe.db.exists("Customer", stored):
+		return stored
+	customer = _buyer_customer(order)
+	if not customer:
 		frappe.log_error(
 			title=f"Web order {getattr(order, 'name', '?')}: no billing email",
 			message="No billing email on the Woo order — booking the Sales Invoice to "
 				"the shared aggregate customer (cannot dedupe / attribute to a real "
 				"buyer). Review the order.")
 		return _ensure_web_customer()
+	# The shared aggregate is never written back: it is nobody's customer card.
+	if frappe.db.has_column("Woo Online Order", "customer"):
+		frappe.db.set_value("Woo Online Order", order.name, "customer", customer, update_modified=False)
+	order.customer = customer
+	return customer
+
+
+def intake_customer(order) -> str | None:
+	"""The POS customer for a web order being recorded, by :func:`_buyer_customer`;
+	None for an order with no email. Never raises: the order is recorded whatever
+	happens here, a failure is undone and logged, and the invoice resolves the buyer
+	again. Elevated like the invoice job (the webhook runs as Guest)."""
+	if not (order.customer_email or "").strip():
+		return None
+	# lazy: two first orders from one new buyer recorded at the same instant can each make a
+	# customer (no lock on the email); upgrade path: lock on the email (GET_LOCK) around the lookup.
+	try:
+		with atomic("web order customer"), guest_job_elevated():
+			return _buyer_customer(order)
+	except Exception:
+		frappe.log_error(title=f"Web order Woo #{order.woo_order_id}: customer not resolved",
+			message=frappe.get_traceback())
+		return None
+
+
+def _buyer_customer(order) -> str | None:
+	"""The real buyer by billing email, found or made; None when the order has no email."""
+	email = (getattr(order, "customer_email", None) or "").strip()
+	if not email:
+		return None
 	# Dedup by email (case-insensitive at the DB collation): a repeat buyer merges
 	# onto their existing Customer instead of sanding a new record each purchase.
 	# Also finds the address of a merged-away duplicate (kept as an alias on the

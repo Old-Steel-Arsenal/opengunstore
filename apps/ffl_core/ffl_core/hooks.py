@@ -318,8 +318,9 @@ doc_events = {
 	"CRM Deal": {
 		# The quote's lines priced; the value pinned to the deal's invoices (ffl_core.crm.orders).
 		"validate": ["ffl_core.crm.deal.price_lines", "ffl_core.crm.orders.pin_deal_value"],
-		# A deal converted from a lead the team shares stays shared (ffl_core.crm.mail).
-		"after_insert": "ffl_core.crm.mail.share_converted_deal",
+		# A deal converted from a lead the team shares stays shared (ffl_core.crm.mail); a deal whose
+		# email is one customer's is linked to it once it commits (ffl_core.crm.customer).
+		"after_insert": ["ffl_core.crm.mail.share_converted_deal", "ffl_core.crm.customer.deal_inserted"],
 		# A gun held for the deal (crm/holds.py): Won / Lost, a gun off its lines, deleted or renamed
 		# ends or follows its holds.
 		"on_update": "ffl_core.crm.holds.on_deal_update",

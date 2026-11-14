@@ -23,6 +23,19 @@ from frappe.tests.utils import FrappeTestCase
 from ffl_woo_sync.tests.test_woo_quantity_hold import OTHER, UNIFORM, _ensure_items
 from ffl_woo_sync.woocommerce import channel, mapping, webhook
 
+
+_INTAKE = patch("ffl_woo_sync.woocommerce.webhook.intake_customer", return_value=None)
+
+
+def setUpModule():
+	# The buyer's POS customer at intake reads and writes Customers for real, which these doubles
+	# cannot answer; it is tested on the real database in test_web_order_customer.
+	_INTAKE.start()
+
+
+def tearDownModule():
+	_INTAKE.stop()
+
 ITEM = "COMMIT-ITEM-001"
 MAPPING = "ffl_woo_sync.woocommerce.mapping"
 WEBHOOK = "ffl_woo_sync.woocommerce.webhook"

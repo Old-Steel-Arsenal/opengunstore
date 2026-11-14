@@ -16,7 +16,7 @@ The **Customer** section on the deal's side panel shows who the deal is with:
 - Banned status and any staff alerts, in color at the top
 - FFL status for a dealer
 - **Lifetime spend**: what they have bought, by the same figure as Net Sales in the [Sales Report](../manager/sales-report.md)
-- **Open orders**: their orders on Pending Order, with what they still owe
+- **Open orders**: their orders on Pending Order, with what they still owe, and their web orders not yet shipped or picked up, with the web order's status
 - **Last orders**: their most recent sales and returns
 
 It never shows an ID number, a date of birth, a 4473 or a background check. Before the deal has a customer, it lists the customers whose email or phone match.

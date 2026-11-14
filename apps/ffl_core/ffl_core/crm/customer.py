@@ -25,13 +25,14 @@ from frappe import _
 from frappe.utils import cint, escape_html, flt, fmt_money, formatdate, getdate, nowdate
 
 from ffl_core import customer_flags, pricing
+from ffl_core.crm import TITLE, pos_link_on
 from ffl_core.crm.deal import SERIAL_FIELD
 from ffl_core.crm.holds import card_lines
 from ffl_core.crm.deals import customer_of
 from ffl_core.crm.mail import contacts_with_email
 from ffl_core.marketing import customers as marketing_customers
 from ffl_core.crm.item import PRODUCT
-from ffl_core.customer_profile import ACTIVE, BANNED
+from ffl_core.customer_profile import ACTIVE, BANNED, find_customer_by_email
 
 CARD_FIELD = "ffl_customer_card"
 RECENT_ORDERS = 5
@@ -196,6 +197,78 @@ def _link(deal, customer: str) -> dict:
 	return {"customer": customer}
 
 
+# ----------------------------------------------------------------- linking on its own
+
+AUTO_LINK_JOB = "ffl_core.crm.customer.auto_link_deals"
+
+
+def sole_customer_by_email(email: str | None) -> str | None:
+	"""The one Customer whose own email is *email* (or, with none, the one a merge alias names; an
+	alias on a dealer does not count, as in the web order resolver). None when there is no such
+	customer or there are several: then the employee chooses."""
+	email = (email or "").strip()
+	if not email:
+		return None
+	own = frappe.get_all("Customer", filters={"email_id": email}, pluck="name", limit=2)
+	if own:
+		return own[0] if len(own) == 1 else None
+	hit = find_customer_by_email(email)
+	return hit.name if hit and not (hit.get("via_alias") and hit.get("is_ffl_dealer")) else None
+
+
+def auto_link_after_commit(*, deal: str | None = None, email: str | None = None) -> None:
+	"""Queue :func:`auto_link_deals` for once the caller's transaction commits (a web order's or a
+	deal's: nothing is written into it). Off with the deal to POS switch. Never raises."""
+	try:
+		if pos_link_on():
+			frappe.enqueue(AUTO_LINK_JOB, queue="short", enqueue_after_commit=True, deal=deal, email=email)
+	except Exception:  # noqa: BLE001 — the employee can still link the deal by hand
+		frappe.log_error(title=f"[{TITLE}] Deal link not queued: {deal or email}", message=frappe.get_traceback())
+
+
+def deal_inserted(doc, method=None) -> None:
+	"""CRM Deal after_insert: a new deal with an email and no customer is linked after it commits (the
+	customer's web order may have come first)."""
+	if doc.get("email") and not doc.get("erpnext_customer"):
+		auto_link_after_commit(deal=doc.name)
+
+
+def auto_link_deals(deal: str | None = None, email: str | None = None) -> list[str]:
+	"""Link deals with no customer to the one Customer their email belongs to
+	(:func:`sole_customer_by_email`): *deal* alone, the deals with *email*, or with neither every such
+	deal (the upgrade patch). A deal whose contact is already linked to another customer is left to
+	the employee. Each deal in its own savepoint; a failure is logged. Returns the deals linked."""
+	from ffl_core.utils import guest_job_elevated
+
+	if not pos_link_on():
+		return []
+	filters = {"erpnext_customer": ["is", "not set"], "email": ["is", "set"]}
+	if deal:
+		filters["name"] = deal
+	if email:
+		filters["email"] = email
+	linked = []
+	# lazy: every unlinked deal with an email when called with neither (the patch, once); a handful otherwise.
+	with guest_job_elevated():   # queued from the Guest webhook
+		for row in frappe.get_all("CRM Deal", filters=filters, fields=["name", "email"], order_by="creation asc"):
+			frappe.db.savepoint("ffl_deal_auto_link")
+			try:
+				customer = sole_customer_by_email(row.email)
+				if not customer:
+					continue
+				doc = frappe.get_doc("CRM Deal", row.name)
+				contact = _primary_contact(doc)
+				others = _customers_of_contacts([contact]) if contact else []
+				if doc.get("erpnext_customer") or (others and customer not in others):
+					continue
+				_link(doc, customer)
+				linked.append(row.name)
+			except Exception:
+				frappe.db.rollback(save_point="ffl_deal_auto_link")
+				frappe.log_error(title=f"[{TITLE}] Deal not linked: {row.name}", message=frappe.get_traceback())
+	return linked
+
+
 # ----------------------------------------------------------------- the card
 
 
@@ -233,6 +306,26 @@ def _open_orders(customer: str) -> list[dict]:
 		for row in list_pending_dispositions(customer=customer)]
 
 
+WEB_ORDER = "Woo Online Order"
+
+
+def _web_orders(customer: str) -> list[dict]:
+	"""The customer's web orders still awaiting fulfilment. One already on a submitted invoice or
+	register ticket is left out: it shows there."""
+	if not frappe.db.has_column(WEB_ORDER, "customer"):
+		return []   # the first deploy of this release, before the migrate
+	rows = frappe.get_all(WEB_ORDER, filters={"customer": customer, "order_status": "Pending Fulfillment"},
+		fields=["name", "woo_status", "creation", "order_total"], order_by="creation desc", limit=RECENT_ORDERS)
+	names = [r.name for r in rows]
+	invoiced = set()
+	for doctype in ("Sales Invoice", "POS Invoice"):
+		if names:
+			invoiced.update(frappe.get_all(doctype, filters={"woo_online_order": ["in", names], "docstatus": 1},
+				pluck="woo_online_order"))
+	return [{"name": r.name, "status": (r.woo_status or "").replace("-", " ").capitalize(),
+		"date": str(getdate(r.creation)), "grand_total": flt(r.order_total)} for r in rows if r.name not in invoiced]
+
+
 def _ffl_status(customer: str) -> dict:
 	row = frappe.db.get_value("Customer", customer, ["is_ffl_dealer", "ffl_number"], as_dict=True)
 	if not row.is_ffl_dealer:
@@ -247,7 +340,8 @@ def customer_summary(deal) -> dict:
 
 	Returns:
 	    {"customer": None, "matches": find_matches, "html"} before the deal has a customer, else
-	    {"customer", "customer_name", "flags", "ffl", "orders", "open_orders", "lifetime_spend",
+	    {"customer", "customer_name", "flags", "ffl", "orders", "open_orders", "web_orders": web orders not
+	    fulfilled yet [{"name", "status", "date", "grand_total"}], "lifetime_spend",
 	    "holds": the deal's live gun holds [{"serial", "expires_label"}], "marketing": {"status", "tags"} of
 	    the customer's marketing contact (None when marketing is off or there is none), "html"}.
 	"""
@@ -262,6 +356,7 @@ def customer_summary(deal) -> dict:
 		"ffl": _ffl_status(customer),
 		"orders": _recent_orders(customer),
 		"open_orders": _open_orders(customer),
+		"web_orders": _web_orders(customer),
 		"lifetime_spend": _lifetime_spend(customer),
 		"holds": card_lines(deal.name),
 		"marketing": marketing_customers.card(customer),
@@ -361,18 +456,23 @@ def _card_html(summary: dict) -> str:
 		parts.append(f'<div style="{_AMBER};{_ROW}">{escape_html(_("Held: {0} until {1}").format(hold["serial"], hold["expires_label"]))}</div>')
 	if summary.get("marketing"):
 		parts.append(_marketing_html(summary["marketing"]))
-	if summary["open_orders"]:
+	web_orders = summary.get("web_orders") or []
+	if summary["open_orders"] or web_orders:
 		parts.append(f'<div style="font-weight:600;margin-top:8px">{escape_html(_("Open orders"))}</div>')
 		for row in summary["open_orders"]:
 			due = row["outstanding_amount"]
 			note = f' <span style="{_AMBER}">{escape_html(_("{0} due").format(_money_text(due)))}</span>' if due > 0 else ""
 			parts.append(_order_line("Sales Invoice", row["sales_invoice"], row["posting_date"], row["grand_total"], note))
+		for row in web_orders:
+			status = _("Web order, {0}").format(_(row["status"])) if row["status"] else _("Web order")
+			note = f' <span style="{_MUTED}">{escape_html(status)}</span>'
+			parts.append(_order_line(WEB_ORDER, row["name"], row["date"], row["grand_total"], note))
 	if summary["orders"]:
 		parts.append(f'<div style="font-weight:600;margin-top:8px">{escape_html(_("Last orders"))}</div>')
 		for row in summary["orders"]:
 			note = f' <span style="{_MUTED}">{escape_html(_("Return"))}</span>' if row["is_return"] else ""
 			parts.append(_order_line(row["doctype"], row["name"], row["posting_date"], row["grand_total"], note))
-	else:
+	elif not web_orders:
 		parts.append(f'<div style="{_MUTED}">{escape_html(_("No orders yet."))}</div>')
 	return "".join(parts)
 
