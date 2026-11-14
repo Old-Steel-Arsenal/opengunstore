@@ -34,9 +34,9 @@ them on in **MCP Settings**. Both start off.
 | **Enable Full MCP Server** | Lets signed-in users also change data (payments, orders, listings), limited to what their own POS role allows |
 | **Full MCP Server URL** | The address for the full connector |
 | **Claude Code Command (Full)** | The command for the full connector |
-| **Enable Website Read-only MCP Server** | Lets users with a Website Connector Viewer or Website Connector Manager role read the store's website. Nothing can be changed through it. Runs only where the host is set up for it ([self-hosting](../self-hosting.md#website-read-only-connector-optional)) |
-| **Website Read-only MCP Server URL** | The address for the website connector |
-| **Claude Code Command (Website Read-only)** | The command for the website connector |
+| **Enable Website MCP Server** | Lets users with a website role work on the store's website. Website Connector Viewer reads; Website Connector Manager can also make the changes the host lists (for example SEO titles, product text, order notes, contact tags), and those go live on the site at once. Runs only where the host is set up for it ([self-hosting](../self-hosting.md#website-connector-optional)) |
+| **Website MCP Server URL** | The address for the website connector |
+| **Claude Code Command (Website)** | The command for the website connector |
 
 The addresses look like `https://pos.yourstore.com/connector/cpa/mcp` for the
 read-only connector, `https://pos.yourstore.com/connector/full/mcp` for the
@@ -48,7 +48,10 @@ A switched-off connector still accepts a sign-in, and then refuses every call
 with "The cpa MCP server is switched off in MCP Settings." or the same for
 "full" or "web_ro". The website connector also refuses a user without a website
 role: "<user> has no website access: a Website Connector Viewer or Website
-Connector Manager role is needed."
+Connector Manager role is needed." Those refused website calls are still kept in
+the Connector Audit Log, as Failed with the reason. A Website Connector Viewer
+who calls a write tool is refused by the connector itself, and that is recorded
+the same way.
 
 ## Connecting an assistant
 
@@ -58,7 +61,7 @@ It reads like this:
 ```bash
 claude mcp add -s user --transport http gunstore-pos-cpa https://pos.yourstore.com/connector/cpa/mcp
 claude mcp add -s user --transport http gunstore-pos https://pos.yourstore.com/connector/full/mcp
-claude mcp add -s user --transport http gunstore-web-ro https://pos.yourstore.com/connector/web_ro/mcp
+claude mcp add -s user --transport http gunstore-web https://pos.yourstore.com/connector/web_ro/mcp
 ```
 
 Then open `/mcp` in Claude Code, choose **Authenticate**, sign in to the POS in

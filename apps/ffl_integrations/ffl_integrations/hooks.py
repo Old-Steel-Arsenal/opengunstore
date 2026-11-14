@@ -300,6 +300,15 @@ channel_presale_probe = [
 	"ffl_integrations.gunbroker.crosschannel.presale_probe",
 ]
 
+# ffl_core asks before a gun is held for a CRM deal (ffl_core.crm.holds): a gun
+# on sale on GunBroker is refused until its listing is ended. Reads our own flags
+# only, no call to GunBroker; an exception refuses the hold.
+#
+#     fn(serial_no: str) -> str | None
+gunshop_deal_hold_refusal = [
+	"ffl_integrations.gunbroker.crosschannel.deal_hold_refusal",
+]
+
 # The shared pool: a unit sold on one channel and not yet shipped is spoken for on
 # every channel. ffl_core asks each channel how many units it has committed, and
 # tells each when one channel's number moves; these are GunBroker's answers

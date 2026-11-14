@@ -332,6 +332,13 @@ def _enqueue_serial_listing(serial_no: str) -> None:
 		)
 
 
+def on_serial_hold_changed(serial_no: str) -> None:
+	"""``gunshop_serial_hold_changed`` (ffl_core.crm.holds): a gun was held for a CRM deal, or its
+	hold moved or ended. Its listing reconciles after the commit: stock 0 with the page kept while
+	held, back on sale when the hold ends."""
+	_enqueue_serial_listing(serial_no)
+
+
 # ---------------------------------------------------------------------------
 # Sales Invoice / POS Invoice.on_submit + on_cancel
 # ---------------------------------------------------------------------------

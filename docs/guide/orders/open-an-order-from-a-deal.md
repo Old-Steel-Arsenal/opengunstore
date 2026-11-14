@@ -55,6 +55,18 @@ A return or a cancel never reopens the deal. The owner decides what comes next, 
 
 A sale rung at the register does not reach the deal. Mark that deal **Won** by hand.
 
+## Want list
+
+When the customer is looking for something the store does not have, record it on the deal.
+
+1. Open the deal and click **Add want** at the top.
+2. Type a few **Keywords**, such as `Mosin 91/30`, pick an **Item (optional)**, or both. Add a **Budget** and **Notes** if they help.
+3. Click **Add want**.
+
+When stock that fits arrives, through a receipt or a trade-in, whoever added the want gets a CRM task. Keywords match without case, spaces or punctuation, so `P228` also finds `P-228`. Nothing is emailed to the customer, and a customer's transfer gun never counts.
+
+To close a want that is no longer needed, open it in the **CRM Want** list (search for it with ++ctrl+k++) and set **Status** to **Closed**.
+
 ## Web orders on the deal
 
 While the link is on, a customer's web orders leave notes on their open deal, on the deal's **Notes** tab: placed, shipped or picked up, cancelled, and refunded, each with its amount. A note changes nothing on the deal: its value and status follow POS invoices only. A customer with no open deal gets no note and no new deal.

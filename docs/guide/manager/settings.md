@@ -56,7 +56,7 @@ Below them, the **Card on file** card turns on [saving a card to charge later](.
 | Page | Where to open it | What it controls |
 |---|---|---|
 | FFL Settings | **FFL & Compliance** card | Our FFL number, alerts, counter rules, shipping tax, 4473 mode, transfer fee, customer ID numbers, FFL verification. See [FFL Settings](../admin/ffl-settings.md) |
-| MCP Settings | **FFL & Compliance** card | Whether AI assistants can connect, read-only or full |
+| MCP Settings | **FFL & Compliance** card | Whether AI assistants can connect: read-only, full, or the website |
 | ATF FFL Record | **FFL & Compliance** card | The ATF license records other dealers are checked against |
 | ShipStation Settings | **POS & Sales** card | Shipping labels, ship-from address, parcel defaults |
 | Cash Drawer Settings | **POS & Sales** card | The drawer's limits (below) |
@@ -81,9 +81,11 @@ The connection pages are described field by field in [Integrations](../admin/int
 
 ## MCP Settings
 
-**MCP Settings** switches on the read-only, the full and the website read-only MCP server, the connection an AI assistant such as Claude uses. Once a switch is on, it shows its server address and a command ready to copy.
+**MCP Settings** switches on the read-only, the full and the website MCP server, the connection an AI assistant such as Claude uses. Once a switch is on, it shows its server address and a command ready to copy.
 
-Staff sign in with their own account, and the assistant can do only what their role allows. The website server needs the Website Connector Viewer or Website Connector Manager role. **Connector Audit Log** on the form opens the permanent record of every action taken through a connector. System Manager only. See [the MCP server](../../ai/mcp.md).
+Staff sign in with their own account, and the assistant can do only what their role allows. The website server needs a website role: Website Connector Viewer reads, Website Connector Manager can also change the website.
+
+**Connector Audit Log** on the form opens the permanent record of every action taken through a connector. System Manager only. See [the MCP server](../../ai/mcp.md).
 
 ## Cash Drawer Settings
 
@@ -116,9 +118,16 @@ If a team address is a Google Group, set its **Post replies to** to **Sender cho
 
 **Blocked sender domains** and **Our own domains** take one domain per line. Team mail from them goes to [other mail](other-mail.md). A staff member's own mailbox leaves it out.
 
-**Link deals to POS orders** puts the **Open order** button and the **Customer** section on a CRM deal, and writes each deal's invoices back to it. It is off until you tick it. See [Open an order from a CRM deal](../orders/open-an-order-from-a-deal.md).
+**Link deals to POS orders** puts the **Open order** and **Add want** buttons and the **Customer** section on a CRM deal, and writes each deal's invoices back to it. **Hold guns for deals** adds **Hold gun**. Both start off. See [Open an order from a CRM deal](../orders/open-an-order-from-a-deal.md) and [Hold a gun for a deal](../orders/hold-a-gun-for-a-deal.md).
 
 Team mail that is not a customer inquiry, the **Category rules** and the **Spam folder** are on [Other mail](other-mail.md).
+
+Two kinds of inquiry reach CRM on their own:
+
+- **Website inquiries.** Price requests, sell-your-gun forms and questions sent from the website go on the customer's open deal, or else on a lead, with the gun asked about on it. This needs the website plugin that sends them.
+- **GunBroker buyer questions.** A buyer's question about one of the store's listings becomes its own lead, with the gun on it. Later messages in the same conversation go to the same lead.
+
+Nothing is emailed to the customer either way.
 
 ### Setting up the mailboxes
 

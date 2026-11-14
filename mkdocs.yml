@@ -160,6 +160,7 @@ nav:
           - guide/orders/index.md
           - Build an order and its splits: guide/orders/build-an-order.md
           - Open an order from a CRM deal: guide/orders/open-an-order-from-a-deal.md
+          - Hold a gun for a deal: guide/orders/hold-a-gun-for-a-deal.md
           - Ship a firearm to another dealer: guide/orders/ship-to-dealer.md
           - Ship accessories to a customer: guide/orders/ship-to-customer.md
           - Deposits and special orders: guide/orders/special-orders.md
@@ -196,6 +197,7 @@ nav:
           - Set up the store map: guide/manager/store-map.md
           - Settings: guide/manager/settings.md
           - Other mail: guide/manager/other-mail.md
+          - Marketing contacts: guide/manager/marketing-contacts.md
       - Admin and bookkeeper:
           - guide/admin/index.md
           - Month-end close: guide/admin/month-end.md

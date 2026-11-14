@@ -26,8 +26,10 @@ from frappe.utils import cint, escape_html, flt, fmt_money, formatdate, getdate,
 
 from ffl_core import customer_flags, pricing
 from ffl_core.crm.deal import SERIAL_FIELD
+from ffl_core.crm.holds import card_lines
 from ffl_core.crm.deals import customer_of
 from ffl_core.crm.mail import contacts_with_email
+from ffl_core.marketing import customers as marketing_customers
 from ffl_core.crm.item import PRODUCT
 from ffl_core.customer_profile import ACTIVE, BANNED
 
@@ -246,7 +248,8 @@ def customer_summary(deal) -> dict:
 	Returns:
 	    {"customer": None, "matches": find_matches, "html"} before the deal has a customer, else
 	    {"customer", "customer_name", "flags", "ffl", "orders", "open_orders", "lifetime_spend",
-	    "html"}.
+	    "holds": the deal's live gun holds [{"serial", "expires_label"}], "marketing": {"status", "tags"} of
+	    the customer's marketing contact (None when marketing is off or there is none), "html"}.
 	"""
 	customer = linked_customer(deal)
 	if not customer:
@@ -260,6 +263,8 @@ def customer_summary(deal) -> dict:
 		"orders": _recent_orders(customer),
 		"open_orders": _open_orders(customer),
 		"lifetime_spend": _lifetime_spend(customer),
+		"holds": card_lines(deal.name),
+		"marketing": marketing_customers.card(customer),
 	}
 	summary["html"] = _card_html(summary)
 	return summary
@@ -331,6 +336,11 @@ def _ffl_html(ffl: dict) -> str:
 	return f'<div style="{_RED if ffl["expired"] else ""};{_ROW}">{escape_html(text)}</div>'
 
 
+def _marketing_html(marketing: dict) -> str:
+	suppressed = marketing["status"] in ("Unsubscribed", "Bounced", "Complained")
+	return f'<div style="{_RED if suppressed else _MUTED};{_ROW}">{escape_html(marketing_customers.card_text(marketing))}</div>'
+
+
 def _order_line(doctype: str, name: str, posting_date: str, amount: float, note: str = "") -> str:
 	path = doctype.lower().replace(" ", "-")
 	return (f'<div style="display:flex;justify-content:space-between;gap:8px">'
@@ -347,6 +357,10 @@ def _card_html(summary: dict) -> str:
 		_ffl_html(summary["ffl"]),
 		f'<div style="{_ROW}">{escape_html(_("Lifetime spend"))}: <b>{_money(summary["lifetime_spend"])}</b></div>',
 	]
+	for hold in summary.get("holds") or []:
+		parts.append(f'<div style="{_AMBER};{_ROW}">{escape_html(_("Held: {0} until {1}").format(hold["serial"], hold["expires_label"]))}</div>')
+	if summary.get("marketing"):
+		parts.append(_marketing_html(summary["marketing"]))
 	if summary["open_orders"]:
 		parts.append(f'<div style="font-weight:600;margin-top:8px">{escape_html(_("Open orders"))}</div>')
 		for row in summary["open_orders"]:
@@ -374,6 +388,8 @@ def _order_lines(deal) -> tuple[list[dict], list[dict], list[str]]:
 	from ffl_core.api.manual_order import _serial_status
 	from ffl_core.firearm import is_firearm_item
 
+	customer = linked_customer(deal)
+
 	rows = deal.get("products") or []
 	items = {p.name: p.erpnext_item_code for p in frappe.get_all(PRODUCT,
 		filters={"name": ["in", [r.product_code for r in rows if r.product_code]]},
@@ -388,7 +404,7 @@ def _order_lines(deal) -> tuple[list[dict], list[dict], list[str]]:
 		serial = row.get(SERIAL_FIELD)
 		if serial:
 			# A gun that cannot be sold any more stays on the draft: the page drops it and says why.
-			data, _reason = _serial_status(serial, probe=False)
+			data, _reason = _serial_status(serial, probe=False, customer=customer)
 			lines.append({"item_code": item_code, "item_name": item.item_name, "is_firearm": True,
 				"is_antique": bool(item.is_antique), "qty": 1, "rate": flt((data or {}).get("sell_price")),
 				"serials": [serial]})

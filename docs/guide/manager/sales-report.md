@@ -63,8 +63,11 @@ To choose columns, click **Columns** on the toolbar. Total, Channel Fees, Profit
 | Net Sales, Cost, Goods Profit, Margin % | Totals for the rows shown |
 | Cost Flags | **Clean** in green means nothing to check. Red counts rows to look at |
 | Sales Tax | In the two line views only. All sales tax the store charged, shipping tax included |
+| Excise Tax | In the two line views, when the period collected excise tax. Not part of Sales Tax |
 | Shipping | In the two line views only |
 | **Marketplace sales** | In a line view filtered to GunBroker. Sales delivered to the store's own state |
+
+Those views also get an **Excise Tax** column for such a period, for example California's firearm excise.
 
 In the two line views the flag card is called **Data Flags**. **Sales Tax** leaves out tax GunBroker collected, so never add shipping tax on top of it.
 

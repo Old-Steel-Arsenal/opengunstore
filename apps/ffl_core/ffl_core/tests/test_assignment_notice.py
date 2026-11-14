@@ -1,5 +1,6 @@
 """The assignment notice (ffl_core.assignment_notice): which assignments ask their person to say
-they saw them, what the person is shown, and the acknowledgement.
+they saw them, what the person is shown, the acknowledgement, the daily reminder of a seen task
+still open, and the My tasks page (the list and Done).
 
 Real ToDos through Frappe's own assign_to, CRM's CRM Task and our alert / follow-up helpers, on
 the test site; every test runs inside a savepoint rolled back after it."""
@@ -9,8 +10,10 @@ from unittest.mock import patch
 
 import frappe
 from frappe.desk.form import assign_to
+from datetime import UTC, datetime, timedelta
+
 from frappe.tests.utils import FrappeTestCase
-from frappe.utils import now_datetime
+from frappe.utils import add_days, now_datetime
 
 from ffl_core import alerts
 from ffl_core import assignment_notice as an
@@ -248,3 +251,164 @@ class Acknowledge(AssignmentNoticeCase):
 			with self.assertRaises(frappe.ValidationError):
 				_as(CLERK, an.acknowledge, bad)
 		self.assertEqual(_as(CLERK, an.acknowledge, []), [])
+
+
+def _at(utc: datetime):
+	"""The notice's clock reads *utc* (the site's time zone still turns it into a day)."""
+	return patch.object(an, "_utcnow", return_value=utc.replace(tzinfo=UTC))
+
+
+def _tomorrow():
+	return _at(datetime.now(UTC).replace(tzinfo=None) + timedelta(days=1))
+
+
+def _names(rows):
+	return [r["name"] for r in rows]
+
+
+class Reminder(AssignmentNoticeCase):
+	def comments(self, note):
+		return frappe.get_all("Comment", filters={"reference_doctype": "Note", "reference_name": note,
+			"comment_type": "Info"}, pluck="content")
+
+	def test_a_seen_open_task_comes_back_once_the_next_day(self):
+		note = _note()
+		t = _assign(CLERK, note)
+		self.assertEqual(_as(CLERK, an.acknowledge, [t.name]), [])
+		seen = self.stamp(t.name)[an.SEEN]
+		self.assertEqual(frappe.db.get_value("ToDo", t.name, an.REMINDED), an.today())
+		self.assertEqual(_as(CLERK, an.pending), [], "not again the same day")
+		with _tomorrow():
+			rows = _as(CLERK, an.pending)
+			self.assertEqual(_names(rows), [t.name])
+			self.assertTrue(rows[0]["reminder"])
+			self.assertEqual(rows[0]["seen_on"], str(seen))
+			# Got it on the reminder: today's reminder is done, no second "saw" comment.
+			self.assertEqual(_as(CLERK, an.acknowledge, [t.name]), [])
+			self.assertEqual(_as(CLERK, an.pending), [])
+			self.assertEqual(_as(CLERK, an.acknowledge, [t.name]), [], "twice the same day: harmless")
+			self.assertEqual(frappe.db.get_value("ToDo", t.name, an.REMINDED), an.today())
+		self.assertEqual(self.stamp(t.name)[an.SEEN], seen, "the first time it was seen stays")
+		self.assertEqual(self.comments(note), ["an-clerk saw this assignment"])
+		self.assertEqual(frappe.db.get_value("ToDo", t.name, "status"), "Open")
+
+	def test_a_new_one_and_a_reminder_are_told_apart(self):
+		old = _assign(CLERK, _note())
+		_as(CLERK, an.acknowledge, [old.name])
+		with _tomorrow():
+			new = _assign(CLERK, _note())
+			rows = _as(CLERK, an.pending)
+		self.assertEqual([(r["name"], r["reminder"]) for r in rows], [(old.name, True), (new.name, False)])
+
+	def test_seen_before_the_reminder_shipped_reminds(self):
+		t = _assign(CLERK, _note())
+		frappe.db.set_value("ToDo", t.name, {an.SEEN: now_datetime(), an.REMINDED: None})
+		rows = _as(CLERK, an.pending)
+		self.assertEqual([(r["name"], r["reminder"]) for r in rows], [(t.name, True)])
+
+	def test_closed_or_never_asked_never_reminds(self):
+		closed = _assign(CLERK, _note())
+		_as(CLERK, an.acknowledge, [closed.name])
+		_as(CLERK, an.done, closed.name)
+		note = _note()
+		alerts.alert_once("Note", note, title="an-test alert", message="m", description="Stuck", assignees=[CLERK])
+		alert = frappe.get_last_doc("ToDo", filters={"reference_name": note, "allocated_to": CLERK})
+		with _tomorrow():
+			self.assertEqual(_as(CLERK, an.pending), [])
+		self.assertIn(alert.name, _names(_as(CLERK, an.my_tasks)), "a system alert is listed on My tasks")
+
+	def test_the_day_turns_at_midnight_in_the_site_time_zone(self):
+		t = _assign(CLERK, _note())
+		with patch("frappe.utils.data.get_system_timezone", return_value="America/Los_Angeles"):
+			# Los Angeles is UTC-8 in November: its 11-14 starts at 08:00 UTC.
+			with _at(datetime(2026, 11, 14, 6, 0)):
+				_as(CLERK, an.acknowledge, [t.name])
+				self.assertEqual(str(frappe.db.get_value("ToDo", t.name, an.REMINDED)), "2026-11-13")
+			with _at(datetime(2026, 11, 14, 7, 59)):
+				self.assertEqual(_as(CLERK, an.pending), [], "still the 13th at the store")
+			with _at(datetime(2026, 11, 14, 8, 1)):
+				self.assertEqual(_names(_as(CLERK, an.pending)), [t.name], "the 14th at the store")
+
+	def test_a_client_cannot_set_the_reminder_day_and_reassigning_clears_it(self):
+		t = _assign(CLERK, _note())
+		_as(CLERK, an.acknowledge, [t.name])
+		t.reload()
+		t.set(an.REMINDED, add_days(an.today(), 30))
+		t.description = "edited"
+		t.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("ToDo", t.name, an.REMINDED), an.today())
+		t.reload()
+		t.allocated_to = OTHER
+		t.save(ignore_permissions=True)
+		self.assertIsNone(frappe.db.get_value("ToDo", t.name, an.REMINDED))
+
+
+class MyTasks(AssignmentNoticeCase):
+	def comments(self, note):
+		return frappe.get_all("Comment", filters={"reference_doctype": "Note", "reference_name": note,
+			"comment_type": "Info"}, order_by="creation asc", pluck="content")
+
+	def test_lists_every_open_task_of_yours(self):
+		asked = _assign(CLERK, _note("Restock the case"))
+		note = _note()
+		alerts.alert_once("Note", note, title="an-test alert", message="m", description="Stuck", assignees=[CLERK])
+		alert = frappe.get_last_doc("ToDo", filters={"reference_name": note, "allocated_to": CLERK})
+		closed = _assign(CLERK, _note())
+		frappe.db.set_value("ToDo", closed.name, "status", "Closed")
+		_assign(OTHER, _note())
+		rows = _as(CLERK, an.my_tasks)
+		self.assertEqual(_names(rows), [asked.name, alert.name])
+		self.assertEqual([(r["asks"], r["seen_on"]) for r in rows], [(True, None), (False, None)])
+		self.assertEqual((rows[0]["assigned_by"], rows[0]["title"]), ("Pat Boss", "Restock the case"))
+		_as(CLERK, an.acknowledge, [asked.name])
+		self.assertIsNotNone(_as(CLERK, an.my_tasks)[0]["seen_on"])
+		self.assertEqual(_as(CLERK, an.task_count), 2)
+		boot = frappe._dict()
+		_as(CLERK, an.extend_bootinfo, boot)
+		self.assertEqual(boot.ffl_open_tasks, 2)
+
+	def test_done_closes_it_takes_the_assignment_off_and_comments(self):
+		note = _note()
+		t = _assign(CLERK, note)
+		_as(CLERK, an.acknowledge, [t.name])
+		self.assertIn(CLERK, frappe.parse_json(frappe.db.get_value("Note", note, "_assign")))
+		self.assertEqual(_as(CLERK, an.done, t.name), {"closed": True, "open": 0})
+		self.assertEqual(frappe.db.get_value("ToDo", t.name, "status"), "Closed")
+		self.assertNotIn(CLERK, frappe.parse_json(frappe.db.get_value("Note", note, "_assign") or "[]"))
+		self.assertEqual(self.comments(note), ["an-clerk saw this assignment", "an-clerk completed this task"])
+		self.assertEqual(_as(CLERK, an.my_tasks), [])
+		self.assertEqual(_as(CLERK, an.task_count), 0)
+		with _tomorrow():
+			self.assertEqual(_as(CLERK, an.pending), [])
+		# Twice (a second tab, a double click): nothing more happens.
+		self.assertEqual(_as(CLERK, an.done, t.name), {"closed": False, "open": 0})
+		self.assertEqual(len(self.comments(note)), 2)
+
+	def test_done_on_one_not_yet_seen_closes_it_and_the_popup_drops_it(self):
+		t = _assign(CLERK, _note())
+		self.assertEqual(_names(_as(CLERK, an.pending)), [t.name])
+		_as(CLERK, an.done, t.name)
+		self.assertEqual(_as(CLERK, an.pending), [])
+
+	def test_only_the_person_it_is_assigned_to(self):
+		t = _assign(CLERK, _note())
+		for who in (OTHER, BOSS):
+			with self.assertRaises(frappe.PermissionError):
+				_as(who, an.done, t.name)
+		self.assertEqual(frappe.db.get_value("ToDo", t.name, "status"), "Open")
+		with self.assertRaises(frappe.DoesNotExistError):
+			_as(CLERK, an.done, "no-such-todo")
+
+	def test_done_without_a_document_or_with_it_gone(self):
+		bare = _as(BOSS, _todo, allocated_to=CLERK)
+		note = _note()
+		gone = _assign(CLERK, note)
+		frappe.db.delete("Note", note)
+		self.assertTrue(_as(CLERK, an.done, bare.name)["closed"])
+		self.assertEqual(_as(CLERK, an.done, gone.name), {"closed": True, "open": 0})
+		self.assertEqual(frappe.db.count("ToDo", {"name": ("in", [bare.name, gone.name]), "status": "Closed"}), 2)
+
+	def test_page_and_sidebar_row(self):
+		self.assertTrue(frappe.db.exists("Page", "my-tasks"))
+		self.assertFalse(frappe.get_all("Has Role", filters={"parent": "my-tasks", "parenttype": "Page"}),
+			"anyone can be assigned a task, so anyone opens the page")

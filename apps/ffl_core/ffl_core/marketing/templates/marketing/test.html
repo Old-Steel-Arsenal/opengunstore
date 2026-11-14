@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{# The test mail (Marketing Settings › Send test email). Context: sent_by, link. #}
+{% block preheader %}A test of {{ brand.name }}'s marketing email.{% endblock %}
+{% block body %}
+<h1 style="margin:0 0 16px 0;font-size:22px;line-height:1.3;color:#111111;">Test email</h1>
+<p style="margin:0 0 16px 0;">Hello {{ contact.first_name or "there" }},</p>
+<p style="margin:0 0 16px 0;">This is a test of {{ brand.name }}'s marketing email, sent to {{ contact.email }} by {{ sent_by }}. It went through the same queue, headers, tracking and unsubscribe link as every marketing email.</p>
+<p style="margin:0 0 24px 0;">Check the logo, the address and phone at the bottom, and the Unsubscribe link.</p>
+<p style="margin:0;"><a href="{{ track(link) }}" style="display:inline-block;padding:10px 20px;background-color:#111111;color:#ffffff;text-decoration:none;font-weight:bold;border-radius:4px;">Test link</a></p>
+{% endblock %}

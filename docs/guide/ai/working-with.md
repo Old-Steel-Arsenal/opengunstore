@@ -16,7 +16,7 @@ An assistant works best with the same things a new coworker would need.
 
 Before any change, the assistant stops and tells you what it is about to do, then waits for you. This is the moment that matters.
 
-1. Read the gun, the serial, the customer and the amount it names.
+1. Read the gun, the serial, the customer and the amount it names. With more than one store connected, it also names the store; check that too.
 2. If anything is wrong, say no and correct it: "No, the serial is BX4471, not BX4417."
 3. If it is right, say yes. It then does the step and tells you the result.
 4. Check the result on screen the first few times.

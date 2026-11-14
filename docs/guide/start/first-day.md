@@ -30,8 +30,8 @@ The sidebar on the left is the way around, and it is the same on every page. Cli
 |---|---|
 | **Dashboard** | The [Dashboard](dashboard.md) |
 | **Point of sale** | The register: [Sell accessories](../counter/sell-accessories.md), [Sell a gun](../counter/sell-a-gun.md) |
-| **Sales** | **Orders**, **POS invoices**, **Create order**, **Cash drawer**, **Card payments**, **Sales report** |
-| **Customers** | **Customers** |
+| **Sales** | **Orders**, **POS invoices**, **Create order**, **Gunsmith work orders**, **Cash drawer**, **Card payments**, **Sales report**, **Sales summary** |
+| **Customers** | **Customers**, **Memberships**, **Agreements**, **Agreement templates**, **Signing tablets** |
 | **Compliance** | **4473 records**, **Acquisitions**, **Dispositions**, **Transfer pickups**, **Firearms in stock** |
 | **Inventory** | **Items**, **Serial numbers**, **Stock on hand**, **Inventory count**, **Storage locations** |
 | **Purchasing** | **Distributor orders**, **Receive goods**, **Suppliers** |
@@ -48,6 +48,20 @@ Anything that is not in the sidebar is under **All records** at the foot of the 
 ## The bell
 
 **Notification**, the bell near the top of the sidebar, shows a count when something new arrives: a background check result, a web or GunBroker order, a distributor shipment, or a bound-book refusal. Click an entry to open its record. These notices stay in the app and are never emailed. See [the full list](dashboard.md#notifications).
+
+## Assigned to you
+
+When someone assigns you a task, such as a document to look at or a CRM follow-up, an **Assigned to you** box opens on whatever page you are on. It lists each task, who assigned it and when. It waits while a card charge, a 4473 or another dialog is open.
+
+Read the list, then click **Got it**. Nothing else closes the box. The person who assigned the task sees a note on the document that you saw it.
+
+A task you saw but have not finished comes back in the same box once a day, the first time you open a page that day, under **Not done yet**. New tasks are listed above it under **New**. Click **Got it** to put it away for the day, or **Open My tasks** to go to your list.
+
+### My tasks
+
+**My tasks** near the top of the sidebar lists every open task assigned to you, with the number of open tasks next to it. Each row shows who assigned it, when, what to do and the document it is about. Click the document to open it.
+
+When the work is finished, click **Done** on its row. The task leaves your list, the assignment comes off the document, and the person who assigned it sees a note on the document that you completed it. Only you can close your own tasks. Store alerts that never open the box are on this list too.
 
 ## Find anything
 

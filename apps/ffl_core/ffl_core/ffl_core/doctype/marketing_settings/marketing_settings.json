@@ -1,0 +1,107 @@
+{
+ "actions": [],
+ "creation": "2026-11-13 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "auto_subscribe_customers",
+  "section_sending",
+  "email_account",
+  "reply_to",
+  "column_break_tracking",
+  "track_opens",
+  "track_clicks",
+  "section_feedback",
+  "sns_topic_arn",
+  "section_automations",
+  "automations"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_subscribe_customers",
+   "fieldtype": "Check",
+   "label": "Subscribe store customers"
+  },
+  {
+   "fieldname": "section_sending",
+   "fieldtype": "Section Break",
+   "label": "Sending"
+  },
+  {
+   "fieldname": "email_account",
+   "fieldtype": "Link",
+   "label": "Email account",
+   "options": "Email Account"
+  },
+  {
+   "fieldname": "reply_to",
+   "fieldtype": "Data",
+   "label": "Reply-To",
+   "options": "Email"
+  },
+  {
+   "fieldname": "column_break_tracking",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "track_opens",
+   "fieldtype": "Check",
+   "label": "Track opens"
+  },
+  {
+   "default": "0",
+   "fieldname": "track_clicks",
+   "fieldtype": "Check",
+   "label": "Track clicks"
+  },
+  {
+   "fieldname": "section_feedback",
+   "fieldtype": "Section Break",
+   "label": "Bounces and complaints"
+  },
+  {
+   "fieldname": "sns_topic_arn",
+   "fieldtype": "Data",
+   "label": "SNS topic ARN"
+  },
+  {
+   "fieldname": "section_automations",
+   "fieldtype": "Section Break",
+   "label": "Automations"
+  },
+  {
+   "fieldname": "automations",
+   "fieldtype": "Table",
+   "label": "Automations",
+   "options": "Marketing Automation"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-11-13 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FFL Core",
+ "name": "Marketing Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

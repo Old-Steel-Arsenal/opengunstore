@@ -12,18 +12,21 @@ Once connected, the assistant can look things up in the POS and, on the full con
 
 It does not replace you at the counter. A Form 4473, the background check, handing over a firearm and anything a law or the owner says a person must do stays with a person.
 
-## Two connections
+## Three connections
 
 | Connection | What it can do | Who uses it |
 |---|---|---|
 | **Read-only** | Read reports, stock, orders and customers. It cannot change anything | The bookkeeper, an outside accountant, anyone who only needs answers |
 | **Full** | Read, and also change data, within your own role | Counter staff and managers who want it to do work |
+| **Website** | Read the store's website: orders, products, SEO and email contacts. A Website Connector Manager can also make the changes the store has set up, such as SEO titles, product text, order notes and contact tags | Staff a manager gives a website role |
 
-Both connections sign in as **you**. The assistant can do only what your own account can do on screen. A counter account stays a counter account.
+Every connection signs in as **you**. The assistant can do only what your own account can do on screen. A counter account stays a counter account.
+
+The website connection is off until the store sets it up, and it also needs a website role on your account: **Website Connector Viewer** only reads, **Website Connector Manager** can also change the website. Changes go live on the website at once.
 
 ## Before you start
 
-1. A **System Manager** switches the connection on, in **Settings**, then the **MCP Settings** card. See [Settings](../manager/settings.md). The two addresses to give an assistant appear there.
+1. A **System Manager** switches the connection on, in **Settings**, then the **MCP Settings** card. See [Settings](../manager/settings.md). The addresses to give an assistant appear there.
 2. You have your own POS account. A shared login defeats the record of who did what.
 3. You have an assistant that can add a custom connector. See [Connect your assistant](connect.md) for which plans and apps can.
 

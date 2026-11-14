@@ -35,6 +35,7 @@ frappe.ui.form.on('Customer', {
 		fflHideIdNumbersUnlessStored(frm);
 		fflRenderFamily(frm, true);
 		fflRenderAgreements(frm);
+		fflRenderMarketing(frm);
 	},
 });
 
@@ -195,5 +196,27 @@ function fflRenderAgreements(frm) {
 		$w.find('[data-ffl-request-agreement]').on('click', () => {
 			ffl.agreements.request(name, null, {customer_name: frm.doc.customer_name, done: () => fflRenderAgreements(frm)});
 		});
+	});
+}
+
+// The customer's marketing email status, as the line "Marketing email: Subscribed · in-store" under the
+// title; it opens the Marketing Contact. The server answers nothing when marketing is off, there is no
+// contact, or this user may not read Marketing Contacts (ffl_core.api.marketing.customer_card).
+function fflRenderMarketing(frm) {
+	if (frm.is_new()) return;
+	const name = frm.doc.name;
+	frappe.call({method: 'ffl_core.api.marketing.customer_card', args: {customer: name}}).then((r) => {
+		if (frm.doc.name !== name) return; // the form moved to another customer meanwhile
+		const card = r.message;
+		if (!card) {
+			if (frm._ffl_marketing_line) frm.dashboard.clear_headline();
+			frm._ffl_marketing_line = false;
+			return;
+		}
+		const text = frappe.utils.escape_html(card.text);
+		const suppressed = ['Unsubscribed', 'Bounced', 'Complained'].includes(card.status);
+		frm.dashboard.set_headline(frappe.utils.get_form_link('Marketing Contact', card.contact, true, text),
+			suppressed ? 'orange' : 'blue');
+		frm._ffl_marketing_line = true;
 	});
 }

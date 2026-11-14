@@ -82,13 +82,14 @@
    "fieldname": "enable_web_ro",
    "fieldtype": "Check",
    "default": "0",
-   "label": "Enable Website Read-only MCP Server"
+   "label": "Enable Website MCP Server",
+   "description": "Lets staff with a website role work on the store's website from an AI assistant. Website Connector Viewer can read. Website Connector Manager can also make the changes this store's website server is set up for."
   },
   {
    "fieldname": "web_ro_url",
    "fieldtype": "Data",
    "read_only": 1,
-   "label": "Website Read-only MCP Server URL",
+   "label": "Website MCP Server URL",
    "depends_on": "enable_web_ro"
   },
   {
@@ -96,12 +97,12 @@
    "fieldtype": "Data",
    "read_only": 1,
    "depends_on": "enable_web_ro",
-   "label": "Claude Code Command (Website Read-only)"
+   "label": "Claude Code Command (Website)"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-12 12:00:00.000000",
+ "modified": "2026-11-13 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "MCP Settings",

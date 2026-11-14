@@ -1,4 +1,4 @@
-# The website read-only connector (deploy/prod/mcp/compose.web.yaml) — only on a
+# The website connector (deploy/prod/mcp/compose.web.yaml) — only on a
 # store that runs it. Paste INSIDE the store's `pos.<domain> { … }` site block next
 # to the routes from caddy-connector.caddy, above its reverse_proxy to 127.0.0.1:8080.
 # Same editing steps as that file (back up, validate, reload).

@@ -2,9 +2,10 @@
 assistants (Claude, ChatGPT, any MCP client with OAuth) connect to.
 
 Three surfaces, switched separately: the read-only one (accounting), the full
-one (writes, within each user's own role) and the website read-only one (the
-store's website, through a bridge that reads it as one site user; who may use it
-is decided here by role, WEB_ROLES). The switches are enforced by the POS
+one (writes, within each user's own role) and the website one (the store's website,
+through a bridge that works on it as one site user: viewers read, managers may also
+make the changes that store's bridge lists; who is which is decided here by role,
+WEB_ROLES). Its key stays "web_ro" from when it could only read. The switches are enforced by the POS
 itself (ffl_core.api.connector), and they own the OAuth settings the servers sign
 in through: with any on, the authorization-server metadata and dynamic client
 registration are on; with all off, they are off. Consent is never skipped —
@@ -24,7 +25,7 @@ ALL_SURFACES = {**SURFACES, "web_ro": "enable_web_ro"}
 DOCTYPE = "MCP Settings"
 
 # Who may use a website surface, and at which level: "manager" may also call the
-# bridge's restricted abilities. Any other role has no website access — Frappe's own
+# bridge's restricted reads and its writes. Any other role has no website access — Frappe's own
 # "Website Manager" (it edits the POS's web pages and scripts) included.
 WEB_SURFACES = ("web_ro",)
 WEB_VIEWER_ROLE = "Website Connector Viewer"
@@ -45,7 +46,7 @@ def surface_enabled(surface) -> bool:
 
 # The names the servers report (the MCP server's serverInfo) and that the skills
 # and agents address tools by (mcp__gunstore-pos__*), so every install matches.
-SERVER_NAMES = {"cpa": "gunstore-pos-cpa", "full": "gunstore-pos", "web_ro": "gunstore-web-ro"}
+SERVER_NAMES = {"cpa": "gunstore-pos-cpa", "full": "gunstore-pos", "web_ro": "gunstore-web"}
 
 
 def web_access(user: str, surface) -> str:
