@@ -14,6 +14,7 @@ from ffl_core.tests.marketing_support import MarketingTestCase, address
 
 ACCOUNT = "_T Marketing Mail"
 SENDER = "mkt-news@store.test"
+SITE_ADDRESS = "https://pos.store.test"   # what the site config says a link to this site starts with
 _ip = [0]
 
 
@@ -62,9 +63,16 @@ class MailTestCase(MarketingTestCase):
 		# Set past the account's own save, which would connect to a mail server.
 		frappe.db.set_value("Email Account", ACCOUNT, {"enable_outgoing": 1, "smtp_server": "smtp.invalid",
 			"smtp_port": 587, "default_outgoing": 0}, update_modified=False)
+		self.set_site_address(SITE_ADDRESS)
 		self.set_single(SETTINGS, "email_account", ACCOUNT)
 		self.set_single(SETTINGS, "track_opens", 0)
 		self.set_single(SETTINGS, "track_clicks", 0)
+
+	def set_site_address(self, host_name: str | None) -> None:
+		"""The site config's host_name for this test (None: not configured); put back afterwards."""
+		saved = frappe.local.conf.get("host_name")
+		frappe.local.conf.host_name = host_name
+		self.addCleanup(frappe.local.conf.update, {"host_name": saved})
 
 	@contextmanager
 	def web_request(self, method: str, path: str, form: dict | None = None, user: str = "Guest"):

@@ -33,7 +33,7 @@ import frappe
 from frappe import _
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-from ffl_core.marketing import CONTACT, EVENT, SETTINGS, enabled
+from ffl_core.marketing import CONTACT, EVENT, SETTINGS, enabled, has_site_url
 from ffl_core.marketing.contacts import (
 	NOT_SUBSCRIBED, SENT, SKIPPED, SUBSCRIBED, event_detail, log_event, normalize_email, plain_text,
 )
@@ -59,7 +59,8 @@ _env: Environment | None = None
 
 
 class MarketingMailError(frappe.ValidationError):
-	"""Marketing mail cannot be sent as configured (switched off, no sending account)."""
+	"""Marketing mail cannot be sent as configured (switched off, no sending account, no store address, no
+	site address for its links)."""
 
 
 def send(contact, mail: str, subject: str, template: str, context: dict | None = None, *,
@@ -130,7 +131,9 @@ def sending_address() -> str:
 	"""``Name <address>`` of the marketing Email Account. Raises ``MarketingMailError`` while marketing is
 	off; when the account is not set, not found or not enabled for outgoing mail (Frappe would quietly
 	fall back to the default account, the store's transactional identity); or when the store's Company
-	has no address (every marketing mail carries the store's postal address)."""
+	has no address (every marketing mail carries the store's postal address); or when there is neither a
+	web request nor a configured ``host_name`` to build the mail's links from (a background send would
+	mail an unsubscribe link nobody can open)."""
 	if not enabled():
 		frappe.throw(_("Marketing is switched off (Marketing Settings › Enabled)."), MarketingMailError)
 	name = single_raw(SETTINGS, "email_account")
@@ -143,6 +146,9 @@ def sending_address() -> str:
 	if not company_brand(default_company()).get("address_line"):
 		frappe.throw(_("Add the store's address to Company {0}: every marketing email carries it.").format(
 			frappe.utils.escape_html(default_company())), MarketingMailError)
+	if not has_site_url():
+		frappe.throw(_("This site's web address is not set, so marketing mail cannot carry working links. "
+			"Set host_name in the site configuration."), MarketingMailError)
 	return formataddr((store_name(), account.email_id))
 
 

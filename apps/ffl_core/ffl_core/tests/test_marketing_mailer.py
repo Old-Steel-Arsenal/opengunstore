@@ -7,18 +7,21 @@ from __future__ import annotations
 import ast
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 from unittest.mock import patch
 
 import frappe
 
-from ffl_core.marketing import CONTACT, SETTINGS, mailer
+from ffl_core.marketing import CONTACT, SETTINGS, mailer, site_url, track
+from ffl_core.marketing.track import click_url, open_url
+from ffl_core.marketing.unsubscribe import url as unsubscribe_url
 from ffl_core.marketing.contacts import (BOUNCED, COMPLAINED, NOT_SUBSCRIBED, SENT, SKIPPED, STATUSES, SUBSCRIBED,
 	UNSUBSCRIBED, set_status)
 from ffl_core.marketing.mailer import MARKETING, SERVICE, MarketingMailError, restore_list_unsubscribe, send
 from ffl_core.marketing.signing import contact_token
 from ffl_core.tests.crm_support import user
-from ffl_core.tests.marketing_mail_support import (ACCOUNT, SENDER, MailTestCase, contact, head_and_body, html_of,
-	queue_rows, queue_rows_to)
+from ffl_core.tests.marketing_mail_support import (ACCOUNT, SENDER, SITE_ADDRESS, MailTestCase, contact, head_and_body,
+	html_of, queue_rows, queue_rows_to)
 from ffl_core.tests.marketing_support import address, events_of, status_of
 
 CTX = {"sent_by": "tester", "link": "https://shop.example.com/new?a=1&b=2"}
@@ -230,6 +233,37 @@ class TestRefusals(MailTestCase):
 		with patch("ffl_core.marketing.mailer.company_brand", return_value={"name": "Store", "address_line": ""}):
 			with self.assertRaises(MarketingMailError):
 				_send(contact(SUBSCRIBED))
+
+	def test_a_background_send_without_a_site_address_is_refused(self):
+		"""No web request and no host_name: Frappe would build ``http://<site name>`` links nobody can open."""
+		email = contact(SUBSCRIBED)
+		self.set_site_address(None)
+		self.assertFalse(frappe.request)
+		with self.assertRaises(MarketingMailError) as raised:
+			_send(email)
+		self.assertIn("host_name", str(raised.exception))
+		self.assertEqual((events_of(email, SENT), queue_rows(email)), ([], []), "nothing claimed, nothing queued")
+		self.set_site_address(SITE_ADDRESS)
+		self.assertTrue(_send(email), "the same send goes once the site has an address")
+
+	def test_a_send_from_a_web_request_needs_no_host_name(self):
+		"""A dev site, or the test email pressed in the Desk: the request says where the site is."""
+		email = contact(SUBSCRIBED)
+		self.set_site_address(None)
+		with self.web_request("POST", "/api/method/x", {}):
+			frappe.local.request.environ["HTTP_HOST"] = "pos.dev.test"
+			self.assertTrue(_send(email))
+			self.assertEqual(urlsplit(site_url("/unsubscribe")).hostname, "pos.dev.test")
+		html = html_of(queue_rows(email)[0].message)
+		self.assertRegex(html, r'href="http://pos\.dev\.test(:\d+)?/unsubscribe\?t=')
+
+	def test_every_marketing_link_is_built_from_the_site_address(self):
+		email = contact(SUBSCRIBED)
+		for link, path in ((site_url("/unsubscribe"), "/unsubscribe"), (unsubscribe_url(email), "/unsubscribe"),
+				(open_url(email, "c1"), track.OPEN_PATH), (click_url("https://shop.example.com/", email, "c1"), track.CLICK_PATH)):
+			with self.subTest(path=path):
+				parts = urlsplit(link)
+				self.assertEqual((parts.scheme, parts.hostname, parts.path), ("https", "pos.store.test", path))
 
 	def test_bad_arguments(self):
 		email = contact(SUBSCRIBED)

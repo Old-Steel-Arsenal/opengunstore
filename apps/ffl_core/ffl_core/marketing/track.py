@@ -24,10 +24,9 @@ from urllib.parse import urlencode, urlsplit
 
 import frappe
 from frappe.rate_limiter import rate_limit
-from frappe.utils import get_url
 from werkzeug.wrappers import Response
 
-from ffl_core.marketing import EVENT, SETTINGS
+from ffl_core.marketing import EVENT, SETTINGS, site_url
 from ffl_core.marketing.contacts import CLICKED, OPENED, event_detail, log_event, plain_text
 from ffl_core.marketing.signing import CLICK, contact_token, email_of, sign, signed
 from ffl_core.utils import single_flags
@@ -61,12 +60,12 @@ def is_web_url(url) -> bool:
 
 def open_url(email: str, campaign: str) -> str:
 	"""The open pixel's address for *email* in *campaign*."""
-	return get_url(OPEN_PATH) + "?" + urlencode({"c": campaign, "t": contact_token(email)})
+	return site_url(OPEN_PATH) + "?" + urlencode({"c": campaign, "t": contact_token(email)})
 
 
 def click_url(url: str, email: str, campaign: str) -> str:
 	"""A tracked link to *url* for *email* in *campaign*."""
-	return get_url(CLICK_PATH) + "?" + urlencode({"u": url, "c": campaign, "t": contact_token(email), "s": sign(CLICK, url)})
+	return site_url(CLICK_PATH) + "?" + urlencode({"u": url, "c": campaign, "t": contact_token(email), "s": sign(CLICK, url)})
 
 
 def tracker(email: str, campaign: str, *, clicks: bool) -> Callable[[str], str]:

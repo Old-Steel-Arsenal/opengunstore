@@ -20,9 +20,8 @@ from urllib.parse import urlencode
 import frappe
 from frappe import _
 from frappe.rate_limiter import rate_limit
-from frappe.utils import get_url
 
-from ffl_core.marketing import CONTACT
+from ffl_core.marketing import CONTACT, site_url
 from ffl_core.marketing.contacts import UNSUBSCRIBED, event_detail, set_status
 from ffl_core.marketing.signing import contact_token, email_of
 
@@ -45,7 +44,7 @@ LIMIT = 300
 
 def url(email: str) -> str:
 	"""The unsubscribe link (and ``List-Unsubscribe`` target) for *email*."""
-	return get_url(PATH) + "?" + urlencode({"t": contact_token(email)})
+	return site_url(PATH) + "?" + urlencode({"t": contact_token(email)})
 
 
 def page(form: dict, method: str) -> dict:

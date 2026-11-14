@@ -12,6 +12,10 @@ Off until Marketing Settings › Enabled is checked (:func:`enabled`).
 """
 from __future__ import annotations
 
+import frappe
+from frappe.utils import get_url
+from frappe.utils.data import get_host_name_from_request
+
 from ffl_core.utils import single_flag
 
 SETTINGS = "Marketing Settings"
@@ -23,3 +27,17 @@ REQUEST = "Marketing Request"
 def enabled() -> bool:
 	"""Marketing Settings › Enabled (off on a new site)."""
 	return single_flag(SETTINGS, "enabled")
+
+
+def has_site_url() -> bool:
+	"""True when a link to this site can be built from what is known: the site config's ``host_name``,
+	or the host of the web request being answered. Without either Frappe falls back to
+	``http://<site name>``, an address nobody can open."""
+	return bool(frappe.conf.host_name or frappe.conf.hostname or get_host_name_from_request())
+
+
+def site_url(path: str = "") -> str:
+	"""The address of *path* on this site, for a link in mail (unsubscribe, open pixel, tracked click).
+	Mail built outside a web request must check :func:`has_site_url` first (``mailer.sending_address``
+	does)."""
+	return get_url(path)
