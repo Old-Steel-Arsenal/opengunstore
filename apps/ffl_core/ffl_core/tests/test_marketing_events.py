@@ -128,17 +128,27 @@ class TestContactSubscribed(MarketingTestCase):
 		self.assertEqual(last.kind, contacts.SUBSCRIBED)
 		self.assertEqual(json.loads(last.detail)["kept_status"], contacts.UNSUBSCRIBED)
 
-	def test_public_input_is_capped_escaped_and_urls_must_be_plain_http(self):
+	def test_public_input_is_stored_as_plain_capped_text_and_urls_must_be_plain_http(self):
 		email = address()
-		events.receive([_subscribed(email, first_name="<b>" + "J" * 300, source="x" * 300,
-			page_url="javascript:alert(1)", ip="1" * 100)])
+		events.receive([_subscribed(email, first_name="S&W " + "J" * 300, last_name="O'Brien", source="x" * 300,
+			page_url="javascript:alert(1)", ip="1" * 100, coupon={"code": "A&B<1>"})])
 		doc = frappe.get_doc(CONTACT, email)
-		self.assertTrue(doc.first_name.startswith("&lt;b&gt;JJ"))
-		self.assertLessEqual(len(doc.first_name), 140)
+		self.assertEqual((doc.first_name, doc.last_name), ("S&W " + "J" * 136, "O'Brien"), "plain text, not escaped")
 		self.assertEqual(len(doc.source), 140)
 		detail = json.loads(events_of(email)[0].detail)
 		self.assertNotIn("page_url", detail)
-		self.assertEqual(len(detail["ip"]), 45)
+		self.assertEqual((len(detail["ip"]), detail["coupon"]), (45, "A&B<1>"))
+
+	def test_control_characters_and_newlines_are_removed_from_text(self):
+		email = address()
+		events.receive([_subscribed(email, first_name="Pat\r\nrick\x00", last_name="\tBuyer\x7f", source="Footer\nform"),
+			_alert(email, kind="back_in_stock", product_name="Mosin\nM91/30\x1b", sku="SKU\x00-1")])
+		doc = frappe.get_doc(CONTACT, email)
+		self.assertEqual((doc.first_name, doc.last_name, doc.source, doc.consent_channel),
+			("Patrick", "Buyer", "Footerform", "Footerform"))
+		(req,) = requests_of(email)
+		self.assertEqual((req.label, req.sku), ("MosinM91/30", "SKU-1"))
+		self.assertEqual(json.loads(events_of(email)[0].detail)["source"], "Footerform")
 		for bad in ("javascript:alert(1)", "/relative", 'https://e.example/"onmouseover=x', "https://e.example/a b",
 				"https://e.example/" + "u" * 500):
 			self.assertEqual(events.url(bad), "", bad)
@@ -155,7 +165,7 @@ class TestAlertRequested(MarketingTestCase):
 		self.assertEqual(events.receive([first, again])["accepted"], [first["id"], again["id"]])
 		(req,) = requests_of(email)
 		self.assertEqual((req.kind, req.status, req.item, req.web_product_id, req.sku, req.label, req.url),
-			(requests.BACK_IN_STOCK, requests.OPEN, item, "880123", "WEB-SKU-1", "Mosin M91/30 &amp; bayonet",
+			(requests.BACK_IN_STOCK, requests.OPEN, item, "880123", "WEB-SKU-1", "Mosin M91/30 & bayonet",
 				"https://shop.example/p/mosin"))
 		self.assertEqual([e.kind for e in events_of(email)], [contacts.REQUESTED, contacts.REQUESTED])
 		self.assertEqual(status_of(email), contacts.NOT_SUBSCRIBED, "asking for an alert is not a subscription")

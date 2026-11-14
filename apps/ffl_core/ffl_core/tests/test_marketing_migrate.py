@@ -75,10 +75,10 @@ class TestImport(MarketingTestCase):
 						"created_at": "2026-09-05 09:00:00"},   # the same product again, while open: one request
 					{"description": f"Asked about: SKS {DASH} https://shop.example/p/sks\n[Notified 2026-10-01 12:30 {DASH} product #55]",
 						"created_at": "2026-08-01 09:00:00"},
-					{"description": "Asked about: Garand", "created_at": "2026-08-02 09:00:00"},
+					{"description": "Asked about: S&W Model 29", "created_at": "2026-08-02 09:00:00"},
 					{"description": "Called the store about a rifle", "created_at": "2026-08-03 09:00:00"},
 				]),
-			_row(self.unsub, "unsubscribed", unsubscribe_reason="Too many emails", tags=[]),
+			_row(self.unsub, "unsubscribed", unsubscribe_reason="Too many emails & offers", tags=[]),
 			_row(self.bounced, "bounced"),
 			_row(self.spam, "spammed"),
 			_row(self.pending, "pending", lists=["cga-insider-list"], custom={"interests": ["handguns"]}),
@@ -131,7 +131,7 @@ class TestImport(MarketingTestCase):
 		self.assertEqual([(e.kind, e.campaign) for e in events_of(self.sub) if e.campaign],
 			[(contacts.SENT, "oct-digest"), (contacts.OPENED, "oct-digest")])
 		unsub = frappe.get_doc(CONTACT, self.unsub)
-		self.assertEqual((unsub.status, unsub.status_reason), (contacts.UNSUBSCRIBED, "Too many emails"))
+		self.assertEqual((unsub.status, unsub.status_reason), (contacts.UNSUBSCRIBED, "Too many emails & offers"))
 		self.assertEqual((status_of(self.bounced), status_of(self.spam), status_of(self.pending)),
 			(contacts.BOUNCED, contacts.COMPLAINED, contacts.NOT_SUBSCRIBED))
 		self.assertEqual(frappe.get_all("Email Unsubscribe", filters={"email": self.spam},
@@ -144,8 +144,8 @@ class TestImport(MarketingTestCase):
 		self.assertEqual(frappe.db.get_value(CONTACT, self.pos_sub, "source"), "footer", "the first source stays")
 
 		by_label = {r.label: r for r in requests_of(self.sub)}
-		self.assertEqual(set(by_label), {"Mosin M91/30", "SKS", "Garand"})
-		mosin, sks, garand = by_label["Mosin M91/30"], by_label["SKS"], by_label["Garand"]
+		self.assertEqual(set(by_label), {"Mosin M91/30", "SKS", "S&W Model 29"})
+		mosin, sks, garand = by_label["Mosin M91/30"], by_label["SKS"], by_label["S&W Model 29"]
 		self.assertEqual((mosin.status, mosin.web_product_id, mosin.item, mosin.url, str(mosin.requested_at)),
 			(requests.OPEN, "904521", self.item, "https://shop.example/p/mosin", "2026-09-01 09:00:00"))
 		self.assertEqual((sks.status, sks.web_product_id, sks.url, str(sks.notified_at)),

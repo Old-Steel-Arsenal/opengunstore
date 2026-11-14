@@ -18,6 +18,7 @@ thing happening again, and is not recorded twice (:func:`log_event`).
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -46,6 +47,7 @@ UNSUBSCRIBE = "Email Unsubscribe"
 EMAIL_CAP = 140   # the name column
 TEXT_CAP = 140    # a Data field
 DETAIL_CAP = 500   # one value in an event's detail
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def clip(value, cap: int = TEXT_CAP) -> str:
@@ -53,14 +55,10 @@ def clip(value, cap: int = TEXT_CAP) -> str:
 	return str(value if value is not None else "").strip()[:cap]
 
 
-def safe_text(value, cap: int = TEXT_CAP) -> str:
-	"""Public text as stored: trimmed, HTML-escaped, and no longer than *cap* once escaped."""
-	raw = clip(value, cap)
-	out = escape_html(raw)
-	while len(out) > cap:
-		raw = raw[:-1]
-		out = escape_html(raw)
-	return out
+def plain_text(value, cap: int = TEXT_CAP) -> str:
+	"""Public text as stored: one line (control characters, newlines included, removed), trimmed and
+	capped. Stored as plain text; whatever renders it (Desk, a mail template) escapes it."""
+	return _CONTROL.sub("", str(value if value is not None else "")).strip()[:cap]
 
 
 def normalize_email(value) -> str:
@@ -86,8 +84,8 @@ def to_system_datetime(value) -> datetime | None:
 
 
 def event_detail(**fields) -> str | None:
-	"""An event's detail: the non-empty fields as JSON, every string escaped and capped."""
-	out = {k: safe_text(v, DETAIL_CAP) if isinstance(v, str) else v for k, v in fields.items() if v not in (None, "", [], {})}
+	"""An event's detail: the non-empty fields as JSON, strings as plain one-line text, each capped."""
+	out = {k: plain_text(v, DETAIL_CAP) if isinstance(v, str) else v for k, v in fields.items() if v not in (None, "", [], {})}
 	return frappe.as_json(out, indent=None) if out else None
 
 
@@ -110,7 +108,7 @@ def get_or_create(email: str, *, first_name: str | None = None, last_name: str |
 	if not address:
 		frappe.throw(_("Not a valid email address: {0}").format(escape_html(clip(email))),
 			frappe.InvalidEmailAddressError)
-	fills = {"first_name": clip(first_name), "last_name": clip(last_name), "source": clip(source),
+	fills = {"first_name": plain_text(first_name), "last_name": plain_text(last_name), "source": plain_text(source),
 		"customer": customer or ""}
 	if frappe.db.exists(CONTACT, address):
 		doc = frappe.get_doc(CONTACT, address)
@@ -151,10 +149,10 @@ def set_status(contact, status: str, *, reason: str | None = None, channel: str 
 	doc = _doc(contact)
 	old = doc.status or NOT_SUBSCRIBED
 	when = get_datetime(occurred_at) if occurred_at else now_datetime()
-	reason = clip(reason)
+	reason = plain_text(reason)
 	if status == old:
 		if status == SUBSCRIBED and channel and (not doc.consent_at or get_datetime(doc.consent_at) < when):
-			doc.consent_at, doc.consent_channel = when, clip(channel)
+			doc.consent_at, doc.consent_channel = when, plain_text(channel)
 			_save(doc)
 		return False
 	if RANK[status] < RANK[old]:
@@ -167,7 +165,7 @@ def set_status(contact, status: str, *, reason: str | None = None, channel: str 
 			frappe.throw(_("Say why this contact may be emailed again."), frappe.MandatoryError)
 	doc.status, doc.status_changed_at, doc.status_reason = status, when, reason or None
 	if status == SUBSCRIBED:
-		doc.consent_at, doc.consent_channel = when, clip(channel) or ("manual" if manual else None)
+		doc.consent_at, doc.consent_channel = when, plain_text(channel) or ("manual" if manual else None)
 	_save(doc)
 	if status in SUPPRESSED:
 		_suppress_mail(doc.name)

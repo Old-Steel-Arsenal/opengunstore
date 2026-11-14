@@ -197,7 +197,7 @@ def _contact(row: dict, report: dict, state: dict, exported_at, write: bool) -> 
 	new_tags = [t for t in wanted if t not in have]
 
 	hashes = row.get("hashes") if isinstance(row.get("hashes"), dict) else {}
-	values = {"first_name": contacts.safe_text(row.get("first_name")), "last_name": contacts.safe_text(row.get("last_name")),
+	values = {"first_name": contacts.plain_text(row.get("first_name")), "last_name": contacts.plain_text(row.get("last_name")),
 		"source": SOURCE, "legacy_hash": contacts.clip(hashes.get("managed")),
 		"legacy_hash_2": contacts.clip(hashes.get("plain"))}
 	fills = {k: v for k, v in values.items() if v and not (current or {}).get(k)}
@@ -231,7 +231,7 @@ def _contact(row: dict, report: dict, state: dict, exported_at, write: bool) -> 
 	if result != pos_status:
 		suppressed = contacts.is_suppressed(result)
 		contacts.set_status(doc, result, channel=SOURCE,
-			reason=(contacts.safe_text(row.get("unsubscribe_reason")) or _("Imported")) if suppressed else None,
+			reason=(contacts.plain_text(row.get("unsubscribe_reason")) or _("Imported")) if suppressed else None,
 			occurred_at=None if suppressed else contacts.to_system_datetime(row.get("created_at")))
 	tags.add(email, *new_tags)
 	if new_imported:
@@ -254,7 +254,7 @@ def _requests_of(email: str, current, row: dict, report: dict, state: dict, expo
 		kind = requests.BACK_IN_STOCK
 		status = requests.NOTIFIED if parsed["notified"] else requests.OPEN
 		fields = {"web_product_id": parsed["web_product_id"], "url": parsed["url"],
-			"label": contacts.safe_text(parsed["label"]), "sku": "", "model_key": ""}
+			"label": contacts.plain_text(parsed["label"]), "sku": "", "model_key": ""}
 		requested_at = contacts.to_system_datetime(note.get("created_at")) or exported_at
 		target = requests.target(kind, fields)
 		at_key = (email, kind, target, requested_at)

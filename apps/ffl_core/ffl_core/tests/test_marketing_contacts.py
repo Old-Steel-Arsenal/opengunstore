@@ -39,6 +39,20 @@ class TestEmailAndCreation(MarketingTestCase):
 			"blanks are filled; a name or the first source is never overwritten")
 		self.assertEqual(frappe.db.count(CONTACT, {"email": email}), 1)
 
+	def test_names_are_stored_as_given_not_escaped(self):
+		email = address()
+		doc = contacts.get_or_create(email, first_name="O'Brien", last_name="S&W", source="H&K page")
+		doc.reload()
+		self.assertEqual((doc.first_name, doc.last_name, doc.source), ("O'Brien", "S&W", "H&K page"))
+
+	def test_a_name_with_a_script_tag_saves_and_reads_back_without_it(self):
+		"""Frappe's own save-time sanitizer (nh3) drops a script tag with its content and keeps harmless
+		markup such as <b> as typed: stored text is not HTML-safe, whatever renders it escapes it."""
+		email = address()
+		doc = contacts.get_or_create(email, first_name="<script>alert(1)</script>Pat", last_name="<b>Buyer</b>")
+		doc.reload()
+		self.assertEqual((doc.first_name, doc.last_name), ("Pat", "<b>Buyer</b>"))
+
 	def test_not_an_address_is_refused(self):
 		for bad in ("", "nobody", "a@b@c.org", "two@example.org, three@example.org", "x" * 140 + "@example.org",
 				"<a@example.org>"):

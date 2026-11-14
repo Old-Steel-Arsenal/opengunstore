@@ -13,7 +13,8 @@ Each event runs in its own savepoint, so one that fails leaves nothing behind an
 rest. Adding an event type is adding a handler to :data:`HANDLERS`. Nothing here sends mail.
 
 Every field is public input: capped, tags kept only when they are slugs, URLs only when they are
-plain http(s) (no quotes, brackets or spaces), and text stored HTML-escaped (``contacts.safe_text``).
+plain http(s) (no quotes, brackets or spaces), and text kept to one line (``contacts.plain_text``).
+Text is stored as plain text; whatever renders it (Desk, a mail template) escapes it.
 """
 from __future__ import annotations
 
@@ -39,12 +40,9 @@ class Rejected(Exception):
 		self.code = code
 
 
-def _raw(value, cap: str) -> str:
-	return contacts.clip(value if isinstance(value, (str, int, float)) and not isinstance(value, bool) else "", CAP[cap])
-
-
 def _text(value, cap: str) -> str:
-	return contacts.safe_text(_raw(value, cap), CAP[cap])
+	return contacts.plain_text(value if isinstance(value, (str, int, float)) and not isinstance(value, bool) else "",
+		CAP[cap])
 
 
 def url(value) -> str:
@@ -73,16 +71,15 @@ def contact_subscribed(data: dict, key: str, when) -> None:
 	takes the event's tags, and the event is logged with its source page, IP and coupon: the record of
 	the consent."""
 	email = _email(data)
-	raw_source = _raw(data.get("source"), "source") or "web"
-	source = contacts.safe_text(raw_source)
+	source = _text(data.get("source"), "source") or "web"
 	wanted = tags.clean(data.get("tags")) + [t for t in map(tags.interest, _list(data.get("interests"))) if t]
 	coupon = data.get("coupon") if isinstance(data.get("coupon"), dict) else {}
 	contact = contacts.get_or_create(email, first_name=_text(data.get("first_name"), "name"),
 		last_name=_text(data.get("last_name"), "name"), source=source)
 	tags.add(contact.name, *wanted)
-	detail = dict(source=raw_source, page_url=url(data.get("page_url")), ip=_raw(data.get("ip"), "ip"),
-		tags=wanted, coupon=_raw(coupon.get("code"), "code"), coupon_amount=_raw(coupon.get("amount"), "code"),
-		coupon_expires_at=_raw(coupon.get("expires_at"), "code"))
+	detail = dict(source=source, page_url=url(data.get("page_url")), ip=_text(data.get("ip"), "ip"),
+		tags=wanted, coupon=_text(coupon.get("code"), "code"), coupon_amount=_text(coupon.get("amount"), "code"),
+		coupon_expires_at=_text(coupon.get("expires_at"), "code"))
 	if not contacts.set_status(contact, contacts.SUBSCRIBED, channel=source, occurred_at=when,
 			detail=contacts.event_detail(**detail), dedupe_key=key):
 		kept = contact.status if contacts.is_suppressed(contact.status) else None
@@ -99,9 +96,8 @@ def alert_requested(data: dict, key: str, when) -> None:
 	if not kind:
 		raise Rejected(INVALID_DATA)
 	product_id = data.get("product_id")
-	sku = _raw(data.get("sku"), "label")
 	fields = {
-		"sku": contacts.safe_text(sku),
+		"sku": _text(data.get("sku"), "label"),
 		"web_product_id": str(product_id) if type(product_id) is int and product_id > 0 else "",
 		"model_key": _text(data.get("model_key"), "key"),
 		"label": _text(data.get("product_name") if kind == requests.BACK_IN_STOCK else data.get("model_label"), "label"),
@@ -110,7 +106,7 @@ def alert_requested(data: dict, key: str, when) -> None:
 	if (kind == requests.MODEL_ALERT and not fields["model_key"]) or not requests.target(kind, fields):
 		raise Rejected(INVALID_DATA)
 	contact = contacts.get_or_create(email, source="alert")
-	name, _created = requests.add(contact.name, kind, **fields, item=requests.item_for(sku, fields["web_product_id"]),
+	name, _created = requests.add(contact.name, kind, **fields, item=requests.item_for(fields["sku"], fields["web_product_id"]),
 		requested_at=when)
 	contacts.log_event(contact.name, contacts.REQUESTED, occurred_at=when, dedupe_key=key,
 		detail=contacts.event_detail(kind=kind, request=name))
@@ -149,7 +145,7 @@ def receive(events) -> dict:
 		except Exception:
 			# Neither list: the shop sends it again. The id and type only; the data holds an email.
 			frappe.log_error(title="Marketing web event failed",
-				message=f"event {event_id} ({_raw(event.get('type'), 'label')})\n{frappe.get_traceback()}")
+				message=f"event {event_id} ({_text(event.get('type'), 'label')})\n{frappe.get_traceback()}")
 		else:
 			accepted.append(event_id)
 	return {"accepted": accepted, "rejected": rejected}
