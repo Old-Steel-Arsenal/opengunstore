@@ -35,7 +35,7 @@ def _email() -> str:
 
 
 def _details(**over) -> dict:
-	details = {"Reference": "OSA-T1A2B3", "Type": "Pistol", "Condition": "Very good", "Manufacturer": "Glock",
+	details = {"Reference": "REF-T1A2B3", "Type": "Pistol", "Condition": "Very good", "Manufacturer": "Glock",
 		"Model": "19 Gen 5", "Caliber": "9mm", "Original box": "Yes", "Serial number": "(not provided)",
 		"Accessories": "(none listed)", "Prefers": "Phone call", "Address": "1 Sample Rd, Springfield TX 75000",
 		"Barrel": "4 in"}
@@ -112,13 +112,13 @@ class TheRequestIsItsOwnDeal(SellCase):
 		self.assertEqual(got["Manufacturer"], "Glock")
 		self.assertEqual(got["Model"], "19 Gen 5")
 		self.assertEqual(got["Condition"], "Very good")
-		self.assertEqual(got["Reference"], "OSA-T1A2B3")
+		self.assertEqual(got["Reference"], "REF-T1A2B3")
 		self.assertIsNone(got["Serial number"], "a blank the form spelled out is no value")
 		self.assertIsNone(got["Accessories"])
 		self.assertEqual(deal.deal_value, 0)
 		self.assertEqual(deal.products, [])
 		(note,) = _notes(deal.name)
-		self.assertEqual(note.title, "Sell-your-gun request OSA-T1A2B3")
+		self.assertEqual(note.title, "Sell-your-gun request REF-T1A2B3")
 		self.assertTrue(note[EVENT_FIELD].startswith("evt-sell-"))
 		self.assertIn("Grandpa", note.content)
 		self.assertIn("<b>Barrel</b>: 4 in", note.content, "an unknown label stays in the note")
@@ -417,7 +417,7 @@ class Upgrade(SellCase):
 			crm_sell_request_deals.execute()
 		note = frappe.get_doc("FCRM Note", good)
 		self.assertEqual((note.reference_doctype, note.title, note.get(EVENT_FIELD)),
-			(DEAL, "Sell-your-gun request OSA-T1A2B3", "evt-old-sell"))
+			(DEAL, "Sell-your-gun request REF-T1A2B3", "evt-old-sell"))
 		deal = frappe.get_doc(DEAL, note.reference_docname)
 		self.assertEqual((deal.get(S.SELL), deal.get(S.FIELDS["Model"]), deal.email), (1, "19 Gen 5", email))
 		self.assertEqual(frappe.db.count(DEAL, {S.SELL: 1, "email": email}), 1, "a second run makes no second deal")
