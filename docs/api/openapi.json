@@ -16518,7 +16518,7 @@
           "webhooks"
         ],
         "summary": "A tracked link in a marketing mail (Guest): a redirect to *u*.",
-        "description": "Only when *s* is this site's signature of *u* and *u* is an http(s) address; anything else gets a\n400 and no redirect. Records the contact's first click on that link in campaign *c* while Track\nclicks is on and the campaign was sent to them. 5000 calls an hour per IP address.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/marketing/track.py:102`",
+        "description": "Only when *s* is this site's signature of *u* and *u* is an http(s) address; anything else gets a\n400 and no redirect. Records the contact's first click on that link in campaign *c* while Track\nclicks is on and the campaign was sent to them. 5000 calls an hour per IP address.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/marketing/track.py:101`",
         "operationId": "ffl_core.marketing.track.click",
         "responses": {
           "200": {
@@ -16587,7 +16587,7 @@
           "webhooks"
         ],
         "summary": "The open pixel of a marketing mail (Guest): always a 1x1 GIF.",
-        "description": "Records the first open of campaign *c* by the contact *t* stands for, while Track opens is on and\nthe campaign was sent to them. 5000 calls an hour per IP address.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/marketing/track.py:82`",
+        "description": "Records the first open of campaign *c* by the contact *t* stands for, while Track opens is on and\nthe campaign was sent to them. 5000 calls an hour per IP address.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/marketing/track.py:81`",
         "operationId": "ffl_core.marketing.track.open",
         "responses": {
           "200": {

@@ -25,7 +25,7 @@ clicks is on and the campaign was sent to them. 5000 calls an hour per IP addres
 
 **Returns:** A 302 redirect to *u*, or a 400 plain-text "This link is not valid."
 
-<sub>`apps/ffl_core/ffl_core/marketing/track.py:102`</sub>
+<sub>`apps/ffl_core/ffl_core/marketing/track.py:101`</sub>
 
 ## `open`
 
@@ -45,4 +45,4 @@ the campaign was sent to them. 5000 calls an hour per IP address.
 
 **Returns:** A 1x1 GIF image, never cached.
 
-<sub>`apps/ffl_core/ffl_core/marketing/track.py:82`</sub>
+<sub>`apps/ffl_core/ffl_core/marketing/track.py:81`</sub>
