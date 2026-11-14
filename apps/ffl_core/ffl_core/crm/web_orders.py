@@ -32,7 +32,7 @@ from __future__ import annotations
 import frappe
 from frappe import _
 from frappe.desk.form.assign_to import close_all_assignments
-from frappe.utils import escape_html, fmt_money, now_datetime
+from frappe.utils import escape_html, flt, fmt_money, now_datetime
 
 from ffl_core.crm import TITLE, installed, pos_link_on
 from ffl_core.crm.deals import DEAL, STATUS, _statuses, is_closed, new_task, open_deal_for
@@ -56,6 +56,8 @@ _TASK_OPEN = ["Backlog", "Todo", "In Progress"]
 WON_BY = "ffl_web_order"
 LEAD = "CRM Lead"
 WIN_JOB = "ffl_core.crm.web_orders.web_order_paid"
+_UNDONE = ("cancelled", "refunded")   # WooCommerce statuses that take an order back
+_CENT = 0.005
 UNDO_JOB = "ffl_core.crm.web_orders.web_order_undone"
 
 
@@ -140,12 +142,26 @@ def web_order_paid(order: str, hand_closed: bool = False) -> str | None:
 	return None
 
 
+def standing_total(order: str | None) -> float | None:
+	"""The web order's total while it stands; None once it is cancelled or fully refunded, whatever its
+	fulfilment status: the cancel webhook writes Cancelled, and refunds that add up to the total while
+	WooCommerce still says completed count as a full refund too."""
+	row = order and frappe.db.get_value(ORDER, order, ["order_status", "woo_status", "order_total"], as_dict=True)
+	if not row or row.order_status == "Cancelled" or (row.woo_status or "").strip().lower() in _UNDONE:
+		return None
+	refunded = flt(frappe.db.sql("""SELECT SUM(refund_amount) FROM `tabWoo Online Order Refund`
+		WHERE parenttype = %s AND parent = %s""", (ORDER, order))[0][0])
+	if refunded and refunded >= flt(row.order_total) - _CENT:
+		return None
+	return flt(row.order_total)
+
+
 def _paid_order(order: str):
 	from ffl_woo_sync.woocommerce.fulfillment import _is_paid_woo_status
 
 	row = frappe.db.get_value(ORDER, order, ["name", "customer_email", "customer", "woo_order_id", "order_total",
 		"currency", "order_status", "woo_status", "creation"], as_dict=True)
-	if not row or row.order_status == "Cancelled" or not _is_paid_woo_status(row.woo_status):
+	if not row or not _is_paid_woo_status(row.woo_status) or standing_total(order) is None:
 		return None
 	return row
 
@@ -244,7 +260,7 @@ def web_order_undone(order: str) -> list[str]:
 	from ffl_core.utils import guest_job_elevated
 
 	if not installed() or not pos_link_on() or not frappe.db.has_column(DEAL, WON_BY) \
-			or frappe.db.get_value(ORDER, order, "order_status") != "Cancelled":
+			or not frappe.db.exists(ORDER, order) or standing_total(order) is not None:
 		return []
 	done = []
 	with guest_job_elevated():

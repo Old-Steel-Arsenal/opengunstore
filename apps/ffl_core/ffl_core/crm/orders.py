@@ -34,7 +34,7 @@ from frappe.utils import flt, fmt_money
 from ffl_core.crm import TITLE, installed, pos_link_on
 from ffl_core.crm.deal import WRITE_BACK_FLAG
 from ffl_core.crm.deals import DEAL, STATUS, new_task
-from ffl_core.crm.web_orders import WON_BY, close_payment_failed
+from ffl_core.crm.web_orders import WON_BY, close_payment_failed, standing_total
 from ffl_core.utils import commit
 
 DEAL_FIELD = "ffl_crm_deal"
@@ -61,16 +61,17 @@ def deal_for_order(deal, customer: str, keep: bool = False) -> str | None:
 def deal_sales(deal: str, web_order: str | None = None) -> tuple[float, bool]:
 	"""(the deal's value, whether sales stand behind it): its submitted invoices, plus the total of
 	*web_order* (the paid web order that won the deal, ``crm.web_orders.WON_BY``) while that order is
-	not cancelled. The web order's own invoice, if it was ever made from the deal, is not counted twice."""
+	not cancelled or fully refunded (``crm.web_orders.standing_total``). The web order's own invoice, if it
+	was ever made from the deal, is not counted twice."""
 	from ffl_core.ffl_core.report.sales_report.sales_report import net_sales_of
 
 	nets = net_sales_of("Sales Invoice", {DEAL_FIELD: deal, "docstatus": 1, "is_consolidated": 0})
-	web = web_order and frappe.db.get_value("Woo Online Order", web_order, ["order_total", "order_status"], as_dict=True)
-	if not web or web.order_status == "Cancelled":
+	web = standing_total(web_order)
+	if web is None:
 		return flt(sum(nets.values()), 2), bool(nets)
 	own = set(frappe.get_all("Sales Invoice", filters={DEAL_FIELD: deal, "woo_online_order": web_order}, pluck="name")) \
 		if nets and frappe.db.has_column("Sales Invoice", "woo_online_order") else set()
-	return flt(sum(v for k, v in nets.items() if k not in own) + flt(web.order_total), 2), True
+	return flt(sum(v for k, v in nets.items() if k not in own) + web, 2), True
 
 
 def on_submit(doc, method=None):

@@ -332,3 +332,86 @@ class ThePatch(WinCase):
 		order, _w = self._pay(email)
 		_switch(1)
 		return order
+
+
+def _can_read(user: str, name: str) -> bool:
+	"""CRM's own rule, both ways it applies: the record and the list."""
+	doc = frappe.has_permission(DEAL, "read", doc=name, user=user)
+	frappe.set_user(user)
+	try:
+		listed = bool(frappe.get_list(DEAL, filters={"name": name}, pluck="name"))
+	finally:
+		frappe.set_user("Administrator")
+	return doc and listed
+
+
+class LeadsWithoutAnOwner(WinCase):
+	def _no_admin_todo(self, deal: str) -> None:
+		self.assertFalse(frappe.db.exists("ToDo", {"reference_type": DEAL, "reference_name": deal,
+			"allocated_to": "Administrator"}))
+
+	def test_an_unowned_team_lead_becomes_an_unowned_deal_the_team_reads(self):
+		email = _email()
+		lead = _lead(email, owner=None)
+		share_with_team(LEAD, lead)
+		order, _w = self._pay(email)
+		deal = frappe.db.get_value(DEAL, {"lead": lead})
+		self.assertWon(deal, order)
+		self.assertFalse(frappe.db.get_value(DEAL, deal, "deal_owner"))
+		self._no_admin_todo(deal)
+		self.assertFalse(frappe.db.exists("ToDo", {"reference_type": DEAL, "reference_name": deal, "status": "Open"}))
+		self.assertTrue(_can_read(CLERK, deal))
+
+	def test_a_disabled_owner_stays_the_owner_and_nobody_else_is_assigned(self):
+		from ffl_core.tests.crm_support import user
+
+		gone = user("crm-gone@example.com", "Sales User")
+		email = _email()
+		lead = _lead(email, owner=gone)
+		frappe.db.set_value("User", gone, "enabled", 0)
+		notices = frappe.db.count("Notification Log")
+		order, _w = self._pay(email)
+		deal = frappe.db.get_value(DEAL, {"lead": lead})
+		self.assertWon(deal, order)
+		self.assertEqual(frappe.db.get_value(DEAL, deal, "deal_owner"), gone)
+		self._no_admin_todo(deal)
+		self.assertEqual(frappe.db.count("Notification Log"), notices)
+
+
+class RefundedAfterShipping(WinCase):
+	def _shipped(self):
+		from ffl_woo_sync.ffl_woo_sync.doctype.woo_online_order.woo_online_order import mark_transferred
+
+		email = _email()
+		deal = _deal(email)
+		order, woo_id = self._pay(email)
+		mark_transferred(order)
+		self._invoice(order, frappe.db.get_value(ORDER, order, "customer"))
+		self.assertWon(deal, order)
+		return email, deal, order, woo_id
+
+	def assertReopened(self, deal: str) -> None:
+		row = frappe.db.get_value(DEAL, deal, ["status", "deal_value", web_orders.WON_BY], as_dict=True)
+		self.assertNotEqual(row.status, self.won)
+		self.assertFalse(row.deal_value)
+		self.assertFalse(row[web_orders.WON_BY])
+
+	def test_a_full_refund_of_a_shipped_order_reopens_its_deal(self):
+		email, deal, order, woo_id = self._shipped()
+		self._upsert(email, woo_id, status="refunded")
+		self.assertEqual(frappe.db.get_value(ORDER, order, "order_status"), "Cancelled")
+		self.assertReopened(deal)
+
+	def test_refunds_that_reach_the_total_while_still_completed_reopen_it_too(self):
+		email, deal, _order, woo_id = self._shipped()
+		self._upsert(email, woo_id, status="completed", refunds=[{"id": 81, "total": f"-{TOTAL - 50:.2f}"}])
+		self.assertEqual(frappe.db.get_value(DEAL, deal, "status"), self.won)
+		self._upsert(email, woo_id, status="completed", refunds=[{"id": 81, "total": f"-{TOTAL - 50:.2f}"},
+			{"id": 82, "total": "-50.00"}])
+		self.assertReopened(deal)
+
+	def test_a_partial_refund_of_a_shipped_order_changes_nothing(self):
+		email, deal, order, woo_id = self._shipped()
+		self._upsert(email, woo_id, status="completed", refunds=[{"id": 83, "total": "-20.00"}])
+		self.assertWon(deal, order)
+		self.assertEqual(frappe.db.get_value(ORDER, order, "order_status"), "Transferred")

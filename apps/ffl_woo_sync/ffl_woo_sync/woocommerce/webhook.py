@@ -2687,6 +2687,8 @@ def _handle_order_updated(body: dict) -> None:
 		for row in order.refunds:
 			if str(row.woo_refund_id) not in known_refunds:
 				note_web_order(order.name, REFUNDED, key=str(row.woo_refund_id), amount=row.refund_amount)
+		# Refunds that reach the order's total undo its deal like a cancel; a partial one changes nothing.
+		crm_after_commit(order.name, paid=False)
 	if new_refund or has_pending_breakdown(order):
 		# One job per order: redeliveries while it waits add nothing. A refund
 		# that lands while the job is already RUNNING is dropped here (Frappe
