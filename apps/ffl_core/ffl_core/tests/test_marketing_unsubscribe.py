@@ -10,6 +10,7 @@ import frappe
 from frappe.website.serve import get_response, get_response_content
 
 from ffl_core.marketing import SETTINGS, contacts, track
+from ffl_core.marketing import unsubscribe as unsubscribe_page
 from ffl_core.marketing.contacts import (BOUNCED, CLICKED, NOT_SUBSCRIBED, OPENED, SUBSCRIBED, UNSUBSCRIBED,
 	set_status)
 from ffl_core.marketing.mailer import MARKETING, send
@@ -145,6 +146,27 @@ class TestUnsubscribePage(MailTestCase):
 			html = get_response_content("/unsubscribe")
 		self.assertIn('name="csrf_token" value="csrf-of-this-session"', html)
 		self.assertNotIn('name="csrf_token"', self._page("GET", {"t": contact_token(address())}))
+
+	def test_a_signed_token_is_never_rate_limited_but_guessing_is(self):
+		limit = unsubscribe_page.LIMIT
+		first, last = contact(SUBSCRIBED), contact(SUBSCRIBED)
+		with self.web_request("POST", "/unsubscribe", {}):   # one IP address for all of it
+			frappe.local.request_ip = f"readers-{frappe.generate_hash(length=10)}"
+			for _ in range(limit + 5):   # a provider's one-click posts, and readers: all from few addresses
+				self.assertEqual(unsubscribe_page.page({"t": contact_token(first)}, "POST"), {"state": "done"})
+			self.assertEqual(unsubscribe_page.page({"t": contact_token(last)}, "GET")["state"], "ask")
+			self.assertEqual(unsubscribe_page.page({"t": contact_token(last)}, "POST"), {"state": "done"})
+			self.assertEqual((status_of(first), status_of(last)), (UNSUBSCRIBED, UNSUBSCRIBED))
+		with self.web_request("GET", "/unsubscribe", {}):
+			frappe.local.request_ip = f"guesser-{frappe.generate_hash(length=10)}"   # the counter lives in redis, an hour
+			for _ in range(limit):
+				self.assertEqual(unsubscribe_page.page({"legacy": "0" * 32}, "GET"), {"state": "invalid"})
+			with self.assertRaises(frappe.RateLimitExceededError):
+				unsubscribe_page.page({"legacy": "0" * 32}, "GET")
+			with self.assertRaises(frappe.RateLimitExceededError):
+				unsubscribe_page.page({"t": "not.a-token"}, "POST")
+			self.assertEqual(unsubscribe_page.page({"t": contact_token(address())}, "GET")["state"], "ask",
+				"a valid token still gets through from an address that has been guessing")
 
 	def test_unsubscribe_ignores_an_address_with_no_contact(self):
 		self.assertFalse(unsubscribe(address("nobody")))

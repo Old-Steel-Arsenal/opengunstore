@@ -36,8 +36,10 @@ REASONS = {
 	"other": "Other",
 }
 _LEGACY = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
-# Per IP address and hour, page views and posts together. One-click posts come from a provider's
-# servers (few addresses, many readers), so it is wide; a token is 128 bits, guessing is not the threat.
+# Per IP address and hour, for requests that carry no valid token (a link that is not valid, an old
+# ``legacy`` hash): those are the ones that guess. A validly signed token is never limited, GET or POST:
+# one-click posts come from a mailbox provider's servers (few addresses, many readers) and a limit there
+# would silently keep real people on the list.
 LIMIT = 300
 
 
@@ -47,14 +49,22 @@ def url(email: str) -> str:
 
 
 def page(form: dict, method: str) -> dict:
-	"""What ``/unsubscribe`` shows for a request, after doing what a POST asks.
+	"""What ``/unsubscribe`` shows for a request, after doing what a POST asks. A request without a validly
+	signed token is rate-limited per IP address (:data:`LIMIT` an hour); one with is not.
 
 	Returns ``{"state": "invalid"}`` for a link that is not one; ``{"state": "ask", "t", "legacy",
 	"reasons"}`` for a GET; ``{"state": "done"}`` after a POST."""
-	return _page(dict(form or {}), (method or "GET").upper())
+	form, method = dict(form or {}), (method or "GET").upper()
+	if email_of(form.get("t")):
+		return _page(form, method)
+	return _unsigned(form, method)
 
 
 @rate_limit(limit=LIMIT, seconds=3600)
+def _unsigned(form: dict, method: str) -> dict:
+	return _page(form, method)
+
+
 def _page(form: dict, method: str) -> dict:
 	token = form.get("t") or ""
 	legacy = "" if token else (form.get("legacy") or "")
