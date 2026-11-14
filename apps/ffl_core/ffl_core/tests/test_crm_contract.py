@@ -178,3 +178,75 @@ class TestCRMSettingsWrite(FrappeTestCase):
 			["enabled", "is_erpnext_in_different_site", "sync_products", "erpnext_company"], as_dict=True)
 		self.assertEqual((values.enabled, values.is_erpnext_in_different_site, values.sync_products), (1, 0, 0))
 		self.assertTrue(values.erpnext_company)
+
+
+class TestMarketingMailContract(FrappeTestCase):
+	"""The Frappe mail internals ffl_core.marketing.mailer relies on. An upgrade that changes one fails here
+	instead of silently sending List-Unsubscribe as X-List-Unsubscribe, letting a suppressed contact's mail
+	through, stopping a customer's receipts, or sending marketing mail from the store's transactional account."""
+
+	MARKETING_ACCOUNT, MARKETING_ADDRESS = "_T Contract Marketing", "contract-news@store.test"
+	DEFAULT_ACCOUNT, DEFAULT_ADDRESS = "_T Contract Default", "contract-receipts@store.test"
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		frappe.db.savepoint("mkt_contract")
+		frappe.local.outgoing_email_account = {}
+
+	def tearDown(self):
+		frappe.db.rollback(save_point="mkt_contract")
+		frappe.local.outgoing_email_account = {}
+
+	def test_custom_headers_get_an_x_prefix(self):
+		# Why mailer.restore_list_unsubscribe renames the two headers on the queued row.
+		from frappe.email.email_body import EMail
+
+		mail = EMail(sender="a@store.test", recipients=["b@example.com"], subject="x",
+			email_account=frappe.new_doc("Email Account"))
+		mail.add_headers({"List-Unsubscribe": "<https://pos/unsubscribe>", "X-Kept": "1"})
+		self.assertEqual(mail.msg_root["X-List-Unsubscribe"], "<https://pos/unsubscribe>")
+		self.assertIsNone(mail.msg_root["List-Unsubscribe"])
+		self.assertEqual(mail.msg_root["X-Kept"], "1")
+		self.assertIn("message", _fields("Email Queue"), "the queued MIME text the hook rewrites")
+
+	def test_the_queue_drops_reference_level_and_global_unsubscribes_only(self):
+		from frappe.email.doctype.email_queue.email_queue import QueueBuilder
+
+		from ffl_core.marketing import CONTACT
+		from ffl_core.marketing.contacts import get_or_create
+
+		same, other_ref, global_, kept, someone = (f"contract-{k}-{frappe.generate_hash(length=6)}@example.com"
+			for k in ("same", "other", "global", "kept", "someone"))
+		for email in (same, someone):
+			get_or_create(email)   # the reference is a Dynamic Link
+		for email, ref_name, is_global in ((same, same, 0), (other_ref, someone, 0), (global_, None, 1)):
+			frappe.get_doc({"doctype": "Email Unsubscribe", "email": email, "reference_doctype": None if is_global else CONTACT,
+				"reference_name": ref_name, "global_unsubscribe": is_global}).insert(ignore_permissions=True)
+		# Every address in one builder whose reference is the first one's: same reference + global drop.
+		builder = QueueBuilder(recipients=[same, other_ref, global_, kept], reference_doctype=CONTACT, reference_name=same)
+		self.assertEqual(set(builder.get_unsubscribed_user_emails()), {same, global_})
+		# Another reference: only the global one.
+		builder = QueueBuilder(recipients=[same, global_, kept], reference_doctype="User", reference_name="Administrator")
+		self.assertEqual(set(builder.get_unsubscribed_user_emails()), {global_})
+
+	def test_the_sending_account_is_matched_by_the_sender_address(self):
+		from frappe.email.doctype.email_account.email_account import EmailAccount
+
+		for name, address, default in ((self.MARKETING_ACCOUNT, self.MARKETING_ADDRESS, 0),
+				(self.DEFAULT_ACCOUNT, self.DEFAULT_ADDRESS, 1)):
+			if not frappe.db.exists("Email Account", name):
+				frappe.get_doc({"doctype": "Email Account", "email_account_name": name, "email_id": address,
+					"enable_incoming": 0, "enable_outgoing": 0, "awaiting_password": 1}).insert(ignore_permissions=True)
+			frappe.db.set_value("Email Account", name, {"enable_outgoing": 1, "default_outgoing": default,
+				"smtp_server": "smtp.invalid", "smtp_port": 587}, update_modified=False)
+		frappe.db.set_value("Email Account", {"default_outgoing": 1, "name": ["!=", self.DEFAULT_ACCOUNT]},
+			"default_outgoing", 0, update_modified=False)
+		found = EmailAccount.find_outgoing(match_by_email=f"Store <{self.MARKETING_ADDRESS}>")
+		self.assertEqual(found.name, self.MARKETING_ACCOUNT)
+		frappe.local.outgoing_email_account = {}
+		self.assertEqual(EmailAccount.find_outgoing(match_by_email=None).name, self.DEFAULT_ACCOUNT)
+		# A matching account that does not send falls back to the default without a word: why the mailer
+		# checks Enable Outgoing itself.
+		frappe.db.set_value("Email Account", self.MARKETING_ACCOUNT, "enable_outgoing", 0, update_modified=False)
+		frappe.local.outgoing_email_account = {}
+		self.assertEqual(EmailAccount.find_outgoing(match_by_email=self.MARKETING_ADDRESS).name, self.DEFAULT_ACCOUNT)

@@ -12061,6 +12061,36 @@
         }
       }
     },
+    "/api/method/ffl_core.api.marketing_mail.send_test_email": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Send the signed-in staff member a test marketing email at their own address.",
+        "description": "It goes the way every marketing email goes: the mail queue from the marketing Email Account, the\nList-Unsubscribe headers, tracking as Marketing Settings has it, and a working unsubscribe link\n(using it unsubscribes this address, and the next test is refused until a manager puts it back).\nEach call is its own campaign, so it can be sent again.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/marketing_mail.py:17`",
+        "operationId": "ffl_core.api.marketing_mail.send_test_email",
+        "responses": {
+          "200": {
+            "description": "{\"queued\": true when it is in the mail queue, \"email\": the address, \"status\": that address's marketing status (a test is refused for an unsubscribed, bounced or complained one)}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.api.oauth_dcr.register_client": {
       "post": {
         "tags": [
@@ -16302,6 +16332,139 @@
             }
           }
         }
+      }
+    },
+    "/api/method/ffl_core.marketing.providers.ses.notify": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Amazon SNS posts SES bounce and complaint notifications here (Guest).",
+        "description": "The body is the SNS message (JSON, sent as text/plain). Refused with a 403 unless it comes from the\ntopic in Marketing Settings and its signature verifies. 10000 calls an hour per IP address.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/marketing/providers/ses.py:60`",
+        "operationId": "ffl_core.marketing.providers.ses.notify",
+        "responses": {
+          "200": {
+            "description": "{\"type\": the SNS message type, \"processed\": how many addresses changed or were logged}."
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/method/ffl_core.marketing.track.click": {
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "A tracked link in a marketing mail (Guest): a redirect to *u*.",
+        "description": "Only when *s* is this site's signature of *u* and *u* is an http(s) address; anything else gets a\n400 and no redirect. Records the contact's first click on that link in campaign *c* while Track\nclicks is on and the campaign was sent to them. 5000 calls an hour per IP address.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/marketing/track.py:102`",
+        "operationId": "ffl_core.marketing.track.click",
+        "responses": {
+          "200": {
+            "description": "A 302 redirect to *u*, or a 400 plain-text \"This link is not valid.\""
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "security": [],
+        "parameters": [
+          {
+            "name": "u",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "Where the link goes."
+          },
+          {
+            "name": "c",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "The campaign."
+          },
+          {
+            "name": "t",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "The contact's token from the mail."
+          },
+          {
+            "name": "s",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "The signature of *u*."
+          }
+        ]
+      }
+    },
+    "/api/method/ffl_core.marketing.track.open": {
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "The open pixel of a marketing mail (Guest): always a 1x1 GIF.",
+        "description": "Records the first open of campaign *c* by the contact *t* stands for, while Track opens is on and\nthe campaign was sent to them. 5000 calls an hour per IP address.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/marketing/track.py:82`",
+        "operationId": "ffl_core.marketing.track.open",
+        "responses": {
+          "200": {
+            "description": "A 1x1 GIF image, never cached."
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "security": [],
+        "parameters": [
+          {
+            "name": "c",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "The campaign."
+          },
+          {
+            "name": "t",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "The contact's token from the mail."
+          }
+        ]
       }
     },
     "/api/method/ffl_core.membership.cancel_membership": {
