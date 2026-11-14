@@ -68,7 +68,7 @@ def notify():
 	"""
 	request = frappe.request
 	if request.content_length and request.content_length > BODY_CAP:
-		raise Refused(_("Message too large."))
+		frappe.throw(_("Message too large."), Refused)
 	return handle(request.get_data(cache=False, as_text=True))
 
 
@@ -78,18 +78,18 @@ def handle(body: str, *, http_get: Callable[[str], bytes] | None = None) -> dict
 	try:
 		message = json.loads(body)
 	except (TypeError, ValueError):
-		raise Refused(_("Not an SNS message."))
+		frappe.throw(_("Not an SNS message."), Refused)
 	if not isinstance(message, dict) or not isinstance(message.get("Type"), str):
-		raise Refused(_("Not an SNS message."))
+		frappe.throw(_("Not an SNS message."), Refused)
 	topic = single_raw(SETTINGS, "sns_topic_arn")
 	if not topic or message.get("TopicArn") != topic.strip():
-		raise Refused(_("Not the configured SNS topic."))
+		frappe.throw(_("Not the configured SNS topic."), Refused)
 	verify(message, http_get or _cached_get)
 	kind = message["Type"]
 	if kind == "SubscriptionConfirmation":
 		url = message["SubscribeURL"]
 		if not is_sns_url(url):
-			raise Refused(_("Not an SNS address."))
+			frappe.throw(_("Not an SNS address."), Refused)
 		(http_get or _get)(url)
 		return {"type": kind, "processed": 0}
 	if kind == "Notification":
@@ -116,15 +116,15 @@ def string_to_sign(message: dict) -> str:
 	for an unknown type or a missing field."""
 	fields = SIGNED.get(message.get("Type"))
 	if not fields:
-		raise Refused(_("Unknown SNS message type."))
+		frappe.throw(_("Unknown SNS message type."), Refused)
 	out = []
 	for key in fields:
 		if key not in message:
 			if key in OPTIONAL:
 				continue
-			raise Refused(_("Not an SNS message."))
+			frappe.throw(_("Not an SNS message."), Refused)
 		if not isinstance(message[key], str):
-			raise Refused(_("Not an SNS message."))
+			frappe.throw(_("Not an SNS message."), Refused)
 		out.append(f"{key}\n{message[key]}\n")
 	return "".join(out)
 
@@ -139,7 +139,7 @@ def verify(message: dict, http_get: Callable[[str], bytes]) -> None:
 	digest = {"1": hashes.SHA1, "2": hashes.SHA256}.get(message.get("SignatureVersion"))
 	url = message.get("SigningCertURL")
 	if not digest or not is_sns_url(url, pem=True):
-		raise Refused(_("Not signed by SNS."))
+		frappe.throw(_("Not signed by SNS."), Refused)
 	payload = string_to_sign(message)
 	try:
 		signature = base64.b64decode(message.get("Signature") or "", validate=True)
@@ -149,7 +149,7 @@ def verify(message: dict, http_get: Callable[[str], bytes]) -> None:
 			raise ValueError("certificate out of date")
 		cert.public_key().verify(signature, payload.encode(), padding.PKCS1v15(), digest())
 	except (InvalidSignature, ValueError, TypeError, binascii.Error):
-		raise Refused(_("The SNS signature does not verify."))
+		frappe.throw(_("The SNS signature does not verify."), Refused)
 
 
 def _notification(message: dict) -> int:
