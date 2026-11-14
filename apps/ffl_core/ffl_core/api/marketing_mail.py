@@ -15,12 +15,12 @@ TEST_MAIL = "test"
 
 @frappe.whitelist(methods=["POST"])
 def send_test_email() -> dict:
-	"""Send the signed-in staff member a test marketing email at their own address.
+	"""Queue a test marketing email for the signed-in staff member, at their own address.
 
 	It goes the way every marketing email goes: the mail queue from the marketing Email Account, the
 	List-Unsubscribe headers, tracking as Marketing Settings has it, and a working unsubscribe link
 	(using it unsubscribes this address, and the next test is refused until a manager puts it back).
-	Each call is its own campaign, so it can be sent again.
+	The mail queue sends it a moment later. Each call is its own campaign, so it can be queued again.
 
 	Returns:
 	    {"queued": true when it is in the mail queue, "email": the address, "status": that address's

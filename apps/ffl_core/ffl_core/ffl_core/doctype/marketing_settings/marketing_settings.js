@@ -1,5 +1,5 @@
-// Marketing Settings: the primary action sends the logged-in employee a test email through the whole
-// sending path. The sender is ffl_core.api.marketing_mail.send_test_email; a server without it is
+// Marketing Settings: the primary action queues a test email for the logged-in employee through the whole
+// sending path (it is the mail queue that sends it, a moment later). The sender is ffl_core.api.marketing_mail.send_test_email; a server without it is
 // told so plainly.
 (function () {
 	'use strict';
@@ -21,8 +21,16 @@
 			freeze_message: __('Sending...'),
 			silent: true,   // messages are shown below, so a missing method is not a stack-trace dialog
 			callback: function (r) {
-				if (!showServerMessages(r)) {
-					frappe.show_alert({ message: __('Test email sent to {0}.', [frappe.session.user_email || frappe.session.user]), indicator: 'green' });
+				if (showServerMessages(r)) return;
+				var out = (r && r.message) || {};
+				var address = out.email || frappe.session.user_email || frappe.session.user;
+				if (out.queued) {
+					frappe.show_alert({ message: __('Test email queued for {0}.', [address]), indicator: 'green' });
+				} else if (out.status) {
+					// Not queued: the address is suppressed (Unsubscribed, Bounced or Complained).
+					frappe.show_alert({ message: __('Not sent: {0} is {1}.', [address, __(out.status)]), indicator: 'orange' });
+				} else {
+					frappe.show_alert({ message: __('Not sent: the test email was not queued.'), indicator: 'orange' });
 				}
 			},
 			error: function (r) {
