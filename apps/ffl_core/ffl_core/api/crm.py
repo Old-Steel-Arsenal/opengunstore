@@ -221,8 +221,8 @@ def sell_gun_intake(deal: str) -> dict:
 
 	Returns:
 	    dict: {"deal", "source_name": the seller (the deal's customer), "manufacturer", "model_name",
-	    "caliber", "firearm_type", "serial_no", "condition_grade", "acquisition_cost": the offer or
-	    None}.
+	    "caliber", "firearm_type", "serial_no", "acquisition_cost": the offer or None}. No condition:
+	    staff grade the gun after inspecting it.
 	"""
 	frappe.only_for(CRM_ROLES)
 	return sell_requests.intake(_deal_for_pos_link(deal, "read"))

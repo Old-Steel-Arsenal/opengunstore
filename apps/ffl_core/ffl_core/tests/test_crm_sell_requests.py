@@ -19,6 +19,13 @@ from ffl_core.tests.test_crm_team_mail import _assignees, _customer_contact
 S = sell_requests
 DEAL = "CRM Deal"
 STORE = "https://shop.example.com"
+SECRET = "test-secret-123"
+
+
+def _secret(value: str) -> None:
+	from frappe.utils.password import set_encrypted_password
+
+	set_encrypted_password("WooCommerce Settings", "WooCommerce Settings", value, "outbound_webhook_secret")
 _n = [0]
 
 
@@ -83,6 +90,7 @@ class SellCase(CRMTestCase):
 		super().setUp()
 		frappe.db.set_single_value("Lead Mail Settings", "crm_pos_link", 1)
 		frappe.db.set_single_value("WooCommerce Settings", "store_url", STORE)
+		_secret(SECRET)
 
 
 class TheRequestIsItsOwnDeal(SellCase):
@@ -98,6 +106,8 @@ class TheRequestIsItsOwnDeal(SellCase):
 		self.assertNotEqual(deal.name, buying, "never filed on the deal the customer is buying on")
 		self.assertEqual(deal.get(S.SELL), 1)
 		self.assertTrue(deal.erpnext_customer, "matched to their customer as before")
+		self.assertEqual((deal.lead_name, deal.first_name), ("Sell: Glock 19 Gen 5 · Known", "Known"),
+			"titled by the gun and the person; the name fields stay the person's")
 		got = {label: deal.get(field) for label, field in S.FIELDS.items()}
 		self.assertEqual(got["Manufacturer"], "Glock")
 		self.assertEqual(got["Model"], "19 Gen 5")
@@ -131,6 +141,20 @@ class TheRequestIsItsOwnDeal(SellCase):
 		self.assertEqual(out["doctype"], DEAL)
 		self.assertFalse(frappe.db.exists("CRM Lead", {"email": email}))
 		self.assertEqual(frappe.db.get_value(DEAL, out["name"], "email"), email)
+		contact = frappe.get_doc(DEAL, out["name"]).contacts[0].contact
+		self.assertEqual(frappe.db.get_value("Contact", contact, ["first_name", "last_name"]), ("b", "Eve /b Sample"),
+			"a name Frappe refuses in a document name loses its angle brackets (web_orders._contact_of)")
+
+	def test_the_title_leaves_out_what_is_missing_and_the_naming_patch_keeps_it(self):
+		from ffl_core.patches import name_crm_deals
+
+		self.assertEqual(frappe.db.get_value(DEAL, _sell(details=_details(Model=""))["name"], "lead_name"),
+			"Sell: Glock · Pat Seller")
+		bare = _sell(details=_details(Manufacturer="(not provided)", Model=""))["name"]
+		self.assertEqual(frappe.db.get_value(DEAL, bare, "lead_name"), "Sell · Pat Seller")
+		name_crm_deals.execute()
+		self.assertEqual(frappe.db.get_value(DEAL, bare, ["lead_name", "first_name", "last_name"]),
+			("Sell · Pat Seller", "Pat", "Seller"))
 
 	def test_photos_are_queued_after_the_commit(self):
 		with patch.object(frappe, "enqueue") as enqueue:
@@ -172,7 +196,7 @@ class PhotoCopy(SellCase):
 		self.assertEqual((f.is_private, f.attached_to_doctype, f.attached_to_name), (1, DEAL, deal))
 		photos = S.photos_of(frappe.get_doc(DEAL, deal))
 		self.assertEqual([bool(p.get("file")) for p in photos], [True, False, False])
-		self.assertTrue(frappe.db.exists("Error Log", {"method": ["like", f"%photos not copied: {deal}%"]}))
+		self.assertTrue(frappe.db.exists("Error Log", {"method": ["like", f"%photos not copied yet: {deal}%"]}))
 		with patch("requests.get") as get:   # run again: what was copied is not fetched again
 			S.copy_photos(deal)
 		self.assertEqual(get.call_count, 0)
@@ -193,6 +217,63 @@ class PhotoCopy(SellCase):
 		with patch("requests.get") as get:
 			S.copy_photos(deal)
 		get.assert_not_called()
+
+
+class SignedPhotoRequest(SellCase):
+	def test_the_signature_is_the_websites(self):
+		self.assertEqual(S._signature(SECRET, "1700000000", "sell-abc 1.jpg"),
+			"cd87cad2cb35199d519cc2f69a3a5b7d743c05bd9dcc64313a047020ee262bd6")
+
+	def test_the_link_is_asked_for_as_received_with_the_signature_of_its_decoded_filename(self):
+		url = f"{STORE}/wp-admin/admin-ajax.php?action=ffl_core_sell_photo&filename=sell-abc%201.jpg&sig=h"
+		deal = _sell(photos=[url])["name"]
+		with patch("requests.get", return_value=_response()) as get, patch.object(S.time, "time", return_value=1700000000.7):
+			S.copy_photos(deal)
+		self.assertEqual(get.call_args.args[0], url)
+		self.assertEqual(get.call_args.kwargs["headers"], {"x-osa-timestamp": "1700000000",
+			"x-osa-signature": "cd87cad2cb35199d519cc2f69a3a5b7d743c05bd9dcc64313a047020ee262bd6"})
+		self.assertEqual(get.call_args.kwargs["allow_redirects"], False)
+
+	def test_a_blank_secret_fetches_nothing_and_logs_once(self):
+		deal = _sell(photos=[f"{STORE}/1.jpg"])["name"]
+		_secret("")
+		logs = frappe.db.count("Error Log")
+		with patch("requests.get") as get:
+			S.copy_photos(deal)
+			S.copy_photos(deal)
+		get.assert_not_called()
+		self.assertEqual(frappe.db.count("Error Log"), logs + 1)
+		with patch.object(frappe, "enqueue"):
+			self.assertIn(deal, S.retry_photos(), "still waiting: tried again daily")
+
+	def test_403_until_the_website_checks_signatures_then_copied_without_a_step(self):
+		deal = _sell(photos=[f"{STORE}/1.jpg"])["name"]
+		logs = frappe.db.count("Error Log")
+		for _day in range(3):
+			with patch("requests.get", return_value=_response(status=403, ctype="text/html")):
+				self.assertEqual(S.copy_photos(deal), [])
+		self.assertEqual(frappe.db.count("Error Log"), logs + 1, "one log, not one a day")
+		with patch.object(frappe, "enqueue") as enqueue:
+			self.assertIn(deal, S.retry_photos())
+		self.assertEqual(enqueue.call_args.kwargs["deal"], deal)
+		with patch("requests.get", return_value=_response()):
+			(made,) = S.copy_photos(deal)
+		self.assertTrue(made.startswith("/private/files/"))
+		with patch.object(frappe, "enqueue"):
+			self.assertNotIn(deal, S.retry_photos(), "nothing left to copy")
+
+	def test_404_is_final(self):
+		deal = _sell(photos=[f"{STORE}/1.jpg"])["name"]
+		logs = frappe.db.count("Error Log")
+		with patch("requests.get", return_value=_response(status=404, ctype="text/html")):
+			S.copy_photos(deal)
+		self.assertEqual(frappe.db.count("Error Log"), logs, "a removed photo is no failure to report")
+		with patch("requests.get") as get:
+			S.copy_photos(deal)
+		get.assert_not_called()
+		with patch.object(frappe, "enqueue"):
+			self.assertNotIn(deal, S.retry_photos())
+		self.assertIn("Photo 1", S.card(frappe.get_doc(DEAL, deal))["html"], "the link stays")
 
 
 class OfferAndReceipt(SellCase):
@@ -257,7 +338,7 @@ class OfferAndReceipt(SellCase):
 		got = S.intake(deal)
 		self.assertEqual(got, {"deal": deal.name, "source_name": deal.erpnext_customer, "manufacturer": "Glock",
 			"model_name": "19 Gen 5", "caliber": "9mm", "firearm_type": "Receiver", "serial_no": "SR-T-1",
-			"condition_grade": "", "acquisition_cost": 300})
+			"acquisition_cost": 300}, "no condition: staff grade the gun in hand, never from the seller's words")
 		self.assertEqual(counts(), before)
 		deal.db_set("erpnext_customer", None)
 		with self.assertRaisesRegex(frappe.ValidationError, "customer"):

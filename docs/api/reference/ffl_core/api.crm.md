@@ -324,7 +324,7 @@ nothing: staff check the gun and submit the dialog, and that books it.
 |---|---|---|---|---|
 | `deal` | string | yes | — | The CRM Deal's name, an open sell request with a customer and no gun received yet. |
 
-**Returns:** dict: {"deal", "source_name": the seller (the deal's customer), "manufacturer", "model_name", "caliber", "firearm_type", "serial_no", "condition_grade", "acquisition_cost": the offer or None}.
+**Returns:** dict: {"deal", "source_name": the seller (the deal's customer), "manufacturer", "model_name", "caliber", "firearm_type", "serial_no", "acquisition_cost": the offer or None}. No condition: staff grade the gun after inspecting it.
 
 <sub>`apps/ffl_core/ffl_core/api/crm.py:215`</sub>
 

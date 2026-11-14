@@ -6,10 +6,17 @@ fields go in the deal's own fields (:data:`FIELDS`, on the deal so the Sell requ
 the form sends beyond them stays in the request's note. The person is the deal's Contact: their Customer's
 when they are one, else a Contact made for them (``web_orders._contact_of``). The deal is shared with the team.
 
-Photos are links to the store's own website. After the request commits a job copies each into the POS as a
-private file on the deal (:func:`copy_photos`): only an https link on the website's own host (WooCommerce
-Settings › Store URL), no redirects, an image type, at most :data:`MAX_BYTES` each. A photo that cannot be
-copied keeps its link; the job writes one Error Log for the deal.
+The deal's title (``lead_name``, CRM's title field) is "Sell: <Manufacturer> <Model> · <person>"; its first and
+last name stay the person's.
+
+Photos are links to the store's own website, served to a request the POS signs (:func:`_signature`, the
+shop's outbound webhook secret). After the request commits a job copies each into the POS as a private file
+on the deal (:func:`copy_photos`): only an https link on the website's own host (WooCommerce Settings › Store
+URL), no redirects, an image type, at most :data:`MAX_BYTES` each. A photo that cannot be copied keeps its
+link. The website removed it (404): never asked for again. Any other failure (a website not checking the
+POS's signature yet answers 403, a blank secret, the site down) is tried again by :func:`retry_photos` once a
+day while the website keeps photos (:data:`RETRY_DAYS`), and only the deal's first failure writes an Error
+Log.
 
 Buying the gun, from the Deal page (``crm.setup.DEAL_SCRIPT``):
 
@@ -29,11 +36,12 @@ Hold gun refuse it (:func:`refuse_selling`).
 from __future__ import annotations
 
 import json
-from urllib.parse import quote, urlsplit
+import time
+from urllib.parse import parse_qs, quote, urlsplit
 
 import frappe
 from frappe import _
-from frappe.utils import escape_html, flt, fmt_money, formatdate, nowdate
+from frappe.utils import add_days, escape_html, flt, fmt_money, formatdate, nowdate
 
 from ffl_core.crm import TITLE, installed
 from ffl_core.crm.deals import DEAL, is_closed, open_deal_for
@@ -62,15 +70,18 @@ FIELDS = {
 _LONG = ("Accessories", "Address")
 # What the form sends for a field the seller left blank.
 _BLANK = {"(not provided)", "(none listed)"}
-# The Trade-in dialog's words for the form's (its Firearm Type and Condition Grade options).
+# The Trade-in dialog's words for the form's types (its Firearm Type options). The seller's condition is never
+# mapped to the store's grades (owner, 2026-08-29): staff grade the gun in hand.
 _TYPES = {"pistol": "Pistol", "revolver": "Revolver", "rifle": "Rifle", "shotgun": "Shotgun",
 	"receiver / frame": "Receiver"}
-_CONDITIONS = {"excellent": "Excellent", "very good": "Very Good", "good": "Good", "fair": "Fair"}
 
 PHOTO_JOB = "ffl_core.crm.sell_requests.copy_photos"
 LINK_JOB = "ffl_core.crm.sell_requests.link_intake"
 WIN_JOB = "ffl_core.crm.sell_requests.win_if_booked"
 MAX_BYTES = 10 * 1024 * 1024
+# What the website signs a photo request for (ffl-core 0.22.0), and how long it keeps a photo by default.
+SIGNED_ACTION = "ffl_core_sell_photo"
+RETRY_DAYS = 90
 IMAGE_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif",
 	"image/heic": ".heic"}
 
@@ -135,13 +146,23 @@ def known_fields(details: dict) -> tuple[dict, dict]:
 	return values, rest
 
 
+def sell_title(values: dict, person: str) -> str:
+	"""The deal's title: "Sell: <Manufacturer> <Model> · <person>", a missing part left out."""
+	gun = " ".join(v for v in (values.get(FIELDS["Manufacturer"]), values.get(FIELDS["Model"])) if v)
+	return " · ".join(p for p in (f"Sell: {gun}" if gun else "Sell", person) if p)[:140]
+
+
 def new_deal(email: str, full_name: str, phone: str, values: dict, photos: list[str]) -> str:
 	"""A new sell-request deal for *email* with the form's *values* (:func:`known_fields`) and *photos*, shared
 	with the team. Returns its name."""
 	from ffl_core.crm.mail import share_with_team
 	from ffl_core.crm.web_orders import _contact_of
 
-	deal = open_deal_for(_contact_of(email, full_name, phone), new=True)
+	from ffl_core.crm.deals import customer_of, person_name
+
+	contact = _contact_of(email, full_name, phone)
+	person = person_name(contact, customer_of(contact), email)["lead_name"]
+	deal = open_deal_for(contact, title=sell_title(values, person), new=True)
 	values = {SELL: 1, **values, PHOTOS: json.dumps([{"url": u} for u in photos]) if photos else None}
 	if frappe.db.exists("CRM Lead Source", "Website"):
 		values["source"] = "Website"
@@ -168,9 +189,30 @@ def photos_of(deal) -> list[dict]:
 	return [p for p in value if isinstance(p, dict) and p.get("url")] if isinstance(value, list) else []
 
 
-def _fetch(url: str, host: str) -> tuple[bytes, str]:
-	"""The image at *url* and its file extension. Refuses (ValueError) a link that is not https on *host*,
-	a redirect, any answer but 200, a type that is not an image, and more than :data:`MAX_BYTES`."""
+class PhotoGone(Exception):
+	"""The website removed the photo (its retention cleanup): never asked for again."""
+
+
+def _signature(secret: str, timestamp: str, filename: str) -> str:
+	"""The website's check on a sell photo request (ffl-core 0.22.0): hex HMAC-SHA256 of
+	"<timestamp>.GET\\nffl_core_sell_photo\\n<filename>", by the signer the shop's other events use."""
+	from ffl_woo_sync.woocommerce.status_events import sign
+
+	return sign(secret, timestamp, f"GET\n{SIGNED_ACTION}\n{filename}".encode())
+
+
+def _secret() -> str:
+	try:
+		return frappe.get_single("WooCommerce Settings").get_password("outbound_webhook_secret",
+			raise_exception=False) or ""
+	except Exception:  # noqa: BLE001 — settings not migrated: no secret
+		return ""
+
+
+def _fetch(url: str, host: str, secret: str) -> tuple[bytes, str]:
+	"""The image at *url* and its file extension, asked for with the POS's signature. Refuses (ValueError) a
+	link that is not https on *host*, a redirect, any answer but 200, a type that is not an image, and more
+	than :data:`MAX_BYTES`; raises :class:`PhotoGone` on 404."""
 	import requests
 
 	from ffl_core.mailing_address import store_host
@@ -179,7 +221,12 @@ def _fetch(url: str, host: str) -> tuple[bytes, str]:
 	if parts.scheme != "https" or not host or store_host(url) != host or parts.port not in (None, 443) \
 			or parts.username or parts.password:
 		raise ValueError("not a link on the store's website")
-	with requests.get(url, timeout=15, stream=True, allow_redirects=False) as response:
+	filename = (parse_qs(parts.query).get("filename") or [""])[0]   # parse_qs decodes it
+	timestamp = str(int(time.time()))
+	headers = {"x-osa-timestamp": timestamp, "x-osa-signature": _signature(secret, timestamp, filename)}
+	with requests.get(url, headers=headers, timeout=15, stream=True, allow_redirects=False) as response:
+		if response.status_code == 404:
+			raise PhotoGone("HTTP 404")
 		if response.status_code != 200:
 			raise ValueError(f"HTTP {response.status_code}")
 		kind = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
@@ -193,30 +240,60 @@ def _fetch(url: str, host: str) -> tuple[bytes, str]:
 	return content, IMAGE_TYPES[kind]
 
 
+def _waiting(photo: dict) -> bool:
+	return not (photo.get("file") or photo.get("gone"))
+
+
 def copy_photos(deal: str) -> list[str]:
-	"""Copy the deal's photos into the POS as private files on it (the module says which links are fetched).
-	A photo copied before is skipped, so it is safe to run again. Returns the file URLs it made."""
+	"""Copy the deal's photos into the POS as private files on it (the module says which links are fetched and
+	how the request is signed). A photo copied before, or removed by the website (404), is not asked for again;
+	any other failure keeps the link for :func:`retry_photos`. The first failure on a deal writes one Error Log,
+	later ones are quiet. Returns the file URLs it made."""
 	from ffl_core.crm.inquiries import MAX_PHOTOS
 	from ffl_core.mailing_address import shop_host
 
 	if not ready() or not frappe.db.exists(DEAL, deal):
 		return []
 	photos = photos_of(frappe.db.get_value(DEAL, deal, [PHOTOS], as_dict=True))
-	host, made, failed = shop_host(), [], []
+	waiting = [p for p in photos[:MAX_PHOTOS] if _waiting(p)]
+	if not waiting:
+		return []
+	host, secret, made, failed = shop_host(), _secret(), [], []
+	logged = any(p.get("failed") for p in photos)
 	for i, photo in enumerate(photos[:MAX_PHOTOS], 1):
-		if photo.get("file"):
+		if not _waiting(photo):
 			continue
 		try:
-			content, ext = _fetch(photo["url"], host)
+			if not secret:
+				raise ValueError("no outbound webhook secret in WooCommerce Settings")
+			content, ext = _fetch(photo["url"], host, secret)
 			photo["file"] = frappe.get_doc({"doctype": "File", "file_name": f"sell-request-{i}{ext}", "is_private": 1,
 				"attached_to_doctype": DEAL, "attached_to_name": deal, "content": content}).insert(ignore_permissions=True).file_url
+			photo.pop("failed", None)
 			made.append(photo["file"])
-		except Exception as e:  # noqa: BLE001 — the link stays; one log for the deal below
+		except PhotoGone:
+			photo["gone"] = 1
+		except Exception as e:  # noqa: BLE001 — the link stays; one log per deal below
+			photo["failed"] = 1
 			failed.append(f"{photo['url']}: {e}")
 	frappe.db.set_value(DEAL, deal, PHOTOS, json.dumps(photos), update_modified=False)
-	if failed:
-		frappe.log_error(title=f"[{TITLE}] Sell request photos not copied: {deal}", message="\n".join(failed))
+	if failed and not logged:
+		frappe.log_error(title=f"[{TITLE}] Sell request photos not copied yet: {deal}",
+			message="Tried again once a day while the website keeps them.\n" + "\n".join(failed))
 	return made
+
+
+def retry_photos() -> list[str]:
+	"""Daily: queue :func:`copy_photos` for each sell request made in the last :data:`RETRY_DAYS` days with a
+	photo still waiting (the website not answering signed requests yet, or down). Returns the deals queued."""
+	if not ready():
+		return []
+	# lazy: reads every recent sell request's photo list (a store gets a few a week); upgrade path: a flag column.
+	deals = [r.name for r in frappe.get_all(DEAL, filters={SELL: 1, "creation": [">=", add_days(nowdate(), -RETRY_DAYS)],
+		PHOTOS: ["is", "set"]}, fields=["name", PHOTOS]) if any(_waiting(p) for p in photos_of(r))]
+	for deal in deals:
+		queue_photos(deal)
+	return deals
 
 
 # ---------------------------------------------------------------- offer and receipt
@@ -262,7 +339,8 @@ def _caliber(value: str) -> str:
 def intake(deal) -> dict:
 	"""What the register's Trade-in dialog is filled with for this deal: {"deal", "source_name" (the seller,
 	the deal's customer), "manufacturer", "model_name", "caliber", "firearm_type", "serial_no",
-	"condition_grade", "acquisition_cost" (the offer)}. Reads only: the dialog's submit books the gun."""
+	"acquisition_cost" (the offer)}. No condition: staff grade the gun in hand. Reads only: the dialog's
+	submit books the gun."""
 	from ffl_core.crm.customer import linked_customer
 
 	_open_sell_deal(deal)
@@ -280,7 +358,6 @@ def intake(deal) -> dict:
 		"caliber": _caliber(value("Caliber")),
 		"firearm_type": _TYPES.get(value("Type").strip().lower(), ""),
 		"serial_no": value("Serial number"),
-		"condition_grade": _CONDITIONS.get(value("Condition").strip().lower(), ""),
 		"acquisition_cost": flt(deal.get(OFFER)) or None,
 	}
 

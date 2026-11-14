@@ -1174,6 +1174,8 @@ scheduler_events = {
 		"ffl_core.storage.sweep_departed",
 	],
 	"daily": [
+		# A website sell request's photos not copied yet are tried again (crm/sell_requests.py).
+		"ffl_core.crm.sell_requests.retry_photos",
 		# A membership that does not renew turns Cancelled / Expired after its period (membership.py).
 		"ffl_core.membership.close_ended_memberships",
 		# Self-heal Item.actual_qty (the list-view "Quantity" column) from

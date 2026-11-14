@@ -1374,9 +1374,10 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		if (posCustomer) prefillSeller();  // pre-filled Customer fires no change event
 		if (prefill) {
 			const gun = {};
-			['manufacturer', 'model_name', 'caliber', 'firearm_type', 'serial_no', 'condition_grade', 'acquisition_cost']
+			['manufacturer', 'model_name', 'caliber', 'firearm_type', 'serial_no', 'acquisition_cost']
 				.forEach((f) => { if (prefill[f]) gun[f] = prefill[f]; });
-			dialog.set_values({ ...gun, apply_credit: 0 });
+			// The condition starts empty: staff grade the gun in hand, never from the seller's own words.
+			dialog.set_values({ ...gun, condition_grade: '', apply_credit: 0 });
 		}
 		// Wire the Model SKU picker (shared with Receive Goods): local + RSR
 		// search + promote/create. onSelect stores the chosen/created item_code.

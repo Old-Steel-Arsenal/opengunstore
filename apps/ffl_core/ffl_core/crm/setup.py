@@ -653,7 +653,7 @@ def ensure_sell_view() -> None:
 	if frappe.db.get_global(SELL_VIEW_FLAG):
 		return
 	field = sell_requests.FIELDS
-	columns = [{"label": "Name", "type": "Data", "key": "lead_name", "width": "10rem"},
+	columns = [dict(NAME_COLUMN, width="16rem"),
 		*({"label": label, "type": "Data", "key": field[label], "width": "9rem"}
 			for label in ("Manufacturer", "Model", "Caliber", "Condition")),
 		{"label": "Offer", "type": "Currency", "key": sell_requests.OFFER, "align": "right", "width": "8rem"},
