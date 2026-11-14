@@ -42,6 +42,21 @@ Every 10 minutes, each **Mailbox** address's folder is read without changing any
 | The AI gives no answer | The mail is tried again on the next run |
 | It cannot be read or stored | It is passed over, and your administrator can find it in the Error Log |
 
+## Mail sent outside CRM
+
+Every 10 minutes the POS reads the Sent folder of each mailbox in [Lead Mail Settings](settings.md#lead-mail-settings), without changing anything in it. Mail sent from Gmail or another mail program then shows on the lead or deal as sent mail. The first time, it reads the last 30 days.
+
+| What the sent mail is | What happens |
+|---|---|
+| A reply to mail on a lead or deal | It goes on that lead or deal |
+| To a customer or a known lead | It goes on their deal or lead |
+| From a team mailbox to someone new | It becomes a lead, shared with the team. A domain in **Category rules** makes it other mail |
+| From a staff mailbox to someone new | It stays out of the POS |
+| To a blocked domain, one of our own domains or an automated address | It stays out of the POS |
+| Already in CRM, such as mail sent from CRM | Nothing more is added |
+
+A staff member's mail makes them the owner of a lead or deal that has none, as a reply from CRM does. A mail server that marks no Sent folder is noted once in the Error Log, and its sent mail is not read.
+
 ## My follow-ups
 
-CRM's Leads and Deals pages each have a **My follow-ups** view: open records that are yours or have no owner yet, where the last mail came from the customer, oldest first. Reply from there and the record leaves the view.
+CRM's Leads and Deals pages each have a **My follow-ups** view: open records that are yours or have no owner yet, where the last mail came from the customer, oldest first. Reply from there and the record leaves the view. A reply sent from your own mailbox does the same within 10 minutes.

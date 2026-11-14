@@ -50,6 +50,10 @@ CATEGORY_RULES = {"gunbroker.com": "GunBroker", "rsrgroup.com": "Distributor"}
 LEAD_SOURCES = ("Website", "GunBroker")
 MAIL_SETUP_FLAG = "ffl_crm_other_mail_seeded"
 VIEWS_FLAG = "ffl_crm_views_seeded"
+FOLLOW_UPS_FLAG = "ffl_crm_follow_ups_seeded"
+# CRM's switches that keep a lead's / deal's communication status: answered mail Replied, new mail Open.
+# My follow-ups (ensure_crm_views) lists the Open ones, so it needs both.
+FOLLOW_UP_SWITCHES = ("auto_mark_replied_on_response", "auto_reopen_on_new_communication")
 FOLLOW_UPS = "My follow-ups"
 BACKFILL_JOB = "ffl_crm_product_backfill"
 # CRM's own per-page customization (a CRM Form Script record): the Email button on a Contact page.
@@ -343,6 +347,7 @@ def ensure(backfill: bool = True) -> dict:
 		_as_administrator(ensure_other_mail)
 		_as_administrator(ensure_lead_sources)
 		_as_administrator(ensure_crm_views)
+		_as_administrator(ensure_follow_up_status)
 		_as_administrator(take_over_lead_flags)
 		_as_administrator(ensure_contact_script)
 		_as_administrator(apply_pos_link)
@@ -505,6 +510,22 @@ def ensure_crm_views() -> None:
 	_ensure_view(DEAL, "Deals", FOLLOW_UPS, {"deal_owner": ["in", ["@me", ""]], "communication_status": "Open",
 		"status": ["not in", closed(STATUS)]}, order_by="modified asc")
 	frappe.db.set_global(VIEWS_FLAG, "1")
+
+
+def ensure_follow_up_status() -> list[str]:
+	"""Once per site: CRM's two communication-status switches on (:data:`FOLLOW_UP_SWITCHES`), so a
+	sent mail marks a record Replied and a new mail reopens it. Remembered with a site global: a manager
+	who turns one off later keeps it off. A switch the installed CRM does not have is skipped. Returns
+	the switches it turned on."""
+	if frappe.db.get_global(FOLLOW_UPS_FLAG):
+		return []
+	meta = frappe.get_meta(FCRM_SETTINGS)
+	changed = [f for f in FOLLOW_UP_SWITCHES if meta.has_field(f) and not frappe.db.get_single_value(FCRM_SETTINGS, f)]
+	if changed:
+		frappe.db.set_single_value(FCRM_SETTINGS, {f: 1 for f in changed})
+		frappe.clear_document_cache(FCRM_SETTINGS, FCRM_SETTINGS)
+	frappe.db.set_global(FOLLOW_UPS_FLAG, "1")
+	return changed
 
 
 def _ensure_view(doctype: str, route: str, label: str, filters: dict, order_by: str = "modified desc",

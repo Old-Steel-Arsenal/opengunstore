@@ -1154,6 +1154,8 @@ scheduler_events = {
 		# The AI's look at each team mailbox's spam folder (crm/mail.py).
 		"*/10 * * * *": [
 			"ffl_core.crm.mail.check_spam_folders",
+			# Mail staff send from their own mail client, filed on its lead or deal (crm/mail.py).
+			"ffl_core.crm.mail.check_sent_folders",
 		],
 		# Guns held for deals: write the ones that ran out or whose gun left, and tell the website
 		# (crm/holds.py). The counter already reads expiry as it happens.
