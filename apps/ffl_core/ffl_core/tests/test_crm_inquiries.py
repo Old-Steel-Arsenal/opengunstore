@@ -29,7 +29,7 @@ def _file(**over) -> dict:
 
 def _notes(doctype: str, name: str) -> list[dict]:
 	return frappe.get_all("FCRM Note", filters={"reference_doctype": doctype, "reference_docname": name},
-		fields=["title", "content"], order_by="creation asc")
+		fields=["title", "content", "ffl_event_id"], order_by="creation asc")
 
 
 def _rows(doctype: str, name: str) -> list[tuple]:
@@ -39,7 +39,7 @@ def _rows(doctype: str, name: str) -> list[tuple]:
 class TestInquiryFiling(CRMTestCase):
 	def test_each_kind_from_a_new_address_makes_a_shared_lead_with_the_gun(self):
 		serial = _gun("_T-CRM-INQ-1", 899)
-		for kind, label in (("map_price", "price request"), ("sell_gun", "sell-your-gun request"), ("ask", "question")):
+		for kind, label in (("map_price", "price request"), ("ask", "question")):   # sell_gun: test_crm_sell_requests
 			out = _file(kind=kind, sku=f"{PER_GUN}::{serial}")
 			self.assertEqual((out["filed"], out["doctype"], out["created"]), (True, "CRM Lead", True))
 			lead = frappe.get_doc("CRM Lead", out["name"])
@@ -47,7 +47,8 @@ class TestInquiryFiling(CRMTestCase):
 				("Website", "Pat", "Buyer", "New", None))
 			self.assertEqual(lead.get(mail.CATEGORY_FIELD), None)
 			(note,) = _notes("CRM Lead", lead.name)
-			self.assertTrue(note.title.startswith(f"Website {label} (evt-"), note.title)
+			self.assertEqual(note.title, f"Website {label}", "no event id in what staff read")
+			self.assertTrue(note.ffl_event_id.startswith("evt-"), note.ffl_event_id)
 			self.assertIn("Is it still for sale?", note.content)
 			self.assertIn("555-0100", note.content)
 			self.assertEqual(_rows("CRM Lead", lead.name), [(product_of(PER_GUN), 1, serial)])
@@ -107,9 +108,23 @@ class TestInquiryFiling(CRMTestCase):
 		converted.db_set("converted", 1)
 		self.assertNotEqual(_file(email=email)["name"], out["name"])
 
+	def test_a_note_filed_before_the_event_field_is_still_a_repeat_after_the_patch(self):
+		from ffl_core.patches import crm_sell_request_deals
+
+		email = _email()
+		lead = mail._new_lead(email, "Old Note")
+		frappe.get_doc({"doctype": "FCRM Note", "title": "Website question (evt-old-1)", "content": "<p>Hi</p>",
+			"reference_doctype": "CRM Lead", "reference_docname": lead}).insert(ignore_permissions=True)
+		crm_sell_request_deals.execute()
+		(note,) = _notes("CRM Lead", lead)
+		self.assertEqual((note.title, note.ffl_event_id), ("Website question", "evt-old-1"))
+		notes = frappe.db.count("FCRM Note")
+		again = inquiries.file_inquiry(kind="ask", event_id="evt-old-1", email=email)
+		self.assertEqual((again["name"], again["created"], frappe.db.count("FCRM Note")), (lead, False, notes))
+
 	def test_the_same_event_files_once(self):
 		serial = _gun("_T-CRM-INQ-4", 899)
-		args = {"kind": "sell_gun", "event_id": "evt-twice", "email": _email(), "sku": f"{PER_GUN}::{serial}"}
+		args = {"kind": "map_price", "event_id": "evt-twice", "email": _email(), "sku": f"{PER_GUN}::{serial}"}
 		first = inquiries.file_inquiry(**args)
 		leads, notes = frappe.db.count("CRM Lead"), frappe.db.count("FCRM Note")
 		again = inquiries.file_inquiry(**args)
@@ -131,7 +146,7 @@ class TestInquiryFiling(CRMTestCase):
 		self.assertEqual(_rows(out["doctype"], out["name"]), [(product_of(PER_GUN), 1, None)])
 
 	def test_text_is_stored_escaped_capped_and_only_https_photos_are_linked(self):
-		out = _file(kind="sell_gun", full_name="<b>Eve</b> O'Neil", message="<script>alert(1)</script>" + "x" * 9000,
+		out = _file(kind="ask", full_name="<b>Eve</b> O'Neil", message="<script>alert(1)</script>" + "x" * 9000,
 			url="javascript:alert(1)", sku="<img>",
 			details={"Make": "Colt <i>", "Condition": "Good", "<k>": "v"},
 			photos=["https://cdn.example.org/a.jpg", "http://cdn.example.org/b.jpg", "javascript:x"] + ["https://x.example/%d" % i for i in range(30)])

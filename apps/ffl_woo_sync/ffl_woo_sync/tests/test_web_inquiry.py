@@ -32,12 +32,14 @@ class TestWebInquiryEndpoint(CRMTestCase):
 	def test_the_website_user_files_an_inquiry_from_json_arguments(self):
 		user(SITE_USER, "Stock Manager")
 		out = self._call(SITE_USER)
-		self.assertEqual((out["filed"], out["doctype"], out["created"]), (True, "CRM Lead", True))
+		# A sell-your-gun request is a deal of its own (ffl_core.crm.sell_requests), made with no CRM rights.
+		self.assertEqual((out["filed"], out["doctype"], out["created"]), (True, "CRM Deal", True))
 		note = frappe.db.get_value("FCRM Note", {"reference_docname": out["name"]}, "content")
-		self.assertIn("<b>Make</b>: Colt", note)
-		self.assertIn("https://cdn.example.org/a.jpg", note)
+		self.assertIn("<b>Make</b>: Colt", note, "a label the deal has no field for stays in the note")
+		self.assertEqual(frappe.db.get_value("CRM Deal", out["name"], "ffl_sell_model"), "Python")
+		self.assertIn("https://cdn.example.org/a.jpg", frappe.db.get_value("CRM Deal", out["name"], "ffl_sell_photos"))
 		self.assertEqual(self._call(SITE_USER)["created"], False, "a repeat of the event files nothing")
-		self.assertEqual(frappe.db.count("CRM Lead", {"email": "endpoint-buyer@example.org"}), 1)
+		self.assertEqual(frappe.db.count("CRM Deal", {"email": "endpoint-buyer@example.org"}), 1)
 
 	def test_anyone_without_a_stock_role_is_refused(self):
 		user(CLERK, "Sales User")

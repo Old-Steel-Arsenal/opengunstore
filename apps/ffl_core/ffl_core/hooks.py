@@ -329,6 +329,9 @@ doc_events = {
 		"on_trash": "ffl_core.crm.holds.on_deal_trash",
 		"after_rename": "ffl_core.crm.holds.on_deal_rename",
 	},
+	# A trade-in taken as credit for a CRM sell request is booked at checkout: the deal is won then
+	# (ffl_core.crm.sell_requests).
+	"FFL Acquisition": {"on_submit": ["ffl_core.crm.sell_requests.acquisition_submitted"]},
 	# A new staff account lands on the POS, not on the /apps picker CRM's own app brings (ffl_core.crm).
 	"User": {"validate": "ffl_core.crm.staff_default_app"},
 	"Quotation": {
@@ -1171,6 +1174,8 @@ scheduler_events = {
 		"ffl_core.storage.sweep_departed",
 	],
 	"daily": [
+		# A website sell request's photos not copied yet are tried again (crm/sell_requests.py).
+		"ffl_core.crm.sell_requests.retry_photos",
 		# A membership that does not renew turns Cancelled / Expired after its period (membership.py).
 		"ffl_core.membership.close_ended_memberships",
 		# Self-heal Item.actual_qty (the list-view "Quantity" column) from

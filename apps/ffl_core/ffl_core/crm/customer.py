@@ -355,8 +355,10 @@ def customer_summary(deal) -> dict:
 	"""
 	customer = linked_customer(deal)
 	if not customer:
+		from ffl_core.crm.sell_requests import is_sell_request
+
 		matches = find_matches(deal)
-		return {"customer": None, "matches": matches, "html": _no_customer_html(matches)}
+		return {"customer": None, "matches": matches, "html": _no_customer_html(matches, is_sell_request(deal))}
 	summary = {
 		"customer": customer,
 		"customer_name": frappe.db.get_value("Customer", customer, "customer_name"),
@@ -415,10 +417,12 @@ def _match_html(match: dict) -> str:
 		f'{_alerts_html(match["alerts"])}</div>')
 
 
-def _no_customer_html(matches: list[dict]) -> str:
+def _no_customer_html(matches: list[dict], sell: bool = False) -> str:
 	if not matches:
-		return f'<div style="{_MUTED}">{escape_html(_("No POS customer yet. Open order makes one."))}</div>'
-	head = escape_html(_("Not linked yet. Open order asks which one this is."))
+		text = _("No POS customer yet. Receive gun makes one.") if sell else _("No POS customer yet. Open order makes one.")
+		return f'<div style="{_MUTED}">{escape_html(text)}</div>'
+	head = escape_html(_("Not linked yet. Receive gun asks which one this is.") if sell
+		else _("Not linked yet. Open order asks which one this is."))
 	return f'<div style="{_MUTED};{_ROW}">{head}</div>' + "".join(_match_html(m) for m in matches)
 
 
@@ -535,7 +539,9 @@ def open_order(deal) -> dict:
 	    {"draft", "route", "skipped": deal lines that are not POS items}.
 	"""
 	from ffl_core.api.manual_order import save_order_draft
+	from ffl_core.crm.sell_requests import refuse_selling
 
+	refuse_selling(deal)
 	customer = linked_customer(deal)
 	if not customer:
 		frappe.throw(_("Link this deal to a customer first."), title=_("No customer"))

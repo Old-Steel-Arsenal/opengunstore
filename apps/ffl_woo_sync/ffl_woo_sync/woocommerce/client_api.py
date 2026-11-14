@@ -495,8 +495,10 @@ def web_inquiry(kind: str, event_id: str, email: str, full_name: str = "", phone
 
 	The email decides where it goes, as for incoming mail: a customer's open deal (one is opened when
 	they have none), else their existing lead, else a new lead. The text goes on it as a note, and the
-	gun asked about as a product line. Nothing is emailed to the customer. A repeat of the same
-	``event_id`` files nothing more. Does nothing when CRM is not installed.
+	gun asked about as a product line. A sell-your-gun request always makes a deal of its own, its
+	known fields on the deal and its photos (links on the store's website) copied in later. Nothing is
+	emailed to the customer. A repeat of the same ``event_id`` files nothing more. Does nothing when
+	CRM is not installed.
 
 	Args:
 	    kind: ``map_price``, ``sell_gun`` or ``ask``; anything else is refused.

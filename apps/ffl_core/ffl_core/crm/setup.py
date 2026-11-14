@@ -31,8 +31,10 @@ from ffl_core.crm.customer import CARD_FIELD
 from ffl_core.crm.deal import SERIAL_FIELD
 from ffl_core.crm.deals import DEAL, STATUS
 from ffl_core.crm.gunbroker import MSGID_FIELD
+from ffl_core.crm.inquiries import EVENT_FIELD
 from ffl_core.crm.mail import AUTO_LEAD, CATEGORY, CATEGORY_FIELD, LEAD, OTHER_MAIL, SETTINGS
 from ffl_core.crm.orders import DEAL_FIELD
+from ffl_core.crm import sell_requests
 from ffl_core.crm.web_orders import ORDER as WEB_ORDER, WON_BY
 
 CRM_SETTINGS = "ERPNext CRM Settings"
@@ -50,6 +52,8 @@ CATEGORY_RULES = {"gunbroker.com": "GunBroker", "rsrgroup.com": "Distributor"}
 LEAD_SOURCES = ("Website", "GunBroker")
 MAIL_SETUP_FLAG = "ffl_crm_other_mail_seeded"
 VIEWS_FLAG = "ffl_crm_views_seeded"
+SELL_VIEW_FLAG = "ffl_crm_sell_view_seeded"
+SELL_VIEW = "Sell requests"
 FOLLOW_UPS_FLAG = "ffl_crm_follow_ups_seeded"
 # CRM's switches that keep a lead's / deal's communication status: answered mail Replied, new mail Open.
 # My follow-ups (ensure_crm_views) lists the Open ones, so it needs both.
@@ -85,9 +89,18 @@ DEAL_SCRIPT = "OpenGunstore: Deal to POS"
 _DEAL_SCRIPT_TEMPLATE = """class CRMDeal {
 	onLoad() {
 		if (this.doc.__newDocument) return
-		this.actions.push({ label: __("Open order"), onClick: () => this.fflOpenOrder() })
-		this.actions.push({ label: __("Add want"), onClick: () => this.fflAddWant() })
-%(hold_menu)s		this.fflLoadCard()
+		if (this.doc.%(sell)s) {
+			// A gun offered to the store (crm/sell_requests.py): buying it, not selling.
+			if (!this.doc.%(acquisition)s && !this.doc.%(receipt)s) {
+				this.actions.push({ label: __("Make offer"), onClick: () => this.fflMakeOffer() })
+				this.actions.push({ label: __("Seller accepted"), onClick: () => this.fflSellerAccepted() })
+				this.actions.push({ label: __("Receive gun"), onClick: () => this.fflReceiveGun() })
+			}
+		} else {
+			this.actions.push({ label: __("Open order"), onClick: () => this.fflOpenOrder() })
+			this.actions.push({ label: __("Add want"), onClick: () => this.fflAddWant() })
+%(hold_menu)s		}
+		this.fflLoadCard()
 	}
 	fflError(e) {
 		toast.error(e.messages?.[0] || e.message || __("Something went wrong."))
@@ -96,8 +109,38 @@ _DEAL_SCRIPT_TEMPLATE = """class CRMDeal {
 		call("ffl_core.api.crm.deal_customer_summary", { deal: this.doc.name })
 			.then((summary) => this.setFieldHtml("%(card)s", summary.html))
 			.catch((e) => this.fflError(e))
+		if (this.doc.%(sell)s) this.fflShowSell(call("ffl_core.api.crm.sell_request_card", { deal: this.doc.name }))
 	}
-	async fflWithCustomer(next) {
+	fflShowSell(request) {
+		return request.then((card) => { this.setFieldHtml("%(sell_card)s", card.html); return card })
+			.catch((e) => this.fflError(e))
+	}
+	fflMakeOffer() {
+		formDialog({
+			title: __("Make offer"),
+			fields: [{ fieldname: "amount", fieldtype: "Currency", label: __("Offer"), reqd: 1 }],
+			defaults: { amount: this.doc.%(offer)s || undefined },
+			submitLabel: __("Save offer"),
+			onSubmit: async (data) => {
+				try {
+					const card = await call("ffl_core.api.crm.make_sell_offer", { deal: this.doc.name, amount: data.amount })
+					this.setFieldHtml("%(sell_card)s", card.html)
+				} catch (e) {
+					throw new Error(e.messages?.[0] || e.message)
+				}
+			},
+		})
+	}
+	fflSellerAccepted() {
+		this.fflShowSell(call("ffl_core.api.crm.sell_offer_accepted", { deal: this.doc.name }))
+	}
+	fflReceiveGun() {
+		return this.fflWithCustomer(async () => {
+			await call("ffl_core.api.crm.sell_gun_intake", { deal: this.doc.name })
+			window.location.href = "/app/point-of-sale?ffl_crm_deal=" + encodeURIComponent(this.doc.name)
+		}, __("Who is the seller?"))
+	}
+	async fflWithCustomer(next, title) {
 		try {
 			const linked = await call("ffl_core.api.crm.ensure_deal_customer", { deal: this.doc.name })
 			if (linked.customer) return await next()
@@ -112,7 +155,7 @@ _DEAL_SCRIPT_TEMPLATE = """class CRMDeal {
 				}
 			}
 			createDialog({
-				title: __("Who is the buyer?"),
+				title: title || __("Who is the buyer?"),
 				html: linked.html,
 				actions: [
 					...linked.matches.map((m) => ({
@@ -252,19 +295,22 @@ _DEAL_SCRIPT_TEMPLATE = """class CRMDeal {
 	}
 }
 """
-_HOLD_MENU = """		this.actions.push({ group: __("More"), hideLabel: true, items: [{ label: __("Hold gun"), onClick: () => this.fflHoldGun() }] })
+_HOLD_MENU = """			this.actions.push({ group: __("More"), hideLabel: true, items: [{ label: __("Hold gun"), onClick: () => this.fflHoldGun() }] })
 """
 
 
 def deal_script_js(holds: bool) -> str:
 	"""The Deal page's script, with Hold gun in its "..." menu when *holds*."""
-	return _DEAL_SCRIPT_TEMPLATE % {"card": CARD_FIELD, "hold_menu": _HOLD_MENU if holds else ""}
+	return _DEAL_SCRIPT_TEMPLATE % {"card": CARD_FIELD, "hold_menu": _HOLD_MENU if holds else "",
+		"sell": sell_requests.SELL, "sell_card": sell_requests.CARD, "offer": sell_requests.OFFER,
+		"acquisition": sell_requests.ACQUISITION, "receipt": sell_requests.RECEIPT}
 
 
 DEAL_SCRIPT_JS = deal_script_js(False)
 # Where the card sits on the Deal page: after Contacts, as CRM places its own Lost Reason section.
 SIDE_PANEL = f"{DEAL}-Side Panel"
 CARD_SECTION = "ffl_customer_section"
+SELL_SECTION = "ffl_sell_section"
 
 CUSTOM_FIELDS = {
 	"CRM Deal": [{
@@ -282,6 +328,17 @@ CUSTOM_FIELDS = {
 		"no_copy": 1,
 		"search_index": 1,
 		"insert_after": "lead",
+	}, *sell_requests.DEAL_FIELDS],
+	# The website event an inquiry note was filed for (crm.inquiries): a repeat of it files nothing.
+	"FCRM Note": [{
+		"fieldname": EVENT_FIELD,
+		"fieldtype": "Data",
+		"label": "Website event id",
+		"read_only": 1,
+		"hidden": 1,
+		"no_copy": 1,
+		"search_index": 1,
+		"insert_after": "reference_docname",
 	}],
 	# Data, as CRM's own Quotation.crm_deal: a deal deleted later must never stop a credit note.
 	# Not no_copy: a credit note and an amended invoice stay on the deal.
@@ -359,6 +416,7 @@ def ensure(backfill: bool = True) -> dict:
 		_as_administrator(ensure_crm_views)
 		_as_administrator(ensure_deal_name_columns)
 		_as_administrator(ensure_deal_name_filter)
+		_as_administrator(ensure_sell_view)
 		_as_administrator(ensure_follow_up_status)
 		_as_administrator(take_over_lead_flags)
 		_as_administrator(ensure_contact_script)
@@ -590,6 +648,22 @@ def ensure_deal_name_filter() -> bool:
 	return added
 
 
+def ensure_sell_view() -> None:
+	"""Once per site, as the other shared views: the Sell requests list (crm.sell_requests)."""
+	if frappe.db.get_global(SELL_VIEW_FLAG):
+		return
+	field = sell_requests.FIELDS
+	columns = [dict(NAME_COLUMN, width="16rem"),
+		*({"label": label, "type": "Data", "key": field[label], "width": "9rem"}
+			for label in ("Manufacturer", "Model", "Caliber", "Condition")),
+		{"label": "Offer", "type": "Currency", "key": sell_requests.OFFER, "align": "right", "width": "8rem"},
+		{"label": "Status", "type": "Link", "key": "status", "options": STATUS, "width": "9rem"},
+		{"label": "Last Modified", "type": "Datetime", "key": "modified", "width": "8rem"}]
+	_ensure_view(DEAL, "Deals", SELL_VIEW, {sell_requests.SELL: 1}, columns=columns,
+		rows=["name", "currency", *(c["key"] for c in columns)])
+	frappe.db.set_global(SELL_VIEW_FLAG, "1")
+
+
 def ensure_follow_up_status() -> list[str]:
 	"""Once per site: CRM's two communication-status switches on (:data:`FOLLOW_UP_SWITCHES`), so a
 	sent mail marks a record Replied and a new mail reopens it. Remembered with a site global: a manager
@@ -665,14 +739,18 @@ def _place_card_section(on: bool) -> None:
 		return
 	layout = frappe.get_doc("CRM Fields Layout", SIDE_PANEL)
 	sections = json.loads(layout.layout or "[]")
-	present = any(section.get("name") == CARD_SECTION for section in sections)
-	if on and not present:
-		at = 1 if sections and sections[0].get("name") == "contacts_section" else 0
-		sections.insert(at, {"name": CARD_SECTION, "label": "Customer", "opened": True,
-			"columns": [{"name": "ffl_customer_column", "fields": [CARD_FIELD]}]})
-	elif not on and present:
-		sections = [section for section in sections if section.get("name") != CARD_SECTION]
-	else:
+	before = json.dumps(sections)
+	# The Gun offered card (shown on a sell request only, by its field's depends_on) above the customer's.
+	for name, label, column, field in ((CARD_SECTION, "Customer", "ffl_customer_column", CARD_FIELD),
+			(SELL_SECTION, "Gun offered", "ffl_sell_column", sell_requests.CARD)):
+		present = any(section.get("name") == name for section in sections)
+		if on and not present:
+			at = 1 if sections and sections[0].get("name") == "contacts_section" else 0
+			sections.insert(at, {"name": name, "label": label, "opened": True,
+				"columns": [{"name": column, "fields": [field]}]})
+		elif not on and present:
+			sections = [section for section in sections if section.get("name") != name]
+	if json.dumps(sections) == before:
 		return
 	layout.layout = json.dumps(sections)
 	layout.save(ignore_permissions=True)

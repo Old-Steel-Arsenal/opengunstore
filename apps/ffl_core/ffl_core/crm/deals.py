@@ -68,11 +68,11 @@ def name_deal(doc, method=None) -> None:
 	doc.update(person_name(contact, doc.get("erpnext_customer"), doc.get("email"), doc.get("organization")))
 
 
-def open_deal_for(contact: str, owner: str | None = None, title: str | None = None) -> str:
+def open_deal_for(contact: str, owner: str | None = None, title: str | None = None, new: bool = False) -> str:
 	"""The newest open deal *contact* is on, or a new one with them as its primary contact
 	(owned by *owner* when that is an enabled user, linked to their Customer when they have one),
-	named after them, or titled *title* when given. Returns the deal's name."""
-	on = frappe.get_all("CRM Contacts", filters={"parenttype": DEAL, "contact": contact}, pluck="parent")
+	named after them, or titled *title* when given. *new*: always a new one. Returns the deal's name."""
+	on = [] if new else frappe.get_all("CRM Contacts", filters={"parenttype": DEAL, "contact": contact}, pluck="parent")
 	if on:
 		found = frappe.get_all(DEAL, filters={"name": ["in", on], "status": ["not in", _statuses(closed=True) or [""]]},
 			pluck="name", order_by="modified desc", limit=1)
