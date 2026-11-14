@@ -1,9 +1,22 @@
 """A customer's web orders on their open CRM deal: a note when an order is placed, shipped or picked up,
 cancelled, or refunded, so whoever talks to them sees it. Behind Lead Mail Settings' deal to POS switch.
 
-Only a note: the deal's value and status follow POS invoices alone (``crm.orders``). A customer with no
-open deal gets no note and no deal. Woo redelivers webhooks, and an order passes some of these points
-more than once, so a note's title is its key. Never fails the order: a failure is rolled back and logged.
+A customer with no open deal gets no note and no deal. Woo redelivers webhooks, and an order passes some
+of these points more than once, so a note's title is its key. Never fails the order: a failure is rolled
+back and logged. An order's notes go on the deal it won, once it won one.
+
+A paid web order wins the sale it closes (:func:`web_order_paid`, a job queued after the order commits),
+matched by the order's email, among the records made before the order was recorded:
+
+* the customer's open deal, unless an order was opened from it (an invoice, or a Create Order draft
+  from its Open order button) or it holds a gun: that deal is set Won;
+* with no such open deal, their newest lead not converted yet, not lost and not other mail: CRM's own
+  conversion makes it a deal (owner and mail thread kept), set Won.
+
+The won deal stores the order (``WON_BY``) and takes the order's total as its value (``crm.orders.deal_sales``
+keeps it there on later saves), and is linked to the order's POS customer. An order wins one record,
+once. Cancelled or fully refunded later, the deal it won goes back to the open status it had and its
+value is cleared (:func:`web_order_undone`). Nobody is told: no email, no task.
 
 A web order whose payment failed is the one exception (:func:`payment_failed`): the sale is still
 there to win back, so it gets a deal when the customer has none, a note with the order and the link
@@ -19,10 +32,10 @@ from __future__ import annotations
 import frappe
 from frappe import _
 from frappe.desk.form.assign_to import close_all_assignments
-from frappe.utils import escape_html, fmt_money, now_datetime
+from frappe.utils import escape_html, flt, fmt_money, now_datetime
 
 from ffl_core.crm import TITLE, installed, pos_link_on
-from ffl_core.crm.deals import DEAL, _statuses, new_task, open_deal_for
+from ffl_core.crm.deals import DEAL, STATUS, _statuses, is_closed, new_task, open_deal_for
 from ffl_core.crm.mail import _customer_contact, _split_name, contacts_with_email, share_with_team
 
 NOTE = "FCRM Note"
@@ -39,6 +52,20 @@ _FAILED_NOTE = "Web order {0} payment failed"
 _TASK_TITLE = "Payment failed on web order {0} — contact customer"
 _TASK_LIKE = "Payment failed on web order %"   # one open task per deal is told apart by its title
 _TASK_OPEN = ["Backlog", "Todo", "In Progress"]
+# CRM Deal: the paid web order that won it (crm.setup.CUSTOM_FIELDS).
+WON_BY = "ffl_web_order"
+LEAD = "CRM Lead"
+WIN_JOB = "ffl_core.crm.web_orders.web_order_paid"
+_UNDONE = ("cancelled", "refunded")   # WooCommerce statuses that take an order back
+_CENT = 0.005
+UNDO_JOB = "ffl_core.crm.web_orders.web_order_undone"
+
+
+def won_deal(order: str) -> str | None:
+	"""The deal this web order won, if any. None before the migrate adds the field."""
+	if not frappe.db.has_column(DEAL, WON_BY):
+		return None
+	return frappe.db.get_value(DEAL, {WON_BY: order}, "name")
 
 
 def _open_deal(email: str) -> str | None:
@@ -62,20 +89,215 @@ def note_web_order(order: str, event: str, key: str = "", amount: float | None =
 	try:
 		row = frappe.db.get_value(ORDER, order, ["customer_email", "woo_order_id", "order_total", "currency"], as_dict=True)
 		email = ((row and row.customer_email) or "").strip().lower()
-		deal = email and _open_deal(email)
-		if not deal:
-			return
-		title = _(_TITLES[event]).format(row.woo_order_id)
-		if key:
-			title = f"{title} ({key})"
-		if frappe.db.exists(NOTE, {"reference_doctype": DEAL, "reference_docname": deal, "title": title}):
-			return
-		total = fmt_money(row.order_total if amount is None else amount, currency=row.currency)
-		frappe.get_doc({"doctype": NOTE, "title": title, "content": f"<p>{frappe.utils.escape_html(total)}</p>",
-			"reference_doctype": DEAL, "reference_docname": deal}).insert(ignore_permissions=True)
+		deal = row and (won_deal(order) or (email and _open_deal(email)))
+		if deal:
+			_note(deal, row, event, key, amount)
 	except Exception:
 		frappe.db.rollback(save_point="ffl_crm_web_order")
 		frappe.log_error(title=f"[{TITLE}] Web order note not added: {order}", message=frappe.get_traceback())
+
+
+def _note(deal: str, row, event: str, key: str = "", amount: float | None = None) -> None:
+	"""The note for *event* of the order *row* on *deal*, once."""
+	title = _(_TITLES[event]).format(row.woo_order_id)
+	if key:
+		title = f"{title} ({key})"
+	if frappe.db.exists(NOTE, {"reference_doctype": DEAL, "reference_docname": deal, "title": title}):
+		return
+	total = fmt_money(row.order_total if amount is None else amount, currency=row.currency)
+	frappe.get_doc({"doctype": NOTE, "title": title, "content": f"<p>{frappe.utils.escape_html(total)}</p>",
+		"reference_doctype": DEAL, "reference_docname": deal}).insert(ignore_permissions=True)
+
+
+# A paid web order wins its sale -----------------------------------------------------------------------
+
+def after_commit(order: str, paid: bool) -> None:
+	"""Queue :func:`web_order_paid` (*paid*) or :func:`web_order_undone` for *order*, once the webhook's
+	transaction commits: nothing is written into it. Off with the deal to POS switch. Never raises."""
+	try:
+		if order and installed() and pos_link_on():
+			job = WIN_JOB if paid else UNDO_JOB
+			frappe.enqueue(job, queue="short", enqueue_after_commit=True, job_id=f"{job}:{order}",
+				deduplicate=True, order=order)
+	except Exception:  # noqa: BLE001 — the deal stays as it was; staff can still close it by hand
+		frappe.log_error(title=f"[{TITLE}] Web order not passed to the CRM: {order}", message=frappe.get_traceback())
+
+
+def web_order_paid(order: str, hand_closed: bool = False) -> str | None:
+	"""A paid web order wins the open deal or the lead it closes (see the module). *hand_closed* (the
+	upgrade patch only) also takes a lead staff set to a Won status by hand that was never converted.
+	Safe to run any number of times: an order wins once, a won deal and a converted lead are not open.
+	Never raises: a failure is rolled back and logged. Returns the deal won."""
+	from ffl_core.utils import guest_job_elevated
+
+	if not installed() or not pos_link_on() or not frappe.db.has_column(DEAL, WON_BY):
+		return None
+	with guest_job_elevated():   # queued from the Guest webhook
+		frappe.db.savepoint("ffl_crm_web_win")
+		try:
+			return _win_for(order, hand_closed)
+		except Exception:
+			frappe.db.rollback(save_point="ffl_crm_web_win")
+			frappe.log_error(title=f"[{TITLE}] Web order did not win its deal: {order}", message=frappe.get_traceback())
+	return None
+
+
+def standing_total(order: str | None) -> float | None:
+	"""The web order's total while it stands; None once it is cancelled or fully refunded, whatever its
+	fulfilment status: the cancel webhook writes Cancelled, and refunds that add up to the total while
+	WooCommerce still says completed count as a full refund too."""
+	row = order and frappe.db.get_value(ORDER, order, ["order_status", "woo_status", "order_total"], as_dict=True)
+	if not row or row.order_status == "Cancelled" or (row.woo_status or "").strip().lower() in _UNDONE:
+		return None
+	refunded = flt(frappe.db.sql("""SELECT SUM(refund_amount) FROM `tabWoo Online Order Refund`
+		WHERE parenttype = %s AND parent = %s""", (ORDER, order))[0][0])
+	if refunded and refunded >= flt(row.order_total) - _CENT:
+		return None
+	return flt(row.order_total)
+
+
+def _paid_order(order: str):
+	from ffl_woo_sync.woocommerce.fulfillment import _is_paid_woo_status
+
+	row = frappe.db.get_value(ORDER, order, ["name", "customer_email", "customer", "woo_order_id", "order_total",
+		"currency", "order_status", "woo_status", "creation"], as_dict=True)
+	if not row or not _is_paid_woo_status(row.woo_status) or standing_total(order) is None:
+		return None
+	return row
+
+
+def _win_for(order: str, hand_closed: bool) -> str | None:
+	row = _paid_order(order)
+	email = ((row and row.customer_email) or "").strip().lower()
+	if not email or won_deal(order):
+		return None
+	deal = _open_deal(email)
+	if deal and frappe.db.get_value(DEAL, deal, "creation") <= row.creation:
+		if _order_opened(deal) or _holds_gun(deal):
+			return None   # the order made at the counter or the held gun decides this deal
+		return _win(frappe.get_doc(DEAL, deal, for_update=True), row)
+	lead = _lead_to_convert(email, row.creation, hand_closed)
+	return _win(frappe.get_doc(DEAL, _convert(lead)), row) if lead else None
+
+
+def _order_opened(deal: str) -> bool:
+	"""An invoice made from the deal, or the Create Order draft its Open order button saved."""
+	from ffl_core.crm.orders import DEAL_FIELD
+
+	if frappe.db.exists("Sales Invoice", {DEAL_FIELD: deal, "docstatus": ["<", 2]}):
+		return True
+	# The draft's payload is JSON text: as the server writes it, and as the page does.
+	return bool(frappe.db.sql("""SELECT name FROM `tabCreate Order Draft`
+		WHERE payload LIKE %(spaced)s OR payload LIKE %(tight)s LIMIT 1""",
+		{"spaced": f'%"crm_deal": {frappe.as_json(deal)}%', "tight": f'%"crm_deal":{frappe.as_json(deal)}%'}))
+
+
+def _holds_gun(deal: str) -> bool:
+	from ffl_core.crm.holds import card_lines
+
+	return bool(card_lines(deal))
+
+
+def _lead_statuses(type_: str) -> list[str]:
+	return frappe.get_all("CRM Lead Status", filters={"type": type_}, pluck="name")
+
+
+def _lead_to_convert(email: str, before, hand_closed: bool) -> str | None:
+	"""The newest lead with this email, made by *before*, not converted, with no deal, not lost, not
+	other mail, and not won (with *hand_closed*: a won lead counts)."""
+	from ffl_core.crm.mail import OTHER_MAIL
+
+	skip = _lead_statuses("Lost") + [OTHER_MAIL] + ([] if hand_closed else _lead_statuses("Won"))
+	for lead in frappe.get_all(LEAD, filters={"email": email, "converted": 0, "status": ["not in", skip],
+			"creation": ["<=", before]}, pluck="name", order_by="creation desc"):
+		if not frappe.db.exists(DEAL, {"lead": lead}):
+			return lead
+	return None
+
+
+def _convert(lead: str) -> str:
+	"""CRM's own conversion (what its Convert to deal button calls): the lead's owner owns the deal and
+	the lead's mail shows on it. Run as the owner, so CRM's assignment of the deal to them is their own
+	and tells nobody; anyone else on the lead is assigned without the acknowledgement popup."""
+	from crm.fcrm.doctype.crm_lead.crm_lead import convert_to_deal
+
+	from ffl_core.assignment_notice import SYSTEM_ALERT, marked
+
+	doc = frappe.get_doc(LEAD, lead)
+	doc.flags.ignore_permissions = True   # the system acts on a paid order, for nobody's session
+	owner = doc.get("lead_owner")
+	actor = owner if owner and frappe.db.get_value("User", owner, "enabled") else frappe.session.user
+	prev = frappe.session.user
+	frappe.set_user(actor)
+	try:
+		with marked(SYSTEM_ALERT):
+			return convert_to_deal(lead=lead, doc=doc, if_converted="Return Existing")
+	finally:
+		frappe.set_user(prev)
+
+
+def _win(deal, row) -> str | None:
+	"""Set *deal* Won by the order *row*: its value the order's total, the order's customer linked."""
+	from ffl_core.crm.customer import link_unless_taken, linked_customer
+	from ffl_core.crm.orders import _mark_won, _save, deal_sales
+
+	if is_closed(deal.status):
+		return None   # a conversion that returned a deal closed meanwhile
+	_mark_won(deal)
+	deal.set(WON_BY, row.name)
+	deal.deal_value = deal_sales(deal.name, row.name)[0]
+	_save(deal)
+	if row.customer and not linked_customer(deal) and frappe.db.exists("Customer", row.customer):
+		link_unless_taken(deal, row.customer)
+	_note(deal.name, row, PLACED)
+	return deal.name
+
+
+def web_order_undone(order: str) -> list[str]:
+	"""A web order cancelled or fully refunded: the deal it won goes back to the open status it had
+	before (its status change log; else the first open status) unless an invoice made from it stands,
+	and its value is what its invoices make, nothing without. Never raises. Returns the deals reopened."""
+	from ffl_core.utils import guest_job_elevated
+
+	if not installed() or not pos_link_on() or not frappe.db.has_column(DEAL, WON_BY) \
+			or not frappe.db.exists(ORDER, order) or standing_total(order) is not None:
+		return []
+	done = []
+	with guest_job_elevated():
+		for name in frappe.get_all(DEAL, filters={WON_BY: order}, pluck="name"):
+			frappe.db.savepoint("ffl_crm_web_undo")
+			try:
+				_reopen(frappe.get_doc(DEAL, name, for_update=True))
+				done.append(name)
+			except Exception:
+				frappe.db.rollback(save_point="ffl_crm_web_undo")
+				frappe.log_error(title=f"[{TITLE}] Deal not reopened: {name}", message=frappe.get_traceback())
+	return done
+
+
+def _reopen(deal) -> None:
+	from ffl_core.crm.orders import DEAL_FIELD, _save, deal_sales
+
+	deal.set(WON_BY, None)
+	deal.deal_value = deal_sales(deal.name)[0]
+	sold = frappe.db.exists("Sales Invoice", {DEAL_FIELD: deal.name, "docstatus": 1, "is_return": 0, "is_consolidated": 0})
+	if frappe.db.get_value(STATUS, deal.status, "type") == "Won" and not sold:
+		deal.status = _status_before(deal)
+		deal.closed_date = None
+	_save(deal)
+
+
+def _status_before(deal) -> str:
+	"""The open status the deal left for the one it has now (its status change log), else the site's
+	first open status."""
+	for row in reversed(deal.get("status_change_log") or []):
+		if row.get("to") == deal.status:
+			before = row.get("from")
+			if before and frappe.db.exists(STATUS, before) and not is_closed(before):
+				return before
+			break
+	return (frappe.get_all(STATUS, filters={"type": "Open"}, pluck="name", order_by="position asc", limit=1)
+		or _statuses(closed=False))[0]
 
 
 # Payment failed -------------------------------------------------------------------------------------
