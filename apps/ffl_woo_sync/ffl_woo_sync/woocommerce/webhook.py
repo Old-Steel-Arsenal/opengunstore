@@ -35,6 +35,7 @@ from frappe.utils import flt
 
 from ffl_core.alerts import safe_log_error
 from ffl_core.compliance.ffl_number import FFL_NUMBER_RE, is_cr_license
+from ffl_core.crm.customer import auto_link_after_commit
 from ffl_core.crm.web_orders import (
 	CANCELLED,
 	PLACED,
@@ -59,6 +60,7 @@ from ffl_core.warehouses import custody_warehouse_names
 from ffl_woo_sync.woocommerce.cr_transfer import _clear_cr_verification
 
 from ffl_woo_sync.woocommerce.client import resolve_site, store_entry
+from ffl_woo_sync.woocommerce.revenue import intake_customer
 from ffl_woo_sync.woocommerce.sync import _f
 
 
@@ -1790,9 +1792,15 @@ def _handle_order_created(body: dict) -> None:
 	# Inserted straight into Transferred, so validate stamps transferred_at.
 	auto_cleared = _auto_clear_non_firearm_if_completed(order)
 
+	# The buyer's POS customer now, by the invoice's own rules, so the CRM sees the
+	# order before it is invoiced. Never fails the order (see intake_customer).
+	order.customer = intake_customer(order)
 	order.flags.ignore_permissions = True
 	order.insert()
 	note_web_order(order.name, PLACED)
+	if order.customer:
+		# Deals with this email and no customer, linked once this order commits.
+		auto_link_after_commit(email=order.customer_email)
 
 	# Tag the order 'web' (Desk-filterable) so it's distinguishable from counter
 	# orders. Write _user_tags directly: Document.add_tag() runs a permission check

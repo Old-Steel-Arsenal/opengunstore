@@ -18,6 +18,18 @@ from unittest.mock import MagicMock, patch
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
+_INTAKE = patch("ffl_woo_sync.woocommerce.webhook.intake_customer", return_value=None)
+
+
+def setUpModule():
+	# The buyer's POS customer at intake reads and writes Customers for real, which these doubles
+	# cannot answer; it is tested on the real database in test_web_order_customer.
+	_INTAKE.start()
+
+
+def tearDownModule():
+	_INTAKE.stop()
+
 
 # Newer Frappe (v16.30+) answers meta / permission questions through
 # frappe.db.get_value too, so a blanket ``patch("frappe.db.get_value",

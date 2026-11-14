@@ -51,6 +51,9 @@ class WooOnlineOrder(Document):
 		self._validate_ffl_license()
 		self._validate_unique_woo_order()
 		self._stamp_transferred_at()
+		# The POS customer was found by the old email; the invoice finds it again by the new one.
+		if not self.is_new() and self.has_value_changed("customer_email"):
+			self.customer = None
 
 	def _stamp_transferred_at(self):
 		"""Record the moment the order became Transferred — the revenue date.
