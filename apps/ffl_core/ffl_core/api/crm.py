@@ -119,7 +119,8 @@ def deal_customer_summary(deal: str) -> dict:
 	    "override_until", "alerts", "tags"}, "ffl": {"is_dealer", "on_file", "expiry_date",
 	    "expired"}, "orders": last orders, "open_orders": orders on Pending Order, "lifetime_spend":
 	    Net Sales as the Sales Report reads it, "holds": guns held for the deal [{"serial",
-	    "expires_label"}], "html"}. Refused while the switch is off.
+	    "expires_label"}], "marketing": {"status", "tags"} of the customer's marketing contact or None,
+	    "html"}. Refused while the switch is off.
 	"""
 	frappe.only_for(CRM_ROLES)
 	return deal_customer.customer_summary(_deal_for_pos_link(deal, "read"))

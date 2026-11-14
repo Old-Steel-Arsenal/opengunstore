@@ -8174,7 +8174,7 @@
           "ffl_core"
         ],
         "summary": "Add a want to a deal's primary contact: when stock that fits arrives, you get a task.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:163`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:164`",
         "operationId": "ffl_core.api.crm.add_want",
         "responses": {
           "200": {
@@ -8250,7 +8250,7 @@
           "ffl_core"
         ],
         "summary": "Before a POS / Sales Invoice is saved: the guns on it held for a deal whose customer is not this",
-        "description": "sale's.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:361`",
+        "description": "sale's.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:362`",
         "operationId": "ffl_core.api.crm.check_sale",
         "responses": {
           "200": {
@@ -8352,7 +8352,7 @@
           "ffl_core"
         ],
         "summary": "CRM's list data for its Leads and Deals pages (hooks.py overrides ``crm.api.doc.get_data``), with",
-        "description": "two changes: a Leads list leaves out other mail unless it filters on the status or category, and\n``@me`` inside a filter's list of values is the caller (CRM's page replaces only a plain ``@me``, and\n**My follow-ups** asks for \"mine or nobody's\").\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:194`",
+        "description": "two changes: a Leads list leaves out other mail unless it filters on the status or category, and\n``@me`` inside a filter's list of values is the caller (CRM's page replaces only a plain ``@me``, and\n**My follow-ups** asks for \"mine or nobody's\").\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:195`",
         "operationId": "ffl_core.api.crm.crm_list_data",
         "responses": {
           "200": {
@@ -8386,7 +8386,7 @@
         "operationId": "ffl_core.api.crm.deal_customer_summary",
         "responses": {
           "200": {
-            "description": "dict: {\"customer\": None, \"matches\": [...], \"html\"} before the deal has a customer, else {\"customer\", \"customer_name\", \"flags\": {\"status\", \"status_reason\", \"banned\", \"override_until\", \"alerts\", \"tags\"}, \"ffl\": {\"is_dealer\", \"on_file\", \"expiry_date\", \"expired\"}, \"orders\": last orders, \"open_orders\": orders on Pending Order, \"lifetime_spend\": Net Sales as the Sales Report reads it, \"holds\": guns held for the deal [{\"serial\", \"expires_label\"}], \"html\"}. Refused while the switch is off.",
+            "description": "dict: {\"customer\": None, \"matches\": [...], \"html\"} before the deal has a customer, else {\"customer\", \"customer_name\", \"flags\": {\"status\", \"status_reason\", \"banned\", \"override_until\", \"alerts\", \"tags\"}, \"ffl\": {\"is_dealer\", \"on_file\", \"expiry_date\", \"expired\"}, \"orders\": last orders, \"open_orders\": orders on Pending Order, \"lifetime_spend\": Net Sales as the Sales Report reads it, \"holds\": guns held for the deal [{\"serial\", \"expires_label\"}], \"marketing\": {\"status\", \"tags\"} of the customer's marketing contact or None, \"html\"}. Refused while the switch is off.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8430,7 +8430,7 @@
           "ffl_core"
         ],
         "summary": "The Deal page's Hold guns dialog: each gun on the deal's lines, its hold and what can be done.",
-        "description": "Answers while Hold guns for deals is off too, so holds still running stay in view.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:254`",
+        "description": "Answers while Hold guns for deals is off too, so holds still running stay in view.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:255`",
         "operationId": "ffl_core.api.crm.deal_holds",
         "responses": {
           "200": {
@@ -8478,7 +8478,7 @@
           "ffl_core"
         ],
         "summary": "Stands in for CRM's quotation gates (hooks.py): the Deal page shows no Quotations tab and no",
-        "description": "**Create Quotation** button, since a deal closes through **Open order**.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:226`",
+        "description": "**Create Quotation** button, since a deal closes through **Open order**.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:227`",
         "operationId": "ffl_core.api.crm.deals_use_no_quotes",
         "responses": {
           "200": {
@@ -8508,7 +8508,7 @@
           "ffl_core"
         ],
         "summary": "The deal's POS customer: its link, the matches to confirm, or a new customer on confirm.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:129`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:130`",
         "operationId": "ffl_core.api.crm.ensure_deal_customer",
         "responses": {
           "200": {
@@ -8568,7 +8568,7 @@
           "ffl_core"
         ],
         "summary": "Another 48 hours on a hold. The person who placed it extends it once; after that, or for anyone",
-        "description": "else, a manager does (signed in, or picked with their PIN).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:296`",
+        "description": "else, a manager does (signed in, or picked with their PIN).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:297`",
         "operationId": "ffl_core.api.crm.extend_hold",
         "responses": {
           "200": {
@@ -8637,7 +8637,7 @@
           "ffl_core"
         ],
         "summary": "Hold guns on a deal for 48 hours: only the deal's customer can buy them meanwhile, at the",
-        "description": "counter and on the website. Each gun is judged on its own.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:273`",
+        "description": "counter and on the website. Each gun is judged on its own.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:274`",
         "operationId": "ffl_core.api.crm.hold_guns",
         "responses": {
           "200": {
@@ -8806,7 +8806,7 @@
           "ffl_core"
         ],
         "summary": "Save a deal with a customer as a Create Order draft, to finish the sale on that page.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:148`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:149`",
         "operationId": "ffl_core.api.crm.open_deal_order",
         "responses": {
           "200": {
@@ -8854,7 +8854,7 @@
           "ffl_core"
         ],
         "summary": "A manager ends a deal's hold at the counter so the gun can be sold to someone else; the deal's",
-        "description": "owner gets a task. A manager signed in approves their own; anyone else names one, who types their\ncounter PIN (or password).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:387`",
+        "description": "owner gets a task. A manager signed in approves their own; anyone else names one, who types their\ncounter PIN (or password).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:388`",
         "operationId": "ffl_core.api.crm.override_hold",
         "responses": {
           "200": {
@@ -8928,7 +8928,7 @@
           "ffl_core"
         ],
         "summary": "End a hold: the gun is for sale to anyone again. Whoever placed it, the deal owner or a manager;",
-        "description": "anyone else with a manager's PIN.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:317`",
+        "description": "anyone else with a manager's PIN.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:318`",
         "operationId": "ffl_core.api.crm.release_hold",
         "responses": {
           "200": {
@@ -9004,7 +9004,7 @@
           "ffl_core"
         ],
         "summary": "The live deal hold on one gun, for the counter. Carries no ID, 4473 or NICS data.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:340`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:341`",
         "operationId": "ffl_core.api.crm.serial_hold",
         "responses": {
           "200": {
@@ -12054,6 +12054,114 @@
                 },
                 "required": [
                   "ffl_number"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.api.marketing.resubscribe": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Put a suppressed contact back to Subscribed.",
+        "description": "For a contact that unsubscribed, bounced or complained. The reason is required and goes on the log\nwith who did it.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:47`",
+        "operationId": "ffl_core.api.marketing.resubscribe",
+        "responses": {
+          "200": {
+            "description": "{\"contact\": the address, \"status\": \"Subscribed\"}. Refused for a contact that is not suppressed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "contact": {
+                    "type": "string",
+                    "description": "The Marketing Contact (its email address)."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Why this contact may be emailed again."
+                  }
+                },
+                "required": [
+                  "contact",
+                  "reason"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.api.marketing.unsubscribe": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Stop marketing email to a contact.",
+        "description": "Its status becomes Unsubscribed, with who did it and the reason on the log. A contact already\nUnsubscribed, Bounced or Complained is left as it is.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:25`",
+        "operationId": "ffl_core.api.marketing.unsubscribe",
+        "responses": {
+          "200": {
+            "description": "{\"contact\": the address, \"status\": the status now, \"changed\": False when it was already suppressed}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "contact": {
+                    "type": "string",
+                    "description": "The Marketing Contact (its email address)."
+                  },
+                  "reason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Why, in a few words. Optional."
+                  }
+                },
+                "required": [
+                  "contact"
                 ]
               }
             }

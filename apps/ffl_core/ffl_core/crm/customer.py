@@ -29,6 +29,7 @@ from ffl_core.crm.deal import SERIAL_FIELD
 from ffl_core.crm.holds import card_lines
 from ffl_core.crm.deals import customer_of
 from ffl_core.crm.mail import contacts_with_email
+from ffl_core.marketing import customers as marketing_customers
 from ffl_core.crm.item import PRODUCT
 from ffl_core.customer_profile import ACTIVE, BANNED
 
@@ -247,7 +248,8 @@ def customer_summary(deal) -> dict:
 	Returns:
 	    {"customer": None, "matches": find_matches, "html"} before the deal has a customer, else
 	    {"customer", "customer_name", "flags", "ffl", "orders", "open_orders", "lifetime_spend",
-	    "holds": the deal's live gun holds [{"serial", "expires_label"}], "html"}.
+	    "holds": the deal's live gun holds [{"serial", "expires_label"}], "marketing": {"status", "tags"} of
+	    the customer's marketing contact (None when marketing is off or there is none), "html"}.
 	"""
 	customer = linked_customer(deal)
 	if not customer:
@@ -262,6 +264,7 @@ def customer_summary(deal) -> dict:
 		"open_orders": _open_orders(customer),
 		"lifetime_spend": _lifetime_spend(customer),
 		"holds": card_lines(deal.name),
+		"marketing": marketing_customers.card(customer),
 	}
 	summary["html"] = _card_html(summary)
 	return summary
@@ -333,6 +336,15 @@ def _ffl_html(ffl: dict) -> str:
 	return f'<div style="{_RED if ffl["expired"] else ""};{_ROW}">{escape_html(text)}</div>'
 
 
+def _marketing_html(marketing: dict) -> str:
+	shown = marketing["tags"][:marketing_customers.CARD_TAG_CAP]
+	more = len(marketing["tags"]) - len(shown)
+	tags = ", ".join(shown) + (f" +{more}" if more > 0 else "")
+	suppressed = marketing["status"] in ("Unsubscribed", "Bounced", "Complained")
+	text = _("Marketing email: {0}").format(marketing["status"]) + (f" · {tags}" if tags else "")
+	return f'<div style="{_RED if suppressed else _MUTED};{_ROW}">{escape_html(text)}</div>'
+
+
 def _order_line(doctype: str, name: str, posting_date: str, amount: float, note: str = "") -> str:
 	path = doctype.lower().replace(" ", "-")
 	return (f'<div style="display:flex;justify-content:space-between;gap:8px">'
@@ -351,6 +363,8 @@ def _card_html(summary: dict) -> str:
 	]
 	for hold in summary.get("holds") or []:
 		parts.append(f'<div style="{_AMBER};{_ROW}">{escape_html(_("Held: {0} until {1}").format(hold["serial"], hold["expires_label"]))}</div>')
+	if summary.get("marketing"):
+		parts.append(_marketing_html(summary["marketing"]))
 	if summary["open_orders"]:
 		parts.append(f'<div style="font-weight:600;margin-top:8px">{escape_html(_("Open orders"))}</div>')
 		for row in summary["open_orders"]:

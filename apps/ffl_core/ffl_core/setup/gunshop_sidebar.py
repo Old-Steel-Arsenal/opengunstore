@@ -32,6 +32,7 @@ from frappe.desk.doctype.custom_sidebar.custom_sidebar import SITE_LAYER, get_cu
 from frappe.desk.doctype.sidebar.sidebar import is_linked, item_key
 
 from ffl_core.extensions import effective
+from ffl_core.marketing import enabled as marketing_enabled
 from ffl_core.setup.sidebar import SIDEBAR_NAME, SETTINGS_LINK, gun_shop_items, item_dicts
 from ffl_core.utils import commit
 
@@ -40,7 +41,7 @@ WEB_ORDERS_CARD = "Web Orders"
 SAVEPOINT = "gunshop_sidebar_sync"
 WRITTEN_DEFAULT = "gunshop_sidebar_extension_rows"      # see _written()
 ATTENTION_ANCHOR = "To Receive"          # the card Web Orders follows when it is put back
-_SWITCH_DOCTYPES = ("WooCommerce Settings", "GunBroker Settings", "Payroc Settings")
+_SWITCH_DOCTYPES = ("WooCommerce Settings", "GunBroker Settings", "Payroc Settings", "Marketing Settings")
 
 
 def integrations_off() -> set[str]:
@@ -64,6 +65,8 @@ def integrations_off() -> set[str]:
 
 		if not _site_sync_enabled("retail"):
 			off.add("Woo Online Order")
+	if not marketing_enabled():
+		off.add("Marketing Contact")
 	return off
 
 
@@ -247,7 +250,7 @@ def _guarded(what: str, fn) -> None:
 
 
 def on_settings_update(doc=None, method=None) -> None:
-	"""doc_events on_update of the three integration Settings: the store flipped a switch. Saving the
+	"""doc_events on_update of the three integration Settings and Marketing Settings: the store flipped a switch. Saving the
 	switch must not depend on the sidebar following it."""
 	_guarded("sync after a Settings save", sync)
 

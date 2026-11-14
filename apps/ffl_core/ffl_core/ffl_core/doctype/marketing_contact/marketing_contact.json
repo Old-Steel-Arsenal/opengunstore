@@ -20,6 +20,10 @@
   "column_break_consent",
   "status_changed_at",
   "status_reason",
+  "section_requests",
+  "requests_html",
+  "section_activity",
+  "activity_html",
   "section_legacy",
   "legacy_hash",
   "legacy_hash_2"
@@ -108,6 +112,28 @@
    "fieldtype": "Data",
    "label": "Status reason",
    "read_only": 1
+  },
+  {
+   "depends_on": "eval:!doc.__islocal",
+   "fieldname": "section_requests",
+   "fieldtype": "Section Break",
+   "label": "Waiting requests"
+  },
+  {
+   "fieldname": "requests_html",
+   "fieldtype": "HTML",
+   "label": "Waiting requests"
+  },
+  {
+   "depends_on": "eval:!doc.__islocal",
+   "fieldname": "section_activity",
+   "fieldtype": "Section Break",
+   "label": "Activity"
+  },
+  {
+   "fieldname": "activity_html",
+   "fieldtype": "HTML",
+   "label": "Activity"
   },
   {
    "collapsible": 1,
