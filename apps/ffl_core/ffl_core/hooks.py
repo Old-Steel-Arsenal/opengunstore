@@ -942,6 +942,8 @@ after_install = [
 	"ffl_core.crm.setup.after_install",
 	# The website connector roles (mcp_settings.WEB_ROLES).
 	"ffl_core.ffl_core.doctype.mcp_settings.mcp_settings.ensure_web_roles",
+	# Marketing Contact's tags column, wide (ffl_core.marketing.setup).
+	"ffl_core.marketing.setup.ensure",
 ]
 before_migrate = [
 	# Extension upgrades: any migrate that runs an upgrade's new code (a deploy's
@@ -1027,6 +1029,8 @@ after_migrate = [
 	"ffl_core.setup.assignment_notice.ensure",
 	# Frappe CRM wired to the POS (ffl_core.crm.setup); does nothing while CRM is not on the site.
 	"ffl_core.crm.setup.ensure",
+	# Marketing Contact's tags column, wide (ffl_core.marketing.setup).
+	"ffl_core.marketing.setup.ensure",
 ]
 
 # Uninstallation

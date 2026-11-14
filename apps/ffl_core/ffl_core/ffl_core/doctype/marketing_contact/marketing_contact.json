@@ -1,0 +1,179 @@
+{
+ "actions": [],
+ "autoname": "field:email",
+ "naming_rule": "By fieldname",
+ "creation": "2026-11-13 12:00:00.000000",
+ "description": "Someone the store may email about products and offers, with their consent status.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "email",
+  "first_name",
+  "last_name",
+  "customer",
+  "column_break_status",
+  "status",
+  "source",
+  "section_consent",
+  "consent_at",
+  "consent_channel",
+  "column_break_consent",
+  "status_changed_at",
+  "status_reason",
+  "section_legacy",
+  "legacy_hash",
+  "legacy_hash_2"
+ ],
+ "fields": [
+  {
+   "fieldname": "email",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Email",
+   "options": "Email",
+   "reqd": 1,
+   "set_only_once": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "first_name",
+   "fieldtype": "Data",
+   "label": "First name"
+  },
+  {
+   "fieldname": "last_name",
+   "fieldtype": "Data",
+   "label": "Last name"
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Customer",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "column_break_status",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Not Subscribed",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Not Subscribed\nSubscribed\nUnsubscribed\nBounced\nComplained",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "source",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Source",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_consent",
+   "fieldtype": "Section Break",
+   "label": "Consent"
+  },
+  {
+   "fieldname": "consent_at",
+   "fieldtype": "Datetime",
+   "label": "Consent given",
+   "read_only": 1
+  },
+  {
+   "fieldname": "consent_channel",
+   "fieldtype": "Data",
+   "label": "Consent channel",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_consent",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "status_changed_at",
+   "fieldtype": "Datetime",
+   "label": "Status changed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "status_reason",
+   "fieldtype": "Data",
+   "label": "Status reason",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_legacy",
+   "fieldtype": "Section Break",
+   "label": "Previous system"
+  },
+  {
+   "fieldname": "legacy_hash",
+   "fieldtype": "Data",
+   "label": "Unsubscribe link key",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "legacy_hash_2",
+   "fieldtype": "Data",
+   "label": "Unsubscribe link key 2",
+   "read_only": 1,
+   "search_index": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-13 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FFL Core",
+ "name": "Marketing Contact",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 0,
+   "export": 1,
+   "print": 0,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 0,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 0,
+   "export": 1,
+   "print": 0,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 0,
+   "write": 1
+  },
+  {
+   "email": 0,
+   "print": 0,
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "share": 0
+  }
+ ],
+ "search_fields": "first_name,last_name,status",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "email",
+ "track_changes": 1
+}

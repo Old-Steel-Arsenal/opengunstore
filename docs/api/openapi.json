@@ -2122,6 +2122,266 @@
           }
         }
       },
+      "Marketing_Automation": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Marketing%20Automation — see docs/api/frappe-rest.md.",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Automation"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "Off",
+              "Dry run",
+              "Live"
+            ],
+            "description": "Mode"
+          }
+        },
+        "required": [
+          "key",
+          "mode"
+        ]
+      },
+      "Marketing_Contact": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Marketing%20Contact — see docs/api/frappe-rest.md.",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Email"
+          },
+          "first_name": {
+            "type": "string",
+            "description": "First name"
+          },
+          "last_name": {
+            "type": "string",
+            "description": "Last name"
+          },
+          "customer": {
+            "type": "string",
+            "description": "Customer (Link: Customer)"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Not Subscribed",
+              "Subscribed",
+              "Unsubscribed",
+              "Bounced",
+              "Complained"
+            ],
+            "description": "Status"
+          },
+          "source": {
+            "type": "string",
+            "description": "Source"
+          },
+          "consent_at": {
+            "type": "string",
+            "description": "Consent given"
+          },
+          "consent_channel": {
+            "type": "string",
+            "description": "Consent channel"
+          },
+          "status_changed_at": {
+            "type": "string",
+            "description": "Status changed"
+          },
+          "status_reason": {
+            "type": "string",
+            "description": "Status reason"
+          },
+          "legacy_hash": {
+            "type": "string",
+            "description": "Unsubscribe link key"
+          },
+          "legacy_hash_2": {
+            "type": "string",
+            "description": "Unsubscribe link key 2"
+          }
+        },
+        "required": [
+          "email",
+          "status"
+        ]
+      },
+      "Marketing_Event": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Marketing%20Event — see docs/api/frappe-rest.md.",
+        "properties": {
+          "contact": {
+            "type": "string",
+            "description": "Contact (Link: Marketing Contact)"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "Subscribed",
+              "Unsubscribed",
+              "Bounced",
+              "Complained",
+              "Requested",
+              "Sent",
+              "Skipped",
+              "Opened",
+              "Clicked",
+              "Imported"
+            ],
+            "description": "Kind"
+          },
+          "occurred_at": {
+            "type": "string",
+            "description": "When"
+          },
+          "mail": {
+            "type": "string",
+            "description": "Mail"
+          },
+          "campaign": {
+            "type": "string",
+            "description": "Campaign"
+          },
+          "dedupe_key": {
+            "type": "string",
+            "description": "Dedupe key"
+          },
+          "detail": {
+            "type": "string",
+            "description": "Detail"
+          }
+        },
+        "required": [
+          "contact",
+          "kind",
+          "occurred_at"
+        ]
+      },
+      "Marketing_Request": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Marketing%20Request — see docs/api/frappe-rest.md.",
+        "properties": {
+          "contact": {
+            "type": "string",
+            "description": "Contact (Link: Marketing Contact)"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "Back in stock",
+              "Model alert"
+            ],
+            "description": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Open",
+              "Notified",
+              "Closed"
+            ],
+            "description": "Status"
+          },
+          "label": {
+            "type": "string",
+            "description": "Product or model"
+          },
+          "item": {
+            "type": "string",
+            "description": "Item (Link: Item)"
+          },
+          "sku": {
+            "type": "string",
+            "description": "SKU"
+          },
+          "web_product_id": {
+            "type": "string",
+            "description": "Website product ID"
+          },
+          "model_key": {
+            "type": "string",
+            "description": "Model key"
+          },
+          "url": {
+            "type": "string",
+            "description": "URL"
+          },
+          "requested_at": {
+            "type": "string",
+            "description": "Requested"
+          },
+          "notified_at": {
+            "type": "string",
+            "description": "Notified"
+          }
+        },
+        "required": [
+          "contact",
+          "kind",
+          "status"
+        ]
+      },
+      "Marketing_Settings": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Marketing%20Settings — see docs/api/frappe-rest.md.",
+        "properties": {
+          "enabled": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Enabled"
+          },
+          "auto_subscribe_customers": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Subscribe store customers"
+          },
+          "email_account": {
+            "type": "string",
+            "description": "Email account (Link: Email Account)"
+          },
+          "reply_to": {
+            "type": "string",
+            "description": "Reply-To"
+          },
+          "track_opens": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Track opens"
+          },
+          "track_clicks": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Track clicks"
+          },
+          "sns_topic_arn": {
+            "type": "string",
+            "description": "SNS topic ARN"
+          },
+          "automations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Marketing_Automation"
+            },
+            "description": "Automations"
+          }
+        }
+      },
       "Membership": {
         "type": "object",
         "description": "Custom DocType (ffl_core); CRUD via /api/resource/Membership — see docs/api/frappe-rest.md.",
@@ -25195,6 +25455,53 @@
                     "default": "retail"
                   }
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_woo_sync.woocommerce.client_api.web_events": {
+      "post": {
+        "tags": [
+          "ffl_woo_sync"
+        ],
+        "summary": "Take the website's visitor events: a newsletter signup, a back-in-stock or model alert request.",
+        "description": "Each event is processed on its own; one that fails leaves nothing behind and does not stop the\nrest. A repeated event id is answered as accepted again and processed only once. Nothing is\nemailed. The whole call is refused while Marketing Settings › Enabled is off, and the website\nsends the events again later.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:527`",
+        "operationId": "ffl_woo_sync.woocommerce.client_api.web_events",
+        "responses": {
+          "200": {
+            "description": "{\"accepted\": [id, ...], \"rejected\": [{\"id\": ..., \"reason\": ...}, ...]}. ``reason`` is ``unknown_type``, ``invalid_email`` or ``invalid_data``; an event in neither list failed unexpectedly (an Error Log is written) and should be sent again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "events": {
+                    "description": "A list (or its JSON) of at most 100 events, each ``{\"id\", \"type\", \"occurred_at\", \"data\"}``. Types: ``contact.subscribed`` (data: email, first_name, last_name, source, page_url, ip, tags, interests, coupon) and ``alert.requested`` (data: email, kind ``back_in_stock`` or ``model``, sku, product_id, product_name, url, model_key, model_label)."
+                  }
+                },
+                "required": [
+                  "events"
+                ]
               }
             }
           }

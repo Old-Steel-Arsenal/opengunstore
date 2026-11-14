@@ -619,6 +619,87 @@ Switch the MCP servers that AI assistants (Claude, ChatGPT and other MCP clients
 | `web_ro_url` | Data | Website MCP Server URL |  |  |
 | `web_ro_claude_code` | Data | Claude Code Command (Website) |  |  |
 
+## Marketing Automation
+
+app: `ffl_core` · module: FFL Core · child table
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `key` | Data | Automation | ✓ |  |
+| `mode` | Select | Mode | ✓ | Off, Dry run, Live |
+
+## Marketing Contact
+
+app: `ffl_core` · module: FFL Core · roles: Sales Manager, Sales User, System Manager
+
+Someone the store may email about products and offers, with their consent status.
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `email` | Data | Email | ✓ | Email |
+| `first_name` | Data | First name |  |  |
+| `last_name` | Data | Last name |  |  |
+| `customer` | Link | Customer |  | Customer |
+| `status` | Select | Status | ✓ | Not Subscribed, Subscribed, Unsubscribed, Bounced, Complained |
+| `source` | Data | Source |  |  |
+| `consent_at` | Datetime | Consent given |  |  |
+| `consent_channel` | Data | Consent channel |  |  |
+| `status_changed_at` | Datetime | Status changed |  |  |
+| `status_reason` | Data | Status reason |  |  |
+| `legacy_hash` | Data | Unsubscribe link key |  |  |
+| `legacy_hash_2` | Data | Unsubscribe link key 2 |  |  |
+
+## Marketing Event
+
+app: `ffl_core` · module: FFL Core · roles: Sales Manager, Sales User, System Manager
+
+What happened with a marketing contact: a consent, an unsubscribe, a request, a send. Written by the system only.
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `contact` | Link | Contact | ✓ | Marketing Contact |
+| `kind` | Select | Kind | ✓ | Subscribed, Unsubscribed, Bounced, Complained, Requested, Sent, Skipped, Opened, Clicked, Imported |
+| `occurred_at` | Datetime | When | ✓ |  |
+| `mail` | Data | Mail |  |  |
+| `campaign` | Data | Campaign |  |  |
+| `dedupe_key` | Data | Dedupe key |  |  |
+| `detail` | Small Text | Detail |  |  |
+
+## Marketing Request
+
+app: `ffl_core` · module: FFL Core · roles: Sales Manager, Sales User, System Manager
+
+Someone waiting to hear when a product is back in stock or a model is listed. Written by the system only.
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `contact` | Link | Contact | ✓ | Marketing Contact |
+| `kind` | Select | Kind | ✓ | Back in stock, Model alert |
+| `status` | Select | Status | ✓ | Open, Notified, Closed |
+| `label` | Data | Product or model |  |  |
+| `item` | Link | Item |  | Item |
+| `sku` | Data | SKU |  |  |
+| `web_product_id` | Data | Website product ID |  |  |
+| `model_key` | Data | Model key |  |  |
+| `url` | Data | URL |  | URL |
+| `requested_at` | Datetime | Requested |  |  |
+| `notified_at` | Datetime | Notified |  |  |
+
+## Marketing Settings
+
+app: `ffl_core` · module: FFL Core · single · roles: System Manager
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `enabled` | Check | Enabled |  |  |
+| `auto_subscribe_customers` | Check | Subscribe store customers |  |  |
+| `email_account` | Link | Email account |  | Email Account |
+| `reply_to` | Data | Reply-To |  | Email |
+| `track_opens` | Check | Track opens |  |  |
+| `track_clicks` | Check | Track clicks |  |  |
+| `sns_topic_arn` | Data | SNS topic ARN |  |  |
+| `automations` | Table | Automations |  | Marketing Automation |
+
 ## Membership
 
 app: `ffl_core` · module: FFL Core · roles: Accounts Manager, Accounts User, Sales Manager, Sales User, System Manager
