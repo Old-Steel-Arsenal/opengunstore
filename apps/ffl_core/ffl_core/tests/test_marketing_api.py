@@ -7,7 +7,7 @@ import os
 import frappe
 
 from ffl_core.api import marketing as api
-from ffl_core.marketing import CONTACT, contacts
+from ffl_core.marketing import CONTACT, contacts, tags
 from ffl_core.marketing.contacts import BOUNCED, COMPLAINED, NOT_SUBSCRIBED, SUBSCRIBED, UNSUBSCRIBED, set_status
 from ffl_core.tests.crm_support import user
 from ffl_core.tests.marketing_support import MarketingTestCase, address, events_of, status_of
@@ -117,11 +117,77 @@ class TestResubscribe(MarketingTestCase):
 			api.resubscribe(address("ui"), "because")
 
 
+def _customer(email: str):
+	doc = frappe.get_doc({"doctype": "Customer", "customer_name": f"_Test Mkt {frappe.generate_hash(length=6)}",
+		"customer_type": "Individual", "customer_group": "Individual", "territory": "All Territories", "ffl_email": email})
+	doc.flags.ignore_permissions = True
+	doc.insert()
+	return doc
+
+
+class TestCustomerCard(MarketingTestCase):
+	"""The Marketing line on the Customer form."""
+
+	def _linked_customer(self, status: str = SUBSCRIBED):
+		email = address("card")
+		customer = _customer(email)
+		contacts.get_or_create(email)
+		set_status(email, status, channel="pos")
+		tags.add(email, "in-store", "new-arrivals")
+		return customer.name, email
+
+	def test_a_customer_with_a_contact_gets_the_line_the_deal_card_shows(self):
+		from ffl_core.crm.customer import _marketing_html
+
+		name, email = self._linked_customer()
+		card = api.customer_card(name)
+		self.assertEqual(card, {"status": SUBSCRIBED, "tags": ["in-store", "new-arrivals"], "contact": email,
+			"text": "Marketing email: Subscribed · in-store, new-arrivals"})
+		self.assertIn(card["text"], _marketing_html({"status": card["status"], "tags": card["tags"]}), "one wording")
+
+	def test_a_customer_with_no_contact_or_no_address_gets_nothing(self):
+		self.assertIsNone(api.customer_card(_customer(address("card")).name))
+		doc = frappe.get_doc({"doctype": "Customer", "customer_name": "_Test Mkt No Mail", "customer_type": "Individual",
+			"customer_group": "Individual", "territory": "All Territories"})
+		doc.flags.ignore_permissions = True
+		doc.insert()
+		self.assertIsNone(api.customer_card(doc.name))
+		self.assertIsNone(api.customer_card("no such customer"))
+
+	def test_nothing_while_marketing_is_off(self):
+		name, _email = self._linked_customer()
+		self.set_single("Marketing Settings", "enabled", 0)
+		self.assertIsNone(api.customer_card(name))
+
+	def test_a_role_that_cannot_read_marketing_contacts_gets_nothing(self):
+		name, _email = self._linked_customer()
+		user(READER, "Accounts User")
+		frappe.set_user(READER)
+		self.assertFalse(frappe.has_permission(CONTACT, "read"))
+		self.assertIsNone(api.customer_card(name))
+
+	def test_a_sales_user_may_read_it_and_a_suppressed_status_shows(self):
+		name, email = self._linked_customer(UNSUBSCRIBED)
+		user(CLERK, "Sales User")
+		frappe.set_user(CLERK)
+		card = api.customer_card(name)
+		self.assertEqual((card["status"], card["contact"]), (UNSUBSCRIBED, email))
+
+	def test_the_customer_form_asks_for_it(self):
+		path = frappe.get_app_path("ffl_core", "public", "js", "customer_form.js")
+		with open(path, encoding="utf-8") as fh:
+			script = fh.read()
+		self.assertIn("ffl_core.api.marketing.customer_card", script)
+		self.assertIn("fflRenderMarketing(frm);", script)
+		self.assertIn("escape_html(card.text)", script)
+
+
 class TestEndpoints(MarketingTestCase):
-	def test_both_are_post_only_whitelisted_endpoints(self):
+	def test_the_two_buttons_are_post_only_whitelisted_endpoints(self):
 		for fn in (api.unsubscribe, api.resubscribe):
 			self.assertIn(fn, frappe.whitelisted)
 			self.assertEqual(frappe.allowed_http_methods_for_whitelisted_func[fn], ["POST"])
+		self.assertIn(api.customer_card, frappe.whitelisted)
 
 	def test_the_status_field_is_read_only_so_only_the_buttons_change_it(self):
 		field = frappe.get_meta(CONTACT).get_field("status")

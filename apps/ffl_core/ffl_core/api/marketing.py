@@ -1,6 +1,7 @@
-"""Marketing Contact buttons on the Desk form: Unsubscribe and Resubscribe.
+"""Marketing on the Desk: the Marketing Contact form's Unsubscribe and Resubscribe buttons, and the
+Marketing line on the Customer form.
 
-Both go through ``marketing.contacts.set_status``, the one function that changes a contact's status;
+The two buttons go through ``marketing.contacts.set_status``, the one function that changes a contact's status;
 the form's status field is read-only. A contact that is not on file is refused, never made.
 """
 from __future__ import annotations
@@ -10,7 +11,7 @@ from frappe import _
 from frappe.utils import escape_html
 
 from ffl_core.marketing import CONTACT
-from ffl_core.marketing import contacts
+from ffl_core.marketing import contacts, customers
 from ffl_core.roles import MARKETING_MANAGER_ROLES
 
 
@@ -63,3 +64,24 @@ def resubscribe(contact: str, reason: str) -> dict:
 		frappe.throw(_("Only a contact that unsubscribed, bounced or complained can be resubscribed."))
 	contacts.set_status(name, contacts.SUBSCRIBED, reason=reason, manual=True, channel="manual")
 	return {"contact": name, "status": frappe.db.get_value(CONTACT, name, "status")}
+
+
+@frappe.whitelist()
+def customer_card(customer: str) -> dict | None:
+	"""The line the Customer form shows about a customer's marketing email.
+
+	Nothing (None) when marketing is off, the user may not read Marketing Contacts or the customer,
+	or no marketing contact is linked to the customer.
+
+	Args:
+	    customer: The Customer's name.
+
+	Returns:
+	    {"status": the contact's status, "tags": its tags, "text": the line to show, "contact": the
+	    Marketing Contact (its email address) to open}, or None.
+	"""
+	if not frappe.db.exists("Customer", customer) or not frappe.has_permission(CONTACT, "read") \
+			or not frappe.has_permission("Customer", "read", doc=customer):
+		return None
+	card = customers.card(customer, with_contact=True)
+	return {**card, "text": customers.card_text(card)} if card else None

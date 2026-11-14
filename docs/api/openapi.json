@@ -12061,13 +12061,64 @@
         }
       }
     },
+    "/api/method/ffl_core.api.marketing.customer_card": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "The line the Customer form shows about a customer's marketing email.",
+        "description": "Nothing (None) when marketing is off, the user may not read Marketing Contacts or the customer,\nor no marketing contact is linked to the customer.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:70`",
+        "operationId": "ffl_core.api.marketing.customer_card",
+        "responses": {
+          "200": {
+            "description": "{\"status\": the contact's status, \"tags\": its tags, \"text\": the line to show, \"contact\": the Marketing Contact (its email address) to open}, or None.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "customer": {
+                    "type": "string",
+                    "description": "The Customer's name."
+                  }
+                },
+                "required": [
+                  "customer"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.api.marketing.resubscribe": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "Put a suppressed contact back to Subscribed.",
-        "description": "For a contact that unsubscribed, bounced or complained. The reason is required and goes on the log\nwith who did it.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:47`",
+        "description": "For a contact that unsubscribed, bounced or complained. The reason is required and goes on the log\nwith who did it.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:48`",
         "operationId": "ffl_core.api.marketing.resubscribe",
         "responses": {
           "200": {
@@ -12120,7 +12171,7 @@
           "ffl_core"
         ],
         "summary": "Stop marketing email to a contact.",
-        "description": "Its status becomes Unsubscribed, with who did it and the reason on the log. A contact already\nUnsubscribed, Bounced or Complained is left as it is.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:25`",
+        "description": "Its status becomes Unsubscribed, with who did it and the reason on the log. A contact already\nUnsubscribed, Bounced or Complained is left as it is.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:26`",
         "operationId": "ffl_core.api.marketing.unsubscribe",
         "responses": {
           "200": {

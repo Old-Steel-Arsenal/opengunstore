@@ -21,6 +21,7 @@ the save goes through (:func:`_guarded`).
 from __future__ import annotations
 
 import frappe
+from frappe import _
 
 from ffl_core.mailing_address import clean_email, shop_host, split_name
 from ffl_core.marketing import CONTACT, SETTINGS, enabled, tags
@@ -221,9 +222,10 @@ def relink_customer(customer: str, exclude: str | None = None) -> int:
 # ----------------------------------------------------------------- customer card
 
 
-def card(customer: str) -> dict | None:
+def card(customer: str, *, with_contact: bool = False) -> dict | None:
 	"""``{"status", "tags"}`` of the contact for this customer's own address (else the first contact
-	linked to it), or None when the module is off or no contact is linked."""
+	linked to it), or None when the module is off or no contact is linked. *with_contact* adds the
+	contact's name (``"contact"``), which is its email address."""
 	if not enabled():
 		return None
 	rows = frappe.get_all(CONTACT, filters={"customer": customer}, fields=["name", "status"],
@@ -232,7 +234,20 @@ def card(customer: str) -> dict | None:
 		return None
 	own = normalize_email(frappe.db.get_value("Customer", customer, "email_id"))
 	row = next((r for r in rows if r.name == own), rows[0])
-	return {"status": row.status, "tags": tags.of(row.name)}
+	out = {"status": row.status, "tags": tags.of(row.name)}
+	if with_contact:
+		out["contact"] = row.name
+	return out
+
+
+def card_text(marketing: dict) -> str:
+	"""The line the Deal card and the Customer form show for a :func:`card`, such as
+	``Marketing email: Subscribed · in-store, new-arrivals`` (the first few tags, then ``+n``). Plain
+	text; the caller escapes it."""
+	shown = marketing["tags"][:CARD_TAG_CAP]
+	more = len(marketing["tags"]) - len(shown)
+	listed = ", ".join(shown) + (f" +{more}" if more > 0 else "")
+	return _("Marketing email: {0}").format(marketing["status"]) + (f" · {listed}" if listed else "")
 
 
 # ----------------------------------------------------------------- backfill

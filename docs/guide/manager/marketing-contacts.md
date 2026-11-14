@@ -45,7 +45,7 @@ Do this only when the person asked to be emailed again. A bounced address can bo
 - **Waiting requests** lists the back-in-stock and model reminders the person still has open.
 - **Activity** lists what happened to the contact, newest first: sign-ups, status changes, messages sent. It shows the latest 20. **All activity** opens the full list.
 - The list opens on **Subscribed** contacts. Filter by **Status**, **Source** or **Customer** above the list, and by tag on the left.
-- On a CRM deal, the customer card has a **Marketing email:** line with the customer's status and tags.
+- A customer's page and the customer card on a CRM deal show a **Marketing email:** line with the customer's status and tags. On the customer's page, click it to open the contact. It is not shown when the customer has no contact.
 
 ## Subscribe store customers
 

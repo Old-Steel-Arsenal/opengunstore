@@ -337,12 +337,8 @@ def _ffl_html(ffl: dict) -> str:
 
 
 def _marketing_html(marketing: dict) -> str:
-	shown = marketing["tags"][:marketing_customers.CARD_TAG_CAP]
-	more = len(marketing["tags"]) - len(shown)
-	tags = ", ".join(shown) + (f" +{more}" if more > 0 else "")
 	suppressed = marketing["status"] in ("Unsubscribed", "Bounced", "Complained")
-	text = _("Marketing email: {0}").format(marketing["status"]) + (f" · {tags}" if tags else "")
-	return f'<div style="{_RED if suppressed else _MUTED};{_ROW}">{escape_html(text)}</div>'
+	return f'<div style="{_RED if suppressed else _MUTED};{_ROW}">{escape_html(marketing_customers.card_text(marketing))}</div>'
 
 
 def _order_line(doctype: str, name: str, posting_date: str, amount: float, note: str = "") -> str:
