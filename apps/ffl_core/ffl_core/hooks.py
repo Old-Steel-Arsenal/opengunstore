@@ -247,6 +247,8 @@ doc_events = {
 	"WooCommerce Settings": {"on_update": "ffl_core.setup.gunshop_sidebar.on_settings_update"},
 	"GunBroker Settings": {"on_update": "ffl_core.setup.gunshop_sidebar.on_settings_update"},
 	"Payroc Settings": {"on_update": "ffl_core.setup.gunshop_sidebar.on_settings_update"},
+	# Marketing Settings > Enabled shows or hides the Marketing contacts link the same way.
+	"Marketing Settings": {"on_update": "ffl_core.setup.gunshop_sidebar.on_settings_update"},
 	# A journal entry the cash drawer made is cancelled only from the Cash Drawer page (cash_drawer._cancel_je).
 	"Journal Entry": {
 		"validate": "ffl_core.cash_drawer.refuse_drawer_je_copies",
@@ -255,7 +257,7 @@ doc_events = {
 	# Dealer parties: keep license fields synced from the linked ATF FFL
 	# Record (and backfill the link from a bare matching ffl_number).
 	# A primary Contact's email / mobile edited on the Contact reach its customers' form fields.
-	"Contact": {"on_update": "ffl_core.customer_contact.contact_changed"},
+	"Contact": {"on_update": ["ffl_core.customer_contact.contact_changed", "ffl_core.marketing.customers.contact_saved"]},
 	"Customer": {
 		# Individual name parts ↔ Customer Name (customer_name.py): compose
 		# before autoname takes the docname, and again on every save.
@@ -270,9 +272,13 @@ doc_events = {
 			"ffl_core.customer_contact.sync_email_phone",
 		],
 		# An ID document's attachment is always a private file.
-		"on_update": "ffl_core.customer_profile.privatize_id_attachments",
-		# A head of family with members cannot be deleted.
-		"on_trash": "ffl_core.customer_profile.refuse_delete_with_family",
+		# Then the marketing list: store customers join it, a new address inherits an unsubscribe, the
+		# contact's customer link follows (marketing/customers.py).
+		"on_update": ["ffl_core.customer_profile.privatize_id_attachments", "ffl_core.marketing.customers.customer_saved"],
+		# A head of family with members cannot be deleted; a marketing contact's link to it is cleared.
+		"on_trash": ["ffl_core.customer_profile.refuse_delete_with_family", "ffl_core.marketing.customers.customer_trashed"],
+		# A merge or rename: marketing contacts are linked again (marketing/customers.py).
+		"after_rename": "ffl_core.marketing.customers.customer_renamed",
 	},
 	"Supplier": {
 		"validate": "ffl_core.atf_link.sync_party_atf_link",

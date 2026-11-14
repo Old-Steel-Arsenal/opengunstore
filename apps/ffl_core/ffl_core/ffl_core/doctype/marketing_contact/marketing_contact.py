@@ -31,3 +31,8 @@ class MarketingContact(Document):
 				title=_("Status not changed"))
 		if before and before.source and self.source != before.source:
 			self.source = before.source   # the first source is kept
+
+	def after_insert(self):
+		from ffl_core.marketing.customers import relink_safely
+
+		relink_safely(self.name)   # which Customer this address belongs to, if exactly one

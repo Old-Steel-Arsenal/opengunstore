@@ -102,8 +102,8 @@ class ProfileSetup(FrappeTestCase):
 	def test_customer_doc_events_are_wired(self):
 		events = _hooks()["doc_events"]["Customer"]
 		self.assertIn("ffl_core.customer_profile.validate_customer", events["validate"])
-		self.assertEqual(events["on_update"], "ffl_core.customer_profile.privatize_id_attachments")
-		self.assertEqual(events["on_trash"], "ffl_core.customer_profile.refuse_delete_with_family")
+		self.assertIn("ffl_core.customer_profile.privatize_id_attachments", events["on_update"])
+		self.assertIn("ffl_core.customer_profile.refuse_delete_with_family", events["on_trash"])
 
 	def test_an_existing_customer_without_a_status_becomes_active_and_nothing_else_moves(self):
 		doc = _customer()

@@ -95,3 +95,5 @@ ffl_core.patches.add_lead_mail_settings_workspace_entry
 ffl_core.patches.tidy_received_crm_mail
 # Same-serial and no-serial guns: every gun already on file gets its bound-book serial (= its name).
 ffl_core.patches.backfill_ledger_serial
+# Marketing: the Marketing Settings link in the Settings workspace.
+ffl_core.patches.add_marketing_settings_workspace_entry
