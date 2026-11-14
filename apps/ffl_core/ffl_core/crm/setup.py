@@ -123,7 +123,8 @@ _DEAL_SCRIPT_TEMPLATE = """class CRMDeal {
 			submitLabel: __("Save offer"),
 			onSubmit: async (data) => {
 				try {
-					await this.fflShowSell(call("ffl_core.api.crm.make_sell_offer", { deal: this.doc.name, amount: data.amount }))
+					const card = await call("ffl_core.api.crm.make_sell_offer", { deal: this.doc.name, amount: data.amount })
+					this.setFieldHtml("%(sell_card)s", card.html)
 				} catch (e) {
 					throw new Error(e.messages?.[0] || e.message)
 				}
