@@ -78,7 +78,7 @@ class TestImport(MarketingTestCase):
 		tags.add(self.pos_sub, "in-store")
 		rows = [
 			_row(self.sub.upper(), tags=["new-arrivals", "back-in-stock", "sent-oct-digest", "Bad Tag"],
-				lists=["newsletter", "customers", "vip-list"], custom={"interests": "Rifles, Hand Guns"}, bis_notes=[
+				lists=["newsletter", "customers", "VIP List"], custom={"interests": "Rifles, Hand Guns"}, bis_notes=[
 					{"description": f"Asked about: Mosin M91/30 (#904521) {DASH} https://shop.example/p/mosin",
 						"created_at": "2026-09-01 09:00:00"},
 					{"description": f"Asked about: Mosin M91/30 (#904521) {DASH} https://shop.example/p/mosin",
@@ -91,7 +91,7 @@ class TestImport(MarketingTestCase):
 			_row(self.unsub, "unsubscribed", unsubscribe_reason="Too many emails & offers", tags=[]),
 			_row(self.bounced, "bounced"),
 			_row(self.spam, "spammed"),
-			_row(self.pending, "pending", lists=["cga-insider-list"], custom={"interests": ["handguns"]}),
+			_row(self.pending, "pending", lists=["insider-list", "vip-list"], custom={"interests": ["handguns"]}),
 			_row(self.pos_unsub, "subscribed"),
 			_row(self.pos_sub, "bounced"),
 			_row("not an address", "subscribed"),
@@ -111,9 +111,10 @@ class TestImport(MarketingTestCase):
 			"Unsubscribed": 2})
 		self.assertEqual(dry["by_tag"]["new-arrivals"], 6)
 		self.assertEqual((dry["by_tag"]["customers"], dry["by_tag"]["interest-rifles"], dry["by_tag"]["interest-hand-guns"],
-			dry["by_tag"]["interest-handguns"], dry["by_tag"]["cga-insider-list"]), (1, 1, 1, 1, 1))
+			dry["by_tag"]["interest-handguns"], dry["by_tag"]["insider-list"]), (1, 1, 1, 1, 1))
+		self.assertEqual(dry["by_tag"]["vip-list"], 1, "any list that is a slug becomes a tag")
 		self.assertNotIn("sent-oct-digest", dry["by_tag"])
-		self.assertEqual((dry["skipped_tags"], dry["skipped_lists"]), ({"Bad Tag": 1}, {"vip-list": 1}))
+		self.assertEqual((dry["skipped_tags"], dry["skipped_lists"]), ({"Bad Tag": 1}, {"VIP List": 1}))
 		self.assertEqual(sorted((c["email"], c["pos"], c["import"], c["result"]) for c in dry["conflicts"]), sorted([
 			(self.pos_unsub, "Unsubscribed", "Subscribed", "Unsubscribed"),
 			(self.pos_sub, "Subscribed", "Bounced", "Bounced")]))
@@ -146,7 +147,7 @@ class TestImport(MarketingTestCase):
 			(contacts.BOUNCED, contacts.COMPLAINED, contacts.NOT_SUBSCRIBED))
 		self.assertEqual(frappe.get_all("Email Unsubscribe", filters={"email": self.spam},
 			fields=["reference_doctype", "global_unsubscribe"]), [{"reference_doctype": CONTACT, "global_unsubscribe": 0}])
-		self.assertEqual(tags.of(self.pending), ["new-arrivals", "cga-insider-list", "interest-handguns"])
+		self.assertEqual(tags.of(self.pending), ["new-arrivals", "insider-list", "vip-list", "interest-handguns"])
 
 		self.assertEqual(status_of(self.pos_unsub), contacts.UNSUBSCRIBED, "the POS's unsubscribe is never loosened")
 		self.assertEqual(status_of(self.pos_sub), contacts.BOUNCED, "the export's bounce overrides the POS's subscription")

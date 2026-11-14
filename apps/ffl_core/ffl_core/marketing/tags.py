@@ -24,9 +24,6 @@ SLUG = re.compile(r"^[a-z0-9-]{1,60}$")
 NEW_ARRIVALS = "new-arrivals"    # the new-arrivals digest's audience
 BACK_IN_STOCK = "back-in-stock"  # asked to be told when an out-of-stock product returns
 IN_STORE = "in-store"            # a store customer
-NEWSLETTER = "newsletter"        # the old newsletter list
-CUSTOMERS = "customers"          # the old customers list
-INSIDER = "cga-insider-list"     # the old insider list
 INTEREST = "interest-"           # + an interest's slug
 
 

@@ -12,8 +12,8 @@ What becomes what:
   ``complained`` / ``spammed`` → Complained, anything else → Not Subscribed. Through
   ``contacts.set_status``, so an address already suppressed on the POS is never loosened, and an
   import that says suppressed overrides a Subscribed one;
-* tags keep their slugs; ``sent-*`` / ``opened-*`` are not tags; the lists ``newsletter``,
-  ``customers`` and ``cga-insider-list`` become tags of the same name; ``custom.interests``
+* tags keep their slugs; ``sent-*`` / ``opened-*`` are not tags; every list whose slug is a valid tag
+  slug becomes a tag of the same name (any other list is left out and reported); ``custom.interests``
   becomes ``interest-*`` tags. Tags are only ever added;
 * ``campaigns`` (recent ``sent-`` / ``opened-`` tags) become Sent / Opened events;
 * back-in-stock notes become Marketing Requests: the product by its ``(#id)`` marker first, then
@@ -46,7 +46,6 @@ STATUS_MAP = {
 	"complained": contacts.COMPLAINED,
 	"spammed": contacts.COMPLAINED,
 }
-LIST_TAGS = (tags.NEWSLETTER, tags.CUSTOMERS, tags.INSIDER)
 CAMPAIGN_TAG_PREFIXES = ("sent-", "opened-")
 CAMPAIGN_CAP = 100   # keeps "opened:<campaign>:<email>" inside the dedupe key column
 INTEREST_LABEL = "interest: "   # how a refused interest is named in the report
@@ -104,7 +103,7 @@ def _tags_of(row: dict, report: dict) -> list[str]:
 		else:
 			report["skipped_tags"][contacts.clip(slug, 60)] += 1
 	for slug in row.get("lists") or []:
-		if slug in LIST_TAGS:
+		if tags.is_slug(slug):
 			out.append(slug)
 		else:
 			report["skipped_lists"][contacts.clip(slug, 60)] += 1

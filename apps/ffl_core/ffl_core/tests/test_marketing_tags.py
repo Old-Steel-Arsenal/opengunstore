@@ -31,11 +31,11 @@ class TestTags(MarketingTestCase):
 	def test_slugs_are_kept_exactly_in_both_places_frappe_reads_them(self):
 		email = _contact()
 		mixed = "Glock-Fans-" + frappe.generate_hash(length=4)   # not one this module ever makes; Tag stores it as given
-		self.assertEqual(tags.add(email, tags.NEW_ARRIVALS, "cga-insider-list", mixed, tags.NEW_ARRIVALS),
-			[tags.NEW_ARRIVALS, "cga-insider-list", mixed])
-		self.assertEqual(tags.of(email), [tags.NEW_ARRIVALS, "cga-insider-list", mixed])
-		self.assertEqual(frappe.db.get_value(CONTACT, email, "_user_tags"), f"new-arrivals,cga-insider-list,{mixed}")
-		self.assertEqual(_links(email), [tags.NEW_ARRIVALS, "cga-insider-list", mixed])
+		self.assertEqual(tags.add(email, tags.NEW_ARRIVALS, "insider-list", mixed, tags.NEW_ARRIVALS),
+			[tags.NEW_ARRIVALS, "insider-list", mixed])
+		self.assertEqual(tags.of(email), [tags.NEW_ARRIVALS, "insider-list", mixed])
+		self.assertEqual(frappe.db.get_value(CONTACT, email, "_user_tags"), f"new-arrivals,insider-list,{mixed}")
+		self.assertEqual(_links(email), [tags.NEW_ARRIVALS, "insider-list", mixed])
 		self.assertEqual(frappe.db.get_value("Tag", mixed, "name"), mixed)
 		self.assertEqual(tags.add(email, tags.NEW_ARRIVALS), [], "a tag already there is not added twice")
 
