@@ -47,6 +47,34 @@ def broken_change(serial_no):
 	raise RuntimeError("push failed")
 
 
+class _Queued:
+	"""Inside: the hooks queue a sweep for after the commit and write nothing (``_rollback`` is never
+	called, the holds stay Active). ``run()`` then does what the queued job does after the commit."""
+
+	def __init__(self, case):
+		self.case = case
+
+	def __enter__(self):
+		self._enqueue = patch("frappe.enqueue")
+		self._rollback = patch.object(holds, "_rollback", side_effect=AssertionError("rolled back in a hook"))
+		self.enqueue = self._enqueue.start()
+		self._rollback.start()
+		return self
+
+	def __exit__(self, *exc):
+		self._rollback.stop()
+		self._enqueue.stop()
+
+	def names(self) -> list[str]:
+		calls = [c for c in self.enqueue.call_args_list if c.args and c.args[0] == holds.SWEEP_JOB]
+		for c in calls:
+			self.case.assertTrue(c.kwargs.get("enqueue_after_commit"))
+		return sorted({n for c in calls for n in c.kwargs["holds"]})
+
+	def run(self) -> dict:
+		return holds.sweep(holds=self.names())
+
+
 class TestPlacing(DealHoldCase):
 	def test_a_hold_is_a_live_counter_hold_for_48_hours(self):
 		serial = self._gun()
@@ -239,6 +267,18 @@ class TestTime(DealHoldCase):
 
 
 class TestExtendRelease(DealHoldCase):
+	def test_the_limit_is_checked_again_under_the_lock(self):
+		"""Two Extend clicks at once both read "not extended yet" before the lock. The second, in
+		turn under the lock, finds the first's extension and needs a manager."""
+		serial = self._gun()
+		name = self._held(self._deal(serial), serial)
+		stale = holds._brief(name)
+		self._extend(name)
+		with patch.object(holds, "_brief", return_value=stale):
+			with self.assertRaisesRegex(frappe.ValidationError, "A manager has to extend it again"):
+				self._extend(name)
+		self.assertEqual(frappe.db.get_value(holds.HOLD, name, "extensions"), 1)
+
 	def _extend(self, name: str, as_user: str = CLERK, **kwargs) -> dict:
 		frappe.set_user(as_user)
 		try:
@@ -436,8 +476,12 @@ class TestCreateOrder(DealHoldCase):
 			"items": [{"item_code": GUN, "qty": 1, "rate": 700, "serials": [serial]}]}
 		with self.assertRaises(holds.DealHoldError):
 			manual_order.create_order({**payload, "customer": _customer()})
-		out = manual_order.create_order(payload)
+		with _Queued(self) as queued:
+			out = manual_order.create_order(payload)
 		self.assertTrue(out["ok"])
+		self.assertEqual(frappe.db.get_value(holds.HOLD, name, "status"), holds.ACTIVE, "nothing written in the sale")
+		self.assertEqual(queued.names(), [name])
+		self.assertEqual(queued.run(), {holds.END_SOLD: 1})
 		row = frappe.db.get_value(holds.HOLD, name, ["status", "end_reason"], as_dict=True)
 		self.assertEqual((row.status, row.end_reason), (holds.RELEASED, holds.END_SOLD))
 		self.assertIn(f"Sold to the customer on {out['sales_invoice']}.", _comments(deal))
@@ -448,8 +492,12 @@ class TestDealEvents(DealHoldCase):
 		sold, other = self._gun(), self._gun()
 		deal = self._deal(sold, other)
 		self.assertEqual(len(self._hold(deal, sold, other)["held"]), 2)
-		self._invoice(sold, self._customer_of(deal), submit=True, deal=deal)
+		with _Queued(self) as queued:
+			self._invoice(sold, self._customer_of(deal), submit=True, deal=deal)
 		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "status"), "Won")
+		self.assertEqual(len(_active(sold) + _active(other)), 2, "nothing written in the sale or the deal's save")
+		self.assertEqual(len(queued.names()), 2)
+		queued.run()
 		ends = dict(frappe.get_all(holds.HOLD, filters={"deal": deal}, fields=["serial_no", "end_reason"], as_list=True))
 		self.assertEqual(ends, {sold: holds.END_SOLD, other: holds.END_WON})
 
@@ -462,13 +510,19 @@ class TestDealEvents(DealHoldCase):
 		doc.lost_reason = "Other"
 		doc.lost_notes = "test"
 		doc.flags.ignore_mandatory = True
-		doc.save(ignore_permissions=True)
+		with _Queued(self) as queued:
+			doc.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value(holds.HOLD, name, "status"), holds.ACTIVE)
+		queued.run()
 		self.assertEqual(frappe.db.get_value(holds.HOLD, name, "end_reason"), holds.END_LOST)
 
 		serial = self._gun()
 		deal = self._deal(serial)
 		name = self._held(deal, serial)
-		frappe.delete_doc("CRM Deal", deal, ignore_permissions=True, force=True)
+		with _Queued(self) as queued:
+			frappe.delete_doc("CRM Deal", deal, ignore_permissions=True, force=True)
+		self.assertEqual(frappe.db.get_value(holds.HOLD, name, "status"), holds.ACTIVE)
+		queued.run()
 		self.assertEqual(frappe.db.get_value(holds.HOLD, name, ["status", "end_reason"]), (holds.RELEASED, holds.END_DELETED))
 
 		keep, drop = self._gun(), self._gun()
@@ -476,9 +530,41 @@ class TestDealEvents(DealHoldCase):
 		self._hold(deal, keep, drop)
 		doc = frappe.get_doc("CRM Deal", deal)
 		doc.products = [r for r in doc.products if r.ffl_serial_no == keep]
-		doc.save(ignore_permissions=True)
+		with _Queued(self) as queued:
+			doc.save(ignore_permissions=True)
+		self.assertEqual(len(queued.names()), 1)
+		queued.run()
 		self.assertEqual(_active(keep) and frappe.db.get_value(holds.HOLD, _active(keep)[0], "deal"), deal)
 		self.assertEqual(frappe.db.get_value(holds.HOLD, {"serial_no": drop}, "end_reason"), holds.END_OFF_DEAL)
+
+	def test_won_by_hand_ends_the_holds_after_the_save(self):
+		serial = self._gun()
+		deal = self._deal(serial)
+		name = self._held(deal, serial)
+		doc = frappe.get_doc("CRM Deal", deal)
+		doc.status = "Won"
+		doc.flags.ignore_mandatory = True
+		with _Queued(self) as queued:
+			doc.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value(holds.HOLD, name, "status"), holds.ACTIVE)
+		self.assertEqual(queued.run(), {holds.END_WON: 1})
+
+	def test_a_pos_sale_to_the_customer_ends_it_as_sold(self):
+		"""A POS ticket holds no gun once submitted: the sweep finds the sale itself."""
+		serial = self._gun()
+		deal = self._deal(serial)
+		name = self._held(deal, serial)
+		pos = frappe.new_doc("POS Invoice")
+		pos.customer = self._customer_of(deal)
+		pos.append("items", {"item_code": GUN, "qty": 1, "rate": 700, "serial_no": serial})
+		pos.name, pos.docstatus, pos.is_return = "DH-POS-" + _token(), 1, 0
+		with _Queued(self) as queued:
+			holds.release_sold(pos)
+		self.assertEqual(queued.names(), [name])
+		self.assertEqual(frappe.db.get_value(holds.HOLD, name, "status"), holds.ACTIVE)
+		with patch.object(holds, "_sold_to", return_value=pos.name) as sold_to:
+			self.assertEqual(queued.run(), {holds.END_SOLD: 1})
+		self.assertEqual(sold_to.call_args.args[:2], (serial, self._customer_of(deal)))
 
 	def test_a_renamed_deal_keeps_its_holds(self):
 		serial = self._gun()
@@ -564,7 +650,7 @@ class TestSweepCatches(DealHoldCase):
 		name = self._held(deal, serial)
 		with patch("ffl_core.crm.holds.release_sold"):
 			si = self._invoice(serial, self._customer_of(deal), submit=True)
-		holds.sweep()
+		holds.sweep()   # the five-minute sweep alone, as if the queued one never ran
 		self.assertEqual(frappe.db.get_value(holds.HOLD, name, "end_reason"), holds.END_SOLD)
 		self.assertIn(f"Sold to the customer on {si.name}.", _comments(deal))
 

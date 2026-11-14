@@ -207,8 +207,9 @@ def refuse_deal_held_serials(doc, method=None) -> None:
 
 
 def release_sold(doc, method=None) -> None:
-	"""POS Invoice / Sales Invoice on_submit: a held gun sold to the deal's own customer ends its hold.
-	Never stops the sale: a failure is logged and the sweep ends the hold later."""
+	"""POS Invoice / Sales Invoice on_submit: a held gun sold to the deal's own customer ends its hold,
+	right after the sale commits (:func:`sweep_after_commit`). Nothing is written in the sale's own
+	transaction, so nothing here can roll the sale back."""
 	from ffl_core.serials import serials_for_lines
 
 	if doc.get("is_return") or doc.get("is_consolidated") or not table_ready():
@@ -216,20 +217,25 @@ def release_sold(doc, method=None) -> None:
 	if not frappe.db.exists(HOLD, {"status": ACTIVE}):
 		return
 	serials = [s for line in serials_for_lines(doc.get("items") or []) for s in line]
-	if not serials:
+	if serials:
+		sweep_after_commit(frappe.get_all(HOLD, filters={"serial_no": ["in", serials], "status": ACTIVE}, pluck="name"))
+
+
+SWEEP_JOB = "ffl_core.crm.holds.sweep"
+
+
+def sweep_after_commit(names) -> None:
+	"""Sweep these holds in a short job queued once the caller's transaction commits (an invoice's or a
+	deal's, which this must never write into or roll back). The sweep ends whatever has ended: sold to
+	the customer, deal won, lost, deleted, gun off its lines. A queue that is down costs only the
+	wait for the five-minute sweep. Never raises."""
+	names = sorted(set(names or ()))
+	if not names:
 		return
-	rows = frappe.get_all(HOLD, filters={"serial_no": ["in", serials], "status": ACTIVE}, pluck="name")
-	for name in rows:
-		hold = frappe.get_doc(HOLD, name)
-		if _deal_customers([hold.deal]).get(hold.deal) != doc.get("customer"):
-			continue
-		frappe.db.savepoint("ffl_hold_sold")
-		try:
-			_end(hold, RELEASED, END_SOLD, comment=_("Sold to the customer on {0}.").format(doc.name))
-		except Exception:
-			_rollback("ffl_hold_sold")
-			frappe.log_error(title=f"[{TITLE}] Hold not ended on sale: {hold.serial_no} ({doc.name})",
-				message=frappe.get_traceback())
+	try:
+		frappe.enqueue(SWEEP_JOB, queue="short", enqueue_after_commit=True, holds=names)
+	except Exception:  # noqa: BLE001 — the five-minute sweep catches up
+		frappe.log_error(title=f"[{TITLE}] Hold sweep not queued: {', '.join(names)}", message=frappe.get_traceback())
 
 
 # ---------------------------------------------------------------- locking and writing
@@ -532,25 +538,39 @@ def _concurrent(fn):
 		frappe.throw(_(CONCURRENT), title=_("Try again"))
 
 
+def _brief(name: str):
+	return frappe.db.get_value(HOLD, name, ["name", "held_by", "extensions"], as_dict=True)
+
+
+def _extend_needs_manager(hold) -> bool:
+	return not (is_own_hold(hold) and cint(hold.extensions) < EXTENSIONS_WITHOUT_MANAGER)
+
+
+def _refuse_extension(hold) -> None:
+	if cint(hold.extensions) >= EXTENSIONS_WITHOUT_MANAGER:
+		frappe.throw(_("This hold was extended once. A manager has to extend it again."), title=_("Manager needed"))
+	frappe.throw(_("{0} placed this hold. A manager has to extend it.").format(get_fullname(hold.held_by)),
+		title=_("Manager needed"))
+
+
 def extend(name: str, approver: str | None = None, pin: str | None = None, password: str | None = None) -> dict:
 	"""Another :data:`HOLD_HOURS` on hold *name* (permission on its deal checked by the caller)."""
 	if not holds_on():
 		frappe.throw(_("Holding guns for deals is off. A manager can turn it on in Lead Mail Settings."),
 			title=_("Turned off"))
-	hold = frappe.db.get_value(HOLD, name, ["held_by", "extensions"], as_dict=True)
+	hold = _brief(name)
 	if not hold:
 		frappe.throw(_("This hold no longer exists."), frappe.DoesNotExistError)
-	manager = None
-	if not (is_own_hold(hold) and cint(hold.extensions) < EXTENSIONS_WITHOUT_MANAGER):
-		manager = _approval(approver, pin, password)
-		if not manager:
-			if cint(hold.extensions) >= EXTENSIONS_WITHOUT_MANAGER:
-				frappe.throw(_("This hold was extended once. A manager has to extend it again."), title=_("Manager needed"))
-			frappe.throw(_("{0} placed this hold. A manager has to extend it.").format(get_fullname(hold.held_by)),
-				title=_("Manager needed"))
+	# Read before the lock only to know whether to check a PIN first; the rule is applied again under
+	# the lock (run), where two extensions at once cannot both read "not extended yet".
+	manager = _approval(approver, pin, password) if _extend_needs_manager(hold) else None
+	if _extend_needs_manager(hold) and not manager:
+		_refuse_extension(hold)
 
 	def run():
 		locked = _locked_hold(name)
+		if _extend_needs_manager(locked) and not manager:
+			_refuse_extension(locked)
 		doc = frappe.get_doc(HOLD, locked.name)
 		doc.expires_at = get_datetime(doc.expires_at) + timedelta(hours=HOLD_HOURS)
 		doc.extensions = cint(doc.extensions) + 1
@@ -638,59 +658,51 @@ def _deal_holds(deal: str) -> list[str]:
 	return frappe.get_all(HOLD, filters={"deal": deal, "status": ACTIVE}, pluck="name")
 
 
-def _end_all(names, reason: str, label: str) -> None:
-	"""End these holds on a deal event. A failure is logged and left to the sweep: the deal's own save
-	(a write-back from an invoice, say) must not fail over a hold."""
-	for name in names:
-		frappe.db.savepoint("ffl_hold_deal")
-		try:
-			_end(frappe.get_doc(HOLD, name), RELEASED, reason)
-		except Exception:
-			_rollback("ffl_hold_deal")
-			frappe.log_error(title=f"[{TITLE}] Hold not ended ({label}): {name}", message=frappe.get_traceback())
-
-
 def on_deal_update(doc, method=None) -> None:
-	"""CRM Deal on_update: a deal Won or Lost ends its holds; so does a gun taken off its lines."""
+	"""CRM Deal on_update: a deal Won or Lost, or a gun taken off its lines, ends the holds concerned —
+	in the sweep queued after the deal's save commits (:func:`sweep_after_commit`), never in it."""
 	from ffl_core.crm.deal import SERIAL_FIELD
 
 	names = _deal_holds(doc.name)
 	if not names:
 		return
-	closed = frappe.db.get_value("CRM Deal Status", doc.status, "type")
-	if closed in ("Won", "Lost"):
-		_end_all(names, END_WON if closed == "Won" else END_LOST, closed)
+	if frappe.db.get_value("CRM Deal Status", doc.status, "type") in ("Won", "Lost"):
+		sweep_after_commit(names)
 		return
 	on = {r.get(SERIAL_FIELD) for r in doc.get("products") or [] if r.get(SERIAL_FIELD)}
-	off = [n for n in names if frappe.db.get_value(HOLD, n, "serial_no") not in on]
-	_end_all(off, END_OFF_DEAL, "off the deal")
+	sweep_after_commit([n for n in names if frappe.db.get_value(HOLD, n, "serial_no") not in on])
 
 
 def on_deal_trash(doc, method=None) -> None:
-	"""CRM Deal on_trash: its holds end (the records stay)."""
-	_end_all(_deal_holds(doc.name), END_DELETED, "deal deleted")
+	"""CRM Deal on_trash: its holds end once the delete commits (the records stay)."""
+	sweep_after_commit(_deal_holds(doc.name))
 
 
 def on_deal_rename(doc, method=None, old: str | None = None, new: str | None = None, merge: bool = False) -> None:
-	"""CRM Deal after_rename (Desk allows it): the holds follow the new name. A merge ends the merged
-	deal's holds, as if it were deleted."""
+	"""CRM Deal after_rename (Desk allows it): the holds follow the new name. A merge leaves the merged
+	deal's holds on its old name, gone now, and the sweep ends them as for a deleted deal."""
 	if not table_ready() or not old or not new:
 		return
 	if merge:
-		_end_all(frappe.get_all(HOLD, filters={"deal": old, "status": ACTIVE}, pluck="name"), END_DELETED, "deal merged")
+		sweep_after_commit(frappe.get_all(HOLD, filters={"deal": old, "status": ACTIVE}, pluck="name"))
+		return
 	frappe.db.sql("UPDATE `tabCRM Deal Hold` SET deal = %s WHERE deal = %s", (new, old))
 
 
 # ---------------------------------------------------------------- the sweep
 
 
-def sweep() -> dict:
-	"""Every five minutes: write every hold that has ended in fact. Each in its own transaction; a
-	failure is logged and tried again next time. Returns ``{reason: count}``."""
+def sweep(holds: list[str] | None = None) -> dict:
+	"""Every five minutes, and right after a sale or a deal event (*holds*: just those): write every
+	hold that has ended in fact. Each in its own transaction; a failure is logged and tried again next
+	time. Returns ``{reason: count}``."""
 	if not installed() or not table_ready():
 		return {}
 	counts: dict[str, int] = {}
-	for name in frappe.get_all(HOLD, filters={"status": ACTIVE}, pluck="name", order_by="expires_at asc"):
+	filters = {"status": ACTIVE}
+	if holds is not None:
+		filters["name"] = ["in", list(holds) or [""]]
+	for name in frappe.get_all(HOLD, filters=filters, pluck="name", order_by="expires_at asc"):
 		frappe.db.savepoint("ffl_hold_sweep")
 		try:
 			ended = _after_commit(lambda name=name: _sweep_one(name))
@@ -707,6 +719,24 @@ def _doc_customer(entry: dict) -> str | None:
 	"""The buyer on the document behind another counter hold, when it is one of ours."""
 	doctype = {"sales_invoice": "Sales Invoice", "pos": "POS Invoice"}.get(entry.get("kind"))
 	return doctype and entry.get("ref") and frappe.db.get_value(doctype, entry["ref"], "customer")
+
+
+def _sold_to(serial: str, customer: str, since) -> str | None:
+	"""The submitted sale (Sales Invoice or POS Invoice, no return) of *serial* to *customer* since the
+	hold began, or None. lazy: reads each of the customer's sales since then; a handful in 48 hours.
+	Upgrade path: a serial-to-voucher lookup through the Serial and Batch ledger."""
+	from ffl_core.serials import serials_for_lines
+
+	for doctype in ("Sales Invoice", "POS Invoice"):
+		filters = {"customer": customer, "docstatus": 1, "is_return": 0, "creation": [">=", since]}
+		if doctype == "Sales Invoice":
+			filters["is_consolidated"] = 0
+		for name in frappe.get_all(doctype, filters=filters, pluck="name", order_by="creation asc"):
+			rows = frappe.get_all(f"{doctype} Item", filters={"parent": name, "parenttype": doctype},
+				fields=["serial_no", "serial_and_batch_bundle"])
+			if any(serial in line for line in serials_for_lines(rows)):
+				return name
+	return None
 
 
 def _sweep_one(name: str) -> str | None:
@@ -728,6 +758,11 @@ def _sweep_one(name: str) -> str | None:
 	if not deal:
 		_end(doc, RELEASED, END_DELETED, by=sys)
 		return END_DELETED
+	# First: a sale to the deal's own customer (it also makes the deal Won and takes the gun off the shelf).
+	invoice = deal.erpnext_customer and _sold_to(serial, deal.erpnext_customer, doc.held_at or doc.creation)
+	if invoice:
+		_end(doc, RELEASED, END_SOLD, by=sys, comment=_("Sold to the customer on {0}.").format(invoice))
+		return END_SOLD
 	closed = frappe.db.get_value("CRM Deal Status", deal.status, "type")
 	if closed in ("Won", "Lost"):
 		reason = END_WON if closed == "Won" else END_LOST
