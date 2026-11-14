@@ -13,6 +13,7 @@ from frappe.utils import cint
 
 from ffl_core.crm import customer as deal_customer
 from ffl_core.crm import deals, holds, mail, pos_link_on
+from ffl_core.crm import setup as crm_setup
 from ffl_core.roles import CRM_ROLES
 
 
@@ -194,9 +195,10 @@ def add_want(deal: str, keywords: str | None = None, item: str | None = None, bu
 @frappe.whitelist()
 def crm_list_data(**kwargs) -> dict:
 	"""CRM's list data for its Leads and Deals pages (hooks.py overrides ``crm.api.doc.get_data``), with
-	two changes: a Leads list leaves out other mail unless it filters on the status or category, and
+	three changes: a Leads list leaves out other mail unless it filters on the status or category,
 	``@me`` inside a filter's list of values is the caller (CRM's page replaces only a plain ``@me``, and
-	**My follow-ups** asks for "mine or nobody's").
+	**My follow-ups** asks for "mine or nobody's"), and a Deals list on CRM's own columns shows the
+	person's name first.
 
 	Args:
 	    kwargs: CRM's own arguments, unchanged, chiefly doctype and filters.
@@ -214,7 +216,18 @@ def crm_list_data(**kwargs) -> dict:
 			filters[mail.CATEGORY_FIELD] = ["is", "not set"]
 		kwargs["filters"] = filters
 		kwargs["default_filters"] = fixed or None
-	return frappe.call(get_data, **kwargs)
+	view = frappe.parse_json(kwargs.get("view") or {}) or {}
+	named = kwargs.get("doctype") == "CRM Deal" and view.get("view_type", "list") != "kanban" \
+		and not kwargs.get("columns") and not kwargs.get("rows") \
+		and not frappe.db.exists("CRM View Settings", {"dt": "CRM Deal", "type": view.get("view_type") or "list",
+			"is_standard": 1, "user": frappe.session.user})
+	if named:
+		# CRM's own default (it would read CRMDeal.default_list_data): the same, the name first.
+		kwargs.update(crm_setup.deal_list_data())
+	data = frappe.call(get_data, **kwargs)
+	if named and not view.get("custom_view_name"):
+		data["is_default"] = True   # still the default list: no "reset" offered
+	return data
 
 
 def _with_caller(value):

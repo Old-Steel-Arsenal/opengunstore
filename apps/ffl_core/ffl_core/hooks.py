@@ -317,7 +317,9 @@ doc_events = {
 	"CRM Lead": {"validate": "ffl_core.crm.mail.other_mail_on_validate"},
 	"CRM Deal": {
 		# The quote's lines priced; the value pinned to the deal's invoices (ffl_core.crm.orders).
-		"validate": ["ffl_core.crm.deal.price_lines", "ffl_core.crm.orders.pin_deal_value"],
+		# A deal with no title gets the person's name (ffl_core.crm.deals).
+		"validate": ["ffl_core.crm.deal.price_lines", "ffl_core.crm.orders.pin_deal_value",
+			"ffl_core.crm.deals.name_deal"],
 		# A deal converted from a lead the team shares stays shared (ffl_core.crm.mail); a deal whose
 		# email is one customer's is linked to it once it commits (ffl_core.crm.customer).
 		"after_insert": ["ffl_core.crm.mail.share_converted_deal", "ffl_core.crm.customer.deal_inserted"],
