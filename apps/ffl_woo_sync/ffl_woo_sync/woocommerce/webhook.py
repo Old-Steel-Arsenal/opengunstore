@@ -41,6 +41,7 @@ from ffl_core.crm.web_orders import (
 	PLACED,
 	REFUNDED,
 	TRANSFERRED,
+	after_commit as crm_after_commit,
 	note_web_order,
 	payment_failed,
 	payment_recovered,
@@ -2862,6 +2863,8 @@ def _handle_order_cancelled(body: dict) -> None:
 	event = {"cancelled": CANCELLED, "refunded": REFUNDED}.get(_order_status(body))
 	if event:
 		note_web_order(order_name, event)
+		# The deal this order won goes back to open, once this commits (crm.web_orders).
+		crm_after_commit(order_name, paid=False)
 
 	# #9 — the write above is db.set_value, which fires NO doc_events, so anything
 	# that must react to a cancellation has to be called explicitly. The
@@ -3021,6 +3024,9 @@ def _handle_order_upsert(body: dict) -> None:
 
 		if _is_paid_woo_status(_order_status(body)):
 			payment_recovered(str(body.get("id") or ""), (body.get("billing") or {}).get("email") or "")
+			# A paid order wins the deal or the lead it closes, once this commits (crm.web_orders).
+			crm_after_commit(frappe.db.get_value("Woo Online Order", {"woo_order_id": str(body.get("id") or "").strip(),
+				"site": frappe.flags.get("woo_sync_site") or "retail"}, "name"), paid=True)
 
 
 _HANDLERS: dict[str, Any] = {

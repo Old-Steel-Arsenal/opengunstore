@@ -33,6 +33,7 @@ from ffl_core.crm.deals import DEAL, STATUS
 from ffl_core.crm.gunbroker import MSGID_FIELD
 from ffl_core.crm.mail import AUTO_LEAD, CATEGORY, CATEGORY_FIELD, LEAD, OTHER_MAIL, SETTINGS
 from ffl_core.crm.orders import DEAL_FIELD
+from ffl_core.crm.web_orders import ORDER as WEB_ORDER, WON_BY
 
 CRM_SETTINGS = "ERPNext CRM Settings"
 FCRM_SETTINGS = "FCRM Settings"
@@ -258,6 +259,16 @@ CUSTOM_FIELDS = {
 		"fieldtype": "HTML",
 		"label": "Customer card",
 		"insert_after": "lead_name",
+	}, {
+		# The paid web order that won the deal (crm.web_orders): its total is the deal's value.
+		"fieldname": WON_BY,
+		"fieldtype": "Link",
+		"options": WEB_ORDER,
+		"label": "Won by web order",
+		"read_only": 1,
+		"no_copy": 1,
+		"search_index": 1,
+		"insert_after": "lead",
 	}],
 	# Data, as CRM's own Quotation.crm_deal: a deal deleted later must never stop a credit note.
 	# Not no_copy: a credit note and an amended invoice stay on the deal.

@@ -8,3 +8,4 @@ ffl_woo_sync.patches.backfill_woo_order_serials
 ffl_woo_sync.patches.v0_add_woo_online_order_site_unique
 ffl_woo_sync.patches.seed_follow_category_tree
 ffl_woo_sync.patches.backfill_web_order_customer
+ffl_woo_sync.patches.web_orders_win_deals

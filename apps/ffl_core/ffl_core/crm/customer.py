@@ -216,6 +216,17 @@ def sole_customer_by_email(email: str | None) -> str | None:
 	return hit.name if hit and not (hit.get("via_alias") and hit.get("is_ffl_dealer")) else None
 
 
+def link_unless_taken(deal, customer: str) -> bool:
+	"""Link *deal* to *customer* (:func:`_link`) unless it has a customer already or its primary Contact
+	is linked to other customers only: those are the employee's to sort out. True when linked."""
+	contact = _primary_contact(deal)
+	others = _customers_of_contacts([contact]) if contact else []
+	if deal.get("erpnext_customer") or (others and customer not in others):
+		return False
+	_link(deal, customer)
+	return True
+
+
 def auto_link_after_commit(*, deal: str | None = None, email: str | None = None) -> None:
 	"""Queue :func:`auto_link_deals` for once the caller's transaction commits (a web order's or a
 	deal's: nothing is written into it). Off with the deal to POS switch. Never raises."""
@@ -257,12 +268,8 @@ def auto_link_deals(deal: str | None = None, email: str | None = None) -> list[s
 				if not customer:
 					continue
 				doc = frappe.get_doc("CRM Deal", row.name)
-				contact = _primary_contact(doc)
-				others = _customers_of_contacts([contact]) if contact else []
-				if doc.get("erpnext_customer") or (others and customer not in others):
-					continue
-				_link(doc, customer)
-				linked.append(row.name)
+				if link_unless_taken(doc, customer):
+					linked.append(row.name)
 			except Exception:
 				frappe.db.rollback(save_point="ffl_deal_auto_link")
 				frappe.log_error(title=f"[{TITLE}] Deal not linked: {row.name}", message=frappe.get_traceback())

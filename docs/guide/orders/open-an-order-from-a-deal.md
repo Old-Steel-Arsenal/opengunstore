@@ -69,7 +69,20 @@ To close a want that is no longer needed, open it in the **CRM Want** list (sear
 
 ## Web orders on the deal
 
-While the link is on, a customer's web orders leave notes on their open deal, on the deal's **Notes** tab: placed, shipped or picked up, cancelled, and refunded, each with its amount. A note changes nothing on the deal: its value and status follow POS invoices only. A customer with no open deal gets no note and no new deal.
+While the link is on, a customer's web orders leave notes on their open deal, on the deal's **Notes** tab: placed, shipped or picked up, cancelled, and refunded, each with its amount. A customer with no open deal and no open lead gets no note and no new deal.
+
+A paid web order closes the sale it came from, matched by the order's email:
+
+| The customer has | What happens |
+|---|---|
+| An open deal, with no order opened from it and no gun held | The deal is set to **Won**. Its value is the order total. |
+| An open deal with an order opened from it, or a gun held | Only the note. |
+| No open deal, but an open lead | The lead becomes a deal with the same owner and mail. The deal is set to **Won**, its value is the order total, and it is linked to the order's customer. |
+| A lead that is lost or in Other mail, or nothing open | Nothing changes. |
+
+Only a deal or lead made before the order counts. If several leads match, only the newest one becomes a deal. Nobody gets an email or a task.
+
+The deal shows the order in **Won by web order**. If the order is cancelled or fully refunded, the deal goes back to the open status it had and its value is cleared. A partial refund only adds a note.
 
 ## When a web order's payment fails
 
