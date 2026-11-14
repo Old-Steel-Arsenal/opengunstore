@@ -136,9 +136,9 @@ Nothing is emailed to the customer either way.
 3. Fill in **Team addresses** and **Reply-To for staff mail**, then click **Save**. Every staff mailbox gets the Reply-To, and everyone with Sales User or Sales Manager can answer as each **Mailbox** address.
 4. Each staff member opens their own **My Settings** and clicks **Connect my mailbox**, then signs in to their own mail account.
 
-Every lead and deal that gets team mail shows to everyone with Sales User or Sales Manager, without a notice or an email to anyone. A deal converted from such a lead shows to them too. Whoever answers a new lead first from CRM becomes its owner. To take one over, change its owner in CRM.
+Every lead and deal that gets team mail shows to everyone with Sales User or Sales Manager, without a notice or an email to anyone. A deal converted from such a lead shows to them too. Whoever answers a new lead first becomes its owner, from CRM or [their own mailbox](other-mail.md#mail-sent-outside-crm). To take one over, change its owner in CRM.
 
-A lead or deal that only got mail sent to one staff member shows to its owner and to Sales Managers. A customer's answer to a reply sent from CRM goes to the Reply-To team address, and the record then shows to everyone too.
+A lead or deal that only got mail sent to one staff member shows to its owner and to Sales Managers. A customer's answer to a reply sent from CRM goes to the Reply-To team address, and the record then shows to everyone.
 
 Save these settings again after you add a staff member. They see existing team leads once the next team mail reaches each one. Removing someone who leaves from a **Mailbox** address is done on their user record.
 
