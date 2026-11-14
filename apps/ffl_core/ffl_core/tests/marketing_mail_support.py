@@ -51,6 +51,15 @@ def html_of(message: str) -> str:
 	return ""
 
 
+def text_of(message: str) -> str:
+	"""The text/plain part of a raw MIME message (line ends as \\n)."""
+	parsed = email_lib.message_from_string(message)
+	for part in parsed.walk():
+		if part.get_content_type() == "text/plain":
+			return part.get_payload(decode=True).decode().replace("\r\n", "\n")
+	return ""
+
+
 class MailTestCase(MarketingTestCase):
 	def setUp(self):
 		super().setUp()

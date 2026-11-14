@@ -21,7 +21,7 @@ from ffl_core.marketing.mailer import MARKETING, SERVICE, MarketingMailError, re
 from ffl_core.marketing.signing import contact_token
 from ffl_core.tests.crm_support import user
 from ffl_core.tests.marketing_mail_support import (ACCOUNT, SENDER, SITE_ADDRESS, MailTestCase, contact, head_and_body,
-	html_of, queue_rows, queue_rows_to)
+	html_of, queue_rows, queue_rows_to, text_of)
 from ffl_core.tests.marketing_support import address, events_of, status_of
 
 CTX = {"sent_by": "tester", "link": "https://shop.example.com/new?a=1&b=2"}
@@ -131,6 +131,20 @@ class TestHeaders(MailTestCase):
 		self.assertNotIn("X-List-Unsubscribe", head)
 		self.assertTrue(row.sender.endswith(f"<{SENDER}>"))
 		self.assertIn("/unsubscribe?t=", html_of(row.message), "the footer link is the same address")
+
+	def test_the_text_part_ends_with_the_store_and_a_written_out_unsubscribe_link(self):
+		from ffl_core.store_identity import company_brand
+		from ffl_core.utils import default_company
+
+		email = contact(SUBSCRIBED, first_name="Pat")
+		_send(email, context={**CTX, "link": "https://shop.example.com/new?a=1&b=2"})
+		text = text_of(queue_rows(email)[0].message)
+		brand = company_brand(default_company())
+		self.assertIn("Hello Pat,", text, "the body text is what Frappe derives from the HTML")
+		self.assertFalse(brand["phone"], "the test store has no phone, so the store block is name + address")
+		self.assertTrue(text.endswith(f"\n\n{brand['name']}\n{brand['address_line']}\n\nUnsubscribe: {unsubscribe_url(email)}"), text)
+		self.assertEqual(text.count("Unsubscribe:"), 1, "the shell's footer is not repeated")
+		self.assertNotIn("<", text)
 
 	def test_only_the_header_names_change_and_only_on_marketing_rows(self):
 		head = ("Content-Type: multipart/mixed\r\nX-List-Unsubscribe: <https://pos/unsubscribe?t=a.b>\r\n"

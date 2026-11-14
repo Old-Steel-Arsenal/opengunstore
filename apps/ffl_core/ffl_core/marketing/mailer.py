@@ -14,7 +14,8 @@ the code for it). :func:`send`, in order:
    (``base.html``: name, logo, address, phone, unsubscribe link), autoescaped;
 4. adds tracking when Marketing Settings asks for it (``ffl_core.marketing.track``);
 5. queues it through ``frappe.sendmail`` from the marketing Email Account, with ``List-Unsubscribe``
-   headers (see :func:`restore_list_unsubscribe`).
+   headers (see :func:`restore_list_unsubscribe`) and a text part that ends with the store's name,
+   address and ``Unsubscribe: <link>`` (:func:`text_part`).
 
 The claim and the Email Queue row are written in the same transaction: if queueing fails, the claim
 is rolled back with it (and the error raised), so "Sent" on the log always means a queued mail, and a
@@ -30,7 +31,9 @@ from email.utils import formataddr
 from pathlib import Path
 
 import frappe
+from bs4 import BeautifulSoup
 from frappe import _
+from frappe.core.utils import html_to_plain_text
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from ffl_core.marketing import CONTACT, EVENT, SETTINGS, enabled, has_site_url
@@ -51,6 +54,10 @@ REACHES = {MARKETING: (SUBSCRIBED,), SERVICE: (SUBSCRIBED, NOT_SUBSCRIBED)}
 TEMPLATES = Path(__file__).parent / "templates" / "marketing"
 # Frappe wraps a queued mail's HTML in a template of its own; this one adds nothing to ours.
 WRAPPER = "ffl_core/marketing/templates/marketing/passthrough.html"
+# ``frappe.sendmail`` takes a mail's text part from ``templates/emails/<template>.txt`` (its ``template``
+# argument) and nowhere else: this pair carries our HTML and our text through unchanged.
+CARRIER = "marketing"
+FOOTER_ID = "mkt-footer"   # the shell's footer; the text part builds its own (links do not survive HTML-to-text)
 _TEMPLATE_NAME = re.compile(r"^[a-z0-9_]{1,60}$")
 _env: Environment | None = None
 
@@ -105,9 +112,10 @@ def send(contact, mail: str, subject: str, template: str, context: dict | None =
 	if not claim:   # already sent in this campaign
 		return False
 	try:
+		html = render(template, context, email=email, campaign=campaign, subject=subject)
 		queued = frappe.sendmail(
 			recipients=[email], sender=sender, subject=subject,
-			message=render(template, context, email=email, campaign=campaign, subject=subject),
+			template=CARRIER, args={"html": html, "text": text_part(html, email)},
 			reference_doctype=CONTACT, reference_name=email,
 			add_unsubscribe_link=0, delayed=True, wrapper=WRAPPER, add_css=False,
 			reply_to=single_raw(SETTINGS, "reply_to") or None,
@@ -169,6 +177,18 @@ def render(template: str, context: dict | None, *, email: str, campaign: str, su
 		"open_pixel_url": open_url(email, campaign) if tracking["track_opens"] else "",
 	}
 	return _jenv().get_template(f"{template}.html").render(values)
+
+
+def text_part(html: str, email: str) -> str:
+	"""The plain-text version of a rendered mail: its text as Frappe derives it from the HTML (the shell's
+	footer left out), then the store's name, address and phone and ``Unsubscribe: <link>``. A reader of
+	the text part has no link to press, so the address of the unsubscribe page is written out."""
+	soup = BeautifulSoup(html, "html.parser")
+	for footer in soup.find_all(id=FOOTER_ID):
+		footer.decompose()
+	brand = company_brand(default_company())
+	store = "\n".join(line for line in (brand.get("name"), brand.get("address_line"), brand.get("phone")) if line)
+	return f"{html_to_plain_text(str(soup))}\n\n{store}\n\nUnsubscribe: {unsubscribe_url(email)}"
 
 
 def _jenv() -> Environment:

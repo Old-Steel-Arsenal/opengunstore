@@ -209,6 +209,19 @@ class TestMarketingMailContract(FrappeTestCase):
 		self.assertEqual(mail.msg_root["X-Kept"], "1")
 		self.assertIn("message", _fields("Email Queue"), "the queued MIME text the hook rewrites")
 
+	def test_a_mails_text_part_comes_only_from_a_templates_txt_file(self):
+		# Why mailer.send passes template="marketing" (templates/emails/marketing.{html,txt}): sendmail has
+		# no text argument of its own, and the pair must hand HTML and text through unchanged.
+		import inspect
+
+		from frappe.utils.jinja import get_email_from_template
+
+		parameters = inspect.signature(frappe.sendmail).parameters
+		self.assertIn("template", parameters)
+		self.assertNotIn("text_content", parameters)
+		html, text = "<p>S&W <b>sale</b></p>", "S&W sale\nUnsubscribe: https://pos.test/unsubscribe?t=a.b"
+		self.assertEqual(get_email_from_template("marketing", {"html": html, "text": text}), (html, text))
+
 	def test_the_queue_drops_reference_level_and_global_unsubscribes_only(self):
 		from frappe.email.doctype.email_queue.email_queue import QueueBuilder
 
