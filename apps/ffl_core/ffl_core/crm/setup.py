@@ -55,6 +55,15 @@ FOLLOW_UPS_FLAG = "ffl_crm_follow_ups_seeded"
 # My follow-ups (ensure_crm_views) lists the Open ones, so it needs both.
 FOLLOW_UP_SWITCHES = ("auto_mark_replied_on_response", "auto_reopen_on_new_communication")
 FOLLOW_UPS = "My follow-ups"
+# A deal is titled, listed first and searched by the person's name (lead_name, which crm.deals fills),
+# as a lead is; CRM's own Deal title is the organization, empty for a person. Kept on every migrate.
+DEAL_PROPERTIES = (
+	(None, "title_field", "lead_name", "Data"),
+	("lead_name", "label", "Full Name", "Data"),
+)
+NAME_COLUMN = {"label": "Full Name", "type": "Data", "key": "lead_name", "width": "12rem"}
+DEAL_COLUMNS_FLAG = "ffl_crm_deal_name_columns_done"
+DEAL_FILTER_FLAG = "ffl_crm_deal_name_filter_done"
 BACKFILL_JOB = "ffl_crm_product_backfill"
 # CRM's own per-page customization (a CRM Form Script record): the Email button on a Contact page.
 CONTACT_SCRIPT = "OpenGunstore: Email a contact"
@@ -346,7 +355,10 @@ def ensure(backfill: bool = True) -> dict:
 		_as_administrator(ensure_deal_stages)
 		_as_administrator(ensure_other_mail)
 		_as_administrator(ensure_lead_sources)
+		_as_administrator(ensure_deal_properties)
 		_as_administrator(ensure_crm_views)
+		_as_administrator(ensure_deal_name_columns)
+		_as_administrator(ensure_deal_name_filter)
 		_as_administrator(ensure_follow_up_status)
 		_as_administrator(take_over_lead_flags)
 		_as_administrator(ensure_contact_script)
@@ -508,8 +520,74 @@ def ensure_crm_views() -> None:
 	_ensure_view(LEAD, "Leads", FOLLOW_UPS, {"lead_owner": ["in", ["@me", ""]], "communication_status": "Open",
 		"status": ["not in", [*closed("CRM Lead Status"), OTHER_MAIL]]}, order_by="modified asc")
 	_ensure_view(DEAL, "Deals", FOLLOW_UPS, {"deal_owner": ["in", ["@me", ""]], "communication_status": "Open",
-		"status": ["not in", closed(STATUS)]}, order_by="modified asc")
+		"status": ["not in", closed(STATUS)]}, order_by="modified asc", **deal_list_data())
 	frappe.db.set_global(VIEWS_FLAG, "1")
+
+
+def ensure_deal_properties() -> list[str]:
+	"""CRM Deal's title, quick filter and label as :data:`DEAL_PROPERTIES` say, by Property Setter (it
+	outranks CRM's JSON on every upgrade). Only a property that differs is written. Returns those."""
+	from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+
+	meta = frappe.get_meta(DEAL)
+	changed = []
+	for field, prop, value, kind in DEAL_PROPERTIES:
+		current = meta.get(prop) if field is None else meta.get_field(field).get(prop)
+		if str(current if current is not None else "") != value:
+			make_property_setter(DEAL, field, prop, value, kind, for_doctype=field is None)
+			changed.append(prop if field is None else f"{field}.{prop}")
+	if changed:
+		frappe.clear_cache(doctype=DEAL)
+	return changed
+
+
+def deal_list_data() -> dict:
+	"""The Deals list's columns and rows: CRM's own, the person's name first."""
+	from crm.fcrm.doctype.crm_deal.crm_deal import CRMDeal
+
+	data = CRMDeal.default_list_data()
+	return {"columns": [dict(NAME_COLUMN), *data["columns"]], "rows": [*data["rows"], NAME_COLUMN["key"]]}
+
+
+def ensure_deal_name_columns() -> list[str]:
+	"""Once per site: saved Deals list views that show CRM's own columns (the POS's shared views, and
+	each user's standard view CRM saves on a filter change) get the name first. A view whose columns
+	someone chose, and every view a user made, is left alone. Returns the views changed."""
+	if frappe.db.get_global(DEAL_COLUMNS_FLAG):
+		return []
+	from crm.fcrm.doctype.crm_deal.crm_deal import CRMDeal
+
+	stock = [c["key"] for c in CRMDeal.default_list_data()["columns"]]
+	data = deal_list_data()
+	changed = []
+	for view in frappe.get_all("CRM View Settings", filters={"dt": DEAL, "type": "list"},
+			fields=["name", "label", "public", "is_standard", "columns"]):
+		if not (view.is_standard or (view.public and view.label == FOLLOW_UPS)):
+			continue
+		keys = [c.get("key") for c in json.loads(view.columns or "[]")]
+		if keys and keys != stock:
+			continue
+		frappe.db.set_value("CRM View Settings", view.name, {"columns": json.dumps(data["columns"]),
+			"rows": json.dumps(data["rows"]), "load_default_columns": 0}, update_modified=False)
+		changed.append(view.name)
+	frappe.db.set_global(DEAL_COLUMNS_FLAG, "1")
+	return changed
+
+
+def ensure_deal_name_filter() -> bool:
+	"""Once per site: the name is the Deals list's first quick filter, as on Leads (CRM keeps the
+	site's quick filters in CRM Global Settings, made on its install; a manager may change them later).
+	Through CRM's own call, which also marks the field a standard filter. Returns whether it was added."""
+	if frappe.db.get_global(DEAL_FILTER_FLAG):
+		return False
+	from crm.api.doc import get_quick_filters, update_quick_filters
+
+	current = [f["fieldname"] for f in get_quick_filters(DEAL, cached=False)]
+	added = NAME_COLUMN["key"] not in current
+	if added:
+		update_quick_filters(json.dumps([NAME_COLUMN["key"], *current]), json.dumps(current), DEAL)
+	frappe.db.set_global(DEAL_FILTER_FLAG, "1")
+	return added
 
 
 def ensure_follow_up_status() -> list[str]:

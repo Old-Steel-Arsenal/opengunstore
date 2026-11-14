@@ -122,7 +122,7 @@ from frappe.utils.synchronization import filelock
 
 from ffl_core.crm import TITLE, gunbroker, installed, team
 from ffl_core.crm.deal import add_product_row
-from ffl_core.crm.deals import DEAL, open_deal_for
+from ffl_core.crm.deals import DEAL, _split_name, open_deal_for
 from ffl_core.utils import commit
 
 SETTINGS = team.SETTINGS
@@ -370,12 +370,6 @@ def decide(doc) -> tuple | None:
 	if lead or row:
 		return ("lead", lead, row)
 	return (SKIP, "direct mail from someone new")
-
-
-def _split_name(full_name: str | None) -> tuple[str, str]:
-	"""A display name as (first name, last name): the first word, then the rest."""
-	parts = (full_name or "").split()
-	return (parts[0], " ".join(parts[1:])) if parts else ("", "")
 
 
 def _new_lead(email: str, full_name: str | None, category: str | None = None, source: str = "Email",

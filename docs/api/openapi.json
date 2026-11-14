@@ -8178,7 +8178,7 @@
           "ffl_core"
         ],
         "summary": "Add a want to a deal's primary contact: when stock that fits arrives, you get a task.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:164`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:165`",
         "operationId": "ffl_core.api.crm.add_want",
         "responses": {
           "200": {
@@ -8254,7 +8254,7 @@
           "ffl_core"
         ],
         "summary": "Before a POS / Sales Invoice is saved: the guns on it held for a deal whose customer is not this",
-        "description": "sale's.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:362`",
+        "description": "sale's.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:375`",
         "operationId": "ffl_core.api.crm.check_sale",
         "responses": {
           "200": {
@@ -8301,7 +8301,7 @@
           "ffl_core"
         ],
         "summary": "Start connecting your own mailbox to the POS: the address of the provider's sign-in page.",
-        "description": "For a staff member whose mailbox an administrator set up as an OAuth Email Account with them as\nits connected user; they sign in to their own mail account, not the administrator. Frappe's own\nAuthorize button needs read access to the Connected App, which staff do not have.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:42`",
+        "description": "For a staff member whose mailbox an administrator set up as an OAuth Email Account with them as\nits connected user; they sign in to their own mail account, not the administrator. Frappe's own\nAuthorize button needs read access to the Connected App, which staff do not have.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:43`",
         "operationId": "ffl_core.api.crm.connect_my_mailbox",
         "responses": {
           "200": {
@@ -8356,7 +8356,7 @@
           "ffl_core"
         ],
         "summary": "CRM's list data for its Leads and Deals pages (hooks.py overrides ``crm.api.doc.get_data``), with",
-        "description": "two changes: a Leads list leaves out other mail unless it filters on the status or category, and\n``@me`` inside a filter's list of values is the caller (CRM's page replaces only a plain ``@me``, and\n**My follow-ups** asks for \"mine or nobody's\").\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:195`",
+        "description": "three changes: a Leads list leaves out other mail unless it filters on the status or category,\n``@me`` inside a filter's list of values is the caller (CRM's page replaces only a plain ``@me``, and\n**My follow-ups** asks for \"mine or nobody's\"), and a Deals list on CRM's own columns shows the\nperson's name first.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:196`",
         "operationId": "ffl_core.api.crm.crm_list_data",
         "responses": {
           "200": {
@@ -8386,7 +8386,7 @@
           "ffl_core"
         ],
         "summary": "What the Deal page's customer card shows. Never carries an ID number, date of birth, 4473 or",
-        "description": "NICS.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:109`",
+        "description": "NICS.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:110`",
         "operationId": "ffl_core.api.crm.deal_customer_summary",
         "responses": {
           "200": {
@@ -8434,7 +8434,7 @@
           "ffl_core"
         ],
         "summary": "The Deal page's Hold guns dialog: each gun on the deal's lines, its hold and what can be done.",
-        "description": "Answers while Hold guns for deals is off too, so holds still running stay in view.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:255`",
+        "description": "Answers while Hold guns for deals is off too, so holds still running stay in view.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:268`",
         "operationId": "ffl_core.api.crm.deal_holds",
         "responses": {
           "200": {
@@ -8482,7 +8482,7 @@
           "ffl_core"
         ],
         "summary": "Stands in for CRM's quotation gates (hooks.py): the Deal page shows no Quotations tab and no",
-        "description": "**Create Quotation** button, since a deal closes through **Open order**.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:227`",
+        "description": "**Create Quotation** button, since a deal closes through **Open order**.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:240`",
         "operationId": "ffl_core.api.crm.deals_use_no_quotes",
         "responses": {
           "200": {
@@ -8512,7 +8512,7 @@
           "ffl_core"
         ],
         "summary": "The deal's POS customer: its link, the matches to confirm, or a new customer on confirm.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:130`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:131`",
         "operationId": "ffl_core.api.crm.ensure_deal_customer",
         "responses": {
           "200": {
@@ -8572,7 +8572,7 @@
           "ffl_core"
         ],
         "summary": "Another 48 hours on a hold. The person who placed it extends it once; after that, or for anyone",
-        "description": "else, a manager does (signed in, or picked with their PIN).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:297`",
+        "description": "else, a manager does (signed in, or picked with their PIN).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:310`",
         "operationId": "ffl_core.api.crm.extend_hold",
         "responses": {
           "200": {
@@ -8641,7 +8641,7 @@
           "ffl_core"
         ],
         "summary": "Hold guns on a deal for 48 hours: only the deal's customer can buy them meanwhile, at the",
-        "description": "counter and on the website. Each gun is judged on its own.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:274`",
+        "description": "counter and on the website. Each gun is judged on its own.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:287`",
         "operationId": "ffl_core.api.crm.hold_guns",
         "responses": {
           "200": {
@@ -8714,7 +8714,7 @@
           "ffl_core"
         ],
         "summary": "Make the lead for a mail the AI screening judged not to be from a customer.",
-        "description": "The mail goes by the normal mail rules with the screening skipped: a new lead shared with the team,\nor the sender's deal if they have become a customer.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:77`",
+        "description": "The mail goes by the normal mail rules with the screening skipped: a new lead shared with the team,\nor the sender's deal if they have become a customer.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:78`",
         "operationId": "ffl_core.api.crm.make_lead_from_mail",
         "responses": {
           "200": {
@@ -8762,7 +8762,7 @@
           "ffl_core"
         ],
         "summary": "The contact's open deal, made when they have none, to write to them from CRM.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:20`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:21`",
         "operationId": "ffl_core.api.crm.open_deal",
         "responses": {
           "200": {
@@ -8810,7 +8810,7 @@
           "ffl_core"
         ],
         "summary": "Save a deal with a customer as a Create Order draft, to finish the sale on that page.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:149`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:150`",
         "operationId": "ffl_core.api.crm.open_deal_order",
         "responses": {
           "200": {
@@ -8858,7 +8858,7 @@
           "ffl_core"
         ],
         "summary": "A manager ends a deal's hold at the counter so the gun can be sold to someone else; the deal's",
-        "description": "owner gets a task. A manager signed in approves their own; anyone else names one, who types their\ncounter PIN (or password).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:388`",
+        "description": "owner gets a task. A manager signed in approves their own; anyone else names one, who types their\ncounter PIN (or password).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:401`",
         "operationId": "ffl_core.api.crm.override_hold",
         "responses": {
           "200": {
@@ -8932,7 +8932,7 @@
           "ffl_core"
         ],
         "summary": "End a hold: the gun is for sale to anyone again. Whoever placed it, the deal owner or a manager;",
-        "description": "anyone else with a manager's PIN.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:318`",
+        "description": "anyone else with a manager's PIN.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:331`",
         "operationId": "ffl_core.api.crm.release_hold",
         "responses": {
           "200": {
@@ -9008,7 +9008,7 @@
           "ffl_core"
         ],
         "summary": "The live deal hold on one gun, for the counter. Carries no ID, 4473 or NICS data.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:341`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:354`",
         "operationId": "ffl_core.api.crm.serial_hold",
         "responses": {
           "200": {
