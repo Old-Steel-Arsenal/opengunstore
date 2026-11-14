@@ -22,7 +22,7 @@ Add a want to a deal's primary contact: when stock that fits arrives, you get a 
 
 **Returns:** str: The CRM Want's name. The owner is the caller. Refused for a deal with no contact, and when neither keywords nor an item is given.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:163`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:164`</sub>
 
 ## `check_sale`
 
@@ -40,7 +40,7 @@ sale's.
 
 **Returns:** dict: {"blocked": [{"serial", "hold", "deal", "customer", "customer_name", "expires_at", "expires_label", "held_by", "held_by_name", "message"}], "self_approves": the caller is a manager, "approvers": [{"user", "full_name", "has_pin", "pin_off"}] when something is blocked}.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:361`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:362`</sub>
 
 ## `connect_my_mailbox`
 
@@ -81,7 +81,7 @@ two changes: a Leads list leaves out other mail unless it filters on the status 
 
 **Returns:** dict: CRM's answer: the rows and columns of the list.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:194`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:195`</sub>
 
 ## `deal_customer_summary`
 
@@ -97,7 +97,7 @@ NICS.
 |---|---|---|---|---|
 | `deal` | string | yes | — | The CRM Deal's name. |
 
-**Returns:** dict: {"customer": None, "matches": [...], "html"} before the deal has a customer, else {"customer", "customer_name", "flags": {"status", "status_reason", "banned", "override_until", "alerts", "tags"}, "ffl": {"is_dealer", "on_file", "expiry_date", "expired"}, "orders": last orders, "open_orders": orders on Pending Order, "lifetime_spend": Net Sales as the Sales Report reads it, "holds": guns held for the deal [{"serial", "expires_label"}], "html"}. Refused while the switch is off.
+**Returns:** dict: {"customer": None, "matches": [...], "html"} before the deal has a customer, else {"customer", "customer_name", "flags": {"status", "status_reason", "banned", "override_until", "alerts", "tags"}, "ffl": {"is_dealer", "on_file", "expiry_date", "expired"}, "orders": last orders, "open_orders": orders on Pending Order, "lifetime_spend": Net Sales as the Sales Report reads it, "holds": guns held for the deal [{"serial", "expires_label"}], "marketing": {"status", "tags"} of the customer's marketing contact or None, "html"}. Refused while the switch is off.
 
 <sub>`apps/ffl_core/ffl_core/api/crm.py:109`</sub>
 
@@ -117,7 +117,7 @@ Answers while Hold guns for deals is off too, so holds still running stay in vie
 
 **Returns:** dict: {"guns": [{"serial", "item_code", "item_name", "hold": None or {"name", "expires_at", "expires_label", "held_by", "held_by_name", "extensions", "extend_needs_manager", "release_needs_manager"}, "blocked": why it cannot be held or None, "needs_manager": holding it takes a manager}], "enabled": whether new holds are on, "self_approves": the caller is a manager, "approvers": [{"user", "full_name", "has_pin", "pin_off"}] otherwise}.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:254`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:255`</sub>
 
 ## `deals_use_no_quotes`
 
@@ -131,7 +131,7 @@ Stands in for CRM's quotation gates (hooks.py): the Deal page shows no Quotation
 
 **Returns:** bool: Always False.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:226`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:227`</sub>
 
 ## `ensure_deal_customer`
 
@@ -149,7 +149,7 @@ The deal's POS customer: its link, the matches to confirm, or a new customer on 
 
 **Returns:** dict: {"customer": name} once there is one; else {"customer": None, "matches": [{"name", "customer_name", "customer_status", "matched", "banned", "status_reason", "alerts"}], "new": the values a new customer would take, "html": the dialog's text}.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:129`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:130`</sub>
 
 ## `extend_hold`
 
@@ -170,7 +170,7 @@ else, a manager does (signed in, or picked with their PIN).
 
 **Returns:** dict: The hold: {"name", "serial", "deal", "status", "expires_at", "expires_label", "held_by", "extensions", "end_reason"}.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:296`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:297`</sub>
 
 ## `hold_guns`
 
@@ -192,7 +192,7 @@ counter and on the website. Each gun is judged on its own.
 
 **Returns:** dict: {"held": [{"name", "serial", "deal", "status", "expires_at", "expires_label", "held_by", "extensions", "end_reason"}], "refused": [{"serial", "reason", "needs_manager"?}]}. Refused while Hold guns for deals is off.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:273`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:274`</sub>
 
 ## `make_lead_from_mail`
 
@@ -243,7 +243,7 @@ Save a deal with a customer as a Create Order draft, to finish the sale on that 
 
 **Returns:** dict: {"draft": the draft's name, "route": the page to open, "skipped": deal lines that are not POS items}. The page sets the prices, as for a line picked there.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:148`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:149`</sub>
 
 ## `override_hold`
 
@@ -266,7 +266,7 @@ counter PIN (or password).
 
 **Returns:** dict: {"released": the hold, now Released, or None when nothing held the gun, "task": the CRM Task given to the deal owner, or None}.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:387`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:388`</sub>
 
 ## `release_hold`
 
@@ -288,7 +288,7 @@ anyone else with a manager's PIN.
 
 **Returns:** dict: The hold, now Released: {"name", "serial", "deal", "status", "expires_at", "expires_label", "held_by", "extensions", "end_reason"}.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:317`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:318`</sub>
 
 ## `serial_hold`
 
@@ -304,4 +304,4 @@ The live deal hold on one gun, for the counter. Carries no ID, 4473 or NICS data
 
 **Returns:** dict: {"hold": None or {"serial", "hold", "deal", "customer", "customer_name", "expires_at", "expires_label", "held_by", "held_by_name", "message"}, "self_approves": the caller is a manager, "approvers": [{"user", "full_name", "has_pin", "pin_off"}] otherwise}.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:340`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:341`</sub>

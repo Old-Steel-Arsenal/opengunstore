@@ -2122,6 +2122,266 @@
           }
         }
       },
+      "Marketing_Automation": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Marketing%20Automation — see docs/api/frappe-rest.md.",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Automation"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "Off",
+              "Dry run",
+              "Live"
+            ],
+            "description": "Mode"
+          }
+        },
+        "required": [
+          "key",
+          "mode"
+        ]
+      },
+      "Marketing_Contact": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Marketing%20Contact — see docs/api/frappe-rest.md.",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Email"
+          },
+          "first_name": {
+            "type": "string",
+            "description": "First name"
+          },
+          "last_name": {
+            "type": "string",
+            "description": "Last name"
+          },
+          "customer": {
+            "type": "string",
+            "description": "Customer (Link: Customer)"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Not Subscribed",
+              "Subscribed",
+              "Unsubscribed",
+              "Bounced",
+              "Complained"
+            ],
+            "description": "Status"
+          },
+          "source": {
+            "type": "string",
+            "description": "Source"
+          },
+          "consent_at": {
+            "type": "string",
+            "description": "Consent given"
+          },
+          "consent_channel": {
+            "type": "string",
+            "description": "Consent channel"
+          },
+          "status_changed_at": {
+            "type": "string",
+            "description": "Status changed"
+          },
+          "status_reason": {
+            "type": "string",
+            "description": "Status reason"
+          },
+          "legacy_hash": {
+            "type": "string",
+            "description": "Unsubscribe link key"
+          },
+          "legacy_hash_2": {
+            "type": "string",
+            "description": "Unsubscribe link key 2"
+          }
+        },
+        "required": [
+          "email",
+          "status"
+        ]
+      },
+      "Marketing_Event": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Marketing%20Event — see docs/api/frappe-rest.md.",
+        "properties": {
+          "contact": {
+            "type": "string",
+            "description": "Contact (Link: Marketing Contact)"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "Subscribed",
+              "Unsubscribed",
+              "Bounced",
+              "Complained",
+              "Requested",
+              "Sent",
+              "Skipped",
+              "Opened",
+              "Clicked",
+              "Imported"
+            ],
+            "description": "Kind"
+          },
+          "occurred_at": {
+            "type": "string",
+            "description": "When"
+          },
+          "mail": {
+            "type": "string",
+            "description": "Mail"
+          },
+          "campaign": {
+            "type": "string",
+            "description": "Campaign"
+          },
+          "dedupe_key": {
+            "type": "string",
+            "description": "Dedupe key"
+          },
+          "detail": {
+            "type": "string",
+            "description": "Detail"
+          }
+        },
+        "required": [
+          "contact",
+          "kind",
+          "occurred_at"
+        ]
+      },
+      "Marketing_Request": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Marketing%20Request — see docs/api/frappe-rest.md.",
+        "properties": {
+          "contact": {
+            "type": "string",
+            "description": "Contact (Link: Marketing Contact)"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "Back in stock",
+              "Model alert"
+            ],
+            "description": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Open",
+              "Notified",
+              "Closed"
+            ],
+            "description": "Status"
+          },
+          "label": {
+            "type": "string",
+            "description": "Product or model"
+          },
+          "item": {
+            "type": "string",
+            "description": "Item (Link: Item)"
+          },
+          "sku": {
+            "type": "string",
+            "description": "SKU"
+          },
+          "web_product_id": {
+            "type": "string",
+            "description": "Website product ID"
+          },
+          "model_key": {
+            "type": "string",
+            "description": "Model key"
+          },
+          "url": {
+            "type": "string",
+            "description": "URL"
+          },
+          "requested_at": {
+            "type": "string",
+            "description": "Requested"
+          },
+          "notified_at": {
+            "type": "string",
+            "description": "Notified"
+          }
+        },
+        "required": [
+          "contact",
+          "kind",
+          "status"
+        ]
+      },
+      "Marketing_Settings": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Marketing%20Settings — see docs/api/frappe-rest.md.",
+        "properties": {
+          "enabled": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Enabled"
+          },
+          "auto_subscribe_customers": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Subscribe store customers"
+          },
+          "email_account": {
+            "type": "string",
+            "description": "Email account (Link: Email Account)"
+          },
+          "reply_to": {
+            "type": "string",
+            "description": "Reply-To"
+          },
+          "track_opens": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Track opens"
+          },
+          "track_clicks": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Track clicks"
+          },
+          "sns_topic_arn": {
+            "type": "string",
+            "description": "SNS topic ARN"
+          },
+          "automations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Marketing_Automation"
+            },
+            "description": "Automations"
+          }
+        }
+      },
       "Membership": {
         "type": "object",
         "description": "Custom DocType (ffl_core); CRUD via /api/resource/Membership — see docs/api/frappe-rest.md.",
@@ -7914,7 +8174,7 @@
           "ffl_core"
         ],
         "summary": "Add a want to a deal's primary contact: when stock that fits arrives, you get a task.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:163`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:164`",
         "operationId": "ffl_core.api.crm.add_want",
         "responses": {
           "200": {
@@ -7990,7 +8250,7 @@
           "ffl_core"
         ],
         "summary": "Before a POS / Sales Invoice is saved: the guns on it held for a deal whose customer is not this",
-        "description": "sale's.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:361`",
+        "description": "sale's.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:362`",
         "operationId": "ffl_core.api.crm.check_sale",
         "responses": {
           "200": {
@@ -8092,7 +8352,7 @@
           "ffl_core"
         ],
         "summary": "CRM's list data for its Leads and Deals pages (hooks.py overrides ``crm.api.doc.get_data``), with",
-        "description": "two changes: a Leads list leaves out other mail unless it filters on the status or category, and\n``@me`` inside a filter's list of values is the caller (CRM's page replaces only a plain ``@me``, and\n**My follow-ups** asks for \"mine or nobody's\").\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:194`",
+        "description": "two changes: a Leads list leaves out other mail unless it filters on the status or category, and\n``@me`` inside a filter's list of values is the caller (CRM's page replaces only a plain ``@me``, and\n**My follow-ups** asks for \"mine or nobody's\").\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:195`",
         "operationId": "ffl_core.api.crm.crm_list_data",
         "responses": {
           "200": {
@@ -8126,7 +8386,7 @@
         "operationId": "ffl_core.api.crm.deal_customer_summary",
         "responses": {
           "200": {
-            "description": "dict: {\"customer\": None, \"matches\": [...], \"html\"} before the deal has a customer, else {\"customer\", \"customer_name\", \"flags\": {\"status\", \"status_reason\", \"banned\", \"override_until\", \"alerts\", \"tags\"}, \"ffl\": {\"is_dealer\", \"on_file\", \"expiry_date\", \"expired\"}, \"orders\": last orders, \"open_orders\": orders on Pending Order, \"lifetime_spend\": Net Sales as the Sales Report reads it, \"holds\": guns held for the deal [{\"serial\", \"expires_label\"}], \"html\"}. Refused while the switch is off.",
+            "description": "dict: {\"customer\": None, \"matches\": [...], \"html\"} before the deal has a customer, else {\"customer\", \"customer_name\", \"flags\": {\"status\", \"status_reason\", \"banned\", \"override_until\", \"alerts\", \"tags\"}, \"ffl\": {\"is_dealer\", \"on_file\", \"expiry_date\", \"expired\"}, \"orders\": last orders, \"open_orders\": orders on Pending Order, \"lifetime_spend\": Net Sales as the Sales Report reads it, \"holds\": guns held for the deal [{\"serial\", \"expires_label\"}], \"marketing\": {\"status\", \"tags\"} of the customer's marketing contact or None, \"html\"}. Refused while the switch is off.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8170,7 +8430,7 @@
           "ffl_core"
         ],
         "summary": "The Deal page's Hold guns dialog: each gun on the deal's lines, its hold and what can be done.",
-        "description": "Answers while Hold guns for deals is off too, so holds still running stay in view.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:254`",
+        "description": "Answers while Hold guns for deals is off too, so holds still running stay in view.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:255`",
         "operationId": "ffl_core.api.crm.deal_holds",
         "responses": {
           "200": {
@@ -8218,7 +8478,7 @@
           "ffl_core"
         ],
         "summary": "Stands in for CRM's quotation gates (hooks.py): the Deal page shows no Quotations tab and no",
-        "description": "**Create Quotation** button, since a deal closes through **Open order**.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:226`",
+        "description": "**Create Quotation** button, since a deal closes through **Open order**.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:227`",
         "operationId": "ffl_core.api.crm.deals_use_no_quotes",
         "responses": {
           "200": {
@@ -8248,7 +8508,7 @@
           "ffl_core"
         ],
         "summary": "The deal's POS customer: its link, the matches to confirm, or a new customer on confirm.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:129`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:130`",
         "operationId": "ffl_core.api.crm.ensure_deal_customer",
         "responses": {
           "200": {
@@ -8308,7 +8568,7 @@
           "ffl_core"
         ],
         "summary": "Another 48 hours on a hold. The person who placed it extends it once; after that, or for anyone",
-        "description": "else, a manager does (signed in, or picked with their PIN).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:296`",
+        "description": "else, a manager does (signed in, or picked with their PIN).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:297`",
         "operationId": "ffl_core.api.crm.extend_hold",
         "responses": {
           "200": {
@@ -8377,7 +8637,7 @@
           "ffl_core"
         ],
         "summary": "Hold guns on a deal for 48 hours: only the deal's customer can buy them meanwhile, at the",
-        "description": "counter and on the website. Each gun is judged on its own.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:273`",
+        "description": "counter and on the website. Each gun is judged on its own.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:274`",
         "operationId": "ffl_core.api.crm.hold_guns",
         "responses": {
           "200": {
@@ -8546,7 +8806,7 @@
           "ffl_core"
         ],
         "summary": "Save a deal with a customer as a Create Order draft, to finish the sale on that page.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:148`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:149`",
         "operationId": "ffl_core.api.crm.open_deal_order",
         "responses": {
           "200": {
@@ -8594,7 +8854,7 @@
           "ffl_core"
         ],
         "summary": "A manager ends a deal's hold at the counter so the gun can be sold to someone else; the deal's",
-        "description": "owner gets a task. A manager signed in approves their own; anyone else names one, who types their\ncounter PIN (or password).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:387`",
+        "description": "owner gets a task. A manager signed in approves their own; anyone else names one, who types their\ncounter PIN (or password).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:388`",
         "operationId": "ffl_core.api.crm.override_hold",
         "responses": {
           "200": {
@@ -8668,7 +8928,7 @@
           "ffl_core"
         ],
         "summary": "End a hold: the gun is for sale to anyone again. Whoever placed it, the deal owner or a manager;",
-        "description": "anyone else with a manager's PIN.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:317`",
+        "description": "anyone else with a manager's PIN.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:318`",
         "operationId": "ffl_core.api.crm.release_hold",
         "responses": {
           "200": {
@@ -8744,7 +9004,7 @@
           "ffl_core"
         ],
         "summary": "The live deal hold on one gun, for the counter. Carries no ID, 4473 or NICS data.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:340`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:341`",
         "operationId": "ffl_core.api.crm.serial_hold",
         "responses": {
           "200": {
@@ -11797,6 +12057,195 @@
                 ]
               }
             }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.api.marketing.customer_card": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "The line the Customer form shows about a customer's marketing email.",
+        "description": "Nothing (None) when marketing is off, the user may not read Marketing Contacts or the customer,\nor no marketing contact is linked to the customer.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:70`",
+        "operationId": "ffl_core.api.marketing.customer_card",
+        "responses": {
+          "200": {
+            "description": "{\"status\": the contact's status, \"tags\": its tags, \"text\": the line to show, \"contact\": the Marketing Contact (its email address) to open}, or None.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "customer": {
+                    "type": "string",
+                    "description": "The Customer's name."
+                  }
+                },
+                "required": [
+                  "customer"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.api.marketing.resubscribe": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Put a suppressed contact back to Subscribed.",
+        "description": "For a contact that unsubscribed, bounced or complained. The reason is required and goes on the log\nwith who did it.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:48`",
+        "operationId": "ffl_core.api.marketing.resubscribe",
+        "responses": {
+          "200": {
+            "description": "{\"contact\": the address, \"status\": \"Subscribed\"}. Refused for a contact that is not suppressed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "contact": {
+                    "type": "string",
+                    "description": "The Marketing Contact (its email address)."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Why this contact may be emailed again."
+                  }
+                },
+                "required": [
+                  "contact",
+                  "reason"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.api.marketing.unsubscribe": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Stop marketing email to a contact.",
+        "description": "Its status becomes Unsubscribed, with who did it and the reason on the log. A contact already\nUnsubscribed, Bounced or Complained is left as it is.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:26`",
+        "operationId": "ffl_core.api.marketing.unsubscribe",
+        "responses": {
+          "200": {
+            "description": "{\"contact\": the address, \"status\": the status now, \"changed\": False when it was already suppressed}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "contact": {
+                    "type": "string",
+                    "description": "The Marketing Contact (its email address)."
+                  },
+                  "reason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Why, in a few words. Optional."
+                  }
+                },
+                "required": [
+                  "contact"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.api.marketing_mail.send_test_email": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Queue a test marketing email for the signed-in staff member, at their own address.",
+        "description": "It goes the way every marketing email goes: the mail queue from the marketing Email Account, the\nList-Unsubscribe headers, tracking as Marketing Settings has it, and a working unsubscribe link\n(using it unsubscribes this address, and the next test is refused until a manager puts it back).\nThe mail queue sends it a moment later. Each call is its own campaign, so it can be queued again.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/marketing_mail.py:17`",
+        "operationId": "ffl_core.api.marketing_mail.send_test_email",
+        "responses": {
+          "200": {
+            "description": "{\"queued\": true when it is in the mail queue, \"email\": the address, \"status\": that address's marketing status (a test is refused for an unsubscribed, bounced or complained one)}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
           }
         }
       }
@@ -16042,6 +16491,139 @@
             }
           }
         }
+      }
+    },
+    "/api/method/ffl_core.marketing.providers.ses.notify": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Amazon SNS posts SES bounce and complaint notifications here (Guest).",
+        "description": "The body is the SNS message (JSON, sent as text/plain). Refused with a 403 unless it comes from the\ntopic in Marketing Settings and its signature verifies. 10000 calls an hour per IP address.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/marketing/providers/ses.py:60`",
+        "operationId": "ffl_core.marketing.providers.ses.notify",
+        "responses": {
+          "200": {
+            "description": "{\"type\": the SNS message type, \"processed\": how many addresses changed or were logged}."
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/method/ffl_core.marketing.track.click": {
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "A tracked link in a marketing mail (Guest): a redirect to *u*.",
+        "description": "Only when *s* is this site's signature of *u* and *u* is an http(s) address; anything else gets a\n400 and no redirect. Records the contact's first click on that link in campaign *c* while Track\nclicks is on and the campaign was sent to them. 5000 calls an hour per IP address.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/marketing/track.py:101`",
+        "operationId": "ffl_core.marketing.track.click",
+        "responses": {
+          "200": {
+            "description": "A 302 redirect to *u*, or a 400 plain-text \"This link is not valid.\""
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "security": [],
+        "parameters": [
+          {
+            "name": "u",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "Where the link goes."
+          },
+          {
+            "name": "c",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "The campaign."
+          },
+          {
+            "name": "t",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "The contact's token from the mail."
+          },
+          {
+            "name": "s",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "The signature of *u*."
+          }
+        ]
+      }
+    },
+    "/api/method/ffl_core.marketing.track.open": {
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "The open pixel of a marketing mail (Guest): always a 1x1 GIF.",
+        "description": "Records the first open of campaign *c* by the contact *t* stands for, while Track opens is on and\nthe campaign was sent to them. 5000 calls an hour per IP address.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/marketing/track.py:81`",
+        "operationId": "ffl_core.marketing.track.open",
+        "responses": {
+          "200": {
+            "description": "A 1x1 GIF image, never cached."
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "security": [],
+        "parameters": [
+          {
+            "name": "c",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "The campaign."
+          },
+          {
+            "name": "t",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "The contact's token from the mail."
+          }
+        ]
       }
     },
     "/api/method/ffl_core.membership.cancel_membership": {
@@ -25195,6 +25777,53 @@
                     "default": "retail"
                   }
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_woo_sync.woocommerce.client_api.web_events": {
+      "post": {
+        "tags": [
+          "ffl_woo_sync"
+        ],
+        "summary": "Take the website's visitor events: a newsletter signup, a back-in-stock or model alert request.",
+        "description": "Each event is processed on its own; one that fails leaves nothing behind and does not stop the\nrest. A repeated event id is answered as accepted again and processed only once. Nothing is\nemailed. The whole call is refused while Marketing Settings › Enabled is off, and the website\nsends the events again later.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:527`",
+        "operationId": "ffl_woo_sync.woocommerce.client_api.web_events",
+        "responses": {
+          "200": {
+            "description": "{\"accepted\": [id, ...], \"rejected\": [{\"id\": ..., \"reason\": ...}, ...]}. ``reason`` is ``unknown_type``, ``invalid_email`` or ``invalid_data``; an event in neither list failed unexpectedly (an Error Log is written) and should be sent again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "events": {
+                    "description": "A list (or its JSON) of at most 100 events, each ``{\"id\", \"type\", \"occurred_at\", \"data\"}``. Types: ``contact.subscribed`` (data: email, first_name, last_name, source, page_url, ip, tags, interests, coupon) and ``alert.requested`` (data: email, kind ``back_in_stock`` or ``model``, sku, product_id, product_name, url, model_key, model_label)."
+                  }
+                },
+                "required": [
+                  "events"
+                ]
               }
             }
           }

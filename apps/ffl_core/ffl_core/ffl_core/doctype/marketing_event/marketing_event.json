@@ -1,0 +1,114 @@
+{
+ "actions": [],
+ "creation": "2026-11-13 12:00:00.000000",
+ "description": "What happened with a marketing contact: a consent, an unsubscribe, a request, a send. Written by the system only.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "contact",
+  "kind",
+  "occurred_at",
+  "column_break_mail",
+  "mail",
+  "campaign",
+  "dedupe_key",
+  "section_detail",
+  "detail"
+ ],
+ "fields": [
+  {
+   "fieldname": "contact",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Contact",
+   "options": "Marketing Contact",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Kind",
+   "options": "Subscribed\nUnsubscribed\nBounced\nComplained\nRequested\nSent\nSkipped\nOpened\nClicked\nImported",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "occurred_at",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "When",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_mail",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "mail",
+   "fieldtype": "Data",
+   "label": "Mail",
+   "read_only": 1
+  },
+  {
+   "fieldname": "campaign",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Campaign",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "dedupe_key",
+   "fieldtype": "Data",
+   "label": "Dedupe key",
+   "length": 255,
+   "read_only": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "section_detail",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "detail",
+   "fieldtype": "Small Text",
+   "label": "Detail",
+   "read_only": 1
+  }
+ ],
+ "in_create": 1,
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-13 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FFL Core",
+ "name": "Marketing Event",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager"
+  },
+  {
+   "read": 1,
+   "role": "Sales User"
+  }
+ ],
+ "sort_field": "occurred_at",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "contact"
+}

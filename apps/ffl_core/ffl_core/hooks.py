@@ -247,6 +247,8 @@ doc_events = {
 	"WooCommerce Settings": {"on_update": "ffl_core.setup.gunshop_sidebar.on_settings_update"},
 	"GunBroker Settings": {"on_update": "ffl_core.setup.gunshop_sidebar.on_settings_update"},
 	"Payroc Settings": {"on_update": "ffl_core.setup.gunshop_sidebar.on_settings_update"},
+	# Marketing Settings > Enabled shows or hides the Marketing contacts link the same way.
+	"Marketing Settings": {"on_update": "ffl_core.setup.gunshop_sidebar.on_settings_update"},
 	# A journal entry the cash drawer made is cancelled only from the Cash Drawer page (cash_drawer._cancel_je).
 	"Journal Entry": {
 		"validate": "ffl_core.cash_drawer.refuse_drawer_je_copies",
@@ -255,7 +257,7 @@ doc_events = {
 	# Dealer parties: keep license fields synced from the linked ATF FFL
 	# Record (and backfill the link from a bare matching ffl_number).
 	# A primary Contact's email / mobile edited on the Contact reach its customers' form fields.
-	"Contact": {"on_update": "ffl_core.customer_contact.contact_changed"},
+	"Contact": {"on_update": ["ffl_core.customer_contact.contact_changed", "ffl_core.marketing.customers.contact_saved"]},
 	"Customer": {
 		# Individual name parts ↔ Customer Name (customer_name.py): compose
 		# before autoname takes the docname, and again on every save.
@@ -270,9 +272,13 @@ doc_events = {
 			"ffl_core.customer_contact.sync_email_phone",
 		],
 		# An ID document's attachment is always a private file.
-		"on_update": "ffl_core.customer_profile.privatize_id_attachments",
-		# A head of family with members cannot be deleted.
-		"on_trash": "ffl_core.customer_profile.refuse_delete_with_family",
+		# Then the marketing list: store customers join it, a new address inherits an unsubscribe, the
+		# contact's customer link follows (marketing/customers.py).
+		"on_update": ["ffl_core.customer_profile.privatize_id_attachments", "ffl_core.marketing.customers.customer_saved"],
+		# A head of family with members cannot be deleted; a marketing contact's link to it is cleared.
+		"on_trash": ["ffl_core.customer_profile.refuse_delete_with_family", "ffl_core.marketing.customers.customer_trashed"],
+		# A merge or rename: marketing contacts are linked again (marketing/customers.py).
+		"after_rename": "ffl_core.marketing.customers.customer_renamed",
 	},
 	"Supplier": {
 		"validate": "ffl_core.atf_link.sync_party_atf_link",
@@ -330,7 +336,9 @@ doc_events = {
 	"Email Account": {"validate": ["ffl_core.crm.mail.take_over_lead_flag", "ffl_core.crm.team.reply_to_on_validate",
 		"ffl_core.crm.team.require_full_sync"]},
 	# Mail sent on a CRM Lead or Deal leaves within seconds, not at the next flush (ffl_core.crm.mail).
-	"Email Queue": {"after_insert": "ffl_core.crm.mail.send_crm_mail_now"},
+	"Email Queue": {"after_insert": "ffl_core.crm.mail.send_crm_mail_now",
+		# A marketing mail's List-Unsubscribe headers, back from Frappe's X- prefix (ffl_core.marketing.mailer).
+		"before_insert": "ffl_core.marketing.mailer.restore_list_unsubscribe"},
 	# Pulled mail: the copy CRM keeps and where it goes; the first reply owns the lead (ffl_core.crm.mail).
 	"Communication": {
 		"before_insert": "ffl_core.crm.mail.skip_unwanted",
@@ -942,6 +950,8 @@ after_install = [
 	"ffl_core.crm.setup.after_install",
 	# The website connector roles (mcp_settings.WEB_ROLES).
 	"ffl_core.ffl_core.doctype.mcp_settings.mcp_settings.ensure_web_roles",
+	# Marketing Contact's tags column, wide (ffl_core.marketing.setup).
+	"ffl_core.marketing.setup.ensure",
 ]
 before_migrate = [
 	# Extension upgrades: any migrate that runs an upgrade's new code (a deploy's
@@ -1027,6 +1037,8 @@ after_migrate = [
 	"ffl_core.setup.assignment_notice.ensure",
 	# Frappe CRM wired to the POS (ffl_core.crm.setup); does nothing while CRM is not on the site.
 	"ffl_core.crm.setup.ensure",
+	# Marketing Contact's tags column, wide (ffl_core.marketing.setup).
+	"ffl_core.marketing.setup.ensure",
 ]
 
 # Uninstallation
