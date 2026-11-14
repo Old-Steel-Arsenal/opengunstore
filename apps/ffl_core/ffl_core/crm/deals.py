@@ -32,6 +32,24 @@ def customer_of(contact: str) -> str | None:
 	return found[0] if len(found) == 1 else None
 
 
+def _split_name(full_name: str | None) -> tuple[str, str]:
+	"""A display name as (first name, last name): the first word, then the rest."""
+	parts = (full_name or "").split()
+	return (parts[0], " ".join(parts[1:])) if parts else ("", "")
+
+
+def person_name(contact: str | None, customer: str | None = None, email: str | None = None) -> dict:
+	"""The person a deal is for, in the fields CRM's lead conversion fills (first_name, last_name,
+	lead_name): the Contact's own name, else the Customer's, else the local part of *email*."""
+	first, last = frappe.db.get_value("Contact", contact, ["first_name", "last_name"]) if contact else (None, None)
+	if not first or "@" in first:   # an address standing in for a name is no name
+		first, last = _split_name(customer and frappe.db.get_value("Customer", customer, "customer_name"))
+	if not first and email:
+		first, last = email.split("@", 1)[0], ""
+	last = last or ""
+	return {"first_name": first or "", "last_name": last, "lead_name": " ".join(n for n in (first, last) if n)}
+
+
 def open_deal_for(contact: str, owner: str | None = None) -> str:
 	"""The newest open deal *contact* is on, or a new one with them as its primary contact
 	(owned by *owner* when that is an enabled user, linked to their Customer when they have one).
@@ -50,6 +68,8 @@ def open_deal_for(contact: str, owner: str | None = None) -> str:
 	if customer and deal.meta.has_field("erpnext_customer"):
 		deal.erpnext_customer = customer
 	deal.append("contacts", {"contact": contact, "is_primary": 1})
+	# Named as a deal CRM converts from a lead is, so the person shows on it and searches find it.
+	deal.update(person_name(contact, customer, frappe.db.get_value("Contact", contact, "email_id")))
 	# CRM's DocType, made for a mail the system received or for the user who asked (their own
 	# read right on the Contact is checked by the endpoint); CRM's own lead-from-mail inserts so too.
 	deal.insert(ignore_permissions=True)

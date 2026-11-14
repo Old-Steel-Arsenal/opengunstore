@@ -66,6 +66,8 @@ class TestPaymentFailed(DealPOSCase):
 		self.assertEqual(len(deals), 1, "a customer with no deal gets one")
 		deal = deals[0]
 		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "status"), "New")
+		self.assertEqual(frappe.db.get_value("CRM Deal", deal, ["first_name", "last_name", "lead_name"]),
+			("Pat", "Buyer", "Pat Buyer"))
 		self.assertEqual(_notes(deal), [f"Web order {self.order} payment failed"])
 		note = frappe.db.get_value(web_orders.NOTE, {"reference_docname": deal}, "content")
 		for part in ("125.5", "2 x Range Bag", "Credit card", "555-0100",

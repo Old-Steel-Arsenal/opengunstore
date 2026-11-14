@@ -190,6 +190,7 @@ class TestFiling(SentMailCase):
 		[comm] = _filed(raw)
 		self.assertEqual(comm.reference_doctype, "CRM Deal")
 		self.assertEqual(frappe.db.get_value("CRM Deal", comm.reference_name, "deal_owner"), STAFF_USER)
+		self.assertEqual(frappe.db.get_value("CRM Deal", comm.reference_name, "lead_name"), "Known")
 		self.assertFalse(_shared("CRM Deal", comm.reference_name), "a staff member's mail is not team mail")
 		self.assertNothingSent()
 

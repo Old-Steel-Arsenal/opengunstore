@@ -60,6 +60,7 @@ class TestInquiryFiling(CRMTestCase):
 		first = _file(email=email, sku=f"{PER_GUN}::{serial}")
 		self.assertEqual((first["doctype"], first["created"]), ("CRM Deal", True))
 		deal = first["name"]
+		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "lead_name"), "Known")
 		self.assertTrue(_assignees("CRM Deal", deal))
 		self.assertEqual(_rows("CRM Deal", deal), [(product_of(PER_GUN), 1, serial)])
 		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "total"), 899)
