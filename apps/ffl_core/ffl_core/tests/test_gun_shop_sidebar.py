@@ -83,3 +83,89 @@ class GunShopSidebar(FrappeTestCase):
 		self._in_migrate()
 		self.assertFalse(sidebar.mirror_gun_shop_sidebar("Gun Shop", module="FFL Core", extra_items=_EXTRA))
 		self.assertEqual(_labels("Gun Shop"), _shipped_gun_shop_labels())
+
+
+_STAFF = "gun-shop-sidebar-staff@example.com"
+_EXT_ROWS = [{"type": "Section Break", "label": "Ext Things", "icon": "package", "indent": 1, "collapsible": 1},
+	{"type": "Link", "label": "Ext Page", "link_type": "Page", "link_to": "permission-manager", "child": 1}]
+
+
+class GunShopSidebarAsStaff(FrappeTestCase):
+	"""The sidebar a staff login actually boots (Frappe's own resolution: permission and domain
+	filter, then the site layer), not our JSON or a layer merge without the filter. Starts from a
+	site with no active domain, which is what a v16 site is until ffl_core's migrate step runs."""
+
+	def setUp(self):
+		super().setUp()
+		frappe.db.savepoint(_SAVEPOINT)
+		self.addCleanup(self._restore)
+		no_commit = patch.object(frappe.db, "commit", side_effect=AssertionError("commit inside a sidebar test"))
+		no_commit.start()
+		self.addCleanup(no_commit.stop)
+		if not frappe.db.exists("User", _STAFF):
+			u = frappe.get_doc({"doctype": "User", "email": _STAFF, "first_name": "Staff", "send_welcome_email": 0})
+			u.flags.ignore_permissions = True
+			u.insert()
+		frappe.get_doc("User", _STAFF).add_roles("System Manager", "Sales User", "Accounts User")
+		frappe.db.delete("Has Domain", {"parent": "Domain Settings"})
+		self._clear_domain_cache()
+
+	def _restore(self):
+		frappe.set_user("Administrator")
+		frappe.db.rollback(save_point=_SAVEPOINT)
+		self._clear_domain_cache()
+		frappe.clear_cache(doctype="Sidebar")
+
+	@staticmethod
+	def _clear_domain_cache():
+		frappe.cache.delete_value(["active_domains", "domain_restricted_pages", "domain_restricted_doctypes"])
+		frappe.clear_cache(user=_STAFF)
+
+	def _booted(self) -> list[dict]:
+		from frappe.boot import get_module_sidebars
+
+		frappe.set_user(_STAFF)
+		try:
+			return get_module_sidebars()[sidebar.SIDEBAR_NAME]["items"]
+		finally:
+			frappe.set_user("Administrator")
+
+	def _assert_every_top_level_link(self):
+		from ffl_core.setup import gunshop_sidebar
+
+		off = gunshop_sidebar.integrations_off()
+		shipped = [r["link_to"] for r in sidebar.gun_shop_items()
+			if not r.get("child") and r.get("link_to") and r.get("link_to") not in off]
+		self.assertIn("point-of-sale", shipped)
+		booted = [i.get("link_to") for i in self._booted() if not i.get("child")]
+		self.assertEqual([x for x in shipped if x not in booted], [])
+		return booted
+
+	def _migrate(self):
+		from ffl_core.setup import gunshop_sidebar, pos_compat
+
+		pos_compat.ensure_register_domain()
+		gunshop_sidebar.sync_site_layer()
+
+	def test_a_staff_login_gets_every_top_level_link_of_the_shipped_sidebar(self):
+		self._migrate()
+		self._assert_every_top_level_link()
+
+	def test_and_with_an_extension_section_in_the_site_layer(self):
+		from ffl_core.setup import gunshop_sidebar
+
+		with patch.object(gunshop_sidebar, "extension_rows", return_value=[dict(r) for r in _EXT_ROWS]):
+			self._migrate()
+		self._assert_every_top_level_link()
+		labels = [i.get("label") for i in self._booted()]
+		self.assertLess(labels.index("Ext Things"), labels.index(sidebar.SETTINGS_LINK))
+
+	def test_the_migrate_step_only_adds_the_domain_and_is_idempotent(self):
+		from ffl_core.setup import pos_compat
+
+		domain = frappe.db.get_value("Page", pos_compat.REGISTER_PAGE, "restrict_to_domain")
+		if not domain:
+			self.skipTest("ERPNext no longer restricts the register page to a domain")
+		pos_compat.ensure_register_domain()
+		pos_compat.ensure_register_domain()
+		self.assertEqual(frappe.get_all("Has Domain", filters={"parent": "Domain Settings"}, pluck="domain"), [domain])

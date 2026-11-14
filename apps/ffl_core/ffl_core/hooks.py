@@ -928,6 +928,8 @@ after_install = [
 	"ffl_core.setup.pos_compat.ensure_cashier_pos_profile_select",
 	# Permissions granted by user decision (pos_compat.ROLE_GRANTS): the counter's 4473 / pickup reports.
 	"ffl_core.setup.pos_compat.ensure_role_grants",
+	# The register page's ERPNext domain (Retail) active, or the Gun Shop sidebar drops its link (pos_compat).
+	"ffl_core.setup.pos_compat.ensure_register_domain",
 	"ffl_core.setup.customer_tax.ensure",
 	"ffl_core.setup.customer_identity.ensure",
 	# Customer Profile tab (status, alerts, IDs, family) + existing customers → Active.
@@ -987,6 +989,8 @@ after_migrate = [
 	"ffl_core.setup.pos_compat.ensure_cashier_pos_profile_select",
 	# Permissions granted by user decision (pos_compat.ROLE_GRANTS): the counter's 4473 / pickup reports.
 	"ffl_core.setup.pos_compat.ensure_role_grants",
+	# The register page's ERPNext domain (Retail) active, or the Gun Shop sidebar drops its link (pos_compat).
+	"ffl_core.setup.pos_compat.ensure_register_domain",
 	# After the grants: report POS Profile / Serial and Batch Bundle rules that drifted from ERPNext's (frozen Custom DocPerm).
 	"ffl_core.setup.pos_compat.check_perm_drift",
 	# Report a Company with no usable address (the home state has no default).
