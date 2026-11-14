@@ -8178,7 +8178,7 @@
           "ffl_core"
         ],
         "summary": "Add a want to a deal's primary contact: when stock that fits arrives, you get a task.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:165`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:232`",
         "operationId": "ffl_core.api.crm.add_want",
         "responses": {
           "200": {
@@ -8254,7 +8254,7 @@
           "ffl_core"
         ],
         "summary": "Before a POS / Sales Invoice is saved: the guns on it held for a deal whose customer is not this",
-        "description": "sale's.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:375`",
+        "description": "sale's.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:442`",
         "operationId": "ffl_core.api.crm.check_sale",
         "responses": {
           "200": {
@@ -8301,7 +8301,7 @@
           "ffl_core"
         ],
         "summary": "Start connecting your own mailbox to the POS: the address of the provider's sign-in page.",
-        "description": "For a staff member whose mailbox an administrator set up as an OAuth Email Account with them as\nits connected user; they sign in to their own mail account, not the administrator. Frappe's own\nAuthorize button needs read access to the Connected App, which staff do not have.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:43`",
+        "description": "For a staff member whose mailbox an administrator set up as an OAuth Email Account with them as\nits connected user; they sign in to their own mail account, not the administrator. Frappe's own\nAuthorize button needs read access to the Connected App, which staff do not have.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:44`",
         "operationId": "ffl_core.api.crm.connect_my_mailbox",
         "responses": {
           "200": {
@@ -8356,7 +8356,7 @@
           "ffl_core"
         ],
         "summary": "CRM's list data for its Leads and Deals pages (hooks.py overrides ``crm.api.doc.get_data``), with",
-        "description": "three changes: a Leads list leaves out other mail unless it filters on the status or category,\n``@me`` inside a filter's list of values is the caller (CRM's page replaces only a plain ``@me``, and\n**My follow-ups** asks for \"mine or nobody's\"), and a Deals list on CRM's own columns shows the\nperson's name first.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:196`",
+        "description": "three changes: a Leads list leaves out other mail unless it filters on the status or category,\n``@me`` inside a filter's list of values is the caller (CRM's page replaces only a plain ``@me``, and\n**My follow-ups** asks for \"mine or nobody's\"), and a Deals list on CRM's own columns shows the\nperson's name first.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:263`",
         "operationId": "ffl_core.api.crm.crm_list_data",
         "responses": {
           "200": {
@@ -8386,7 +8386,7 @@
           "ffl_core"
         ],
         "summary": "What the Deal page's customer card shows. Never carries an ID number, date of birth, 4473 or",
-        "description": "NICS.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:110`",
+        "description": "NICS.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:111`",
         "operationId": "ffl_core.api.crm.deal_customer_summary",
         "responses": {
           "200": {
@@ -8434,7 +8434,7 @@
           "ffl_core"
         ],
         "summary": "The Deal page's Hold guns dialog: each gun on the deal's lines, its hold and what can be done.",
-        "description": "Answers while Hold guns for deals is off too, so holds still running stay in view.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:268`",
+        "description": "Answers while Hold guns for deals is off too, so holds still running stay in view.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:335`",
         "operationId": "ffl_core.api.crm.deal_holds",
         "responses": {
           "200": {
@@ -8482,7 +8482,7 @@
           "ffl_core"
         ],
         "summary": "Stands in for CRM's quotation gates (hooks.py): the Deal page shows no Quotations tab and no",
-        "description": "**Create Quotation** button, since a deal closes through **Open order**.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:240`",
+        "description": "**Create Quotation** button, since a deal closes through **Open order**.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:307`",
         "operationId": "ffl_core.api.crm.deals_use_no_quotes",
         "responses": {
           "200": {
@@ -8512,7 +8512,7 @@
           "ffl_core"
         ],
         "summary": "The deal's POS customer: its link, the matches to confirm, or a new customer on confirm.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:131`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:132`",
         "operationId": "ffl_core.api.crm.ensure_deal_customer",
         "responses": {
           "200": {
@@ -8572,7 +8572,7 @@
           "ffl_core"
         ],
         "summary": "Another 48 hours on a hold. The person who placed it extends it once; after that, or for anyone",
-        "description": "else, a manager does (signed in, or picked with their PIN).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:310`",
+        "description": "else, a manager does (signed in, or picked with their PIN).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:377`",
         "operationId": "ffl_core.api.crm.extend_hold",
         "responses": {
           "200": {
@@ -8641,7 +8641,7 @@
           "ffl_core"
         ],
         "summary": "Hold guns on a deal for 48 hours: only the deal's customer can buy them meanwhile, at the",
-        "description": "counter and on the website. Each gun is judged on its own.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:287`",
+        "description": "counter and on the website. Each gun is judged on its own.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:354`",
         "operationId": "ffl_core.api.crm.hold_guns",
         "responses": {
           "200": {
@@ -8714,7 +8714,7 @@
           "ffl_core"
         ],
         "summary": "Make the lead for a mail the AI screening judged not to be from a customer.",
-        "description": "The mail goes by the normal mail rules with the screening skipped: a new lead shared with the team,\nor the sender's deal if they have become a customer.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:78`",
+        "description": "The mail goes by the normal mail rules with the screening skipped: a new lead shared with the team,\nor the sender's deal if they have become a customer.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:79`",
         "operationId": "ffl_core.api.crm.make_lead_from_mail",
         "responses": {
           "200": {
@@ -8756,13 +8756,66 @@
         }
       }
     },
+    "/api/method/ffl_core.api.crm.make_sell_offer": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Store what the store offers for a gun someone sells it. No email is sent, and the amount never",
+        "description": "counts as a sale (the deal's value).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:184`",
+        "operationId": "ffl_core.api.crm.make_sell_offer",
+        "responses": {
+          "200": {
+            "description": "dict: The Gun offered card, as sell_request_card.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "deal": {
+                    "type": "string",
+                    "description": "The CRM Deal's name, an open sell request whose gun is not received yet."
+                  },
+                  "amount": {
+                    "type": "number",
+                    "description": "The offer, more than 0."
+                  }
+                },
+                "required": [
+                  "deal",
+                  "amount"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.api.crm.open_deal": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "The contact's open deal, made when they have none, to write to them from CRM.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:21`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:22`",
         "operationId": "ffl_core.api.crm.open_deal",
         "responses": {
           "200": {
@@ -8810,7 +8863,7 @@
           "ffl_core"
         ],
         "summary": "Save a deal with a customer as a Create Order draft, to finish the sale on that page.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:150`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:151`",
         "operationId": "ffl_core.api.crm.open_deal_order",
         "responses": {
           "200": {
@@ -8858,7 +8911,7 @@
           "ffl_core"
         ],
         "summary": "A manager ends a deal's hold at the counter so the gun can be sold to someone else; the deal's",
-        "description": "owner gets a task. A manager signed in approves their own; anyone else names one, who types their\ncounter PIN (or password).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:401`",
+        "description": "owner gets a task. A manager signed in approves their own; anyone else names one, who types their\ncounter PIN (or password).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:468`",
         "operationId": "ffl_core.api.crm.override_hold",
         "responses": {
           "200": {
@@ -8932,7 +8985,7 @@
           "ffl_core"
         ],
         "summary": "End a hold: the gun is for sale to anyone again. Whoever placed it, the deal owner or a manager;",
-        "description": "anyone else with a manager's PIN.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:331`",
+        "description": "anyone else with a manager's PIN.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:398`",
         "operationId": "ffl_core.api.crm.release_hold",
         "responses": {
           "200": {
@@ -9002,13 +9055,157 @@
         }
       }
     },
+    "/api/method/ffl_core.api.crm.sell_gun_intake": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "What the register's Trade-in dialog is filled with to receive a sell request's gun. Writes",
+        "description": "nothing: staff check the gun and submit the dialog, and that books it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:215`",
+        "operationId": "ffl_core.api.crm.sell_gun_intake",
+        "responses": {
+          "200": {
+            "description": "dict: {\"deal\", \"source_name\": the seller (the deal's customer), \"manufacturer\", \"model_name\", \"caliber\", \"firearm_type\", \"serial_no\", \"condition_grade\", \"acquisition_cost\": the offer or None}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "deal": {
+                    "type": "string",
+                    "description": "The CRM Deal's name, an open sell request with a customer and no gun received yet."
+                  }
+                },
+                "required": [
+                  "deal"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.api.crm.sell_offer_accepted": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "The seller accepted the offer: the deal waits for the gun from today. A second call keeps the",
+        "description": "first day.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:200`",
+        "operationId": "ffl_core.api.crm.sell_offer_accepted",
+        "responses": {
+          "200": {
+            "description": "dict: The Gun offered card, as sell_request_card.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "deal": {
+                    "type": "string",
+                    "description": "The CRM Deal's name, an open sell request with an offer."
+                  }
+                },
+                "required": [
+                  "deal"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.api.crm.sell_request_card": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "What a sell request's Gun offered card shows: the gun, its photos and where the buy stands.",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:166`",
+        "operationId": "ffl_core.api.crm.sell_request_card",
+        "responses": {
+          "200": {
+            "description": "dict: {\"html\", \"offer\": the store's offer or 0, \"accepted_on\": the day the seller accepted or None, \"received\": the gun is received}. Refused while the switch is off.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "deal": {
+                    "type": "string",
+                    "description": "The CRM Deal's name, a sell request."
+                  }
+                },
+                "required": [
+                  "deal"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.api.crm.serial_hold": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "The live deal hold on one gun, for the counter. Carries no ID, 4473 or NICS data.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:354`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:421`",
         "operationId": "ffl_core.api.crm.serial_hold",
         "responses": {
           "200": {
@@ -14589,7 +14786,7 @@
           "ffl_core"
         ],
         "summary": "Make a new accessory / ammo / parts Item from the Trade-in dialog, for something the store has never stocked.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Stock Manager / System Manager\n\n**Permissions:** roles.TRADE_IN_ROLES, like the trade-in itself: the counter takes in what the seller brings. Only a non-serialized, non-firearm stock Item can be made here; any other Item stays a stock job (receive_goods.create_item).\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:370`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Stock Manager / System Manager\n\n**Permissions:** roles.TRADE_IN_ROLES, like the trade-in itself: the counter takes in what the seller brings. Only a non-serialized, non-firearm stock Item can be made here; any other Item stays a stock job (receive_goods.create_item).\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:375`",
         "operationId": "ffl_core.api.trade_in.create_accessory_item",
         "responses": {
           "200": {
@@ -14649,7 +14846,7 @@
           "ffl_core"
         ],
         "summary": "Create a Used Firearm Item + FFL Acquisition for an individual trade-in.",
-        "description": "With payload.apply_credit truthy, the acquisition is parked as a DRAFT\n(booked at checkout submit) and the result carries `credit` — a locked\nnegative TRADE-IN-CREDIT line payload for the POS cart. Re-running the\ndialog for a serial that already has a pending draft refreshes that\ndraft (new cost honoured) instead of duplicating it.\n\nWithout apply_credit the store buys the gun and pays the seller now:\npayload.payout_method (Cash / Zelle / Check / ACH, and payout_reference\nunless Cash) is required. The gun is received on a Purchase Receipt from\nthe seller, dated today, and the payment booked with it (Dr Stock Received\nBut Not Billed / Cr Cash or the bank) so the cash drawer count includes it\n(_buy_now).\n\nAn antique (payload.is_antique, a pre-1899 receiver) never enters the bound book: it is filed under an antique\nItem (a new one for this gun, or a chosen antique Item), with credit parked as a draft Material Receipt its credit\nline locks to (_park_antique), paid now as an antique line on the seller's receipt.\n\nAccessories / ammo (payload.accessories, [{item_code, qty, rate}] with\nrate the per-unit value) come in alone (has_firearm 0) or with the gun:\nwith apply_credit a draft Material Receipt and a credit line of their own\n(_park_accessories), without it lines on the same paid receipt.\n\n**Auth (derived from code):** Roles: Sales User / Stock Manager / System Manager\n\n**Permissions:** roles.TRADE_IN_ROLES: the counter's sales role plus the stock roles; holding only the sales manager role is refused. Gated at entry, covering BOTH branches — the refresh branch (_refresh_pending_draft) rewrites A&D draft seller identity/cost and historically ran ungated (endpoint-gates hardening, 2026-08-07). A caller without a stock role files the gun under no Item (one is made for this gun) or an existing per-gun priced firearm Item (_check_counter_item); making or choosing any other Item stays a stock job. Everything behind the gate runs gate-free (firearm_intake.create_intake, receive_goods._create_receive), each of our writes with ignore_permissions; the ERPNext-internal checks against the session user (the gun's stock bundle) rest on the DocPerm setup/pos_compat.ROLE_GRANTS gives the counter.\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:116`",
+        "description": "With payload.apply_credit truthy, the acquisition is parked as a DRAFT\n(booked at checkout submit) and the result carries `credit` — a locked\nnegative TRADE-IN-CREDIT line payload for the POS cart. Re-running the\ndialog for a serial that already has a pending draft refreshes that\ndraft (new cost honoured) instead of duplicating it.\n\nWithout apply_credit the store buys the gun and pays the seller now:\npayload.payout_method (Cash / Zelle / Check / ACH, and payout_reference\nunless Cash) is required. The gun is received on a Purchase Receipt from\nthe seller, dated today, and the payment booked with it (Dr Stock Received\nBut Not Billed / Cr Cash or the bank) so the cash drawer count includes it\n(_buy_now).\n\nAn antique (payload.is_antique, a pre-1899 receiver) never enters the bound book: it is filed under an antique\nItem (a new one for this gun, or a chosen antique Item), with credit parked as a draft Material Receipt its credit\nline locks to (_park_antique), paid now as an antique line on the seller's receipt.\n\nAccessories / ammo (payload.accessories, [{item_code, qty, rate}] with\nrate the per-unit value) come in alone (has_firearm 0) or with the gun:\nwith apply_credit a draft Material Receipt and a credit line of their own\n(_park_accessories), without it lines on the same paid receipt.\n\n**Auth (derived from code):** Roles: Sales User / Stock Manager / System Manager\n\n**Permissions:** roles.TRADE_IN_ROLES: the counter's sales role plus the stock roles; holding only the sales manager role is refused. Gated at entry, covering BOTH branches — the refresh branch (_refresh_pending_draft) rewrites A&D draft seller identity/cost and historically ran ungated (endpoint-gates hardening, 2026-08-07). A caller without a stock role files the gun under no Item (one is made for this gun) or an existing per-gun priced firearm Item (_check_counter_item); making or choosing any other Item stays a stock job. Everything behind the gate runs gate-free (firearm_intake.create_intake, receive_goods._create_receive), each of our writes with ignore_permissions; the ERPNext-internal checks against the session user (the gun's stock bundle) rest on the DocPerm setup/pos_compat.ROLE_GRANTS gives the counter.\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:117`",
         "operationId": "ffl_core.api.trade_in.create_trade_in_intake",
         "responses": {
           "200": {
@@ -14678,7 +14875,7 @@
                 "type": "object",
                 "properties": {
                   "payload": {
-                    "description": "Trade-in intake fields (same shape as firearm_intake.create_intake plus seller identity, apply_credit, has_firearm and accessories) — dict or JSON string."
+                    "description": "Trade-in intake fields (same shape as firearm_intake.create_intake plus seller identity, apply_credit, has_firearm and accessories) — dict or JSON string. ``crm_deal`` (a sell-request CRM Deal the dialog was opened from) links the trade-in to that deal once it commits and wins the deal when the gun is booked (crm.sell_requests.after_intake); it changes nothing here."
                   }
                 },
                 "required": [
@@ -14696,7 +14893,7 @@
           "ffl_core"
         ],
         "summary": "Prefill for the POS Trade-in dialog's seller section.",
-        "description": "A best-effort structured-name split of the Customer (generational\nsuffix pulled out even mid-name — 'pat lee IV Sampleton' →\nfirst pat, middle lee, last Sampleton, suffix IV) plus their\nprimary address as a single line ('addr1, City ST zip' — the shape the\nFastBound push parses). Everything is editable in the dialog; this only\nsaves retyping.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:614`",
+        "description": "A best-effort structured-name split of the Customer (generational\nsuffix pulled out even mid-name — 'pat lee IV Sampleton' →\nfirst pat, middle lee, last Sampleton, suffix IV) plus their\nprimary address as a single line ('addr1, City ST zip' — the shape the\nFastBound push parses). Everything is editable in the dialog; this only\nsaves retyping.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/trade_in.py:619`",
         "operationId": "ffl_core.api.trade_in.seller_defaults",
         "responses": {
           "200": {
@@ -25793,7 +25990,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Take the website's visitor events: a newsletter signup, a back-in-stock or model alert request.",
-        "description": "Each event is processed on its own; one that fails leaves nothing behind and does not stop the\nrest. A repeated event id is answered as accepted again and processed only once. Nothing is\nemailed. The whole call is refused while Marketing Settings › Enabled is off, and the website\nsends the events again later.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:527`",
+        "description": "Each event is processed on its own; one that fails leaves nothing behind and does not stop the\nrest. A repeated event id is answered as accepted again and processed only once. Nothing is\nemailed. The whole call is refused while Marketing Settings › Enabled is off, and the website\nsends the events again later.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:529`",
         "operationId": "ffl_woo_sync.woocommerce.client_api.web_events",
         "responses": {
           "200": {
@@ -25840,7 +26037,7 @@
           "ffl_woo_sync"
         ],
         "summary": "File a website form submission in CRM: a price request, a sell-your-gun form or a question.",
-        "description": "The email decides where it goes, as for incoming mail: a customer's open deal (one is opened when\nthey have none), else their existing lead, else a new lead. The text goes on it as a note, and the\ngun asked about as a product line. Nothing is emailed to the customer. A repeat of the same\n``event_id`` files nothing more. Does nothing when CRM is not installed.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:492`",
+        "description": "The email decides where it goes, as for incoming mail: a customer's open deal (one is opened when\nthey have none), else their existing lead, else a new lead. The text goes on it as a note, and the\ngun asked about as a product line. A sell-your-gun request always makes a deal of its own, its\nknown fields on the deal and its photos (links on the store's website) copied in later. Nothing is\nemailed to the customer. A repeat of the same ``event_id`` files nothing more. Does nothing when\nCRM is not installed.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:492`",
         "operationId": "ffl_woo_sync.woocommerce.client_api.web_inquiry",
         "responses": {
           "200": {

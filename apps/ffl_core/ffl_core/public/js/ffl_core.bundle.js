@@ -830,7 +830,7 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 			if (btn.textContent !== label) btn.textContent = label;
 		}
 		if (frappe.user.has_role(WORK_ORDER_ROLES)) ensureBtn(WORK_ORDER_BTN_ID, __('Work Order'), openWorkOrderDialog);
-		if (frappe.user.has_role(TRADE_IN_ROLES)) ensureBtn(BUTTON_ID, __('Trade-in'), openTradeInDialog);
+		if (frappe.user.has_role(TRADE_IN_ROLES)) ensureBtn(BUTTON_ID, __('Trade-in'), () => openTradeInDialog());
 		renderExtensionPosActions(ensureBtn);
 	}
 
@@ -1078,11 +1078,15 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		d.show();
 	}
 
-	async function openTradeInDialog() {
+	// prefill: a sell request's gun from its CRM deal (ffl_core.api.crm.sell_gun_intake, through the route
+	// job below): the seller, the gun's facts and the offer, all still editable; the store pays the seller
+	// now unless staff tick the credit. Submitting names the deal, which is linked and won once the gun is booked.
+	async function openTradeInDialog(prefill) {
 		// POS sets cur_pos.frm.doc.customer when a customer is selected. We
 		// pre-fill source_name (the seller — i.e. the customer trading in)
 		// from there so the operator doesn't retype.
-		const posCustomer = (window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc.customer) || '';
+		const posCustomer = (prefill && prefill.source_name)
+			|| (window.cur_pos && window.cur_pos.frm && window.cur_pos.frm.doc.customer) || '';
 
 		// Model SKU is picked/created via the shared FirearmItemPicker (built
 		// after dialog.show() below — same search as Receive Goods: local + RSR
@@ -1315,6 +1319,7 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 					method: 'ffl_core.api.trade_in.create_trade_in_intake',
 					args: { payload: JSON.stringify({
 						...values, accessories, has_firearm: values.has_firearm ? 1 : 0,
+						crm_deal: (prefill && prefill.deal) || '',
 						is_antique: values.has_firearm && values.is_antique ? 1 : 0,
 						item_code: values.has_firearm ? selectedItemCode : '',
 					}) },
@@ -1367,6 +1372,12 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 		});
 		dialog.show();
 		if (posCustomer) prefillSeller();  // pre-filled Customer fires no change event
+		if (prefill) {
+			const gun = {};
+			['manufacturer', 'model_name', 'caliber', 'firearm_type', 'serial_no', 'condition_grade', 'acquisition_cost']
+				.forEach((f) => { if (prefill[f]) gun[f] = prefill[f]; });
+			dialog.set_values({ ...gun, apply_credit: 0 });
+		}
 		// Wire the Model SKU picker (shared with Receive Goods): local + RSR
 		// search + promote/create. onSelect stores the chosen/created item_code.
 		const $skuWrap = dialog.fields_dict.item_code_picker.$wrapper;
@@ -1663,14 +1674,16 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 	// in the URL — dropped once read, so a reload does not run them again):
 	// {ffl_work_order, ffl_work_order_action: 'complete' | 'refund'} — the Desk form's Pick up;
 	// {ffl_pos_invoice} — a draft ticket a page or an extension built (pos_ticket.open_ticket),
-	// opened in the cart as Recent Orders › Draft would.
+	// opened in the cart as Recent Orders › Draft would;
+	// {ffl_crm_deal} — a CRM sell request's Receive gun: the Trade-in dialog filled from the deal.
 	function takeRouteJob() {
 		const ro = frappe.route_options;
-		if (!ro || !(ro.ffl_work_order || ro.ffl_pos_invoice)) return;
+		if (!ro || !(ro.ffl_work_order || ro.ffl_pos_invoice || ro.ffl_crm_deal)) return;
 		const job = ro.ffl_pos_invoice ? { ticket: String(ro.ffl_pos_invoice) }
+			: ro.ffl_crm_deal ? { deal: String(ro.ffl_crm_deal) }
 			: { name: ro.ffl_work_order, action: ro.ffl_work_order_action };
 		frappe.route_options = null;
-		if (/ffl_work_order|ffl_pos_invoice/.test(location.search)) history.replaceState(history.state, '', location.pathname + location.hash);
+		if (/ffl_work_order|ffl_pos_invoice|ffl_crm_deal/.test(location.search)) history.replaceState(history.state, '', location.pathname + location.hash);
 		// The register may still be opening (POS Opening Entry dialog, first load).
 		(function whenReady(left) {
 			const pos = window.cur_pos;
@@ -1681,6 +1694,10 @@ ffl.FirearmItemPicker = class FirearmItemPicker {
 	}
 	async function runRouteJob(job) {
 		if (job.ticket) return openRouteTicket(job.ticket);
+		if (job.deal) {
+			const r = await frappe.call({ method: 'ffl_core.api.crm.sell_gun_intake', args: { deal: job.deal } });
+			return r && r.message ? openTradeInDialog(r.message) : false;
+		}
 		if (job.action !== 'complete' && job.action !== 'refund') return;
 		const r = await frappe.call({ method: GW + 'register_work_orders', args: { name: job.name } });
 		const out = (r && r.message) || {};

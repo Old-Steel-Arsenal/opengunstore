@@ -7,11 +7,11 @@ team (``share_with_team``); an existing record keeps its owner, status and shari
 FCRM Note, and the gun asked about (a SKU of an Item the POS knows) a line of the record's products.
 Nothing is emailed to the customer.
 
-Every field is public input: capped, and stored escaped. A note's title carries the website's event
-id, which is how a repeat of the same event is told from a new one.
+A sell-your-gun request is the exception: it always makes a deal of its own (``crm.sell_requests``), the
+form's known fields on it and the rest in its note, titled with the reference the seller was shown.
 
-lazy: the repeat check reads Note titles (the notes table of one store is small); upgrade path: a
-field on FCRM Note, indexed.
+Every field is public input: capped, and stored escaped. The note keeps the website's event id
+(:data:`EVENT_FIELD`, indexed), which is how a repeat of the same event is told from a new one.
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from frappe import _
 from frappe.utils import escape_html, validate_email_address
 from frappe.utils.synchronization import filelock
 
-from ffl_core.crm import installed
+from ffl_core.crm import installed, sell_requests
 from ffl_core.crm.deal import add_product_row
 from ffl_core.crm.deals import DEAL, open_deal_for
 from ffl_core.crm.mail import LEAD, OTHER_MAIL, _customer_contact, _new_lead, share_with_team
@@ -31,6 +31,8 @@ from ffl_core.utils import commit
 
 MAP_PRICE, SELL_GUN, ASK = "map_price", "sell_gun", "ask"
 KINDS = {MAP_PRICE: "price request", SELL_GUN: "sell-your-gun request", ASK: "question"}
+# FCRM Note: the website's event id (crm.setup.CUSTOM_FIELDS).
+EVENT_FIELD = "ffl_event_id"
 MAX_DETAILS, MAX_PHOTOS = 40, 12
 # Field caps: the longest a real form value is, with room.
 CAP = {"event_id": 80, "name": 140, "phone": 40, "message": 5000, "sku": 140, "url": 500, "label": 80, "value": 1000}
@@ -73,7 +75,7 @@ def _target(email: str, full_name: str) -> tuple[str, str, bool]:
 		return DEAL, deal, False
 	contact = _customer_contact(email)
 	if contact:
-		deal = open_deal_for(contact)
+		deal = open_deal_for(contact, new=True)   # their only open deals, if any, are sell requests
 		share_with_team(DEAL, deal)
 		return DEAL, deal, True
 	lead = frappe.db.get_value(LEAD, {"email": email, "converted": 0, "status": ["!=", OTHER_MAIL]}, "name",
@@ -102,23 +104,37 @@ def file_inquiry(kind: str, event_id: str, email: str, full_name: str = "", phon
 	if not event_id or not address or any(c in address for c in " ,;<>") \
 			or validate_email_address(address, throw=False) != address:
 		frappe.throw(_("An inquiry needs an event id and a valid email address."), title=_("Inquiry refused"))
-	title = f"Website {KINDS[kind]} ({event_id})"   # the repeat key: not translated
 	sku, url = _text(sku, "sku"), _text(url, "url")
 	details = {_text(k, "label"): _text(v, "value") for k, v in
 		list(details.items() if isinstance(details, dict) else [])[:MAX_DETAILS]}
 	photos = [u for u in (_text(p, "url") for p in (photos if isinstance(photos, list) else []))
 		if u.startswith("https://")][:MAX_PHOTOS]
+	legacy = f"Website {KINDS[kind]} ({event_id})"   # the repeat key before EVENT_FIELD: not translated
+	keyed = frappe.db.has_column(NOTE, EVENT_FIELD)   # False only before the migrate that adds it
+	sell = kind == SELL_GUN and sell_requests.ready()
 	with filelock("ffl_web_inquiry_" + hashlib.md5(event_id.encode()).hexdigest(), timeout=60):
 		commit()   # a fresh snapshot: a repeat that held the lock before us is visible
-		again = frappe.db.get_value(NOTE, {"title": title}, ["reference_doctype", "reference_docname"])
+		again = frappe.db.get_value(NOTE, {EVENT_FIELD: event_id} if keyed else {"title": legacy},
+			["reference_doctype", "reference_docname"])
 		if again:
 			return {"filed": True, "doctype": again[0], "name": again[1], "created": False}
-		doctype, name, created = _target(address, _text(full_name, "name"))
-		frappe.get_doc({"doctype": NOTE, "title": title, "reference_doctype": doctype, "reference_docname": name,
-			"content": _note_html(_text(phone, "phone"), _text(message, "message"), sku,
-				url if url.startswith(("http://", "https://")) else "", details, photos)}).insert(ignore_permissions=True)
+		phone, name_ = _text(phone, "phone"), _text(full_name, "name")
+		if sell:
+			values, details = sell_requests.known_fields(details)
+			doctype, name, created = DEAL, sell_requests.new_deal(address, name_, phone, values, photos), True
+			title = " ".join(("Sell-your-gun request", values.get(sell_requests.FIELDS["Reference"], ""))).strip()
+		else:
+			doctype, name, created = _target(address, name_)
+			title = f"Website {KINDS[kind]}"
+		frappe.get_doc({"doctype": NOTE, "title": title if keyed else legacy, EVENT_FIELD: event_id,
+			"reference_doctype": doctype, "reference_docname": name,
+			"content": _note_html(phone, _text(message, "message"), sku,
+				url if url.startswith(("http://", "https://")) else "", details, [] if sell else photos)
+			}).insert(ignore_permissions=True)
 		item, serial = _gun_of(sku)
-		if item:
+		if item and not sell:   # a gun of the store's on the store buying one would be a sale
 			add_product_row(doctype, name, item, serial)
+		if sell and photos:
+			sell_requests.queue_photos(name)   # runs once this commits
 		commit()   # before the lock goes: the repeat waiting on it must see this note
 	return {"filed": True, "doctype": doctype, "name": name, "created": created}

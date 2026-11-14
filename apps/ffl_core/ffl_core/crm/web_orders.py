@@ -69,14 +69,19 @@ def won_deal(order: str) -> str | None:
 
 
 def _open_deal(email: str) -> str | None:
-	"""The newest open deal this address's contact is on. Never makes one."""
+	"""The newest open deal this address's contact is on, a sell request left out (``crm.sell_requests``: the
+	store buying is no sale to win or note). Never makes one."""
+	from ffl_core.crm.sell_requests import SELL, ready
+
 	contacts = contacts_with_email(email)
 	deals = contacts and frappe.get_all("CRM Contacts", filters={"parenttype": DEAL, "contact": ["in", list(contacts)]},
 		pluck="parent")
 	if not deals:
 		return None
-	found = frappe.get_all(DEAL, filters={"name": ["in", deals], "status": ["not in", _statuses(closed=True) or [""]]},
-		pluck="name", order_by="modified desc", limit=1)
+	filters = {"name": ["in", deals], "status": ["not in", _statuses(closed=True) or [""]]}
+	if ready():
+		filters[SELL] = 0
+	found = frappe.get_all(DEAL, filters=filters, pluck="name", order_by="modified desc", limit=1)
 	return found[0] if found else None
 
 
@@ -311,7 +316,7 @@ def _contact_of(email: str, full_name: str, phone: str) -> str:
 	found = contacts_with_email(email)
 	if found:
 		return sorted(found)[0]
-	first, last = _split_name(full_name)
+	first, last = _split_name((full_name or "").replace("<", " ").replace(">", " "))   # a name Frappe refuses in a doc name
 	doc = {"doctype": "Contact", "first_name": first or email.split("@", 1)[0], "last_name": last,
 		"email_ids": [{"email_id": email, "is_primary": 1}]}
 	if phone:
@@ -360,7 +365,8 @@ def payment_failed(order_id: str, email: str, full_name: str = "", phone: str = 
 	try:
 		deal = _open_deal(email)
 		if not deal:
-			deal = open_deal_for(_contact_of(email, full_name, phone))
+			# new: their only open deals, if any, are sell requests (_open_deal)
+			deal = open_deal_for(_contact_of(email, full_name, phone), new=True)
 			share_with_team(DEAL, deal)
 		html = _failure_html(str(order_id), fmt_money(total, currency=currency), items or [], pay_link, method, phone)
 		frappe.get_doc({"doctype": NOTE, "title": title, "content": html,

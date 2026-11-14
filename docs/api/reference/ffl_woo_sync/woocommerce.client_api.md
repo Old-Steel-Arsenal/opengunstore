@@ -212,7 +212,7 @@ sends the events again later.
 
 **Returns:** {"accepted": [id, ...], "rejected": [{"id": ..., "reason": ...}, ...]}. ``reason`` is ``unknown_type``, ``invalid_email`` or ``invalid_data``; an event in neither list failed unexpectedly (an Error Log is written) and should be sent again.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:527`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:529`</sub>
 
 ## `web_inquiry`
 
@@ -224,8 +224,10 @@ File a website form submission in CRM: a price request, a sell-your-gun form or 
 
 The email decides where it goes, as for incoming mail: a customer's open deal (one is opened when
 they have none), else their existing lead, else a new lead. The text goes on it as a note, and the
-gun asked about as a product line. Nothing is emailed to the customer. A repeat of the same
-``event_id`` files nothing more. Does nothing when CRM is not installed.
+gun asked about as a product line. A sell-your-gun request always makes a deal of its own, its
+known fields on the deal and its photos (links on the store's website) copied in later. Nothing is
+emailed to the customer. A repeat of the same ``event_id`` files nothing more. Does nothing when
+CRM is not installed.
 
 | arg | type | required | default | description |
 |---|---|---|---|---|

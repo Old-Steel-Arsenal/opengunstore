@@ -415,3 +415,19 @@ class RefundedAfterShipping(WinCase):
 		self._upsert(email, woo_id, status="completed", refunds=[{"id": 83, "total": "-20.00"}])
 		self.assertWon(deal, order)
 		self.assertEqual(frappe.db.get_value(ORDER, order, "order_status"), "Transferred")
+
+
+class ASellRequestIsNoSale(WinCase):
+	def test_a_paid_order_neither_wins_nor_notes_a_sell_request(self):
+		from ffl_core.crm import sell_requests
+
+		email = _email()
+		sell = _deal(email)
+		frappe.db.set_value(DEAL, sell, sell_requests.SELL, 1)
+		order, woo_id = self._pay(email)
+		row = frappe.db.get_value(DEAL, sell, ["status", "deal_value", web_orders.WON_BY], as_dict=True)
+		self.assertNotEqual(row.status, self.won)
+		self.assertEqual((row.deal_value, row[web_orders.WON_BY]), (0, None))
+		self.assertEqual(self._notes(sell), [], "nothing about the order on the store's buy")
+		web_orders.note_web_order(order, web_orders.TRANSFERRED)
+		self.assertEqual(self._notes(sell), [])

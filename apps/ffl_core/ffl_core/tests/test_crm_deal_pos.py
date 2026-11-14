@@ -489,7 +489,8 @@ class TestSwitch(DealPOSCase):
 		self.assertEqual(len(self._section()), 1)
 		sections = json.loads(frappe.db.get_value("CRM Fields Layout", setup.SIDE_PANEL, "layout"))
 		self.assertEqual(sections[0]["name"], "contacts_section")
-		self.assertEqual(sections[1]["name"], setup.CARD_SECTION)
+		# A sell request's Gun offered card (shown on those deals only) sits above the customer's.
+		self.assertEqual([s["name"] for s in sections[1:3]], [setup.SELL_SECTION, setup.CARD_SECTION])
 		script = frappe.db.get_value("CRM Form Script", setup.DEAL_SCRIPT, "script")
 		for needle in ("class CRMDeal", "setFieldHtml", deal_customer.CARD_FIELD, "Open order",
 				"ffl_core.api.crm.open_deal_order", "ffl_core.api.crm.ensure_deal_customer",
