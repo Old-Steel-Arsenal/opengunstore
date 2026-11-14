@@ -50,7 +50,8 @@ class SentIMAP(FakeIMAP):
 
 
 def _sent(to: str, sender: str = STAFF_USER, cc: str = "", in_reply_to: str | None = None, references: str = "",
-		when: datetime.datetime | None = None, html: str | None = None, attachment: bytes | None = None) -> bytes:
+		when: datetime.datetime | None = None, html: str | None = None, attachment: bytes | None = None,
+		headers: dict | None = None) -> bytes:
 	_n[0] += 1
 	msg = EmailMessage()
 	msg["From"] = f"Staff Member <{sender}>"
@@ -65,6 +66,8 @@ def _sent(to: str, sender: str = STAFF_USER, cc: str = "", in_reply_to: str | No
 		msg["In-Reply-To"] = f"<{in_reply_to}>"
 	if references:
 		msg["References"] = references
+	for key, value in (headers or {}).items():
+		msg[key] = value
 	msg.set_content("Yes, it is.\n\nCome by any time.")
 	if html:
 		msg.add_alternative(html, subtype="html")
@@ -213,6 +216,25 @@ class TestFiling(SentMailCase):
 			self.assertFalse(_lead(email), email)
 		self.assertEqual(frappe.db.get_global(mail.SENT_PLACE + INFO), "7:9")
 		self.assertNoPullErrors()
+
+	def test_machine_written_mail_is_never_filed(self):
+		lead, question = self._team_lead()
+		_customer_contact("known@example.org")
+		marks = [{"Auto-Submitted": "auto-replied"}, {"Auto-Submitted": "auto-generated; reason=x"},
+			{"Precedence": "bulk"}, {"Precedence": "list"}, {"Precedence": "junk"}, {"Precedence": "auto_reply"},
+			{"List-Id": "<news.example.com>"}, {"List-Unsubscribe": "<mailto:leave@example.com>"}]
+		counts = {d: frappe.db.count(d) for d in ("Communication", "Contact", "CRM Lead", "CRM Deal")}
+		for account, sender in ((STAFF_A, STAFF_USER), (INFO, ADDRESS[INFO])):
+			mails = {}
+			for i, headers in enumerate(marks):
+				mails[100 + 3 * i] = _sent("jane@example.org", sender=sender, in_reply_to=_id(question), headers=headers)
+				mails[101 + 3 * i] = _sent("known@example.org", sender=sender, headers=headers)
+				mails[102 + 3 * i] = _sent(f"new{i}@example.org", sender=sender, headers=headers)
+			_check(account, SentIMAP(mails))
+			self.assertEqual({d: frappe.db.count(d) for d in counts}, counts, account)
+		normal = _sent("jane@example.org", in_reply_to=_id(question), headers={"Auto-Submitted": "no"})
+		_check(STAFF_A, SentIMAP({200: normal}))
+		self.assertEqual(_filed(normal)[0].reference_name, lead)
 
 	def test_a_collectors_mail_to_someone_new_is_a_shared_lead_without_owner(self):
 		_settings(category_rules=[{"domain": "brand.example.net", "category": mail._ensure_category("Vendor")}])

@@ -68,7 +68,8 @@ mailbox's Sent folder (the one the server flags ``\\Sent``, RFC 6154) is read th
 2. it answers a mail on a CRM Lead / Deal (In-Reply-To / References): filed there; else the first
    To address outside the store that is a Customer's contact (their open deal) or a CRM Lead (that
    lead, other mail included): filed there;
-3. that first address is in a blocked domain or automated: skipped;
+3. that first address is in a blocked domain or automated: skipped; so is a mail its headers mark
+   automated or bulk (Auto-Submitted, Precedence, List-Id / List-Unsubscribe), whatever rule 2 says;
 4. anyone else: from a collector, a new lead (the category rules apply, as to a new sender of team
    mail; no owner); from a staff mailbox, skipped, and nothing about it is stored.
 
@@ -955,6 +956,8 @@ def _sent_start(server, uidnext: int) -> int:
 def _file_sent_mail(raw: bytes, email_account) -> bool:
 	"""One mail from a Sent folder (module doc, "Sent folder"): whether it is finished with."""
 	message = InboundMail(raw, email_account)
+	if _machine_written(message.mail):
+		return True   # an autoreply or a list mailing: nothing of it is stored, a thread reply included
 	# lazy: a mail with no Message-ID cannot be told from one already in, so it is left out; upgrade
 	# path: match on sender, recipients and date.
 	if not message.message_id or frappe.db.exists("Communication", {"message_id": message.message_id}):
@@ -971,6 +974,20 @@ def _file_sent_mail(raw: bytes, email_account) -> bool:
 		frappe.db.rollback(save_point="ffl_crm_sent")
 		raise
 	return True
+
+
+_BULK_PRECEDENCE = frozenset({"bulk", "list", "junk", "auto_reply"})
+
+
+def _machine_written(headers) -> bool:
+	"""A mail its headers mark automated (Auto-Submitted other than "no", RFC 3834) or bulk (Precedence
+	bulk / list / junk / auto_reply, or a mailing list's List-Id / List-Unsubscribe)."""
+	auto = (headers.get("Auto-Submitted") or "").strip().lower()
+	if headers.get("Auto-Submitted") is not None and auto.split(";", 1)[0].strip() != "no":
+		return True
+	if (headers.get("Precedence") or "").strip().lower() in _BULK_PRECEDENCE:
+		return True
+	return headers.get("List-Id") is not None or headers.get("List-Unsubscribe") is not None
 
 
 def _message_ids(value: str | None) -> list[str]:
