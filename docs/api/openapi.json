@@ -25165,7 +25165,7 @@
           "ffl_integrations"
         ],
         "summary": "Update RSR-linked Items in place with firearm details that promote_to_item",
-        "description": "now writes (manufacturer, model_name, firearm_type, dealer_price, image,\nimage_gallery primary). Skips fields the user has already set non-empty.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/rsr/promote.py:520`",
+        "description": "now writes (manufacturer, model_name, firearm_type, dealer_price, image,\nimage_gallery primary). Skips fields the user has already set non-empty.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/rsr/promote.py:519`",
         "operationId": "ffl_integrations.rsr.promote.backfill_from_rsr",
         "responses": {
           "200": {
@@ -25213,7 +25213,7 @@
           "ffl_integrations"
         ],
         "summary": "Resolve a UPC / RSR stock # / mfg # to a field map ready for the Item form.",
-        "description": "Used by the client script on the Item form (public/js/item_form.js).\nDoes NOT insert anything — the Item form stays in 'unsaved' state and the\nuser can still tweak fields before save.\n\n**Auth (derived from code):** Requires write permission on Item (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/rsr/promote.py:660`",
+        "description": "Used by the client script on the Item form (public/js/item_form.js).\nDoes NOT insert anything — the Item form stays in 'unsaved' state and the\nuser can still tweak fields before save.\n\n**Auth (derived from code):** Requires write permission on Item (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/rsr/promote.py:659`",
         "operationId": "ffl_integrations.rsr.promote.lookup_for_item_form",
         "responses": {
           "200": {
@@ -25261,7 +25261,7 @@
           "ffl_integrations"
         ],
         "summary": "One-shot migrator for the Item Group restructure.",
-        "description": "Moves Items out of the legacy flat groups (\"New Firearm\", \"Used Firearm\",\nparent \"Ammunition\") into the type-based leaf groups, and sets `is_used`\nfrom the old group name. Idempotent — safe to re-run.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/rsr/promote.py:460`",
+        "description": "Moves Items out of the legacy flat groups (\"New Firearm\", \"Used Firearm\",\nparent \"Ammunition\") into the type-based leaf groups, and sets `is_used`\nfrom the old group name. Idempotent — safe to re-run.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/rsr/promote.py:459`",
         "operationId": "ffl_integrations.rsr.promote.migrate_legacy_item_groups",
         "responses": {
           "200": {
@@ -25291,7 +25291,7 @@
           "ffl_integrations"
         ],
         "summary": "Build + insert an Item from an RSR Catalog Item.",
-        "description": "**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/rsr/promote.py:257`",
+        "description": "**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/rsr/promote.py:256`",
         "operationId": "ffl_integrations.rsr.promote.promote_to_item",
         "responses": {
           "200": {

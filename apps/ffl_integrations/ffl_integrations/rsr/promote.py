@@ -90,9 +90,9 @@ def _rsr_variant_urls(primary_url: str | None) -> list[tuple[str, int]]:
 
 
 def _cdn_url_exists(url: str) -> bool:
-	"""HEAD-probe an RSR CDN URL. The _2/_3 gallery variants routinely don't
-	exist, and WooCommerce sideloads every image server-side on product
-	create — one 404 variant fails the whole push with a 400
+	"""Probe an RSR CDN URL (``ffl_core.utils.probe_image_url``). The _2/_3
+	gallery variants routinely don't exist, and WooCommerce sideloads every
+	image server-side on product create — one 404 variant fails the whole push with a 400
 	(woocommerce_product_image_upload_error; first hit on the 2026-08-01 dev
 	E2E). The Item form hid dead variants client-side via onerror, which is
 	why this check didn't exist before the Woo path went live.
@@ -103,12 +103,11 @@ def _cdn_url_exists(url: str) -> bool:
 
 	if getattr(frappe.flags, "in_test", False):
 		return True
-	try:
-		import requests
+	from ffl_core.utils import probe_image_url
 
-		return requests.head(url, allow_redirects=True, timeout=4).status_code == 200
-	except Exception:
-		return False
+	# An empty file is as dead as a 404: WooCommerce refuses the product with
+	# "Invalid image: File is empty", which names no URL to drop.
+	return probe_image_url(url) is True
 
 
 def _checked_image(rsr) -> str | None:

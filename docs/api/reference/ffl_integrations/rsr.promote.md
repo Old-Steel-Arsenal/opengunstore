@@ -21,7 +21,7 @@ image_gallery primary). Skips fields the user has already set non-empty.
 
 **Returns:** {updated, skipped, total}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/rsr/promote.py:520`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/rsr/promote.py:519`</sub>
 
 ## `lookup_for_item_form`
 
@@ -41,7 +41,7 @@ user can still tweak fields before save.
 
 **Returns:** {found: True, defaults: {item_code, item_name, ...}, rsr: {...}} on hit, or {found: False, scan: ...} on miss.
 
-<sub>`apps/ffl_integrations/ffl_integrations/rsr/promote.py:660`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/rsr/promote.py:659`</sub>
 
 ## `migrate_legacy_item_groups`
 
@@ -57,7 +57,7 @@ from the old group name. Idempotent — safe to re-run.
 
 **Returns:** {firearm_moved, ammo_moved, total}.
 
-<sub>`apps/ffl_integrations/ffl_integrations/rsr/promote.py:460`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/rsr/promote.py:459`</sub>
 
 ## `promote_to_item`
 
@@ -73,4 +73,4 @@ Build + insert an Item from an RSR Catalog Item.
 
 **Returns:** {item_code, item_name, item_group, has_serial_no, is_firearm, last_rate, stock_uom, found: True} — same shape as ffl_core.api.receive_goods.lookup_item / create_item.
 
-<sub>`apps/ffl_integrations/ffl_integrations/rsr/promote.py:257`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/rsr/promote.py:256`</sub>

@@ -504,3 +504,53 @@ class TestGalleryVariantsSkipDeadCdnUrls(FrappeTestCase):
 		doc = frappe.get_doc("Item", out["item_code"])
 		self.assertFalse(doc.image)
 		self.assertFalse(doc.get("image_gallery"))
+
+
+class TestCatalogImageChoice(FrappeTestCase):
+	"""The shared Data Service promoter (Sports South, Lipsey's) picks the
+	high-res image only when the CDN serves it as a non-empty image, else the
+	next candidate. Only the CDN GET is stubbed."""
+
+	HIRES = "https://media.example.com/hires/A1.png"
+	STD = "https://media.example.com/large/A1.jpg"
+
+	class _Resp:
+		def __init__(self, status=200, body=b"\x89PNG", length=None):
+			self.status_code = status
+			self.headers = {"Content-Type": "image/png"}
+			if length is not None:
+				self.headers["Content-Length"] = str(length)
+			self._body = body
+
+		def iter_content(self, chunk_size=1):
+			if self._body:
+				yield self._body
+
+		def close(self):
+			pass
+
+	def _choose(self, table):
+		from unittest.mock import patch
+		from ffl_integrations.sports_south.promote import catalog_image
+		row = {"image_url_hires": self.HIRES, "image_url": self.STD}
+		with patch.dict(frappe.flags, {"in_test": False}), \
+				patch("requests.get", side_effect=lambda url, **kw: table[url]):
+			return catalog_image(row)
+
+	def test_empty_hires_falls_back_to_standard(self):
+		self.assertEqual(self._choose({self.HIRES: self._Resp(length=0), self.STD: self._Resp()}),
+			self.STD)
+
+	def test_good_hires_is_kept(self):
+		self.assertEqual(self._choose({self.HIRES: self._Resp()}), self.HIRES)
+
+	def test_neither_served_leaves_no_image(self):
+		self.assertIsNone(self._choose({self.HIRES: self._Resp(body=b""),
+			self.STD: self._Resp(status=404)}))
+
+	def test_rsr_variant_probe_rejects_empty_file(self):
+		from unittest.mock import patch
+		from ffl_integrations.rsr.promote import _cdn_url_exists
+		with patch.dict(frappe.flags, {"in_test": False}), \
+				patch("requests.get", return_value=self._Resp(length=0)):
+			self.assertFalse(_cdn_url_exists("https://img.rsrgroup.com/pimages/X_2.jpg"))
