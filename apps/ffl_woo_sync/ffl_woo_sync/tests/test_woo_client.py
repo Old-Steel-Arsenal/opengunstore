@@ -589,35 +589,202 @@ class TestListOrders(FrappeTestCase):
 		self.assertEqual(client.list_orders(), [])
 
 
-class TestDeadImagesDropped(FrappeTestCase):
-	"""A product refused for a gone remote image is re-sent without it."""
+class FakeImageResponse:
+	"""The slice of a streamed ``requests`` Response that ``probe_image_url`` reads."""
 
-	def test_dead_image_dropped_from_payload_and_gallery(self):
+	def __init__(self, status=200, body=b"\xff\xd8\xff\xe0jpeg", ctype="image/jpeg", length=None):
+		self.status_code = status
+		self.headers = {"Content-Type": ctype}
+		if length is not None:
+			self.headers["Content-Length"] = str(length)
+		self._body = body
+		self.closed = False
+
+	def iter_content(self, chunk_size=1):
+		if self._body:
+			yield self._body[:chunk_size]
+
+	def close(self):
+		self.closed = True
+
+
+def fake_cdn(table: dict):
+	"""A ``requests.get`` stand-in: URL → FakeImageResponse, or an exception to raise."""
+	calls = []
+
+	def get(url, **kwargs):
+		calls.append(url)
+		out = table[url]
+		if isinstance(out, Exception):
+			raise out
+		return out
+	get.calls = calls
+	return get
+
+
+class TestProbeImageUrl(FrappeTestCase):
+	"""``ffl_core.utils.probe_image_url``: True good, False known bad, None unknown."""
+
+	def _probe(self, resp):
+		from ffl_core.utils import probe_image_url
+		with patch("requests.get", fake_cdn({"https://cdn.example.com/a.jpg": resp})):
+			return probe_image_url("https://cdn.example.com/a.jpg")
+
+	def test_answers(self):
+		import requests
+		self.assertIs(self._probe(FakeImageResponse()), True)
+		self.assertIs(self._probe(FakeImageResponse(length=0)), False)
+		self.assertIs(self._probe(FakeImageResponse(body=b"")), False)  # chunked, no bytes
+		self.assertIs(self._probe(FakeImageResponse(ctype="text/html; charset=utf-8")), False)
+		self.assertIs(self._probe(FakeImageResponse(status=404)), False)
+		self.assertIs(self._probe(FakeImageResponse(ctype="application/octet-stream")), True)
+		self.assertIsNone(self._probe(FakeImageResponse(status=503)))
+		self.assertIsNone(self._probe(FakeImageResponse(status=403)))
+		self.assertIsNone(self._probe(requests.ConnectTimeout("slow")))
+
+	def test_non_http_url_is_not_fetched(self):
+		from ffl_core.utils import probe_image_url
+		with patch("requests.get") as get:
+			self.assertIsNone(probe_image_url("/files/a.jpg"))
+		get.assert_not_called()
+
+	def test_response_is_closed_and_timeout_bounded(self):
+		from ffl_core.utils import probe_image_url
+		resp = FakeImageResponse()
+		with patch("requests.get", return_value=resp) as get:
+			probe_image_url("https://cdn.example.com/a.jpg")
+		self.assertTrue(resp.closed)
+		self.assertTrue(get.call_args.kwargs["stream"])
+		self.assertIsNotNone(get.call_args.kwargs["timeout"])
+
+
+ITEM = "TEST-WOO-BAD-IMAGE"
+GOOD = "https://cdn.example.com/x/good.jpg"
+EMPTY = "https://cdn.example.com/x/empty_hires.png"
+EMPTY_FILE_ERR = ('POST products → 400: {"code":"woocommerce_product_image_upload_error","message":'
+	'"Invalid image: File is empty. Please upload something more substantial."}')
+
+
+class TestDeadImagesDropped(FrappeTestCase):
+	"""A product refused over an image is re-sent without the bad image(s), and
+	the Item stops carrying them. Only the HTTP layers (the Woo send, the CDN
+	GET) are stubbed; the gallery and Item rows are real."""
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		if frappe.db.exists("Item", ITEM):
+			frappe.delete_doc("Item", ITEM, ignore_permissions=True, force=True)
+		self.addCleanup(frappe.db.rollback)
+
+	def _item(self, image, gallery):
+		with patch("frappe.enqueue"):
+			frappe.get_doc({"doctype": "Item", "item_code": ITEM, "item_name": ITEM,
+				"item_group": "Misc Accessory", "stock_uom": "Nos", "is_stock_item": 0,
+				"image": image,
+				"image_gallery": [{"image": u, "is_primary": int(i == 0)} for i, u in enumerate(gallery)],
+			}).insert(ignore_permissions=True)
+
+	def _gallery(self):
+		return frappe.get_all("Item Image Gallery", filters={"parent": ITEM, "parenttype": "Item"},
+			pluck="image", order_by="idx asc")
+
+	@staticmethod
+	def _sender(payload, errors):
+		"""send(): raises the queued errors in order, then succeeds."""
+		calls = []
+
+		def send():
+			calls.append([i["src"] for i in payload.get("images") or []])
+			if len(calls) <= len(errors):
+				raise WooCommerceError(errors[len(calls) - 1], status_code=400)
+			return {"id": 9}
+		send.calls = calls
+		return send
+
+	def test_named_dead_image_dropped_from_payload_and_gallery(self):
 		from ffl_woo_sync.woocommerce import sync
-		from ffl_woo_sync.woocommerce.client import WooCommerceError
 
 		dead = "https://img.rsrgroup.com/pimages/X_3.jpg"
-		payload = {"images": [{"src": "https://img.rsrgroup.com/pimages/X_1.jpg"}, {"src": dead}]}
+		live = "https://img.rsrgroup.com/pimages/X_1.jpg"
+		self._item(live, [live, dead])
+		payload = {"images": [{"src": live}, {"src": dead}]}
 		body = ('POST products → 400: {"code":"woocommerce_product_image_upload_error","message":'
 			'"Error getting remote image ' + dead.replace("/", "\\/") + '. Error: Not Found"}')
-		calls = []
-		def send():
-			calls.append(list(payload["images"]))
-			if len(calls) == 1:
-				raise WooCommerceError(body, status_code=400)
-			return {"id": 9}
-		with patch.object(frappe.db, "delete") as delete, \
-		     patch.object(frappe.db, "get_value", return_value=None):
-			self.assertEqual(sync._without_dead_images("ITEM-X", payload, send), {"id": 9})
-		self.assertEqual(calls[1], [{"src": "https://img.rsrgroup.com/pimages/X_1.jpg"}])
-		delete.assert_called_once_with("Item Image Gallery", {"parent": "ITEM-X",
-			"parenttype": "Item", "image": dead})
+		send = self._sender(payload, [body])
+		with patch("requests.get") as get:
+			self.assertEqual(sync._without_dead_images(ITEM, payload, send), {"id": 9})
+		get.assert_not_called()  # the error named it: nothing to probe
+		self.assertEqual(send.calls[1], [live])
+		self.assertEqual(self._gallery(), [live])
 
-	def test_other_errors_raise(self):
+	def test_unnamed_empty_file_is_found_by_probing(self):
+		"""The reported case: "Invalid image: File is empty" names no URL."""
 		from ffl_woo_sync.woocommerce import sync
-		from ffl_woo_sync.woocommerce.client import WooCommerceError
+
+		self._item(EMPTY, [EMPTY, GOOD])
+		payload = {"images": [{"src": EMPTY}, {"src": GOOD}]}
+		send = self._sender(payload, [EMPTY_FILE_ERR])
+		cdn = fake_cdn({EMPTY: FakeImageResponse(ctype="image/png", length=0), GOOD: FakeImageResponse()})
+		with patch("requests.get", cdn):
+			self.assertEqual(sync._without_dead_images(ITEM, payload, send), {"id": 9})
+		self.assertEqual(send.calls, [[EMPTY, GOOD], [GOOD]])
+		self.assertEqual(sorted(cdn.calls), sorted([EMPTY, GOOD]))  # at most the payload's images
+		self.assertEqual(self._gallery(), [GOOD])
+		self.assertEqual(frappe.db.get_value("Item", ITEM, "image"), GOOD)
+
+	def test_unnamed_error_nothing_identified_raises_as_before(self):
+		"""Probe finds every image fine or cannot tell: the error surfaces, nothing dropped."""
+		import requests
+		from ffl_woo_sync.woocommerce import sync
+
+		self._item(GOOD, [GOOD, EMPTY])
+		payload = {"images": [{"src": GOOD}, {"src": EMPTY}]}
+		send = self._sender(payload, [EMPTY_FILE_ERR])
+		cdn = fake_cdn({GOOD: FakeImageResponse(), EMPTY: requests.ReadTimeout("slow")})
+		with patch("requests.get", cdn), self.assertRaises(WooCommerceError) as ctx:
+			sync._without_dead_images(ITEM, payload, send)
+		self.assertIn("File is empty", str(ctx.exception))
+		self.assertEqual(len(send.calls), 1)
+		self.assertEqual(len(payload["images"]), 2)
+		self.assertEqual(self._gallery(), [GOOD, EMPTY])
+
+	def test_unnamed_error_is_retried_once_only(self):
+		from ffl_woo_sync.woocommerce import sync
+
+		self._item(GOOD, [GOOD, EMPTY])
+		payload = {"images": [{"src": GOOD}, {"src": EMPTY}]}
+		send = self._sender(payload, [EMPTY_FILE_ERR, EMPTY_FILE_ERR])
+		cdn = fake_cdn({GOOD: FakeImageResponse(), EMPTY: FakeImageResponse(length=0)})
+		with patch("requests.get", cdn), self.assertRaises(WooCommerceError):
+			sync._without_dead_images(ITEM, payload, send)
+		self.assertEqual(send.calls, [[GOOD, EMPTY], [GOOD]])
+		self.assertEqual(len(cdn.calls), 2)  # probed once, not again on the second refusal
+
+	def test_bad_highres_upgrade_is_withdrawn_not_the_stored_row(self):
+		"""The payload carries RSR's _HR upgrade of a stored standard URL: the
+		standard row stays, and the next payload build uses it."""
+		from ffl_woo_sync.woocommerce import mapping, sync
+
+		std = "https://img.rsrgroup.com/pimages/X_1.jpg"
+		hr = "https://img.rsrgroup.com/highres-pimages/X_1_HR.jpg"
+		self._item(std, [std])
+		self.addCleanup(mapping._HIGHRES_CACHE.pop, std, None)
+		mapping._HIGHRES_CACHE[std] = hr
+		payload = {"images": [{"src": hr}]}
+		send = self._sender(payload, [EMPTY_FILE_ERR])
+		with patch("requests.get", fake_cdn({hr: FakeImageResponse(length=0)})):
+			sync._without_dead_images(ITEM, payload, send)
+		# Nothing left to send: no key, so an update keeps the store's images.
+		self.assertNotIn("images", payload)
+		self.assertEqual(self._gallery(), [std])
+		self.assertEqual(frappe.db.get_value("Item", ITEM, "image"), std)
+		self.assertEqual(mapping._to_highres(std), std)
+
+	def test_other_errors_raise_without_probing(self):
+		from ffl_woo_sync.woocommerce import sync
 
 		def send():
 			raise WooCommerceError("POST products → 400: bad sku", status_code=400)
-		with self.assertRaises(WooCommerceError):
-			sync._without_dead_images("ITEM-X", {"images": []}, send)
+		with patch("requests.get") as get, self.assertRaises(WooCommerceError):
+			sync._without_dead_images("ITEM-X", {"images": [{"src": GOOD}]}, send)
+		get.assert_not_called()

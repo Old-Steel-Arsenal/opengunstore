@@ -526,35 +526,85 @@ def _verify_shipping_class(result: dict, slug: str, item_code: str) -> None:
 
 
 _DEAD_IMAGE = re.compile(r"Error getting remote image (\S+?)\.?\s+Error", re.I)
+# A sideload refusal that does NOT say which image — "Invalid image: File is
+# empty." (a CDN serving a 0-byte file), a disallowed file type, a failed move.
+# Same error code as the named case; only probing can tell which src is bad.
+_UNNAMED_BAD_IMAGE = re.compile(r"woocommerce_product_image_upload_error|Invalid image", re.I)
 _DEAD_IMAGE_TRIES = 3
+# lazy: probes at most this many payload images, one at a time (each bounded by
+# probe_image_url's timeout); parallel probes if galleries ever grow past it.
+_PROBE_MAX_IMAGES = 12
 
 
 def _without_dead_images(item_code: str, payload: dict, send) -> dict:
-    """``send()``, and when WooCommerce refuses the product because a remote
-    image is gone (``woocommerce_product_image_upload_error`` — a distributor CDN
-    that dropped a gallery variant after we recorded it), drop that URL from the
-    payload and from the Item's gallery, then send again (a few times: more than
-    one image can be dead). Any other error, or one naming an image the payload
-    does not carry, is raised as it was."""
+    """``send()``, and when WooCommerce refuses the product over an image, drop
+    the bad image(s) from the payload and from the Item, then send again.
+
+    - The error names the URL (``Error getting remote image <url>``: a CDN that
+      dropped a gallery variant after we recorded it) — drop that one; a few
+      times, since more than one image can be dead.
+    - The error names none (``Invalid image: File is empty``) — probe the
+      payload's images once (``ffl_core.utils.probe_image_url``) and drop the
+      ones known bad; retry once. Images the probe cannot judge are kept.
+
+    Any other error, a named URL the payload does not carry, or an unnamed
+    refusal no probe can pin on an image is raised as it was."""
+    probed = False
     for attempt in range(_DEAD_IMAGE_TRIES + 1):
         try:
             return send()
         except WooCommerceError as exc:
-            match = _DEAD_IMAGE.search(str(exc))
-            images = payload.get("images") or []
-            dead = match.group(1).replace("\\/", "/") if match else None
-            if (attempt == _DEAD_IMAGE_TRIES or not dead
-                    or not any(i.get("src") == dead for i in images)):
+            if attempt == _DEAD_IMAGE_TRIES:
                 raise
-            payload["images"] = [i for i in images if i.get("src") != dead]
-            frappe.db.delete("Item Image Gallery", {"parent": item_code, "parenttype": "Item",
-                "image": dead})
-            if frappe.db.get_value("Item", item_code, "image") == dead:
-                frappe.db.set_value("Item", item_code, "image",
-                    payload["images"][0]["src"] if payload["images"] else None,
-                    update_modified=False)
-            frappe.logger("woo.sync").info(f"{item_code}: dropped dead image {dead}")
+            text = str(exc)
+            srcs = [i.get("src") for i in (payload.get("images") or []) if i.get("src")]
+            match = _DEAD_IMAGE.search(text)
+            if match:
+                bad = {match.group(1).replace("\\/", "/")} & set(srcs)
+            elif not probed and _UNNAMED_BAD_IMAGE.search(text):
+                probed = True
+                from ffl_core.utils import probe_image_url
+                bad = {u for u in srcs[:_PROBE_MAX_IMAGES] if probe_image_url(u) is False}
+            else:
+                bad = set()
+            if not bad:
+                raise
+            _drop_images(item_code, payload, bad)
     raise AssertionError("unreachable")
+
+
+def _drop_images(item_code: str, payload: dict, bad: set[str]) -> None:
+    """Remove ``bad`` payload srcs from the payload, the Item's gallery and
+    ``Item.image``, and stop the RSR high-res upgrade re-picking one of them.
+
+    Payload srcs are RESOLVED urls (site-absolute, maybe the RSR ``_HR``
+    upgrade), so stored paths are matched after the same resolution the
+    payload build applied. A bad ``_HR`` whose stored standard path is fine is
+    not a bad gallery row: only the upgrade is withdrawn."""
+    from ffl_core.images import ordered_gallery_paths
+
+    kept = [i for i in (payload.get("images") or []) if i.get("src") not in bad]
+    if kept:
+        payload["images"] = kept
+    else:
+        # An empty list on an UPDATE deletes every image the product already
+        # has on the store; no key leaves them alone (and a create gets none).
+        payload.pop("images", None)
+    for std, resolved in list(mapping._HIGHRES_CACHE.items()):
+        if resolved in bad and resolved != std:
+            mapping._HIGHRES_CACHE[std] = std
+    gone = lambda path: path in bad or mapping._resolve_image(path) in bad  # noqa: E731
+    rows = frappe.get_all("Item Image Gallery", filters={"parent": item_code,
+        "parenttype": "Item"}, fields=["name", "image", "is_primary"], order_by="idx asc")
+    dropped = [r.name for r in rows if gone(r.image or "")]
+    if dropped:
+        frappe.db.delete("Item Image Gallery", {"name": ("in", dropped)})
+    current = frappe.db.get_value("Item", item_code, "image")
+    if current and gone(current):
+        survivors = ordered_gallery_paths([r for r in rows if r.name not in dropped])
+        frappe.db.set_value("Item", item_code, "image", survivors[0] if survivors else None,
+            update_modified=False)
+    frappe.logger("woo.sync").info(f"{item_code}: dropped bad image(s) {sorted(bad)}")
 
 
 def _push_with_retry(fn, *, retries: int = 2) -> dict:

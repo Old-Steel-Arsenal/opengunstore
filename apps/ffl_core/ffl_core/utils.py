@@ -389,3 +389,49 @@ def set_missing_values_keeping_taxes(doc) -> None:
 	doc.set_missing_values()
 	doc.taxes_and_charges = template
 	doc.set("taxes", rows)
+
+
+# Content types that are never an image body: a CDN's error or login page served
+# with a 200. `application/octet-stream` is NOT here — plenty of CDNs label real
+# JPEGs that way, and WordPress sniffs the bytes itself.
+_NOT_IMAGE_TYPES = ("text/", "application/json", "application/xml", "application/xhtml")
+
+
+def probe_image_url(url: str | None, *, timeout: tuple[float, float] = (3, 5)) -> bool | None:
+	"""Does ``url`` serve a non-empty image body right now?
+
+	``True``: 2xx with at least one byte of a plausible image type.
+	``False``: the URL is known bad — 404/410, an empty body (``Content-Length: 0``
+	or no bytes at all), or a text/JSON/XML page where an image should be.
+	``None``: could not tell — network error, timeout, 5xx, 401/403/429, a
+	non-http URL. Callers choose what "unknown" means for them; nothing here
+	treats it as bad.
+
+	One streamed GET that stops after the first chunk (HEAD cannot see an empty
+	chunked body, and some CDNs answer HEAD differently from GET), bounded by
+	``timeout`` (connect, read). The shared answer for every "is this catalog
+	image usable" question, so the push retry, the RSR high-res upgrade and the
+	promote-time image choice cannot disagree about what an empty file is.
+	"""
+	url = (url or "").strip()
+	if not url.lower().startswith(("http://", "https://")):
+		return None
+	try:
+		import requests
+
+		r = requests.get(url, stream=True, timeout=timeout, allow_redirects=True)
+		try:
+			if r.status_code in (404, 410):
+				return False
+			if not 200 <= r.status_code < 300:
+				return None
+			ctype = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+			if ctype.startswith(_NOT_IMAGE_TYPES):
+				return False
+			if (r.headers.get("Content-Length") or "").strip() == "0":
+				return False
+			return bool(next(r.iter_content(chunk_size=512), b""))
+		finally:
+			r.close()
+	except Exception:
+		return None

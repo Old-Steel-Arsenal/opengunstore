@@ -1090,28 +1090,46 @@ class TestToHighres(FrappeTestCase):
         mapping._HIGHRES_CACHE.clear()
 
     def test_upgrades_when_hr_exists(self):
-        with patch("requests.head", return_value=MagicMock(status_code=200)):
+        from ffl_woo_sync.tests.test_woo_client import FakeImageResponse
+        with patch("requests.get", return_value=FakeImageResponse()):
             self.assertEqual(_to_highres(self._STD), self._HR)
 
     def test_falls_back_to_standard_when_hr_missing(self):
-        with patch("requests.head", return_value=MagicMock(status_code=404)):
+        from ffl_woo_sync.tests.test_woo_client import FakeImageResponse
+        with patch("requests.get", return_value=FakeImageResponse(status=404)):
+            self.assertEqual(_to_highres(self._STD), self._STD)
+
+    def test_falls_back_to_standard_when_hr_is_an_empty_file(self):
+        """A 200 with a 0-byte body: WooCommerce would refuse the whole product
+        with "Invalid image: File is empty"."""
+        from ffl_woo_sync.tests.test_woo_client import FakeImageResponse
+        with patch("requests.get", return_value=FakeImageResponse(length=0)):
+            self.assertEqual(_to_highres(self._STD), self._STD)
+        mapping_cache_clear()
+        with patch("requests.get", return_value=FakeImageResponse(body=b"")):
             self.assertEqual(_to_highres(self._STD), self._STD)
 
     def test_non_rsr_url_unchanged_without_probing(self):
         url = "https://example.com/wp-content/uploads/2026/06/x.jpg"
-        with patch("requests.head") as mock_head:
+        with patch("requests.get") as mock_get:
             self.assertEqual(_to_highres(url), url)
-        mock_head.assert_not_called()
+        mock_get.assert_not_called()
 
     def test_probe_failure_falls_back_to_standard(self):
-        with patch("requests.head", side_effect=Exception("network down")):
+        with patch("requests.get", side_effect=Exception("network down")):
             self.assertEqual(_to_highres(self._STD), self._STD)
 
     def test_result_is_memoised_per_url(self):
-        with patch("requests.head", return_value=MagicMock(status_code=200)) as mock_head:
+        from ffl_woo_sync.tests.test_woo_client import FakeImageResponse
+        with patch("requests.get", return_value=FakeImageResponse()) as mock_get:
             _to_highres(self._STD)
             _to_highres(self._STD)
-        self.assertEqual(mock_head.call_count, 1)  # second call served from cache
+        self.assertEqual(mock_get.call_count, 1)  # second call served from cache
+
+
+def mapping_cache_clear():
+    from ffl_woo_sync.woocommerce import mapping
+    mapping._HIGHRES_CACHE.clear()
 
 
 # ===========================================================================

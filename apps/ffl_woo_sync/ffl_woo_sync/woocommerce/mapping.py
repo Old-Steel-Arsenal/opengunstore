@@ -751,9 +751,11 @@ def _publicize_listing_images(doc, *, doctype: str) -> tuple[list, str]:
 # RSR standard product image → its 300dpi high-res counterpart.
 #   Standard:  https://img.rsrgroup.com/pimages/<name>.jpg            (~400px)
 #   High-res:  https://img.rsrgroup.com/highres-pimages/<name>_HR.jpg (~2000px)
-# RSR ships HR for MOST but not all images, so HEAD-probe and fall back to the
-# standard URL when no _HR exists.  WooCommerce sideloads whichever URL we return
-# onto our own media library — we never hot-link — honouring RSR's "transfer to
+# RSR ships HR for MOST but not all images, so probe and fall back to the
+# standard URL when no usable _HR exists (missing, or served as an empty file —
+# WooCommerce then refuses the whole product with "Invalid image: File is
+# empty").  WooCommerce sideloads whichever URL we return onto our own media
+# library — we never hot-link — honouring RSR's "transfer to
 # your own server" terms.  Results are memoised per URL for the worker's life so a
 # bulk re-push doesn't re-probe the same image.
 _RSR_PIMAGE_RE = re.compile(
@@ -766,9 +768,10 @@ _HIGHRES_CACHE: dict[str, str] = {}
 def _to_highres(url: str) -> str:
     """Return the RSR 300dpi ``_HR`` image URL when one exists, else ``url``.
 
-    Non-RSR URLs (uploaded media, relative paths) pass through unchanged.  Any
-    probe failure (timeout, network error, non-200) falls back to the original
-    URL — upgrading image quality must never break a product push.
+    Non-RSR URLs (uploaded media, relative paths) pass through unchanged.  Only
+    an HR the probe positively confirms (non-empty image body) is used; missing,
+    empty or unknown (timeout, network error) falls back to the original URL —
+    upgrading image quality must never break a product push.
     """
     m = _RSR_PIMAGE_RE.match(url or "")
     if not m:
@@ -776,13 +779,9 @@ def _to_highres(url: str) -> str:
     if url in _HIGHRES_CACHE:
         return _HIGHRES_CACHE[url]
     hr_url = f"{m['host']}/highres-pimages/{m['name']}_HR.{m['ext']}"
-    resolved = url
-    try:
-        import requests
-        if requests.head(hr_url, timeout=5, allow_redirects=True).status_code == 200:
-            resolved = hr_url
-    except Exception:
-        resolved = url
+    from ffl_core.utils import probe_image_url
+
+    resolved = hr_url if probe_image_url(hr_url) is True else url
     _HIGHRES_CACHE[url] = resolved
     return resolved
 
