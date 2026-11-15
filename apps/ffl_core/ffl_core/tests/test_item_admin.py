@@ -149,7 +149,6 @@ class ItemAdminForceDelete(FrappeTestCase):
 			frappe.get_doc({
 				"doctype": "Supplier",
 				"supplier_name": supplier_name,
-				"supplier_group": "All Supplier Groups",
 			}).insert(ignore_permissions=True)
 		# Use the FFL Test company's warehouse (mirrors test_purchase_compliance pattern)
 		company = frappe.db.get_value("Company", {"company_name": "FFL Test"}, "name")
@@ -201,7 +200,6 @@ class ItemAdminForceDelete(FrappeTestCase):
 			frappe.get_doc({
 				"doctype": "Supplier",
 				"supplier_name": supplier_name,
-				"supplier_group": "All Supplier Groups",
 			}).insert(ignore_permissions=True)
 		# Use the FFL Test company's warehouse (mirrors test_purchase_compliance pattern)
 		company = frappe.db.get_value("Company", {"company_name": "FFL Test"}, "name")

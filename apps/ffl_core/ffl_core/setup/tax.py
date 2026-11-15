@@ -169,8 +169,8 @@ def _prune_dangling_template_links() -> int:
 	["disabled", "company"])` and unpacks the answer without checking it
 	(erpnext/stock/get_item_details.py::_get_item_tax_template), so a missing
 	template raises `TypeError: cannot unpack non-iterable NoneType object` from
-	inside ERPNext, naming neither the row nor the item. Every new Item in the
-	group inherits the dead row on insert, so ONE orphan takes out every service
+	inside ERPNext, naming neither the row nor the item. The resolver walks up to
+	the group for every Item in it, so ONE orphan takes out every service
 	line and transfer fee on the site — 17 test failures
 	across four modules, and three investigations that never looked at the row.
 

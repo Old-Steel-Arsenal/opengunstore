@@ -63,7 +63,8 @@ def ensure_consignor_supplier(display_name: str, customer: str | None = None) ->
 	if existing:
 		return existing
 
-	group = frappe.db.get_value("Supplier Group", {"is_group": 0}, "name") or "All Supplier Groups"
+	# A leaf group, or none: ERPNext 16.55 refuses a Supplier in a group-type Supplier Group.
+	group = frappe.db.get_value("Supplier Group", {"is_group": 0}, "name")
 	return frappe.get_doc({
 		"doctype": "Supplier",
 		"supplier_name": name,

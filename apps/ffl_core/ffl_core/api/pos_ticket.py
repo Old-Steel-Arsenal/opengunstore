@@ -8,9 +8,9 @@ profile's payment rows. Nothing here books anything: the submit runs every regis
 (4473, NICS, paid in full).
 
 Two entry points. :func:`open_ticket` is the HTTP one: the caller types the rates, so its save is
-judged by price approval like the register's (``price_approval.attach``) and a rate past the
-item's Max Discount is refused. :func:`build_ticket` is for code in this process that priced the
-lines itself (an extension's own endpoint): its rates are ours and are not asked.
+judged by price approval like the register's (``price_approval.attach``). :func:`build_ticket` is
+for code in this process that priced the lines itself (an extension's own endpoint): its rates are
+ours and are not asked. On both, a rate past the item's Max Discount is refused.
 """
 from __future__ import annotations
 
@@ -85,7 +85,7 @@ def _lines(items, *, trusted: bool = False) -> list[dict]:
 	return rows
 
 
-def _set_rate(row, rate: float, *, trusted: bool = False) -> None:
+def _set_rate(row, rate: float) -> None:
 	"""Put the caller's *rate* on a priced *row* so that ERPNext's save keeps it to the cent.
 
 	A rate under the line's list price is a discount off it: the row carries it as a percentage
@@ -95,9 +95,9 @@ def _set_rate(row, rate: float, *, trusted: bool = False) -> None:
 	pass the item's Max Discount — the percentage stays 0 and the amount is the difference, which is
 	what ERPNext itself would save. A rate at or above the list price, or a line with no list
 	price, carries no discount (ERPNext keeps the rate and sets a margin where it is above).
-	Price approval reads the rate against the list price, never these fields. Unless *trusted*
-	(our own pricing), a rate under what the item's Max Discount allows off the list price is
-	refused: judged on the rate itself, so the amount-only form cannot carry it past the cap.
+	Price approval reads the rate against the list price, never these fields. A rate under what the
+	item's Max Discount allows off the list price is refused, our own pricing's too (ERPNext 16.55
+	refuses it on save in any form): judged here first so the caller is told which line.
 	# lazy: one rounded percentage is tried; on a list price over ~$100 a cent rate it cannot
 	# reproduce shows 0% with the amount still right (the register's own typed rate does the same).
 	"""
@@ -110,7 +110,7 @@ def _set_rate(row, rate: float, *, trusted: bool = False) -> None:
 	pct = flt((1 - rate / listed) * 100, row.precision("discount_percentage"))
 	amount = flt(listed * pct / 100, row.precision("discount_amount"))
 	cap = flt(frappe.get_cached_value("Item", row.item_code, "max_discount"))
-	if cap and not trusted and rate < flt(listed - flt(listed * cap / 100, row.precision("discount_amount")),
+	if cap and rate < flt(listed - flt(listed * cap / 100, row.precision("discount_amount")),
 			row.precision("rate")):
 		frappe.throw(_("Maximum discount for Item {0} is {1}%").format(row.item_code, cap))
 	if pct > 0 and flt(listed - amount, row.precision("rate")) == rate and not (cap and pct > cap):
@@ -150,7 +150,7 @@ def open_ticket(customer: str, items, company: str | None = None, approval_token
 
 def build_ticket(customer: str, items, company: str | None = None) -> dict:
 	""":func:`open_ticket` for code in this process (an extension's own endpoint) whose rates are its
-	own pricing: not asked for a manager's approval, and may pass an item's Max Discount. A line may
+	own pricing: not asked for a manager's approval (an item's Max Discount still holds). A line may
 	also carry ``benefit_customer``, the member whose benefits price it when that is not the ticket's
 	customer (a guest checked in at the range, on a ticket someone else pays). Never whitelisted: a
 	request cannot reach it. Same answer."""
@@ -182,7 +182,7 @@ def _open(customer: str, items, company: str | None, *, trusted: bool = False,
 	# but shows it as 0% off, and prices a bare $0 at the list price); others go in as sent.
 	for row, line in zip(inv.items, lines):
 		if "rate" in line and line["rate"] < flt(row.price_list_rate):
-			_set_rate(row, line["rate"], trusted=trusted)
+			_set_rate(row, line["rate"])
 	inv.insert()
 	# Pricing may move a typed rate on the way in; the caller's rate is the ticket's. (The approval
 	# this insert took covers this save; the register's later saves start from the rate saved here.)
@@ -191,7 +191,7 @@ def _open(customer: str, items, company: str | None, *, trusted: bool = False,
 		if row.get(BENEFIT_FIELD) and flt(row.rate) < line.get("rate", 0):
 			continue   # a member price under the caller's rate is the line's
 		if "rate" in line and flt(row.rate) != line["rate"]:
-			_set_rate(row, line["rate"], trusted=trusted)
+			_set_rate(row, line["rate"])
 			moved = True
 	if moved:
 		if not trusted and not inv.flags.get(price_approval.APPROVAL):
