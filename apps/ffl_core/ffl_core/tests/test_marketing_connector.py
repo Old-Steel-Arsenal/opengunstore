@@ -227,18 +227,28 @@ class TestRecordConsent(MarketingTestCase):
 			api.record_consent(email, "  ")
 		self.assertEqual(status_of(email), NOT_SUBSCRIBED)
 
-	def test_unsubscribe_stays_with_managers(self):
+	def test_a_marketer_unsubscribes_but_cannot_resubscribe(self):
 		email = _contact()
 		user(MARKETER, MARKETING_ROLE)
 		_as(MARKETER)
-		with self.assertRaises(frappe.PermissionError):
-			api.unsubscribe(email)
+		self.assertEqual(api.unsubscribe(email, "Asked by email"),
+			{"contact": email, "status": UNSUBSCRIBED, "changed": True})
+		self.assertIn(MARKETER, events_of(email)[-1].detail)
 		with self.assertRaises(frappe.PermissionError):
 			api.resubscribe(email, "because")
 		frappe.set_user("Administrator")
+		self.assertEqual(status_of(email), UNSUBSCRIBED)
 		user(MANAGER, "Sales Manager")
 		_as(MANAGER)
-		self.assertEqual(api.unsubscribe(email)["status"], UNSUBSCRIBED)
+		self.assertEqual(api.resubscribe(email, "Wrote back")["status"], SUBSCRIBED)
+
+	def test_the_form_offers_unsubscribe_to_marketing_staff_and_resubscribe_to_managers(self):
+		path = frappe.get_app_path("ffl_core", "ffl_core", "doctype", "marketing_contact", "marketing_contact.js")
+		with open(path, encoding="utf-8") as fh:
+			script = fh.read()
+		self.assertIn("var UNSUBSCRIBE_ROLES = ['Marketing User'].concat(MANAGER_ROLES);", script)
+		self.assertIn("hasAny(UNSUBSCRIBE_ROLES)", script)
+		self.assertIn("hasAny(MANAGER_ROLES)", script)
 
 
 class TestRequests(MarketingTestCase):

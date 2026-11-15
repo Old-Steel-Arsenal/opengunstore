@@ -175,7 +175,7 @@ Tags never send anything. Refused while marketing is switched off.
 
 `POST /api/method/ffl_core.api.marketing.unsubscribe`
 
-**Auth (derived from code):** Roles: Sales Manager / System Manager
+**Auth (derived from code):** Roles: Marketing User / Sales Manager / System Manager
 
 Stop marketing email to a contact.
 

@@ -46,7 +46,7 @@ def unsubscribe(contact: str, reason: str | None = None) -> dict:
 	    {"contact": the address, "status": the status now, "changed": False when it was already
 	    suppressed}.
 	"""
-	frappe.only_for(MARKETING_MANAGER_ROLES)
+	frappe.only_for(MARKETING_ROLES)
 	name = _existing(contact)
 	changed = contacts.set_status(name, contacts.UNSUBSCRIBED, reason=reason,
 		detail=contacts.event_detail(reason=reason, by=frappe.session.user, via="desk"))

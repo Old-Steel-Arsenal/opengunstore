@@ -8,10 +8,12 @@
 	var REQUEST_LIMIT = 20;
 	var SUPPRESSED = ['Unsubscribed', 'Bounced', 'Complained'];
 	var MANAGER_ROLES = ['Sales Manager', 'System Manager'];
+	// Who may unsubscribe (roles.MARKETING_ROLES); resubscribing is MANAGER_ROLES only.
+	var UNSUBSCRIBE_ROLES = ['Marketing User'].concat(MANAGER_ROLES);
 	var esc = function (value) { return frappe.utils.escape_html(String(value == null ? '' : value)); };
 
-	function isManager() {
-		return MANAGER_ROLES.some(function (role) { return frappe.user.has_role(role); });
+	function hasAny(roles) {
+		return roles.some(function (role) { return frappe.user.has_role(role); });
 	}
 
 	// A log entry's detail is JSON written by the code; show it as "key: value" pairs.
@@ -126,12 +128,12 @@
 	frappe.ui.form.on('Marketing Contact', {
 		refresh: function (frm) {
 			if (frm.is_new()) return;
-			if (isManager()) {
-				if (SUPPRESSED.indexOf(frm.doc.status) === -1) {
+			if (SUPPRESSED.indexOf(frm.doc.status) === -1) {
+				if (hasAny(UNSUBSCRIBE_ROLES)) {
 					frm.add_custom_button(__('Unsubscribe'), function () { unsubscribeDialog(frm); });
-				} else {
-					frm.add_custom_button(__('Resubscribe'), function () { resubscribeDialog(frm); });
 				}
+			} else if (hasAny(MANAGER_ROLES)) {
+				frm.add_custom_button(__('Resubscribe'), function () { resubscribeDialog(frm); });
 			}
 			renderRequests(frm);
 			renderEvents(frm);

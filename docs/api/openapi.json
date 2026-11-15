@@ -12792,7 +12792,7 @@
           "ffl_core"
         ],
         "summary": "Stop marketing email to a contact.",
-        "description": "Its status becomes Unsubscribed, with who did it and the reason on the log. A contact already\nUnsubscribed, Bounced or Complained is left as it is.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:35`",
+        "description": "Its status becomes Unsubscribed, with who did it and the reason on the log. A contact already\nUnsubscribed, Bounced or Complained is left as it is.\n\n**Auth (derived from code):** Roles: Marketing User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:35`",
         "operationId": "ffl_core.api.marketing.unsubscribe",
         "responses": {
           "200": {
