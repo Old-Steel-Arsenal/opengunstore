@@ -13266,7 +13266,7 @@
           "ffl_core"
         ],
         "summary": "Quick-create an Item from the Receive Goods page, then return the",
-        "description": "same shape as `lookup_item` so the caller can drop the result straight\ninto the pending card.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\n**Permissions:** Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/receive_goods.py:898`",
+        "description": "same shape as `lookup_item` so the caller can drop the result straight\ninto the pending card.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\n**Permissions:** Stock Manager / System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/receive_goods.py:899`",
         "operationId": "ffl_core.api.receive_goods.create_item",
         "responses": {
           "200": {
@@ -13363,7 +13363,7 @@
           "ffl_core"
         ],
         "summary": "Source dropdown values for Receive Goods + FFL Acquisition + Purchase",
-        "description": "Receipt.\n\nAdmin-edited in FFL Settings → Receive Sources (one per line).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/receive_goods.py:1090`",
+        "description": "Receipt.\n\nAdmin-edited in FFL Settings → Receive Sources (one per line).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/receive_goods.py:1091`",
         "operationId": "ffl_core.api.receive_goods.get_receive_sources",
         "responses": {
           "200": {
@@ -13441,7 +13441,7 @@
           "ffl_core"
         ],
         "summary": "Typeahead search across Item.barcode, Item.item_code (SKU), Item.item_name.",
-        "description": "Ordering: exact barcode / item_code matches first, then LIKE matches\nranked by item_name. Disabled items excluded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/receive_goods.py:808`",
+        "description": "Ordering: exact barcode / item_code matches first, then LIKE matches\nranked by item_name. Disabled items excluded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/receive_goods.py:809`",
         "operationId": "ffl_core.api.receive_goods.search_items",
         "responses": {
           "200": {
@@ -17423,7 +17423,7 @@
           "ffl_core"
         ],
         "summary": "The member prices a save would give a register sale, for the screen to show at once.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership_benefits.py:977`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/membership_benefits.py:989`",
         "operationId": "ffl_core.membership_benefits.preview",
         "responses": {
           "200": {

@@ -336,8 +336,11 @@ class OfferAndReceipt(SellCase):
 		counts = lambda: [frappe.db.count(d) for d in ("Stock Entry", "FFL Acquisition", "Purchase Receipt", "Serial No")]  # noqa: E731
 		before = counts()
 		got = S.intake(deal)
+		# The site's own Caliber spelling when it has one (the lookup is case-insensitive, and another module may
+		# leave a "9MM" behind), else the seller's words.
+		caliber = frappe.db.get_value("Caliber", {"name": "9mm"}, "name") or "9mm"
 		self.assertEqual(got, {"deal": deal.name, "source_name": deal.erpnext_customer, "manufacturer": "Glock",
-			"model_name": "19 Gen 5", "caliber": "9mm", "firearm_type": "Receiver", "serial_no": "SR-T-1",
+			"model_name": "19 Gen 5", "caliber": caliber, "firearm_type": "Receiver", "serial_no": "SR-T-1",
 			"acquisition_cost": 300}, "no condition: staff grade the gun in hand, never from the seller's words")
 		self.assertEqual(counts(), before)
 		deal.db_set("erpnext_customer", None)
