@@ -119,6 +119,12 @@ class TestUpdateOrder(EditOrderFixtures):
 			mop.flags.ignore_permissions = True
 			mop.save()
 
+	def _stocked_serial(self, serial: str, *args, **kwargs) -> str:
+		# A new gun per call: test_failed_edit_rolls_back commits, so the class's earlier orders persist on the
+		# site, and a second run (the nightly upgrade regression runs the suite on main, then on develop) would
+		# reuse a fixed serial an earlier run's order still holds.
+		return super()._stocked_serial(f"{serial}-{frappe.generate_hash(length=6)}", *args, **kwargs)
+
 	def _edit(self, si, mutate=None, **kw):
 		out = manual_order.get_order_for_edit(si.name)
 		payload = out["payload"]

@@ -26,6 +26,7 @@ price, or that price list's own price — on which days, and how many units a da
      When too few are left the line keeps its price, and the notice names the sales holding the
      uses (drafts marked not completed: an abandoned ticket holds its use until deleted).
   5. A member price of 0 is never given on an item the store taxes (:func:`taxed_here`).
+     Nor one past the item's Max Discount: ERPNext refuses the line, so the member price stops there.
   6. Never priced: trade-in credit and deposit lines, membership fee items, consignment guns, a
      gun priced one by one unless a benefit names its Item, returns (they copy the line they
      return), and documents priced elsewhere (web and GunBroker orders, counter pickup tickets,
@@ -571,7 +572,7 @@ def price_line(doc, row, customer: str | None, *, consumed: dict | None = None, 
 	    {list_rate, rate, regular, benefit, membership, plan, reason, uses_left, limit, notice,
 	    percentage}: ``rate`` == ``list_rate`` and ``benefit`` None when nothing applies.
 	    ``uses_left``: of the chosen benefit before this line (None = no limit). ``notice``: why a
-	    better member price was not given (no uses left, and which sales took them). ``percentage``: the discount percentage the
+	    better member price was not given (no uses left, and which sales took them; the item's Max Discount). ``percentage``: the discount percentage the
 	    line may show (0 unless a percentage benefit gives the rate back exactly).
 	"""
 	from ffl_core.compliance.locked_lines import rate_precision
@@ -619,14 +620,25 @@ def price_line(doc, row, customer: str | None, *, consumed: dict | None = None, 
 				continue
 		if best is None or (rate, b.name) < (best[2], best[0].name):
 			best = (b, m, rate, left)
+	# ERPNext (16.55) refuses any line more than the item's Max Discount under its list price, so a member
+	# price stops at that floor; a floor no better than the regular price leaves the line as it is.
+	cap = flt(frappe.get_cached_value("Item", item.name, "max_discount"))
+	floor = flt(listed - flt(listed * cap / 100, 2), p) if cap else 0.0
+	if best and best[2] < floor - _EPS:
+		best = (*best[:2], floor, best[3]) if floor < regular - _EPS else None
+		capped = best is not None
+	else:
+		capped = False
 	if best:
 		b, m, rate, left = best
 		out.update(rate=rate, benefit=b.name, membership=m.name, plan=m.plan, reason=benefit_label(b, m.plan_name),
 			uses_left=left, limit=cint(b.uses_per_day) or None)
-		if b.benefit_type == PERCENT and abs(regular - listed) < _EPS \
-				and flt(listed - flt(listed * flt(b.value) / 100, 2), p) == rate:
-			cap = flt(frappe.get_cached_value("Item", item.name, "max_discount"))
-			out.percentage = 0 if cap and flt(b.value) > cap else flt(b.value)
+		pct = cap if capped else flt(b.value) if b.benefit_type == PERCENT else 0
+		if pct and abs(regular - listed) < _EPS and flt(listed - flt(listed * pct / 100, 2), p) == rate:
+			out.percentage = pct
+		if capped:
+			out.notice = _("{0}: the member price stops at this item's Max Discount ({1}%).").format(
+				out.reason, f"{cap:g}")
 	if blocked and (best is None or blocked[2] < best[2]):
 		b, m, _rate, left = blocked
 		label = benefit_label(b, m.plan_name)
@@ -901,7 +913,7 @@ def member_price(customer: str, item_code: str, qty: float = 1, on_date=None, *,
 	    benefit (not a member, item not covered, no uses left, a sale already lower) ``rate`` ==
 	    ``list_rate`` and ``benefit`` is None. ``uses_left``: uses of the benefit left that day before
 	    this line (None = no limit). ``notice``: why a member price was not given (naming the sales
-	    that took the uses), or None.
+	    that took the uses) or stops at the item's Max Discount, or None.
 	"""
 	doc = _quote_doc(customer, on_date)
 	if exclude_invoice:

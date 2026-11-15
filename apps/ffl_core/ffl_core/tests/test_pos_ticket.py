@@ -161,11 +161,15 @@ class OpenTicketDiscount(_Priced):
 			("_Test Ticket Disc Cap 1234", 1234.56, 1000, 0, 234.56),
 			("_Test Ticket Disc Cap 1234", 1234.56, 987.65, 20, 246.91)])
 
-	def test_build_ticket_may_pass_the_max_discount(self):
-		out = pos_ticket.build_ticket(self.cust.name, [{"item_code": "_Test Ticket Disc Cap", "rate": 15}],
+	def test_build_ticket_is_held_to_the_max_discount_too(self):
+		# ERPNext 16.55 refuses any line further under its list price than Max Discount, in any form.
+		with self.assertRaisesRegex(frappe.ValidationError, "Maximum discount for Item _Test Ticket Disc Cap is 10"):
+			pos_ticket.build_ticket(self.cust.name, [{"item_code": "_Test Ticket Disc Cap", "rate": 15}],
+				company=gw.COMPANY)
+		out = pos_ticket.build_ticket(self.cust.name, [{"item_code": "_Test Ticket Disc Cap", "rate": 18}],
 			company=gw.COMPANY)
 		inv = frappe.get_doc("POS Invoice", out["pos_invoice"])
-		self.assertEqual(self._row(inv.items[0]), ("_Test Ticket Disc Cap", 20, 15, 0, 5))
+		self.assertEqual(self._row(inv.items[0]), ("_Test Ticket Disc Cap", 20, 18, 10, 2))
 
 	def test_rate_above_list(self):
 		_out, inv = self._ticket([{"item_code": "_Test Ticket Disc 20", "rate": 25}])

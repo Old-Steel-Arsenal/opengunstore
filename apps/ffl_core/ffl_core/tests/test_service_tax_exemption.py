@@ -338,8 +338,9 @@ class DanglingItemTaxTemplateLinks(FrappeTestCase):
 		frappe.clear_document_cache("Item Group", tax.SERVICE_GROUP)
 
 	def _service_item(self, code: str) -> str:
-		"""A service item created AFTER the orphan — ERPNext copies the group's
-		tax rows onto it on insert, which is how one bad row spreads."""
+		"""A service item created AFTER the orphan. Since ERPNext 16.55 the item
+		keeps no copy of the group's tax rows: the resolver walks up to the group
+		on every line, which is how one bad row reaches every item in it."""
 		if frappe.db.exists("Item", code):
 			frappe.delete_doc("Item", code, force=True, ignore_permissions=True)
 		return _ensure_item(code, tax.SERVICE_GROUP, is_stock=0, is_firearm=0)
@@ -347,7 +348,7 @@ class DanglingItemTaxTemplateLinks(FrappeTestCase):
 	def test_a_dangling_link_breaks_the_erpnext_resolver(self):
 		code = self._service_item("_TEST-DANGLING-SVC")
 		item = frappe.get_cached_doc("Item", code)
-		self.assertIn(self.MISSING, {t.item_tax_template for t in item.taxes})
+		self.assertNotIn(self.MISSING, {t.item_tax_template for t in item.taxes})
 		with self.assertRaises(TypeError) as ctx:
 			get_item_tax_template({"company": self.company}, item)
 		self.assertIn("cannot unpack", str(ctx.exception))
