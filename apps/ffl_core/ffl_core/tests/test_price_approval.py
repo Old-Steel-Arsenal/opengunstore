@@ -615,8 +615,7 @@ class LeftAlone(_On):
 	def test_a_clerk_setting_the_drop_ship_flag_on_a_new_line_is_refused(self):
 		supplier = "_Test PA Supplier"
 		if not frappe.db.exists("Supplier", supplier):
-			frappe.get_doc({"doctype": "Supplier", "supplier_name": supplier, "supplier_group": "All Supplier Groups"}
-				).insert(ignore_permissions=True)
+			frappe.get_doc({"doctype": "Supplier", "supplier_name": supplier}).insert(ignore_permissions=True)
 		so = _so(rate=10)
 		so.items[0].delivered_by_supplier = 1
 		so.items[0].supplier = supplier

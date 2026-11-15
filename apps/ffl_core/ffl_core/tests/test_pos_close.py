@@ -58,7 +58,9 @@ class POSAutoClose(FrappeTestCase):
 				"customer_group": "All Customer Groups",
 				"territory": "All Territories",
 				"selling_price_list": frappe.db.get_value("Price List", {"selling": 1}, "name"),
-				"write_off_account": cash_account,
+				# A Profit and Loss account: ERPNext 16.55 refuses any other.
+				"write_off_account": frappe.db.get_value("Account", {"company": company, "is_group": 0,
+					"account_name": ("like", "Write Off%")}, "name"),
 				"write_off_cost_center": frappe.db.get_value(
 					"Cost Center", {"company": company, "is_group": 0}, "name"),
 				"payments": [{"mode_of_payment": "Cash", "default": 1}],

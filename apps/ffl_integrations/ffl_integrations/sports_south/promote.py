@@ -23,7 +23,7 @@ from ffl_integrations.distributor.ss_provider import (
 	AMMO_CATEGORIES, DISTRIBUTOR_CODE, FIREARM_CATEGORIES, FIREARM_TYPE_BY_CATEGORY,
 )
 from ffl_integrations.rsr.promote import (
-	_ensure_barcode, _ensure_brand, _ensure_caliber, _extract_caliber, _item_response,
+	_cdn_url_exists, _ensure_barcode, _ensure_brand, _ensure_caliber, _extract_caliber, _item_response,
 	barcode_owner,
 )
 
@@ -35,6 +35,23 @@ def promote_to_item(sku: str, opts: dict | None = None) -> dict:
 	return promote_catalog_row(DISTRIBUTOR_CODE, "Sports South", sku, opts,
 		firearm_type=lambda r: FIREARM_TYPE_BY_CATEGORY.get(catid(r), "Other Firearm"),
 		extract_caliber=lambda r, filed: catid(r) in (FIREARM_CATEGORIES | AMMO_CATEGORIES))
+
+
+def catalog_image(r) -> str | None:
+	"""The Item.image for a catalog row: the high-res URL, else the standard one,
+	whichever the house's CDN actually serves as a non-empty image.
+
+	A house can publish an ``image_url_hires`` that answers 200 with a 0-byte
+	body; WooCommerce then refuses the product with "Invalid image: File is
+	empty" and names no URL, so the listing stalls until someone swaps the
+	photo by hand. Probing here keeps that URL off the Item in the first place.
+	None when neither is served (same rule as RSR's ``_checked_image``)."""
+	seen = []
+	for url in (r.get("image_url_hires"), r.get("image_url")):
+		url = (url or "").strip()
+		if url and url not in seen:
+			seen.append(url)
+	return next((u for u in seen if _cdn_url_exists(u)), None)
 
 
 def promote_catalog_row(code: str, label: str, sku: str, opts: dict | None, *,
@@ -87,7 +104,7 @@ def promote_catalog_row(code: str, label: str, sku: str, opts: dict | None, *,
 		"standard_rate": standard_rate or None,
 		"description": r.get("long_description") or r.get("short_description") or None,
 		"brand": brand,
-		"image": (r.get("image_url_hires") or r.get("image_url") or None),
+		"image": catalog_image(r),
 		"manufacturer": brand,
 		"model_name": (r.get("model") or "").strip() or None,
 		"mpn": (r.get("mfg_number") or "").strip() or None,

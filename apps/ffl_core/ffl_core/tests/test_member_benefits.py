@@ -8,6 +8,7 @@ purpose and deletes what it made.
 from __future__ import annotations
 
 import threading
+from contextlib import contextmanager
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -352,6 +353,34 @@ class LinePrices(_Base):
 		self.assertEqual(flt(_ticket(self.cust, (item, 1)).items[0].rate), 24, "no use was taken")
 
 
+class MaxDiscount(_Base):
+	"""ERPNext (16.55) refuses a line further under its list price than the item's Max Discount, so a member price
+	stops at that floor and says so; a floor no better than the regular price gives no member price at all."""
+
+	def setUp(self):
+		super().setUp()
+		self.cust = gw._customer().name
+
+	def test_member_price_stops_at_the_floor(self):
+		a, b = _item("CAP", 30, max_discount=10), _item("CAPF", 30, max_discount=10)
+		plan = _plan(_benefit(mb.ON_ITEM, a, mb.PERCENT, 20), _benefit(mb.ON_ITEM, b, mb.FIXED, 18))
+		_member(self.cust, plan)
+		inv = _ticket(self.cust, (a, 1), (b, 1))
+		name = plan.plan_name
+		self.assertEqual([_line(r) for r in inv.items], [
+			(30, 27, 3, 10, f"Member 20% ({name})"),
+			(30, 27, 3, 10, f"Member price ({name})"),
+		])
+		self.assertIn("Max Discount (10%)", mb.member_price(self.cust, a)["notice"])
+		inv.save()   # the register's next save keeps it
+		self.assertEqual(flt(frappe.get_doc("POS Invoice", inv.name).items[0].rate), 27)
+
+	def test_within_the_cap_nothing_changes(self):
+		a = _item("CAPOK", 30, max_discount=25)
+		_member(self.cust, _plan(_benefit(mb.ON_ITEM, a, mb.PERCENT, 20)))
+		self.assertEqual(_line(_ticket(self.cust, (a, 1)).items[0])[:4], (30, 24, 6, 20))
+
+
 class DailyUses(_Base):
 
 	def setUp(self):
@@ -673,6 +702,19 @@ class PostingDay(_Base):
 		frappe.db.set_value("Item Price", {"item_code": self.item, "price_list": PRICE_LIST}, "valid_from",
 			add_days(self.yesterday, -7))
 
+	@contextmanager
+	def _shift_started_on(self, day):
+		"""The open shift as if it had started on *day*: ERPNext (16.55) saves a POS Invoice keeping its own date
+		only in a shift that started that day. Moved back afterwards, so the day's own tickets still sell."""
+		name, start = frappe.db.get_value("POS Opening Entry", {"pos_profile": gw.PROFILE, "status": "Open",
+			"docstatus": 1}, ["name", "period_start_date"])
+		frappe.db.set_value("POS Opening Entry", name, "period_start_date",
+			start - timedelta(days=(getdate(start) - getdate(day)).days), update_modified=False)
+		try:
+			yield
+		finally:
+			frappe.db.set_value("POS Opening Entry", name, "period_start_date", start, update_modified=False)
+
 	def _dated(self, customer, on, keep=True):
 		"""A draft priced on *on*; with keep=False it is left as a draft saved that day (no own date)."""
 		inv = frappe.get_doc({"doctype": "POS Invoice", "company": COMPANY, "pos_profile": gw.PROFILE,
@@ -680,7 +722,8 @@ class PostingDay(_Base):
 			"items": [{"item_code": self.item, "qty": 1}]})
 		inv.set_missing_values()
 		inv.flags.ignore_permissions = True
-		inv.insert()
+		with self._shift_started_on(on):
+			inv.insert()
 		if not keep:
 			frappe.db.set_value("POS Invoice", inv.name, "set_posting_time", 0)
 		return frappe.get_doc("POS Invoice", inv.name)
@@ -721,7 +764,8 @@ class PostingDay(_Base):
 			days=mb.DAYS[self.yesterday.weekday()])))
 		kept = self._dated(self.cust, self.yesterday)
 		self.assertEqual(mb.posting_day(kept), self.yesterday)
-		kept.save()
+		with self._shift_started_on(self.yesterday):
+			kept.save()
 		kept = frappe.get_doc("POS Invoice", kept.name)
 		self.assertEqual((getdate(kept.posting_date), flt(kept.items[0].rate)), (self.yesterday, 24))
 		self.assertEqual(mb.benefit_usage(self.cust, kept.items[0].get(BENEFIT_FIELD), self.yesterday)["used"], 1)
