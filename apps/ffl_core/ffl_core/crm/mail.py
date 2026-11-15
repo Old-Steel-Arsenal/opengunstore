@@ -84,7 +84,9 @@ Log, no failed count). Frappe's IMAP "ALL" sync starts each pull after the highe
 for the account, so a skipped mail would be fetched again on every pull, and 100 skipped in a row
 would stall the account; :func:`_remember_skipped_uid` keeps one marker Communication per account
 (no sender, subject or body) at the highest skipped uid. "UNSEEN" sync marks a mail read when it
-fetches it, and POP3 deletes it, so neither fetches a skipped mail twice.
+fetches it, and POP3 deletes it, so neither fetches a skipped mail twice. The same rollback would also
+undo the place Frappe saves on an account's first pull (its UIDVALIDITY): :func:`_write_marker` puts it
+back, so a mailbox whose first mail is skipped does not start over as a first sync on every pull.
 
 lazy: two accounts pulling the same mail in the same second can both keep it (no lock between the
 check and the insert); upgrade path: ``GET_LOCK`` on the Message-ID.
@@ -563,19 +565,46 @@ def skip_unwanted(doc, method=None):
 
 
 def _remember_skipped_uid(doc) -> None:
-	"""IMAP "ALL" sync: after the pull's rollback, raise the account's marker to this mail's uid."""
+	"""IMAP "ALL" sync: after the pull's rollback, raise the account's marker to this mail's uid, and put
+	back the folder place the rollback took with it (:func:`_write_marker`)."""
 	uid = cint(doc.get("uid"))
 	if uid <= 0:
 		return
 	account = frappe.db.get_value("Email Account", doc.email_account, ["use_imap", "email_sync_option"], as_dict=True)
 	if account and account.use_imap and account.email_sync_option == "ALL":
-		frappe.db.after_rollback.add(partial(_write_marker, doc.email_account, uid))
+		frappe.db.after_rollback.add(partial(_write_marker, doc.email_account, uid, _folder_places(doc.email_account)))
 
 
-def _write_marker(email_account: str, uid: int) -> None:
+def _folder_places(email_account: str) -> dict[str, tuple]:
+	"""The account's IMAP Folder rows as this transaction sees them: {row name: (uidvalidity, uidnext)}."""
+	return {r.name: (r.uidvalidity, r.uidnext) for r in frappe.get_all("IMAP Folder",
+		filters={"parenttype": "Email Account", "parent": email_account}, fields=["name", "uidvalidity", "uidnext"])}
+
+
+def _write_marker(email_account: str, uid: int, places: dict | None = None) -> None:
 	"""Runs right after ``EmailAccount.receive`` rolled the skipped mail back, in a transaction of its
-	own: written and committed here (the next mail's commit may never come)."""
+	own: written and committed here (the next mail's commit may never come).
+
+	The first mail of a pull shares its transaction with Frappe's check of the folder's UIDVALIDITY
+	(``EmailServer.check_imap_uidvalidity``). When that check found no saved UIDVALIDITY (the account's
+	first pull) or a changed one, it set every stored mail of the account to uid -1 and saved the new
+	UIDVALIDITY on the IMAP Folder row, uncommitted; the rollback of a skipped first mail undid both. A
+	staff mailbox, whose mail is mostly skipped, then never saved its place: every pull started over as
+	a first sync, re-reading its newest mails and setting uid -1 on every stored mail again. *places*
+	is the folder rows as the rolled-back transaction saw them; a row the rollback changed is written
+	again here, with Frappe's uid -1, before the marker, in one commit (a marker without the place, or
+	the place without a marker, would start the next pull from the mailbox's oldest mail)."""
+	frappe.db.savepoint("ffl_crm_marker")
 	try:
+		lost = {name: place for name, place in (places or {}).items()
+			if place[0] and tuple(frappe.db.get_value("IMAP Folder", name, ["uidvalidity", "uidnext"]) or ()) != place}
+		if lost:
+			# Frappe's own statement (check_imap_uidvalidity): the uids of the old numbering mean nothing now.
+			frappe.db.set_value("Communication", {"communication_medium": "Email", "email_account": email_account},
+				"uid", -1, update_modified=False)
+			for name, (validity, uidnext) in lost.items():
+				frappe.db.set_value("IMAP Folder", name, {"uidvalidity": validity, "uidnext": uidnext},
+					update_modified=False)
 		found = frappe.db.get_value("Communication", {"email_account": email_account, "message_id": MARKER_ID},
 			["name", "uid"], as_dict=True)
 		if found:
@@ -589,6 +618,7 @@ def _write_marker(email_account: str, uid: int) -> None:
 				"communication_date": now()}).db_insert()
 		commit()
 	except Exception:
+		frappe.db.rollback(save_point="ffl_crm_marker")
 		frappe.log_error(title=f"[{TITLE}] Skipped mail marker not written: {email_account}",
 			message=frappe.get_traceback())
 
