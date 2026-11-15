@@ -12262,13 +12262,111 @@
         }
       }
     },
+    "/api/method/ffl_core.api.marketing.close_request": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Stop waiting on a reminder request: an Open request becomes Closed and is never notified.",
+        "description": "Refused while marketing is switched off.\n\n**Auth (derived from code):** Roles: Marketing User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:289`",
+        "operationId": "ffl_core.api.marketing.close_request",
+        "responses": {
+          "200": {
+            "description": "{\"request\": its name, \"status\": the status now, \"changed\": False when it was already Notified or Closed}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "request": {
+                    "type": "string",
+                    "description": "The Marketing Request."
+                  }
+                },
+                "required": [
+                  "request"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.api.marketing.contact_card": {
+      "get": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "One marketing contact: its record, tags, latest events and the reminders still waiting.",
+        "description": "Refused while marketing is switched off.\n\n**Auth (derived from code):** Requires read permission on Marketing Contact (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:172`",
+        "operationId": "ffl_core.api.marketing.contact_card",
+        "responses": {
+          "200": {
+            "description": "{\"contact\": {email, first_name, last_name, status, source, consent_at, consent_channel, status_changed_at, status_reason, customer, creation, tags, suppressed}, \"events\": [{kind, occurred_at, mail, campaign, detail}] newest first, \"open_requests\": the Open reminder requests}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "parameters": [
+          {
+            "name": "contact",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The Marketing Contact (its email address)."
+          },
+          {
+            "name": "events",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "How many of the latest events to return (at most 200)."
+          }
+        ]
+      }
+    },
     "/api/method/ffl_core.api.marketing.customer_card": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "The line the Customer form shows about a customer's marketing email.",
-        "description": "Nothing (None) when marketing is off, the user may not read Marketing Contacts or the customer,\nor no marketing contact is linked to the customer.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:70`",
+        "description": "Nothing (None) when marketing is off, the user may not read Marketing Contacts or the customer,\nor no marketing contact is linked to the customer.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:79`",
         "operationId": "ffl_core.api.marketing.customer_card",
         "responses": {
           "200": {
@@ -12313,13 +12411,281 @@
         }
       }
     },
+    "/api/method/ffl_core.api.marketing.find_contacts": {
+      "get": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Find marketing contacts, newest first.",
+        "description": "Any of the filters, together. Refused while marketing is switched off.\n\n**Auth (derived from code):** Requires read permission on Marketing Contact (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:122`",
+        "operationId": "ffl_core.api.marketing.find_contacts",
+        "responses": {
+          "200": {
+            "description": "{\"total\": how many contacts match, \"contacts\": [{email, first_name, last_name, status, source, consent_at, consent_channel, status_changed_at, status_reason, customer, creation, tags}]}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "parameters": [
+          {
+            "name": "email",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "Part of the email address."
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "Part of the first or last name."
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "A tag the contact has (exact)."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "Not Subscribed, Subscribed, Unsubscribed, Bounced or Complained."
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "Where the contact first came from; a prefix (\"fluentform\" matches \"fluentform:3\")."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "How many to return (at most 200)."
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "How many to skip, for the next page."
+          }
+        ]
+      }
+    },
+    "/api/method/ffl_core.api.marketing.list_requests": {
+      "get": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Back-in-stock and model-alert reminder requests, newest first.",
+        "description": "Refused while marketing is switched off.\n\n**Auth (derived from code):** Requires read permission on Marketing Request (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:259`",
+        "operationId": "ffl_core.api.marketing.list_requests",
+        "responses": {
+          "200": {
+            "description": "[{name, contact, kind, status, label, item, sku, web_product_id, model_key, url, requested_at, notified_at}].",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "array"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "Open (the default), Notified or Closed; \"all\" for every status."
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "Back in stock or Model alert."
+          },
+          {
+            "name": "contact",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "One contact's (its email address)."
+          },
+          {
+            "name": "item",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "The POS Item the request is for."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "How many to return (at most 200)."
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "How many to skip, for the next page."
+          }
+        ]
+      }
+    },
+    "/api/method/ffl_core.api.marketing.record_consent": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Record that a contact agreed to marketing email: Not Subscribed becomes Subscribed.",
+        "description": "For a consent given outside the website (at the counter, on the phone, on a paper form). A contact\nthat unsubscribed, bounced or complained is refused: this never puts one back (a manager can, on\nthe contact's form, with a reason). Who recorded it, the channel and the note go on the log.\nRefused while marketing is switched off.\n\n**Auth (derived from code):** Roles: Marketing User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:226`",
+        "operationId": "ffl_core.api.marketing.record_consent",
+        "responses": {
+          "200": {
+            "description": "{\"contact\": the address, \"status\": the status now, \"changed\": False when it was already Subscribed}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "contact": {
+                    "type": "string",
+                    "description": "The Marketing Contact (its email address)."
+                  },
+                  "channel": {
+                    "type": "string",
+                    "description": "Where the consent was given, in a word or two (\"in store\", \"phone\")."
+                  },
+                  "note": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Anything worth keeping with it. Optional."
+                  }
+                },
+                "required": [
+                  "contact",
+                  "channel"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.api.marketing.resubscribe": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "Put a suppressed contact back to Subscribed.",
-        "description": "For a contact that unsubscribed, bounced or complained. The reason is required and goes on the log\nwith who did it.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:48`",
+        "description": "For a contact that unsubscribed, bounced or complained. The reason is required and goes on the log\nwith who did it.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:57`",
         "operationId": "ffl_core.api.marketing.resubscribe",
         "responses": {
           "200": {
@@ -12366,13 +12732,67 @@
         }
       }
     },
+    "/api/method/ffl_core.api.marketing.tag_contact": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Add tags to a marketing contact and take tags off it.",
+        "description": "A tag is a slug (lowercase letters, digits and dashes); anything else is refused, nothing changed.\nTags never send anything. Refused while marketing is switched off.\n\n**Auth (derived from code):** Roles: Marketing User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:197`",
+        "operationId": "ffl_core.api.marketing.tag_contact",
+        "responses": {
+          "200": {
+            "description": "{\"contact\": the address, \"added\": tags that were new to it, \"removed\": tags it had, \"tags\": its tags now}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "contact": {
+                    "type": "string",
+                    "description": "The Marketing Contact (its email address)."
+                  },
+                  "add": {
+                    "description": "Tags to add (a list, or a comma-separated string)."
+                  },
+                  "remove": {
+                    "description": "Tags to take off."
+                  }
+                },
+                "required": [
+                  "contact"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.api.marketing.unsubscribe": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "Stop marketing email to a contact.",
-        "description": "Its status becomes Unsubscribed, with who did it and the reason on the log. A contact already\nUnsubscribed, Bounced or Complained is left as it is.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:26`",
+        "description": "Its status becomes Unsubscribed, with who did it and the reason on the log. A contact already\nUnsubscribed, Bounced or Complained is left as it is.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/marketing.py:35`",
         "operationId": "ffl_core.api.marketing.unsubscribe",
         "responses": {
           "200": {

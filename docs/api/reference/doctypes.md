@@ -630,7 +630,7 @@ app: `ffl_core` · module: FFL Core · child table
 
 ## Marketing Contact
 
-app: `ffl_core` · module: FFL Core · roles: Sales Manager, Sales User, System Manager
+app: `ffl_core` · module: FFL Core · roles: Marketing User, Sales Manager, Sales User, System Manager
 
 Someone the store may email about products and offers, with their consent status.
 
@@ -651,7 +651,7 @@ Someone the store may email about products and offers, with their consent status
 
 ## Marketing Event
 
-app: `ffl_core` · module: FFL Core · roles: Sales Manager, Sales User, System Manager
+app: `ffl_core` · module: FFL Core · roles: Marketing User, Sales Manager, Sales User, System Manager
 
 What happened with a marketing contact: a consent, an unsubscribe, a request, a send. Written by the system only.
 
@@ -667,7 +667,7 @@ What happened with a marketing contact: a consent, an unsubscribe, a request, a 
 
 ## Marketing Request
 
-app: `ffl_core` · module: FFL Core · roles: Sales Manager, Sales User, System Manager
+app: `ffl_core` · module: FFL Core · roles: Marketing User, Sales Manager, Sales User, System Manager
 
 Someone waiting to hear when a product is back in stock or a model is listed. Written by the system only.
 
