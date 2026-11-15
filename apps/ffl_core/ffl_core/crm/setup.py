@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 
 import frappe
+from frappe.utils import cint
 
 from ffl_core.crm import TITLE, installed, pos_link_on, team
 from ffl_core.crm.customer import CARD_FIELD
@@ -405,6 +406,10 @@ def ensure(backfill: bool = True) -> dict:
 	if not installed():
 		return {"skipped": "crm not installed"}
 	try:
+		_as_administrator(ensure_mail_account_index)
+	except Exception:
+		frappe.log_error(title=f"[{TITLE}] Communication email_account index not made", message=frappe.get_traceback())
+	try:
 		_as_administrator(ensure_custom_fields)
 		_as_administrator(ensure_settings)
 		_as_administrator(ensure_crm_settings)
@@ -428,6 +433,31 @@ def ensure(backfill: bool = True) -> dict:
 		frappe.log_error(title=f"[{TITLE}] setup.ensure failed", message=frappe.get_traceback())
 		return {"error": 1}
 	return {"ok": 1}
+
+
+def ensure_mail_account_index() -> bool:
+	"""An index on ``Communication.email_account``. Frappe's IMAP pull sets every stored mail of an
+	account to uid -1 on the account's first pull or a changed UIDVALIDITY (``check_imap_uidvalidity``),
+	with ``WHERE communication_medium = 'Email' AND email_account = …``; with no index that statement
+	scans, and under REPEATABLE READ locks, every Communication row and the gaps between them, and the
+	pull keeps those locks while it fetches up to 100 mails from the server. Every other mail written
+	meanwhile (another mailbox's pull, a sent mail) then waits and fails with a lock wait timeout. With
+	the index it locks that account's rows only. Kept by a Property Setter (``search_index``), so
+	Frappe's schema sync keeps the index instead of dropping it. Returns whether the index was made.
+
+	lazy: the optimizer may still scan the table for an account holding a large share of all mail (a
+	busy team mailbox), so its own first pull still locks wide; upgrade path: none on our side short of
+	replacing Frappe's statement."""
+	from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+
+	if not cint(frappe.get_meta("Communication").get_field("email_account").get("search_index")):
+		make_property_setter("Communication", "email_account", "search_index", "1", "Check",
+			validate_fields_for_doctype=False)
+		frappe.clear_cache(doctype="Communication")
+	if frappe.db.get_column_index("tabCommunication", "email_account", unique=False):
+		return False
+	frappe.db.add_index("Communication", ["email_account"])   # DDL: commits, as every migrate step does
+	return True
 
 
 def ensure_custom_fields() -> None:
