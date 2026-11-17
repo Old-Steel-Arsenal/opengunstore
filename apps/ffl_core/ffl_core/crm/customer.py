@@ -396,13 +396,12 @@ def _link_html(path: str, name: str, label: str | None = None) -> str:
 def _status_html(status: str, reason: str | None, banned: bool, override_until: str | None = None) -> str:
 	if status != BANNED:
 		return ""
-	style = _RED
 	text = escape_html(status)
 	if not banned:
 		text = escape_html(_("Banned, override open until {0}").format(override_until or ""))
 	if reason:
 		text += f": {escape_html(reason)}"
-	return f'<div style="{style};{_ROW}">{text}</div>'
+	return f'<div style="{_RED};{_ROW}">{text}</div>'
 
 
 def _alerts_html(alerts: list[dict]) -> str:
