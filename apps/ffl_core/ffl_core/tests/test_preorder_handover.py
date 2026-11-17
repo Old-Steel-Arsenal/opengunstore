@@ -572,8 +572,16 @@ class ArrivalRace(FrappeTestCase):
 		customers = [frappe.get_doc({"doctype": "Customer", "customer_name": f"_Test PO Arr {token} {i}",
 			"customer_type": "Individual", "customer_group": "Individual", "territory": "All Territories"}
 			).insert(ignore_permissions=True).name for i in range(2)]
-		orders = [preorder.create_preorder({"customer": c, "items": [{"item_code": item, "qty": 1, "rate": 10}]})[
-			"sales_order"] for c in customers]
+		orders, receipts = [], []
+		for c in customers:
+			# The order as create_preorder leaves it, without needing a register set up on this site.
+			so = frappe.get_doc({"doctype": "Sales Order", "company": company, "customer": c, setup.FLAG_FIELD: 1,
+				"delivery_date": add_days(nowdate(), 7), "set_warehouse": SHELF,
+				"items": [{"item_code": item, "qty": 1, "rate": 10}]})
+			so.flags.ignore_permissions = True
+			so.insert()
+			so.submit()
+			orders.append(so.name)
 		receipts = [_units_in(item, 1) for _ in range(2)]
 		frappe.db.commit()   # the job sessions must see them (removed in the finally below)
 		site, results = frappe.local.site, []
