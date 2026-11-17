@@ -198,6 +198,15 @@ function pdMatchesQuery(row, query) {
 	return hay.includes(q);
 }
 
+// A pre-order's gun button: 'change' once a gun is put by on every gun line, 'assign' while a gun line
+// has none (a gun on the shelf can be put by for it by hand), null with no gun line or once closed.
+function pdPreorderGunAction(row) {
+	if (!row || row.cancelled || row.handed_over) return null;
+	const guns = (row.items || []).filter((i) => i && i.kind === 'serial');
+	if (!guns.length) return null;
+	return guns.every((i) => i.serial) ? 'change' : 'assign';
+}
+
 function pdSections(rows, filter, query) {
 	const kept = (rows || []).filter((r) => pdMatchesFilter(r, filter) && pdMatchesQuery(r, query));
 	return PD_STAGE_ORDER.map((stage) => ({
@@ -1114,8 +1123,8 @@ class PendingDispositionsApp {
 			`<span class="pill">${esc(String(i.qty))} × ${esc(i.item_name || i.item_code)}${i.serial ? ` · ${esc(i.serial)}` : ''}</span>`).join('');
 		const drafts = row.drafts || {};
 		const refunds = drafts.refunds || [];
-		// A gun put by can be swapped for another free one of the same model.
-		const guns = (row.items || []).filter((i) => i.kind === 'serial' && i.serial);
+		// A gun line takes a free gun of the same model by hand: a first one, or another for the one put by.
+		const gunAction = pdPreorderGunAction(row);
 		const open = (inv, label) => `<button class="btn btn-default btn-sm btn-preorder-open" data-inv="${esc(inv)}">${label}</button>`;
 		let actions;
 		if (row.cancelled || row.handed_over) {
@@ -1126,7 +1135,8 @@ class PendingDispositionsApp {
 				: drafts.pickup ? open(drafts.pickup, __('Open pickup at register'))
 				: row.ready ? `<button class="btn btn-default btn-sm btn-preorder-pickup">${__('Open pickup')}</button>`
 				: (row.paid ? '' : `<button class="btn btn-default btn-sm btn-preorder-pay">${__('Take payment')}</button>`))
-				+ (guns.length && !drafts.pickup ? `<button class="btn btn-default btn-sm btn-preorder-gun">${__('Change gun')}</button>` : '')
+				+ (gunAction && !drafts.pickup ? `<button class="btn btn-default btn-sm btn-preorder-gun">${
+					gunAction === 'change' ? __('Change gun') : __('Assign gun')}</button>` : '')
 				+ `<button class="btn btn-default btn-sm btn-preorder-cancel" style="color:var(--red-600); border-color:var(--red-400)">${__('Cancel & refund')}</button>`;
 		}
 		const $card = $(`
@@ -1171,6 +1181,10 @@ class PendingDispositionsApp {
 	_preorderGun(row) {
 		frappe.call({ method: 'ffl_core.preorder.serial_choices', args: { sales_order: row.sales_order } }).then((r) => {
 			const lines = (r && r.message && r.message.lines) || [];
+			if (!lines.some((l) => (l.choices || []).length)) {
+				frappe.msgprint(__('No gun of this model is free on the shelf.'));
+				return;
+			}
 			const fields = lines.map((l, i) => ({
 				fieldname: `line_${i}`, fieldtype: 'Select', label: l.item_name || l.item_code,
 				options: [''].concat(l.choices || []).join('\n'), default: l.serial || '',
@@ -2105,6 +2119,6 @@ class PendingDispositionsApp {
 // Node unit tests import the pure kernel (no DOM / Frappe). Harmless in the
 // browser, where `module` is undefined.
 if (typeof module !== 'undefined' && module.exports) {
-	module.exports = { PD_STAGE_ORDER, PD_PRIMARY, pdExtPrimary, pdMatchesFilter, pdMatchesQuery, pdSections, pdDraftLegs, pdCanPlace,
+	module.exports = { PD_STAGE_ORDER, PD_PRIMARY, pdPreorderGunAction, pdExtPrimary, pdMatchesFilter, pdMatchesQuery, pdSections, pdDraftLegs, pdCanPlace,
 		pdLocationFields, pdCollectLocations, pdEscape, pdAgreementKind, pdAgreementNames };
 }

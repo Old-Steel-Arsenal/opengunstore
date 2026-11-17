@@ -42,6 +42,10 @@ from ffl_woo_sync.woocommerce.mapping import (
 )
 
 
+def _no_counter_holds():
+	return patch("ffl_core.reservations.counter_holds", return_value={})
+
+
 def _meta(payload: dict) -> dict:
 	return {m["key"]: m["value"] for m in payload["meta_data"]}
 
@@ -185,13 +189,17 @@ class TestLoadersThreadAntique(FrappeTestCase):
 			payload = item_to_product_payload("AR15-001")
 		self.assertEqual(_meta(payload)["_firearm_product"], "yes")
 
+	# The serial loader asks the counter-hold registry whether the gun is held; its real
+	# readers reach now_datetime(), whose System Settings read would be the stubbed
+	# get_doc's third call (StopIteration) whenever the settings are not cached yet.
+	# Holds are not what these tests are about: none.
 	def test_serial_loader_reads_antique_flag_from_the_parent_item(self):
 		"""The exact original path: per-serial antique → one WC product per gun."""
 		serial = self._mock_serial(name="205745", item_code="Finnish M39 Antique",
 			sell_price=1840.0, condition_grade="Good", woo_reserved=0)
 		item = self._mock_item(item_code="Finnish M39 Antique", is_firearm=1,
 			is_antique=1, is_used=1, uniform_sell_price=0, standard_rate=0.0)
-		with patch("frappe.get_doc", side_effect=[serial, item]):
+		with patch("frappe.get_doc", side_effect=[serial, item]), _no_counter_holds():
 			payload = serial_to_product_payload("205745")
 		self.assertEqual(payload["sku"], "Finnish M39 Antique::205745")
 		self.assertEqual(_meta(payload)["_firearm_product"], "no")
@@ -201,7 +209,7 @@ class TestLoadersThreadAntique(FrappeTestCase):
 			sell_price=649.0, condition_grade="Good", woo_reserved=0)
 		item = self._mock_item(item_code="GLOCK-19", is_firearm=1, is_antique=0,
 			is_used=1, uniform_sell_price=0, standard_rate=0.0)
-		with patch("frappe.get_doc", side_effect=[serial, item]):
+		with patch("frappe.get_doc", side_effect=[serial, item]), _no_counter_holds():
 			payload = serial_to_product_payload("GXK99")
 		self.assertEqual(_meta(payload)["_firearm_product"], "yes")
 

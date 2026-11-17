@@ -236,7 +236,17 @@ class HandOver(_Handover):
 		so = self._preorder()
 		_merge(_checkout(self._payment(so, 1082.5), mode=CARD).name)
 		serial = self._arrive_gun()
+		warehouse = frappe.db.get_value("Sales Order Item", {"parent": so}, "warehouse")
+		reserved = lambda: flt(frappe.db.get_value("Bin", {"item_code": self.gun, "warehouse": warehouse},  # noqa: E731
+			"reserved_qty"))
+		before = reserved()
+		self.assertGreaterEqual(before, 1, "the order reserves its unit in the Bin")
 		pos = self._hand_over(so, serial=serial, mode="Cash")
+		self.assertEqual(reserved(), before - 1, "handed over: the order's reservation is gone from the Bin")
+		preorder._take_back(so, pos.name)
+		self.assertEqual(reserved(), before, "taken back: reserved again")
+		preorder.hand_over(so, pos.name)
+		self.assertEqual(reserved(), before - 1)
 		self.assertEqual((flt(pos.grand_total), flt(pos.paid_amount)), (0, 0))
 		folded = _accounts_by_type(_gl(_merge(pos.name)))
 		self.assertEqual({k: folded.get(k) for k in (self.deposits, "income", "tax", f"Cash - {ABBR}")},
@@ -322,6 +332,19 @@ class HandOver(_Handover):
 		self.assertEqual(preorder.held(so), 100)
 		self.assertNotEqual(frappe.db.get_value("Sales Order", so, "status"), "Completed")
 
+	def test_one_item_on_two_lines_keeps_each_lines_price(self):
+		"""Two of one gun at $1,000 and $950: the pickup ticket bills each line at its own price."""
+		frappe.db.set_value("Item", self.gun, AVAILABLE_FIELD, 2)
+		so = preorder.create_preorder({"customer": self.cust, "items": [{"item_code": self.gun, "qty": 1, "rate": 1000},
+			{"item_code": self.gun, "qty": 1, "rate": 950}]})["sales_order"]
+		self._arrive_gun()
+		self._arrive_gun()
+		ticket = frappe.get_doc("POS Invoice", preorder.open_pickup(so)["pos_invoice"])
+		goods = [flt(r.rate) for r in ticket.items if r.item_code == self.gun]
+		self.assertEqual(goods, [1000, 950])
+		self.assertEqual(flt(sum(r.amount for r in ticket.items if r.item_code == self.gun), 2),
+			flt(frappe.db.get_value("Sales Order", so, "net_total"), 2))
+
 	def test_a_payment_or_pickup_open_blocks_the_other(self):
 		so = self._preorder()
 		self._arrive_gun()
@@ -379,6 +402,60 @@ class TaxAtHandOver(_Handover):
 		_merge(pay.name)
 		_merge(pos.name)
 		self.assertEqual(_gl(_merge(ret.name)), {self.deposits: 12.5, card: -12.5})
+
+
+class FreeOnTheShelf(_Handover):
+	"""The allocator looks at the whole shelf: a gun a cancelled order gave back, or one an earlier run
+	could not place, goes to the next order waiting; a gun something else holds stays where it is."""
+
+	def test_a_cancelled_orders_gun_goes_to_the_next_order(self):
+		first = self._preorder(available=5)
+		second = self._preorder(customer=_customer(), available=4)
+		serial = self._arrive_gun()
+		self.assertEqual(_line(first)[SERIAL_FIELD], serial)
+		with patch.object(frappe, "enqueue") as enqueue:
+			preorder.cancel_preorder(first, "Changed mind")
+		calls = [c for c in enqueue.call_args_list if c.args and c.args[0] == preorder.ALLOCATE_ITEMS_JOB]
+		self.assertEqual(len(calls), 1, enqueue.call_args_list)
+		self.assertEqual((calls[0].kwargs["item_codes"], calls[0].kwargs["enqueue_after_commit"]), ([self.gun], True))
+		preorder.allocate_items(calls[0].kwargs["item_codes"], calls[0].kwargs["company"])
+		self.assertEqual(_line(second)[SERIAL_FIELD], serial)
+
+	def test_a_gun_a_failed_run_left_goes_out_on_the_next_trigger(self):
+		first = self._preorder(available=5)
+		second = self._preorder(customer=_customer(), available=4)
+		one = _serial()
+		receipt = _gun_in(self.gun, one)
+		with patch.object(preorder, "allocate_item", side_effect=RuntimeError("worker died")), \
+				patch.object(frappe, "log_error") as logged:
+			self.assertEqual(preorder.allocate_arrival("Stock Entry", receipt), {})
+		self.assertTrue(logged.called, "the failure is logged")
+		self.assertFalse(_line(first)[SERIAL_FIELD])
+		two = self._arrive_gun()
+		self.assertEqual((_line(first)[SERIAL_FIELD], _line(second)[SERIAL_FIELD]), (one, two),
+			"the gun left on the shelf goes first, to the oldest order")
+
+	def test_a_gun_held_for_a_ship_to_store_order_is_not_taken(self):
+		"""A gun the receive hung on a counter order waiting for it is held for that order (a submitted
+		pickup Sales Invoice carrying the serial): no pre-order takes it, even while one is waiting."""
+		from ffl_core.reservations import counter_holds
+
+		so = self._preorder()
+		serial = _serial()
+		_gun_in(self.gun, serial)   # not allocated: the receive below hangs it first
+		si = frappe.get_doc({"doctype": "Sales Invoice", "company": COMPANY, "customer": _customer(),
+			"selling_price_list": "Standard Selling", "price_list_currency": "USD", "plc_conversion_rate": 1,
+			"ffl_pickup_in_store": 1, "update_stock": 0, "items": [{"item_code": self.gun, "qty": 1, "rate": 900,
+				"serial_no": serial, "use_serial_batch_fields": 1, "warehouse": SHELF}]})
+		si.flags.ignore_permissions = True
+		si.set_missing_values()
+		si.calculate_taxes_and_totals()
+		si.flags.ignore_validate = True   # the counter order's own gates are not what this test is about
+		si.insert()
+		si.submit()
+		self.assertEqual(counter_holds(self.gun)[serial]["kind"], "sales_invoice")
+		self.assertEqual(preorder.allocate_items([self.gun], COMPANY), {self.gun: []})
+		self.assertFalse(_line(so)[SERIAL_FIELD])
 
 
 class Holds(_Handover):

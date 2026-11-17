@@ -14,7 +14,7 @@
   held for an order is read from the submitted POS Invoices (:func:`held`).
 * **Arrival** — a Purchase Receipt or Material Receipt queues :func:`allocate_arrival` after it
   commits (the trigger the want list uses): what came in goes to the open pre-orders waiting for
-  it, oldest order first (:func:`allocate_item`) — a gun by its serial (``ffl_preorder_serial`` on
+  it, oldest order first, from everything free on the shelf (:func:`allocate_item`) — a gun by its serial (``ffl_preorder_serial`` on
   the order's line, a counter hold of kind ``preorder``: no other sale, register or website takes
   it), anything else by quantity (``ffl_preorder_reserved``, off the shelf every channel counts:
   the website through ``channel_committed_units``, the register through
@@ -28,8 +28,8 @@
   order over (``Completed``), and is the only way a pre-order is billed (:func:`refuse_billing_outside_handover`).
   Anything still held after that (a smaller bill) is refunded like a cancelled order's money.
 * **Cancel** — :func:`cancel_preorder`: the order is cancelled, its quantities go back, what was
-  put by for it goes back on the shelf, and every payment is returned in full the way it came in
-  (draft returns the register checks out). Nothing is kept back.
+  put by for it goes to the next order waiting for it (or back on the shelf), and every payment is
+  returned in full the way it came in (draft returns the register checks out). Nothing is kept back.
 """
 from __future__ import annotations
 
@@ -51,6 +51,7 @@ DOCTYPE = "Sales Order"
 CHANNEL = "preorder"
 HOLD_KIND = "preorder"
 ALLOCATE_JOB = "ffl_core.preorder.allocate_arrival"
+ALLOCATE_ITEMS_JOB = "ffl_core.preorder.allocate_items"
 _ARRIVAL_SAVEPOINT = "ffl_preorder_arrival"
 # What an order line waits for: a serial-numbered unit, a counted quantity, or nothing (a non-stock item).
 SERIAL, QTY, NONE = "serial", "qty", "none"
@@ -437,45 +438,43 @@ def on_stock_receipt(doc, method=None) -> None:
 
 
 def allocate_arrival(doctype: str, name: str) -> dict:
-	"""The job: what *doctype* *name* put on our own shelves goes to the pre-orders waiting for it
-	(:func:`allocate_item`), item by item, each committed on its own. A failure on one item is rolled
-	back and logged, and leaves the others alone. Safe to run twice: a second run finds nothing waiting
-	or nothing free. Returns ``{item_code: [what each order got]}``."""
-	from ffl_core.serials import serials_for_line
+	"""The job a receipt queues: every item it put on our own shelves goes to the pre-orders waiting for
+	it (:func:`allocate_items`). Safe to run twice. Returns ``{item_code: [what each order got]}``."""
 	from ffl_core.storage import sellable_warehouses
 
 	doc = frappe.get_doc(doctype, name)
 	if doc.docstatus != 1:
 		return {}
 	shelves = set(sellable_warehouses(doc.company))
-	arrived: dict[str, dict] = {}
-	for row in doc.get("items") or []:
-		warehouse = row.get("t_warehouse") if doctype == "Stock Entry" else row.get("warehouse")
-		if not row.get("item_code") or warehouse not in shelves:
-			continue
-		got = arrived.setdefault(row.item_code, {"serials": [], "qty": 0.0})
-		got["serials"].extend(serials_for_line(row) or [])
-		got["qty"] += flt(row.get("transfer_qty") or row.get("stock_qty") or row.get("qty"))
+	codes = sorted({row.item_code for row in doc.get("items") or [] if row.get("item_code")
+		and (row.get("t_warehouse") if doctype == "Stock Entry" else row.get("warehouse")) in shelves})
+	return allocate_items(codes, doc.company)
+
+
+def allocate_items(item_codes, company: str) -> dict:
+	"""The job (a receipt's, through :func:`allocate_arrival`, or a cancelled pre-order's): for each item,
+	what is free on our shelves goes to the pre-orders waiting for it (:func:`allocate_item`), each item
+	committed on its own. A failure on one item is rolled back and logged and leaves the others alone;
+	whatever it left free is put by on the item's next trigger, since every run looks at the whole shelf.
+	Safe to run twice. Returns ``{item_code: [what each order got]}``."""
 	out = {}
-	for item_code in sorted(arrived):
-		# Another arrival's job may have changed these orders after this transaction began reading (MariaDB
-		# 1020) or hold the lock too long: rolled back and run again on a fresh transaction, 3 tries in all.
+	for item_code in sorted(set(item_codes or ())):
+		# Another job may have changed these orders after this transaction began reading (MariaDB 1020) or
+		# hold the lock too long: rolled back and run again on a fresh transaction, 3 tries in all.
 		for attempt in range(3):
 			commit()   # the lock below is then this transaction's first read
 			frappe.db.savepoint(_ARRIVAL_SAVEPOINT)
 			try:
-				out[item_code] = allocate_item(item_code, doc.company, **arrived[item_code])
+				out[item_code] = allocate_item(item_code, company)
 				commit()
 				break
 			except (frappe.QueryDeadlockError, frappe.QueryTimeoutError):
 				frappe.db.rollback()   # the whole transaction: the retry must not read its snapshot
 				if attempt == 2:
-					frappe.log_error(title=f"Pre-order arrival not put by: {item_code} on {doctype} {name}",
-						message=frappe.get_traceback())
+					frappe.log_error(title=f"Pre-order goods not put by: {item_code}", message=frappe.get_traceback())
 			except Exception:
 				frappe.db.rollback(save_point=_ARRIVAL_SAVEPOINT)
-				frappe.log_error(title=f"Pre-order arrival not put by: {item_code} on {doctype} {name}",
-					message=frappe.get_traceback())
+				frappe.log_error(title=f"Pre-order goods not put by: {item_code}", message=frappe.get_traceback())
 				break
 	return out
 
@@ -512,13 +511,15 @@ def _demands(item_code: str) -> list:
 	return sorted((d for source in DEMAND_SOURCES for d in source(item_code)), key=lambda d: (d.placed, d.name))
 
 
-def allocate_item(item_code: str, company: str, serials=(), qty: float = 0) -> list[dict]:
-	"""Put what just arrived of *item_code* by for the orders waiting for it, oldest order first: each
-	gun among *serials* that nothing holds to the next line short of a gun; up to *qty* units of
-	anything else, no more than the shelf has free once every channel's units are off it. Under the
-	Item's reservation lock (``reservations.lock_item_reservations``, the one a web order or a gun
-	change takes), so two arrivals never fill the same line twice. Returns [{doctype, name, serial |
-	qty}]."""
+def allocate_item(item_code: str, company: str) -> list[dict]:
+	"""Put what is free of *item_code* on our own shelves by for the orders waiting for it, oldest order
+	first: every gun of the item that nothing holds (``reservations.counter_holds`` — a gun hung on a
+	ship-to-store order, held for a deal, parked on a ticket or sold online stays where it is), longest
+	on the shelf first, one per line short of a gun; of anything else, what the shelf has free once
+	every channel's units are off it. The whole shelf, not just one receipt's goods: what an earlier run
+	could not place, or a cancelled pre-order gave back, goes out on the next trigger. Under the Item's
+	reservation lock (``reservations.lock_item_reservations``, the one a web order or a gun change
+	takes), so two runs never fill the same line twice. Returns [{doctype, name, serial | qty}]."""
 	from ffl_core.crm.holds import fire_changed
 	from ffl_core.reservations import (committed_units, counter_holds, lock_item_reservations,
 		notify_channel_commitments_changed)
@@ -532,7 +533,10 @@ def allocate_item(item_code: str, company: str, serials=(), qty: float = 0) -> l
 	given = []
 	if kind == SERIAL:
 		holds, excluded = counter_holds(item_code), excluded_warehouses()
-		pool = [s for s in dict.fromkeys(serials or ()) if _free_gun(s, item_code, holds, excluded)]
+		# lazy: every Active gun of the item is judged (tens per model at most); upgrade path: filter by
+		# warehouse in the query.
+		pool = [s for s in frappe.get_all("Serial No", filters={"item_code": item_code, "status": "Active"},
+			order_by="creation asc, name asc", pluck="name") if _free_gun(s, item_code, holds, excluded)]
 		for demand in waiting:
 			if not pool:
 				break
@@ -543,7 +547,7 @@ def allocate_item(item_code: str, company: str, serials=(), qty: float = 0) -> l
 		# Units already sold on another channel and not shipped are not ours to put by (raises when a
 		# channel cannot answer: nothing is put by then, and the next arrival or a gun change tries again).
 		others = sum(committed_units(item_code, exclude=CHANNEL).values())
-		left = min(flt(qty), shelf_qty(item_code, company) - reserved_qty(item_code, for_update=True) - others)
+		left = shelf_qty(item_code, company) - reserved_qty(item_code, for_update=True) - others
 		for demand in waiting:
 			if left <= TOL:
 				break
@@ -552,7 +556,7 @@ def allocate_item(item_code: str, company: str, serials=(), qty: float = 0) -> l
 			given.append({"doctype": demand.doctype, "name": demand.name, "qty": take})
 			left -= take
 	for g in given:
-		frappe.get_doc(g["doctype"], g["name"]).add_comment("Comment", _("Arrived and put by: {0}").format(
+		frappe.get_doc(g["doctype"], g["name"]).add_comment("Comment", _("Put by: {0}").format(
 			escape_html(g.get("serial") or f"{flt(g.get('qty')):g} × {item_code}")))
 		if g.get("serial"):
 			fire_changed(g["serial"])
@@ -688,12 +692,13 @@ def open_pickup(sales_order: str) -> dict:
 	# The order's prices are the bill: no manager approval for them here (a lower price at the register asks).
 	mark_system_priced(inv)
 	inv.insert()
-	# Pricing may have moved a line on the way in; the order's prices are the bill.
-	want = {l.item_code: flt(l.rate) for l in lines}
+	# Pricing may have moved a line on the way in; the order's prices are the bill, line by line (the
+	# ticket's goods are the order's lines in the order's order: one item on two lines at two prices
+	# keeps both).
 	moved = False
-	for r in inv.items:
-		if r.item_code != PREORDER_ITEM and r.item_code in want and flt(r.rate) != want[r.item_code]:
-			r.rate = r.price_list_rate = want[r.item_code]
+	for r, l in zip([r for r in inv.items if r.item_code != PREORDER_ITEM], lines):
+		if r.item_code == l.item_code and flt(r.rate) != flt(l.rate):
+			r.rate = r.price_list_rate = flt(l.rate)
 			r.discount_amount = r.discount_percentage = 0
 			moved = True
 	if moved:
@@ -730,6 +735,8 @@ def hand_over(name: str, invoice: str) -> None:
 		r.db_set({"delivered_qty": r.qty, "billed_amt": r.amount}, update_modified=False)
 	so.db_set({"per_delivered": 100, "per_billed": 100}, update_modified=False)
 	so.set_status(update=True)
+	# The order's stock reservation in the Bin follows its delivered quantities (ERPNext's own recount).
+	so.update_reserved_qty()
 	so.add_comment("Comment", _("Handed over on {0}.").format(invoice))
 
 
@@ -740,6 +747,7 @@ def _take_back(name: str, invoice: str) -> None:
 		r.db_set({"delivered_qty": 0, "billed_amt": 0}, update_modified=False)
 	so.db_set({"per_delivered": 0, "per_billed": 0}, update_modified=False)
 	so.set_status(update=True)
+	so.update_reserved_qty()
 	so.add_comment("Comment", _("Hand-over {0} cancelled.").format(invoice))
 
 
@@ -1005,6 +1013,10 @@ def on_order_cancel(doc, method=None) -> None:
 				fire_changed(serial)
 	for item_code in sorted(freed):
 		notify_channel_commitments_changed(item_code, source=CHANNEL)
+	if freed:
+		# What this order gave back goes to the next order waiting for it, once the cancel commits.
+		frappe.enqueue(ALLOCATE_ITEMS_JOB, queue="short", enqueue_after_commit=True, item_codes=sorted(freed),
+			company=doc.company)
 
 
 def on_invoice_submit(doc, method=None) -> None:
