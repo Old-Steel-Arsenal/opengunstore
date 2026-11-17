@@ -1950,9 +1950,21 @@ class CreateOrderApp {
 				</div>
 				<div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end">
 					<button class="btn btn-default btn-sm" id="p-cancel">${__('Cancel')}</button>
+					<button class="btn btn-default btn-sm" id="p-preorder" style="display:none">${__('Pre-order')}</button>
 					<button class="btn btn-primary btn-sm" id="p-add">${__('Add to Order')}</button>
 				</div>
 			</div>`).appendTo($area);
+		// Pre-order (ffl_core.preorder): offered only while the item takes pre-orders and none is on our shelves.
+		if (!this._editing) {
+			frappe.call({ method: 'ffl_core.preorder.preorder_options', args: { item_code: item.item_code } })
+				.then((r) => {
+					const o = (r && r.message) || {};
+					if (!o.can_preorder || this.pending?.item !== item) return;
+					this.pending.preorder = o;
+					$card.find('#p-preorder').show().addClass('btn-primary').removeClass('btn-default');
+					$card.find('#p-add').removeClass('btn-primary').addClass('btn-default');
+				}).catch(() => { /* no pre-order: the card is as before */ });
+		}
 
 		const qtyCtrl = frappe.ui.form.make_control({ parent: $card.find('#p-qty')[0],
 			df: { label: __('Qty'), fieldtype: 'Float', fieldname: 'pqty' }, render_input: true });
@@ -1996,7 +2008,35 @@ class CreateOrderApp {
 
 		$card.find('#p-cancel').on('click', () => { this.pending = null; $area.empty(); this.fields.scan.set_value(''); });
 		$card.find('#p-add').on('click', () => this._addPending());
+		$card.find('#p-preorder').on('click', () => this._addPreorderLine());
 	}
+
+	// A pre-order line: no serial (the gun is not here yet), one unit per gun.
+	_addPreorderLine() {
+		const p = this.pending;
+		if (!p || !p.preorder) return;
+		const isFirearm = !!p.item.is_firearm;
+		const qty = isFirearm ? 1 : cint(p.qtyCtrl.get_value());
+		if (qty <= 0) { frappe.show_alert({ message: __('Quantity must be > 0.'), indicator: 'orange' }); return; }
+		if (qty > p.preorder.available) {
+			frappe.show_alert({ message: __('Only {0} can still be pre-ordered.', [p.preorder.available]), indicator: 'orange' });
+			return;
+		}
+		if (!this._addLine({
+			item_code: p.item.item_code, item_name: p.item.item_name || p.item.item_code,
+			is_firearm: isFirearm, is_antique: !!p.item.is_antique,
+			qty, rate: flt(p.rateCtrl.get_value()) || 0, serial: null,
+			channel: 'preorder', channel_confirmed: true, eta: p.preorder.eta || null,
+		})) return;
+		this.pending = null;
+		this.$body.find('#pending-area').empty();
+		this.fields.scan.set_value('');
+		this._itemPicker?.close?.();
+	}
+
+	// Every line a pre-order line: the order is a pre-order (ffl_core.preorder.create_preorder).
+	_isPreorder() { return this.lines.length > 0 && this.lines.every((l) => l.channel === 'preorder'); }
+	_mixesPreorder() { return this.lines.some((l) => l.channel === 'preorder') && !this._isPreorder(); }
 
 	_onSerialPick(serial) {
 		if (!serial) return;
@@ -2064,7 +2104,7 @@ class CreateOrderApp {
 		this.lines.forEach((l, idx) => {
 			const unconfirmed = l.channel_confirmed ? '' : 'style="opacity:.6;border:1px dashed var(--orange-400)"';
 			$(`<tr>
-				<td>${l.is_firearm ? `<span class="firearm-mark">${__('Firearm')}</span>` : ''}${l.channel === 'dropship' ? `<span class="dropship-mark" ${unconfirmed}>${l.distributor ? `${__('Drop-ship')} · ${frappe.utils.escape_html(l.distributor)}` : __('API')}${l.channel_confirmed ? '' : ' · ' + (l.distributor ? __('unconfirmed') : __('choose source in the plan'))}</span>` : ''}${l.channel === 'to_store' ? `<span class="dropship-mark" ${unconfirmed}>${__('Ship to store')} · ${frappe.utils.escape_html(l.distributor || '')}${l.channel_confirmed ? '' : ' · ' + __('unconfirmed')}</span>` : ''}${frappe.utils.escape_html(l.item_name)}
+				<td>${l.is_firearm ? `<span class="firearm-mark">${__('Firearm')}</span>` : ''}${l.channel === 'preorder' ? `<span class="dropship-mark">${__('Pre-order')}${l.eta ? ' · ' + frappe.datetime.str_to_user(l.eta) : ''}</span>` : ''}${l.channel === 'dropship' ? `<span class="dropship-mark" ${unconfirmed}>${l.distributor ? `${__('Drop-ship')} · ${frappe.utils.escape_html(l.distributor)}` : __('API')}${l.channel_confirmed ? '' : ' · ' + (l.distributor ? __('unconfirmed') : __('choose source in the plan'))}</span>` : ''}${l.channel === 'to_store' ? `<span class="dropship-mark" ${unconfirmed}>${__('Ship to store')} · ${frappe.utils.escape_html(l.distributor || '')}${l.channel_confirmed ? '' : ' · ' + __('unconfirmed')}</span>` : ''}${frappe.utils.escape_html(l.item_name)}
 					${l.serial ? `<div class="serials">${__('Serial')}: ${frappe.utils.escape_html(l.serial)}</div>` : ''}
 					${l.channel === 'dropship' ? `<div class="serials">${__('Ships from distributor — no in-store serial')}</div>` : ''}
 					${l.channel === 'to_store' ? `<div class="serials">${l.is_firearm ? __('Ordered to the store — serial assigned and held when it arrives') : __('Ordered to the store — ships once it arrives')}</div>` : ''}
@@ -2402,7 +2442,9 @@ class CreateOrderApp {
 		this.fields.email.set_description(this.fields.email.get_value() ? '' : __(
 			'Without an email no receipt is sent.'));
 		if (!this.lines.length) missing.push(__('At least one item'));
-		if (this._hasRegulated() && !this.destinationFfl && !this._isPickup()) {
+		const preorder = this._isPreorder();
+		if (this._mixesPreorder()) missing.push(__('Pre-order lines on an order of their own'));
+		if (!preorder && this._hasRegulated() && !this.destinationFfl && !this._isPickup()) {
 			// Typing the C&R block is not choosing a destination — the license
 			// has to be saved before there is one. Name the button, or the
 			// operator reads "Destination FFL" while looking at a filled form.
@@ -2411,7 +2453,7 @@ class CreateOrderApp {
 		if (this._leExempt && !this.fields.le_exempt_buyer.get_value()) missing.push(__('Exempt buyer'));
 		if (this._needsPaidChoice() && !this._paidChoiceCtl.get_value()) missing.push(__('What happens to the payment'));
 		if (this._leExempt && !this._leCertOk()) missing.push(__('CDTFA-230-FET certificate'));
-		const tenderRef = this._tenderReference();
+		const tenderRef = preorder ? null : this._tenderReference();
 		if (tenderRef && !(this.fields.transaction_number.get_value() || '').trim()) {
 			missing.push(tenderRef.missing);
 		}
@@ -2743,6 +2785,7 @@ class CreateOrderApp {
 			return;
 		}
 		if (this._editing) { this._submitEdit(); return; }
+		if (this._isPreorder()) { this._submitPreorder(); return; }
 		// Same collector the Save Draft button uses — one payload shape. Only
 		// business buyers carry the exemption fields (sending them persists the
 		// customer's standing flag; individuals' untouched flag is never written).
@@ -2824,6 +2867,48 @@ class CreateOrderApp {
 				}
 			},
 			error: () => { $btn.prop('disabled', false).text(__('Create Order')); },
+		});
+	}
+
+	// A pre-order: the Sales Order now, the money at the register (Take payment).
+	async _submitPreorder() {
+		const payload = {
+			customer: this.buyerType === 'business' ? this._businessCustomer : this.fields.customer.get_value(),
+			items: this.lines.map((l) => ({ item_code: l.item_code, qty: l.qty, rate: l.rate })),
+			notes: this.fields.note.get_value() || '',
+		};
+		const $btn = this.$body.find('#btn-submit');
+		$btn.prop('disabled', true);
+		if (!(await ffl.priceApproval.forOrder(payload))) { $btn.prop('disabled', false); return; }
+		frappe.call({
+			method: 'ffl_core.preorder.create_preorder',
+			args: { payload: JSON.stringify(payload) },
+			freeze: true,
+			callback: (r) => {
+				const m = r.message;
+				if (!m) return;
+				this._resetForNext();
+				const open = (amount) => frappe.call({
+					method: 'ffl_core.preorder.open_payment',
+					args: { sales_order: m.sales_order, amount }, freeze: true,
+				}).then((res) => {
+					d.hide();
+					if (res && res.message) {
+						frappe.route_options = { ffl_pos_invoice: res.message.pos_invoice };
+						frappe.set_route('point-of-sale');
+					}
+				});
+				const d = new frappe.ui.Dialog({
+					title: __('Pre-order {0}', [m.sales_order]),
+					fields: [{ fieldname: 'amount', fieldtype: 'Currency', label: __('Amount'), reqd: 1 }],
+					primary_action_label: __('Take payment'),
+					primary_action: (v) => open(v.amount),
+					secondary_action_label: __('Pay in full ({0})', [format_currency(m.grand_total)]),
+					secondary_action: () => open(m.grand_total),
+				});
+				d.show();
+			},
+			error: () => { $btn.prop('disabled', false); },
 		});
 	}
 

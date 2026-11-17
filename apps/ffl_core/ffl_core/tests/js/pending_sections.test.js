@@ -145,3 +145,14 @@ test('Place order: a counter row follows the server verdict; GunBroker never get
 	assert.strictEqual(pdCanPlace({ source: 'gunbroker', stage: 'to_place', legs,
 		distributor_orders: legs.distributor_orders }), false);
 });
+
+test('a pre-order is a counter order: the counter chip keeps it, its order and items are searchable, it never offers Place order', () => {
+	const pre = { source: 'preorder', stage: 'waiting', age_days: 40, customer_name: 'Fay', sales_order: 'SAL-ORD-9',
+		items: [{ item_code: 'G19', item_name: 'Glock 19 Gen 6', qty: 1 }] };
+	assert.strictEqual(pdMatchesFilter(pre, 'counter'), true);
+	assert.strictEqual(pdMatchesFilter(pre, 'woo'), false);
+	assert.strictEqual(pdMatchesQuery(pre, 'sal-ord-9'), true);
+	assert.strictEqual(pdMatchesQuery(pre, 'gen 6'), true);
+	assert.strictEqual(pdCanPlace(pre), false);
+	assert.deepStrictEqual(pdSections([pre], 'all', '').map((s) => s.stage), ['waiting']);
+});

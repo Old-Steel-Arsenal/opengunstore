@@ -17,11 +17,11 @@ from ffl_core.utils import commit
 DEPOSIT_ACCOUNT_TITLE = "Customer Deposits"
 
 
-def deposit_account(company: str) -> str | None:
-	"""The company's Customer Deposits liability account, if created."""
+def deposit_account(company: str, title: str = DEPOSIT_ACCOUNT_TITLE) -> str | None:
+	"""The company's Customer Deposits liability account (or the one named *title*), if created."""
 	return frappe.db.get_value(
 		"Account",
-		{"company": company, "account_name": DEPOSIT_ACCOUNT_TITLE, "is_group": 0},
+		{"company": company, "account_name": title, "is_group": 0},
 		"name",
 	)
 
@@ -43,8 +43,8 @@ def ensure() -> dict:
 	return created
 
 
-def _ensure_account(company: str) -> bool:
-	existing = deposit_account(company)
+def _ensure_account(company: str, title: str = DEPOSIT_ACCOUNT_TITLE) -> bool:
+	existing = deposit_account(company, title)
 	if existing:
 		_heal_parent(company, existing)
 		return False
@@ -53,7 +53,7 @@ def _ensure_account(company: str) -> bool:
 		return False  # chartless company (mid-setup) — the next migrate retries
 	frappe.get_doc({
 		"doctype": "Account",
-		"account_name": DEPOSIT_ACCOUNT_TITLE,
+		"account_name": title,
 		"company": company,
 		"parent_account": parent,
 		"root_type": "Liability",

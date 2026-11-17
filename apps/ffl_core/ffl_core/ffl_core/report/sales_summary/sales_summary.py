@@ -38,7 +38,7 @@ from frappe.utils import cint, flt, get_fullname
 
 from ffl_core.compliance.negative_trade_in import invoice_total
 from ffl_core.ffl_core.report.sales_report import sales_report as sr
-from ffl_core.setup.gunsmith import DEPOSIT_ITEM
+from ffl_core.deposits import ITEMS as DEPOSIT_ITEMS
 from ffl_core.setup.locked_lines import locked_items
 
 VIEWS = ("Summary", "Category", "Register", "Employee")
@@ -146,7 +146,7 @@ def _collect(filters) -> frappe._dict:
 		)
 		for line in ls:
 			code, line_net = line.get("item_code"), flt(line.get("base_net_amount"))
-			if code == DEPOSIT_ITEM:
+			if code in DEPOSIT_ITEMS:
 				if line_net > 0:
 					d.deposit_taken += line_net
 				else:

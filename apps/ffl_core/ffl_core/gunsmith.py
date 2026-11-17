@@ -42,11 +42,11 @@ import frappe
 from frappe import _
 from frappe.utils import cint, escape_html, flt, fmt_money, now_datetime, nowdate
 
-from ffl_core.pos_draft import open_shift, profile_defaults
+from ffl_core import deposits
+from ffl_core.deposits import GUNSMITH
 from ffl_core.price_approval import mark_system_priced
 from ffl_core.roles import COUNTER_ROLES
 from ffl_core.setup import gunsmith as setup
-from ffl_core.setup.customer_deposits import deposit_account
 from ffl_core.setup.gunsmith import DEPOSIT_ITEM, LINK_FIELD
 from ffl_core.setup.locked_lines import LOCKED_RATE_FIELD, locked_items
 
@@ -89,29 +89,12 @@ def deposit_held(work_order: str, exclude: str | None = None) -> float:
 	"""Deposit collected for *work_order* and not yet applied or refunded: the sum of its
 	deposit lines on submitted POS Invoices (a return's line is negative). *exclude*
 	leaves one invoice out (the one being validated)."""
-	rows = frappe.db.sql("""
-		SELECT COALESCE(SUM(i.amount), 0) FROM `tabPOS Invoice Item` i
-		INNER JOIN `tabPOS Invoice` p ON p.name = i.parent
-		WHERE p.docstatus = 1 AND i.item_code = %s AND i.{link} = %s AND p.name != %s
-	""".format(link=LINK_FIELD), (DEPOSIT_ITEM, work_order, exclude or ""))
-	return flt(rows[0][0] if rows else 0, 2)
+	return deposits.held(GUNSMITH, work_order, exclude)
 
 
 def _open_draft(work_order: str, kind: str) -> str | None:
 	"""The open draft deposit (``deposit``), pick-up (``pickup``) or refund (``refund``) invoice."""
-	if not frappe.db.has_column("POS Invoice", LINK_FIELD):
-		return None
-	for row in frappe.get_all("POS Invoice", filters={LINK_FIELD: work_order, "docstatus": 0},
-			fields=["name", "is_return"], order_by="creation"):
-		amounts = frappe.get_all("POS Invoice Item", filters={"parent": row.name, "item_code": DEPOSIT_ITEM},
-			pluck="amount")
-		if kind == "refund" and row.is_return:
-			return row.name
-		if kind == "deposit" and not row.is_return and any(flt(a) > 0 for a in amounts):
-			return row.name
-		if kind == "pickup" and not row.is_return and not any(flt(a) > 0 for a in amounts):
-			return row.name
-	return None
+	return deposits.open_draft(GUNSMITH, work_order, kind)
 
 
 def _refresh_held(work_order: str) -> None:
@@ -235,9 +218,7 @@ def open_deposit(name: str, amount: float) -> dict:
 		frappe.throw(_("Enter the amount the customer pays now."))
 	existing = _open_draft(doc.name, "deposit")
 	if existing:
-		held = frappe.get_all("POS Invoice Item", filters={"parent": existing, "item_code": DEPOSIT_ITEM},
-			pluck="amount")
-		return {"pos_invoice": existing, "already": True, "amount": flt(sum(flt(a) for a in held), 2)}
+		return {"pos_invoice": existing, "already": True, "amount": deposits.draft_amount(GUNSMITH, existing)}
 	if _open_draft(doc.name, "pickup"):
 		# The pick-up's release was sized to the deposit held when it was built.
 		frappe.throw(_("A pick-up invoice for this work order is still open at the register. Complete or delete "
@@ -631,25 +612,11 @@ def link_intake_agreement(agreement, method=None) -> None:
 
 
 def _new_invoice(doc, items: list[dict]):
-	shift = open_shift(doc.company)
-	inv = frappe.get_doc({
-		"doctype": "POS Invoice", "company": doc.company, "pos_profile": shift.pos_profile,
-		"customer": doc.customer, LINK_FIELD: doc.name, "items": items,
-		**profile_defaults(shift.pos_profile),
-	})
-	inv.flags.ignore_permissions = True
-	inv.set_missing_values()
-	return inv
+	return deposits.new_invoice(GUNSMITH, doc, items)
 
 
 def _deposit_row(doc, amount: float) -> dict:
-	account = deposit_account(doc.company)
-	if not account:
-		frappe.throw(_("{0} has no Customer Deposits account yet. Run bench migrate, or ask a manager.").format(
-			doc.company))
-	return {"item_code": DEPOSIT_ITEM, "qty": 1, "rate": amount, LOCKED_RATE_FIELD: amount, "price_list_rate": 0,
-		"income_account": account, LINK_FIELD: doc.name,
-		"description": _("Payment towards gunsmith work order {0}").format(doc.name)}
+	return deposits.line(GUNSMITH, doc, amount, _("Payment towards gunsmith work order {0}").format(doc.name))
 
 
 @frappe.whitelist(methods=["POST"])
@@ -744,52 +711,12 @@ def refund_deposit(name: str) -> dict:
 	if held <= _TOL:
 		frappe.throw(_("No deposit is held for this work order."))
 	# Each payment is returned once (ERPNext counts returned qty per line) and never above itself.
-	source = frappe.db.sql("""
-		SELECT p.name, i.amount FROM `tabPOS Invoice` p INNER JOIN `tabPOS Invoice Item` i ON i.parent = p.name
-		WHERE p.docstatus = 1 AND p.is_return = 0 AND i.item_code = %s AND i.{link} = %s AND i.amount > 0
-			AND NOT EXISTS (SELECT 1 FROM `tabPOS Invoice` r WHERE r.return_against = p.name AND r.docstatus = 1)
-		ORDER BY p.creation DESC LIMIT 1""".format(link=LINK_FIELD), (DEPOSIT_ITEM, doc.name))
+	source = deposits.refundable_payments(GUNSMITH, doc.name)
 	if not source:
 		frappe.throw(_("The deposit invoice for this work order was not found."))
-	from erpnext.accounts.doctype.pos_invoice.pos_invoice import make_sales_return
-
-	amount = min(held, flt(source[0][1], 2))
-	ret = make_sales_return(source[0][0])
-	ret.items = [r for r in ret.items if r.item_code == DEPOSIT_ITEM]
-	for r in ret.items:
-		r.qty = -1
-		r.rate = amount
-		r.set(LOCKED_RATE_FIELD, amount)
-		r.set(LINK_FIELD, doc.name)
-	ret.set(LINK_FIELD, doc.name)
-	ret.flags.ignore_permissions = True
-	ret.set_missing_values()
-	ret.calculate_taxes_and_totals()
-	# The refund goes back the way the payment came in, split across the modes in the same
-	# shares as the source sale ($10 cash + $20 card → a third cash, two thirds card), so a
-	# card is never asked for more than it was charged; the register refunds the card part
-	# when it checks the return out (Payroc refunds run there, never on the Desk).
-	paid = {}
-	for mode, amt in frappe.get_all("Sales Invoice Payment", filters={"parent": source[0][0],
-			"parenttype": "POS Invoice"}, fields=["mode_of_payment", "amount"], as_list=True):
-		paid[mode] = paid.get(mode, 0) + max(flt(amt), 0)
-	total_paid = sum(paid.values())
-	refund = flt(ret.rounded_total) or flt(ret.grand_total)   # negative
-	rows = ret.get("payments") or []
-	for p in rows:
-		p.amount = p.base_amount = 0
-	shares = [(p, paid.get(p.mode_of_payment, 0)) for p in rows if paid.get(p.mode_of_payment, 0) > 0]
-	if not shares and rows:
-		shares = [(rows[0], 1)]
-		total_paid = 1
-	left = refund
-	for i, (p, share) in enumerate(shares):
-		part = left if i == len(shares) - 1 else flt(refund * share / total_paid, 2)
-		p.amount = p.base_amount = part
-		left = flt(left - part, 2)
-	# Totals do not re-sum a POS return's tender; the header must agree with the rows.
-	ret.paid_amount = ret.base_paid_amount = sum(flt(p.amount) for p in ret.get("payments") or [])
-	ret.insert()
+	amount = min(held, source[0][1])
+	# The register refunds a card part when it checks the return out (Payroc refunds run there, never on the Desk).
+	ret = deposits.refund_return(GUNSMITH, doc.name, source[0][0], amount)
 	return {"pos_invoice": ret.name, "already": False, "amount": amount}
 
 
@@ -814,23 +741,6 @@ def complete_pickup(doc, invoice: str | None = None) -> None:
 
 
 # ------------------------------------------------------------------ invoice hooks
-
-
-def expected_deposit_rate(doc, row) -> float | None:
-	"""``compliance/locked_lines``: the amount a deposit line is locked to, or None to
-	leave it to :func:`guard_deposit_lines`. A payment (+) is what was stamped on it when
-	it was made (:func:`deposit_line`); a release (−) is what was locked when the pick-up
-	was built, never more than is held."""
-	wo = (row.get(LINK_FIELD) if hasattr(row, "get") else getattr(row, LINK_FIELD, None)) or ""
-	if not wo or cint(getattr(doc, "is_return", 0) or 0):
-		return None
-	locked = flt(getattr(row, LOCKED_RATE_FIELD, 0))
-	if locked > 0:
-		return flt(locked, 2)
-	if locked < 0:
-		held = deposit_held(wo, exclude=getattr(doc, "name", None))
-		return -min(-locked, held) if held > _TOL else None
-	return None
 
 
 def guard_deposit_lines(doc, method=None) -> None:
@@ -879,11 +789,7 @@ def _jobs_on(doc) -> list[str]:
 	"""The work orders an invoice touches: its header link (one job), then its rows' — a
 	register sale may carry a job's payment next to other goods, and the header is only
 	set by the deposit guard or the pick-up builder."""
-	out = []
-	for wo in [doc.get(LINK_FIELD)] + [r.get(LINK_FIELD) for r in doc.get("items") or []]:
-		if wo and wo not in out and frappe.db.exists(DOCTYPE, wo):
-			out.append(wo)
-	return out
+	return deposits.sources_on(GUNSMITH, doc)
 
 
 def before_invoice_cancel(doc, method=None) -> None:

@@ -65,7 +65,7 @@ from ffl_core.marketplace_accounts import (
 	MARKETPLACE_FEE_ACCOUNTS, MARKETPLACE_TAX_ACCOUNTS, ORDER_DOCTYPE)
 from ffl_core.setup.shipping_charge import shipping_account_name
 from ffl_core.setup.tax import sales_tax_and_excise_accounts
-from ffl_core.setup.gunsmith import DEPOSIT_ITEM
+from ffl_core.deposits import ITEMS as DEPOSIT_ITEMS
 from ffl_core.setup.trade_in_credit import TRADE_IN_CREDIT_ITEM
 from ffl_core.utils import split_serials
 
@@ -685,7 +685,7 @@ def _trade_in_settlement(header, lines, trade_in_net, tax_rows) -> tuple[float, 
 		return 0.0, 0.0
 	accounts = [t.get("account_head") for t in tax_rows or [] if t.get("charge_type") == "On Net Total"]
 	goods = sum(flt(l.get("base_net_amount")) for l in lines
-		if l.get("item_code") not in (TRADE_IN_CREDIT_ITEM, DEPOSIT_ITEM)
+		if l.get("item_code") not in (TRADE_IN_CREDIT_ITEM, *DEPOSIT_ITEMS)
 		and flt(l.get("base_net_amount")) > 0 and _line_taxable(l, header.get("company"), accounts))
 	return min(credit, goods), max(0.0, -(flt(header.get("rounded_total")) or flt(header.get("grand_total"))))
 
@@ -701,10 +701,10 @@ def _order_facts(h, lines, item_meta) -> dict:
 	trade_in_net is the (negative) trade-in credit lines' net: an inventory
 	purchase, not negative revenue, so Net Sales is reported gross of it.
 
-	A gunsmith deposit row is customer money held, never revenue: the collecting
-	invoice is all deposit (+100 → Net 0) and the pick-up invoice releases it
-	(−100 → the work's full amount). deposit_net comes out of the net, the same
-	way a trade-in allowance does.
+	A deposit row (gunsmith work order, pre-order: deposits.ITEMS) is customer money
+	held, never revenue: the collecting invoice is all deposit (+100 → Net 0) and the
+	pick-up invoice releases it (−100 → the work's full amount). deposit_net comes out
+	of the net, the same way a trade-in allowance does.
 
 	order_ref: Woo storefront order # ("2134"), "" for a POS/counter sale; falls
 	back to the WOO-ORD doc name, then the GunBroker order, when po_no is blank.
@@ -722,7 +722,7 @@ def _order_facts(h, lines, item_meta) -> dict:
 			if l.get("item_code") == TRADE_IN_CREDIT_ITEM),
 		"deposit_net": sum(
 			flt(l.get("base_net_amount")) for l in lines
-			if l.get("item_code") == DEPOSIT_ITEM),
+			if l.get("item_code") in DEPOSIT_ITEMS),
 		"order_ref": h.get("po_no") or h.get("woo_online_order") or h.get("gunbroker_order") or "",
 	}
 
@@ -742,7 +742,7 @@ def net_sales_of(doctype: str, filters: dict) -> dict[str, float]:
 	if headers:
 		for row in frappe.get_all(f"{doctype} Item", fields=["parent", "item_code", "base_net_amount"],
 				filters={"parent": ["in", [h.name for h in headers]],
-					"item_code": ["in", [TRADE_IN_CREDIT_ITEM, DEPOSIT_ITEM]]}):
+					"item_code": ["in", [TRADE_IN_CREDIT_ITEM, *DEPOSIT_ITEMS]]}):
 			lines.setdefault(row.parent, []).append(row)
 	return {h.name: _net_sales(h, _order_facts(h, lines.get(h.name, []), {})) for h in headers}
 
@@ -1315,7 +1315,7 @@ def _build_product_rows(headers, lines_by_invoice, item_meta, serial_cost, consi
 		order_missing = False
 		product_rows = []
 		for line in lines:
-			if line.get("item_code") == DEPOSIT_ITEM:
+			if line.get("item_code") in DEPOSIT_ITEMS:
 				# Money held for the customer, not a product line: it would report a
 				# negative-price "item" with 100% margin. It comes off order_net below.
 				continue

@@ -22,7 +22,7 @@ pick it up instead. A deposit held is refunded afterwards (:func:`refund_deposit
 
 **Returns:** {"status", "deposit_held"}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:490`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:471`</sub>
 
 ## `charge_details`
 
@@ -42,7 +42,7 @@ can't read Item Price itself.
 
 **Returns:** {"item_name", "rate": the list price, 0 when there is none}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:321`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:302`</sub>
 
 ## `complete_work`
 
@@ -64,7 +64,7 @@ register loads into its cart.
 
 **Returns:** As :func:`open_pickup`: {"pos_invoice", "already": False} or {"picked_up": True, "refund_due"}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:349`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:330`</sub>
 
 ## `create_work_order`
 
@@ -82,7 +82,7 @@ bound book now when asked, and the payment line for what the customer pays now.
 
 **Returns:** {"name", "customer", "customer_name", "status", "purchase_receipt", "authorization_template": the intake authorization the register asks the customer to sign next, or None, "deposit_line": the locked GUNSMITH-DEPOSIT row for pay_now (as :func:`deposit_line`), or None}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:160`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:143`</sub>
 
 ## `deposit_line`
 
@@ -101,7 +101,7 @@ GUNSMITH-DEPOSIT row for the register's cart. Booked when that sale is paid.
 
 **Returns:** {"customer", "deposit_line": {"item_code", "qty", "rate", "ffl_locked_rate", "income_account", "ffl_work_order", "description", …}}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:192`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:175`</sub>
 
 ## `get_state`
 
@@ -117,7 +117,7 @@ What the work order form shows and offers.
 
 **Returns:** {"labor_item", "deposit_held", "charges", "authorization": {"template", "state", "agreement"} or None, "drafts": {"deposit", "pickup", "refund"}}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:125`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:108`</sub>
 
 ## `labor_item`
 
@@ -131,7 +131,7 @@ which the counter can't read itself).
 
 **Returns:** The Item name.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:309`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:290`</sub>
 
 ## `log_in_bound_book`
 
@@ -151,7 +151,7 @@ first attempt failed).
 
 **Returns:** {"purchase_receipt", "serial_no", "item_code"}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:525`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:506`</sub>
 
 ## `mark_ready`
 
@@ -167,7 +167,7 @@ Received / In Progress → Ready: the work is done and recorded.
 
 **Returns:** {"status", "completed_on"}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:427`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:408`</sub>
 
 ## `notify_customer`
 
@@ -187,7 +187,7 @@ email address). Phone and Text are made by staff; this records them.
 
 **Returns:** {"notified_via", "notified_on", "email": address the email went to, or None}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:449`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:430`</sub>
 
 ## `open_deposit`
 
@@ -207,7 +207,7 @@ draft per job: a second call returns the one already open, at its own amount.
 
 **Returns:** {"pos_invoice", "already": bool, "amount": the draft's deposit amount}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:216`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:199`</sub>
 
 ## `open_pickup`
 
@@ -226,7 +226,7 @@ the charges and the deposit held coming off them, and its submit picks the job u
 
 **Returns:** {"pos_invoice", "already": bool} or {"picked_up": True, "refund_due": deposit still held, refunded with :func:`refund_deposit`}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:656`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:623`</sub>
 
 ## `refund_deposit`
 
@@ -246,7 +246,7 @@ the rest is refunded with the next return.
 
 **Returns:** {"pos_invoice", "already": bool, "amount": what this return pays back}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:723`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:690`</sub>
 
 ## `register_work_orders`
 
@@ -265,7 +265,7 @@ Take payment and Complete actions need.
 
 **Returns:** {"labor_item", "orders": [{"name", "customer", "customer_name", "status", "manufacturer", "model", "caliber", "serial_number", "work_requested", "work_performed", "estimated_cost", "deposit_held", "logged", "lines": [{"item_code", "description", "qty", "rate"}], "drafts": {"deposit", "pickup", "refund"}, "authorization": the intake authorization's state (signed / pending / missing …) for an open job, else None}], "authorization_template"}: open jobs (Ready first), then closed ones still holding a payment to refund.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:251`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:232`</sub>
 
 ## `start_work`
 
@@ -281,4 +281,4 @@ Received (or Ready, reopened) → In Progress.
 
 **Returns:** {"status"}.
 
-<sub>`apps/ffl_core/ffl_core/gunsmith.py:405`</sub>
+<sub>`apps/ffl_core/ffl_core/gunsmith.py:386`</sub>

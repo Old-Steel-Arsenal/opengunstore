@@ -16604,7 +16604,7 @@
           "ffl_core"
         ],
         "summary": "Close a job that will not be done. A gun in the bound book still goes back through",
-        "description": "pick-up (its disposition), so a logged job is not cancelled: clear its charges and\npick it up instead. A deposit held is refunded afterwards (:func:`refund_deposit`).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:490`",
+        "description": "pick-up (its disposition), so a logged job is not cancelled: clear its charges and\npick it up instead. A deposit held is refunded afterwards (:func:`refund_deposit`).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:471`",
         "operationId": "ffl_core.gunsmith.cancel_work_order",
         "responses": {
           "200": {
@@ -16657,7 +16657,7 @@
           "ffl_core"
         ],
         "summary": "A part picked or scanned onto a job's charges: its name and its list price for the",
-        "description": "customer, as Create Order prices a line (``price_approval.list_rate``). The counter\ncan't read Item Price itself.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:321`",
+        "description": "customer, as Create Order prices a line (``price_approval.list_rate``). The counter\ncan't read Item Price itself.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:302`",
         "operationId": "ffl_core.gunsmith.charge_details",
         "responses": {
           "200": {
@@ -16712,7 +16712,7 @@
           "ffl_core"
         ],
         "summary": "The register's Complete: the clerk confirms what was done and what it costs; the",
-        "description": "job keeps them, is Ready, and is handed back as :func:`open_pickup` does — at once\nwith nothing to bill and nothing held, else through the draft pick-up invoice the\nregister loads into its cart.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:349`",
+        "description": "job keeps them, is Ready, and is handed back as :func:`open_pickup` does — at once\nwith nothing to bill and nothing held, else through the draft pick-up invoice the\nregister loads into its cart.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:330`",
         "operationId": "ffl_core.gunsmith.complete_work",
         "responses": {
           "200": {
@@ -16768,7 +16768,7 @@
           "ffl_core"
         ],
         "summary": "Take a gun in at the register (its Work Order button): the job, logged in the",
-        "description": "bound book now when asked, and the payment line for what the customer pays now.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:160`",
+        "description": "bound book now when asked, and the payment line for what the customer pays now.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:143`",
         "operationId": "ffl_core.gunsmith.create_work_order",
         "responses": {
           "200": {
@@ -16815,7 +16815,7 @@
           "ffl_core"
         ],
         "summary": "A payment towards an open job (Recent Orders › Take payment): the locked",
-        "description": "GUNSMITH-DEPOSIT row for the register's cart. Booked when that sale is paid.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:192`",
+        "description": "GUNSMITH-DEPOSIT row for the register's cart. Booked when that sale is paid.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:175`",
         "operationId": "ffl_core.gunsmith.deposit_line",
         "responses": {
           "200": {
@@ -16868,7 +16868,7 @@
           "ffl_core"
         ],
         "summary": "What the work order form shows and offers.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:125`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:108`",
         "operationId": "ffl_core.gunsmith.get_state",
         "responses": {
           "200": {
@@ -16916,7 +16916,7 @@
           "ffl_core"
         ],
         "summary": "The labor item a new job's first charge line uses (FFL Settings › Gunsmithing,",
-        "description": "which the counter can't read itself).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:309`",
+        "description": "which the counter can't read itself).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:290`",
         "operationId": "ffl_core.gunsmith.labor_item",
         "responses": {
           "200": {
@@ -16946,7 +16946,7 @@
           "ffl_core"
         ],
         "summary": "Log a job's gun in the bound book now (a job created unlogged, or one whose",
-        "description": "first attempt failed).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:525`",
+        "description": "first attempt failed).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:506`",
         "operationId": "ffl_core.gunsmith.log_in_bound_book",
         "responses": {
           "200": {
@@ -17008,7 +17008,7 @@
           "ffl_core"
         ],
         "summary": "Received / In Progress → Ready: the work is done and recorded.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:427`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:408`",
         "operationId": "ffl_core.gunsmith.mark_ready",
         "responses": {
           "200": {
@@ -17056,7 +17056,7 @@
           "ffl_core"
         ],
         "summary": "Tell the customer the gun is ready, and record who told them, how and when.",
-        "description": "Email sends the store's \"Gunsmith Work Ready\" email now (the customer needs an\nemail address). Phone and Text are made by staff; this records them.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:449`",
+        "description": "Email sends the store's \"Gunsmith Work Ready\" email now (the customer needs an\nemail address). Phone and Text are made by staff; this records them.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:430`",
         "operationId": "ffl_core.gunsmith.notify_customer",
         "responses": {
           "200": {
@@ -17109,7 +17109,7 @@
           "ffl_core"
         ],
         "summary": "A payment towards an open job parked as its own draft register invoice — what an",
-        "description": "agent opens instead of the register cart's :func:`deposit_line`. One open deposit\ndraft per job: a second call returns the one already open, at its own amount.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:216`",
+        "description": "agent opens instead of the register cart's :func:`deposit_line`. One open deposit\ndraft per job: a second call returns the one already open, at its own amount.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:199`",
         "operationId": "ffl_core.gunsmith.open_deposit",
         "responses": {
           "200": {
@@ -17162,7 +17162,7 @@
           "ffl_core"
         ],
         "summary": "Hand the gun back. With nothing to charge and no deposit held, the job is",
-        "description": "picked up now; otherwise this opens (or returns) the draft register invoice with\nthe charges and the deposit held coming off them, and its submit picks the job up.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:656`",
+        "description": "picked up now; otherwise this opens (or returns) the draft register invoice with\nthe charges and the deposit held coming off them, and its submit picks the job up.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:623`",
         "operationId": "ffl_core.gunsmith.open_pickup",
         "responses": {
           "200": {
@@ -17210,7 +17210,7 @@
           "ffl_core"
         ],
         "summary": "Open (or return) the draft register return that pays back the deposit still held",
-        "description": "— a cancelled job's, or what a smaller bill left over. A return goes against one\npayment and refunds at most that payment, newest first; with several payments held\nthe rest is refunded with the next return.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:723`",
+        "description": "— a cancelled job's, or what a smaller bill left over. A return goes against one\npayment and refunds at most that payment, newest first; with several payments held\nthe rest is refunded with the next return.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:690`",
         "operationId": "ffl_core.gunsmith.refund_deposit",
         "responses": {
           "200": {
@@ -17258,7 +17258,7 @@
           "ffl_core"
         ],
         "summary": "The open jobs for the register's Recent Orders › Work Orders list, with what its",
-        "description": "Take payment and Complete actions need.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:251`",
+        "description": "Take payment and Complete actions need.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:232`",
         "operationId": "ffl_core.gunsmith.register_work_orders",
         "responses": {
           "200": {
@@ -17313,7 +17313,7 @@
           "ffl_core"
         ],
         "summary": "Received (or Ready, reopened) → In Progress.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:405`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/gunsmith.py:386`",
         "operationId": "ffl_core.gunsmith.start_work",
         "responses": {
           "200": {
@@ -18118,6 +18118,310 @@
                 },
                 "required": [
                   "doc"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.preorder.cancel_preorder": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Cancel a pre-order and pay back everything held for it: the order is cancelled, its",
+        "description": "quantities go back on the items, and each payment gets a draft return for its full amount, the\nway it was paid. The register checks the returns out.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:278`",
+        "operationId": "ffl_core.preorder.cancel_preorder",
+        "responses": {
+          "200": {
+            "description": "{\"cancelled\": True, \"refunds\": [{\"pos_invoice\", \"amount\"}]}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sales_order": {
+                    "type": "string",
+                    "description": "The pre-order (submitted, nothing handed over)."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Why."
+                  }
+                },
+                "required": [
+                  "sales_order",
+                  "reason"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.preorder.create_preorder": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Take a pre-order at the counter: a submitted Sales Order marked as one, its quantities taken",
+        "description": "from the items' pre-order counts. No invoice and no money yet — payments go through\n:func:`open_payment`. The customer collects here.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:145`",
+        "operationId": "ffl_core.preorder.create_preorder",
+        "responses": {
+          "200": {
+            "description": "{\"sales_order\", \"customer\", \"grand_total\": what the order comes to with tax, \"eta\"}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "payload": {
+                    "description": "{customer, items: [{item_code, qty, rate}], notes?, pos_profile?, price_approval?} — dict or JSON string. A gun is one unit per line. Every item must have pre-order slots left and none on our shelves."
+                  }
+                },
+                "required": [
+                  "payload"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.preorder.list_preorders": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Pre-orders for the Pending Order page: every open one (stage ``waiting``), and cancelled ones",
+        "description": "still holding money to pay back (``blocked``).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:343`",
+        "operationId": "ffl_core.preorder.list_preorders",
+        "responses": {
+          "200": {
+            "description": "[{\"source\": \"preorder\", \"sales_order\", \"customer\", \"customer_name\", \"posting_date\", \"grand_total\", \"held\", \"outstanding_amount\", \"paid\", \"cancelled\", \"eta\", \"items\": [{\"item_code\", \"item_name\", \"qty\"}], \"drafts\": {\"payment\", \"refunds\": [...]}, \"stage\", \"blocked_reason\", \"age_days\", \"overdue\"}].",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "array"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "customer": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Only this customer's. Default: everyone's."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.preorder.open_payment": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "A payment towards a pre-order, as a draft register invoice the register checks out (any",
+        "description": "tender). One open payment draft per order: a second call returns the one already open.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:243`",
+        "operationId": "ffl_core.preorder.open_payment",
+        "responses": {
+          "200": {
+            "description": "{\"pos_invoice\", \"already\": bool, \"amount\": the draft's payment amount}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sales_order": {
+                    "type": "string",
+                    "description": "The pre-order (submitted)."
+                  },
+                  "amount": {
+                    "type": "number",
+                    "description": "What the customer pays now: above 0, no more than the order's total with tax less what is already held."
+                  }
+                },
+                "required": [
+                  "sales_order",
+                  "amount"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.preorder.preorder_options": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Whether Create Order may offer *item_code* as a pre-order line: pre-order slots left and none",
+        "description": "on our shelves.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:118`",
+        "operationId": "ffl_core.preorder.preorder_options",
+        "responses": {
+          "200": {
+            "description": "{\"available\": slots left, \"eta\": the expected date or None, \"in_stock\": units on our shelves, \"can_preorder\": bool}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "item_code": {
+                    "type": "string",
+                    "description": "The Item."
+                  },
+                  "company": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The order's company; else the default one."
+                  }
+                },
+                "required": [
+                  "item_code"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.preorder.refund_preorder": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "The draft returns paying back what a cancelled pre-order still holds — the open ones, or new",
+        "description": "ones for every payment not returned yet.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:308`",
+        "operationId": "ffl_core.preorder.refund_preorder",
+        "responses": {
+          "200": {
+            "description": "{\"refunds\": [{\"pos_invoice\", \"amount\"}]}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sales_order": {
+                    "type": "string",
+                    "description": "A cancelled pre-order."
+                  }
+                },
+                "required": [
+                  "sales_order"
                 ]
               }
             }
