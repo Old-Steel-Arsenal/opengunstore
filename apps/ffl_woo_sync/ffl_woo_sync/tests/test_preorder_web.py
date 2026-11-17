@@ -161,6 +161,20 @@ class Listing(_Web):
 			self.assertEqual(mapping.preorder_stock(self.acc, 0), (0, mapping.PREORDER_OFF))
 			self.assertFalse(preorder.is_preorder_line(self.acc))
 
+	def test_an_antique_is_not_offered_on_pre_order(self):
+		"""The web order queue treats a blank antique unit as one waiting on its serial from
+		WooCommerce (a blocked row), so antiques stay off the website's pre-order."""
+		token = frappe.generate_hash(length=6).upper()
+		antique = f"_T-POW-ANT-{token}"
+		frappe.get_doc({"doctype": "Item", "item_code": antique, "item_name": f"Test Web Antique {token}",
+			"item_group": "Rifle", "stock_uom": "Nos", "is_stock_item": 1, "has_serial_no": 1, "is_firearm": 1,
+			"is_antique": 1, "uniform_sell_price": 1, "standard_rate": 900}).insert(ignore_permissions=True)
+		self._slots(antique, 3)
+		self.assertEqual(mapping.preorder_stock(antique, 0), (0, mapping.PREORDER_OFF))
+		order = self._row(self._send(self._body([(antique, 1, 900, 0)])))
+		self.assertEqual([l.lane for l in order.lines], ["local"])
+		self.assertEqual(frappe.db.get_value("Item", antique, AVAILABLE_FIELD), 3, "no slot taken")
+
 	def test_ac6_reconcile_leaves_the_slots_and_the_meta_alone(self):
 		from ffl_woo_sync.woocommerce.tasks import _run_reconcile
 
@@ -217,6 +231,38 @@ class Intake(_Web):
 		self.assertEqual(self._sync(order)["status"], "in_sync")
 		self.client.update_order.assert_not_called()
 		self.assertEqual(len(_entries(order)), 1)
+
+	def test_put_on_hold_after_payment_the_money_stays_held(self):
+		self._slots(self.acc, 3)
+		body = self._body([(self.acc, 1, 1000, 0)])
+		order = self._send(body)
+		self.assertEqual(self._sync(order)["status"], "received")
+		for status in ("on-hold", "processing"):
+			self._send({**body, "status": status, "date_paid": None})
+			self.assertEqual(self._sync(order)["status"], "in_sync", status)
+			self.assertEqual(_order_gl(order), {self.clearing: 1000.0, self.deposits: -1000.0}, status)
+		receipts = [frappe.db.get_value("Journal Entry", j, ["woo_preorder_entry", "posting_date"])
+			for j in _entries(order)]
+		self.assertEqual(receipts, [("Receipt", getdate(PAID_ON))], "one receipt, on the day it was paid")
+
+	def test_an_on_hold_order_never_paid_holds_no_money(self):
+		self._slots(self.acc, 3)
+		order = self._send(self._body([(self.acc, 1, 1000, 0)], status="on-hold"))
+		self.assertEqual(self._sync(order)["status"], "in_sync")
+		self.assertFalse(_entries(order))
+
+	def test_a_failed_status_write_is_retried_by_the_backstop(self):
+		self._slots(self.acc, 3)
+		order = self._send(self._body([(self.acc, 1, 1000, 0)]))
+		self.client.update_order.side_effect = TimeoutError("store too slow")
+		self._sync(order)
+		self.assertEqual(frappe.db.get_value("Woo Online Order", order, "woo_status"), "processing")
+		self.client.update_order.side_effect = None
+		with patch("frappe.enqueue"):
+			out = preorder.scheduled_preorder_sync()
+		self.assertIn(order, out["synced"])
+		self.assertEqual(frappe.db.get_value("Woo Online Order", order, "woo_status"), "awaiting-stock")
+		self.client.update_order.assert_called_with(self._row(order).woo_order_id, {"status": "awaiting-stock"})
 
 	def test_an_unpaid_order_takes_its_slot_and_holds_no_money(self):
 		self._slots(self.acc, 3)
@@ -434,6 +480,69 @@ class ShipAndCancel(_Web):
 		self.assertIsNone(preorder.release_for_pickup(ticket), "nothing held: nothing more")
 		self.assertEqual(preorder.restore_on_pickup_cancel(ticket), [je])
 		self.assertEqual(_order_gl(order), {self.clearing: 400.0, self.deposits: -400.0})
+
+	def test_a_gun_pre_order_ships_through_dispose(self):
+		from frappe.utils import add_days
+
+		from ffl_woo_sync.woocommerce.fulfillment import dispose_web_order
+
+		ffl = "1-99-888-01-2D-09999"
+		if not frappe.db.exists("ATF FFL Record", ffl):
+			frappe.get_doc({"doctype": "ATF FFL Record", "ffl_number": ffl, "licensee_name": "Test Pre-order Dealer LLC",
+				"street": "1 Test Way", "city": "Austin", "state": "TX", "zip": "78701",
+				"expiry_date": add_days(nowdate(), 365)}).insert(ignore_permissions=True)
+		self._slots(self.web_gun, 3)
+		order = self._send(self._body([(self.web_gun, 1, 1000, 82.50)], total=1112.50, total_tax=84.79,
+			shipping=27.71))
+		self._sync(order)
+		gun = _serial()
+		self._arrive(self.web_gun, gun)
+		self._sync(order)
+		frappe.db.set_value("Woo Online Order", order, "atf_ffl_record", ffl)
+		with patch("frappe.enqueue"):
+			out = dispose_web_order(order)
+		self.assertEqual((out["disposed_count"], out["invoice_status"]), (1, "created"), out)
+		doc = self._row(order)
+		self.assertEqual(doc.order_status, "Transferred")
+		self.assertNotEqual(frappe.db.get_value("Serial No", gun, "status"), "Active", "the gun left stock")
+		self.assertEqual(frappe.db.get_value("Serial No", gun, ["woo_reserved", "woo_order"]), (0, ""))
+		disp = frappe.get_doc("FFL Disposition", out["dispositions"][0])
+		self.assertEqual((disp.serial, disp.disposition_type, disp.docstatus), (gun, "FFL Transfer", 1))
+		self.assertTrue(disp.stock_entry)
+		stock_gl = _gl(voucher_no=disp.stock_entry)
+		self.assertEqual(sum(v for v in stock_gl.values() if v > 0), 700.0, "out of stock at its cost")
+		si = frappe.get_doc("Sales Invoice", out["sales_invoice"])
+		self.assertEqual((si.items[0].serial_no, flt(si.outstanding_amount)), (gun, 0))
+		self.assertFalse(frappe.db.exists("Payment Entry Reference", {"reference_name": si.name, "docstatus": 1}))
+		applied = [j for j in _entries(order) if frappe.db.get_value("Journal Entry", j, "woo_preorder_entry") == "Applied"]
+		from ffl_core.setup.shipping_charge import ensure_shipping_account
+		gl = _gl(voucher_no=["in", [si.name, *applied]])
+		self.assertEqual(gl.pop(self.deposits), 1112.50)
+		self.assertEqual(gl.pop(ensure_shipping_account(COMPANY)), -27.71)
+		self.assertEqual(gl.pop(revenue._sales_tax_account(COMPANY)), -84.79)
+		self.assertEqual(gl.pop(si.items[0].income_account), -1000.0)
+		self.assertEqual(gl, {})
+
+	def test_a_revived_order_takes_its_slot_again_and_is_filled(self):
+		self._slots(self.web_gun, 3)
+		body = self._body([(self.web_gun, 1, 1000, 0)])
+		order = self._send(body)
+		self._sync(order)
+		self._send({**body, "status": "cancelled"})
+		self._sync(order)
+		self.assertEqual(frappe.db.get_value("Item", self.web_gun, AVAILABLE_FIELD), 3)
+		self._send(body)   # the shopper paid again on the same order
+		doc = self._row(order)
+		self.assertEqual((doc.order_status, doc.lines[0].preorder_slots), ("Pending Fulfillment", 1))
+		self.assertEqual(frappe.db.get_value("Item", self.web_gun, AVAILABLE_FIELD), 2)
+		self.assertEqual(self._sync(order)["status"], "received")
+		self.assertEqual(_order_gl(order), {self.clearing: 1000.0, self.deposits: -1000.0})
+		from ffl_woo_sync.woocommerce.fulfillment import list_pending_web_orders
+		row = next(r for r in list_pending_web_orders() if r["woo_online_order"] == order)
+		self.assertEqual(row["stage"], "waiting")
+		gun = _serial()
+		self._arrive(self.web_gun, gun)
+		self.assertEqual(self._row(order).serials[0].confirmed_serial, gun)
 
 	def test_a_cancel_after_it_shipped_gives_nothing_back(self):
 		self._slots(self.acc, 3)

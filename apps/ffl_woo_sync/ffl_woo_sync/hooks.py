@@ -374,6 +374,9 @@ scheduler_events = {
             # Re-runs the idempotent entry points and logs
             # each hit. Not gated on auto_sync — it never touches the store.
             "ffl_woo_sync.woocommerce.order_audit.scheduled_web_revenue_backstop",
+            # Open web pre-orders re-synced (deposit + Woo status): a status write
+            # that failed once the goods were put by is retried here.
+            "ffl_woo_sync.woocommerce.preorder.scheduled_preorder_sync",
         ],
     },
 }

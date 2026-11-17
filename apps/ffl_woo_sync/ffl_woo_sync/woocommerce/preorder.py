@@ -43,6 +43,9 @@ ALLOCATE_ITEMS_JOB = "ffl_core.preorder.allocate_items"
 RECEIPT, REFUND, APPLIED = "Receipt", "Refund", "Applied"
 AWAITING_STOCK = "awaiting-stock"
 PROCESSING = "processing"
+# Woo statuses that end an order: what it holds is paid back. Any other status that is not a paid
+# one (on-hold for a fraud review, pending) leaves the money where it is.
+ENDED_STATUSES = frozenset({"cancelled", "canceled", "refunded", "failed", "trash"})
 TOL = 0.005
 
 
@@ -345,11 +348,13 @@ def _collected_on_invoice(order_name: str) -> bool:
 
 def sync_deposit(order) -> dict:
 	"""Make what the order's entries hold in Pre-order Deposits match what the buyer has paid and
-	not been refunded: the order's net (``refunds.target_net``) once Woo says it is paid, nothing
-	once it is cancelled. Short → a Receipt, Woo Clearing to Pre-order Deposits, dated the day it
-	was paid (the first) or today; over → a Refund back to Woo Clearing, today, no more than is
-	still held (money already applied to the bill is the invoice's to reverse). Under the order's
-	row lock; safe to run any number of times."""
+	not been refunded: the order's net (``refunds.target_net``) while Woo says it is paid, nothing
+	once the order has ended (cancelled here, or an ending Woo status). An open order in any other
+	status (on-hold, pending) keeps what it holds and takes nothing new — only a Woo refund still
+	comes off it. Short → a Receipt, Woo Clearing to Pre-order Deposits, dated the day it was paid
+	(the first) or today; over → a Refund back to Woo Clearing, today, no more than is still held
+	(money already applied to the bill is the invoice's to reverse). Under the order's row lock;
+	safe to run any number of times."""
 	from ffl_woo_sync.woocommerce.fulfillment import _is_paid_woo_status
 	from ffl_woo_sync.woocommerce.refunds import target_net
 	from ffl_woo_sync.woocommerce.revenue import _ensure_clearing_account
@@ -363,8 +368,14 @@ def sync_deposit(order) -> dict:
 	deposits = _deposit_account(company)
 	t = deposit_totals(order.name, deposits)
 	received = flt(t.receipts - t.refunds, 2)
-	paid = _is_paid_woo_status(order.woo_status) and order.order_status != "Cancelled"
-	target = flt(target_net(order), 2) if paid else 0.0
+	status = (order.woo_status or "").strip().lower()
+	net = flt(target_net(order), 2)
+	if order.order_status == "Cancelled" or status in ENDED_STATUSES:
+		target = 0.0
+	elif _is_paid_woo_status(status):
+		target = net
+	else:
+		target = min(received, net)
 	tag = _("Web pre-order {0} (Woo #{1})").format(order.name, order.woo_order_id)
 	if target > received + TOL:
 		if _collected_on_invoice(order.name):
@@ -505,6 +516,35 @@ def sync_woo_status(order_name: str) -> str | None:
 	return want
 
 
+def scheduled_preorder_sync() -> dict:
+	"""Cron backstop (rides the 2-hourly tick): :func:`sync_order` again for every open web
+	pre-order, so a Woo status write that failed (a timeout once the goods are put by) or a deposit
+	entry whose job never ran is put right. Each order on its own savepoint: one that fails is
+	rolled back and logged, the rest go on. Returns {synced, failed}."""
+	# lazy: every open web pre-order is re-synced each run (one order read + a few sums, and an
+	# HTTP call only where the Woo status is wrong); a store has tens open. Upgrade path: only
+	# orders whose woo_status disagrees with their readiness, or that hold less than they paid.
+	names = frappe.db.sql_list("""SELECT DISTINCT o.name FROM `tabWoo Online Order` o
+		INNER JOIN `tabWoo Online Order Line` l ON l.parent = o.name AND l.parenttype = 'Woo Online Order'
+		WHERE o.order_status = 'Pending Fulfillment' AND l.lane = %s ORDER BY o.name""", LANE)
+	synced, failed = [], []
+	for name in names:
+		frappe.db.savepoint("preorder_backstop")
+		try:
+			sync_order(name)
+			commit()
+			synced.append(name)
+		except Exception:
+			trace = frappe.get_traceback()
+			try:
+				frappe.db.rollback(save_point="preorder_backstop")
+			except Exception:
+				frappe.db.rollback()   # sync_order commits before its HTTP call: the savepoint is gone
+			frappe.log_error(title=f"Web pre-order backstop failed: {name}", message=trace)
+			failed.append(name)
+	return {"synced": synced, "failed": failed}
+
+
 # ------------------------------------------------------------------ the sub-ledger
 
 
@@ -540,10 +580,13 @@ def deposit_rows(company: str, as_of) -> list[dict]:
 		return []
 	orders = {o.name: o for o in frappe.get_all(DOCTYPE, filters={"name": ["in", list(by)]},
 		fields=["name", "customer", "customer_name", "order_status"])}
+	lines = frappe.get_all("Woo Online Order Line", filters={"parent": ["in", list(by)], "parenttype": DOCTYPE},
+		fields=["parent", "item_code", "qty"], order_by="idx")
+	names = dict(frappe.get_all("Item", filters={"name": ["in", list({l.item_code for l in lines if l.item_code})]},
+		fields=["name", "item_name"], as_list=True)) if lines else {}
 	items: dict[str, list[str]] = {}
-	for r in frappe.get_all("Woo Online Order Line", filters={"parent": ["in", list(by)], "parenttype": DOCTYPE},
-			fields=["parent", "item_code", "qty"], order_by="idx"):
-		items.setdefault(r.parent, []).append(f"{flt(r.qty):g} × {frappe.db.get_value('Item', r.item_code, 'item_name') or r.item_code}")
+	for r in lines:
+		items.setdefault(r.parent, []).append(f"{flt(r.qty):g} × {names.get(r.item_code) or r.item_code}")
 	out = []
 	for name, o in by.items():
 		doc = orders.get(name) or frappe._dict()

@@ -1548,7 +1548,7 @@ def preorder_item(item_code: str) -> frappe._dict | None:
         return None
     rows = frappe.db.sql(
         f"""SELECT name, `{PREORDER_AVAILABLE_FIELD}` AS slots, `{PREORDER_ETA_FIELD}` AS eta,
-            has_serial_no, is_firearm, item_group, uniform_sell_price
+            has_serial_no, is_firearm, item_group, uniform_sell_price, is_antique
         FROM `tabItem` WHERE name = %s""", (item_code,), as_dict=True)
     return rows[0] if rows else None
 
@@ -1557,11 +1557,13 @@ def preorder_open(item_code: str, row) -> bool:
     """Whether the storefront takes pre-orders for *item_code* once none is on our
     shelf: slots left, an item-level product of the store's own — not a gun priced
     serial by serial (no item-level product), not a serial-numbered non-gun (a web order
-    holds a unit by serial only for a gun), not one a distributor ships
-    (:func:`dropship_source`; an unreadable answer counts as one: no pre-order on a guess)."""
+    holds a unit by serial only for a gun), not an antique (the web order queue reads an
+    antique unit with no serial as one waiting on WooCommerce for it, a blocked row), not
+    one a distributor ships (:func:`dropship_source`; an unreadable answer counts as one: no
+    pre-order on a guess)."""
     from frappe.utils import cint
 
-    if not row or cint(row.get("slots")) <= 0 or is_per_serial_priced(row):
+    if not row or cint(row.get("slots")) <= 0 or is_per_serial_priced(row) or cint(row.get("is_antique")):
         return False
     if cint(row.get("has_serial_no")) and not _is_firearm_row(row):
         return False
