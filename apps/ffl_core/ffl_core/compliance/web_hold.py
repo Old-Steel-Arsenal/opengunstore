@@ -144,9 +144,9 @@ def refuse_claimed_firearm_units(doc, method=None) -> None:
 		frappe.throw("<br>".join(reasons), title=frappe._("Owed to an online order"))
 
 
-def _own_hold_refs(doc) -> tuple:
+def _own_hold_refs(doc):
 	"""The holds a ticket sells from: its own draft's, and its pre-order's on a hand-over ticket."""
-	return tuple(r for r in (doc.name, doc.get(PREORDER_LINK)) if r)
+	return (doc.name, doc.get(PREORDER_LINK)) if doc.get(PREORDER_LINK) else doc.name
 
 
 def preorder_units_on(doc, item_code) -> float:

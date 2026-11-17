@@ -84,7 +84,7 @@ def held(name: str, exclude: str | None = None, *, for_update: bool = False) -> 
 
 def line_kind(item_code: str) -> str:
 	"""What an order line of *item_code* waits for: :data:`SERIAL`, :data:`QTY` or :data:`NONE`."""
-	row = frappe.get_cached_value("Item", item_code, ["has_serial_no", "is_stock_item"], as_dict=True) or {}
+	row = frappe.db.get_value("Item", item_code, ["has_serial_no", "is_stock_item"], as_dict=True, cache=True) or {}
 	if cint(row.get("has_serial_no")):
 		return SERIAL
 	return QTY if cint(row.get("is_stock_item")) else NONE
@@ -149,8 +149,9 @@ def reserved_qty(item_code: str, *, only: str | None = None, exclude: str | None
 
 def channel_committed_units(item_code: str) -> int:
 	"""``channel_committed_units`` hook: the units put by for open pre-orders, which no channel may
-	sell. A gun is held by its serial instead (a counter hold), so it counts nothing here."""
-	return int(reserved_qty(item_code)) if line_kind(item_code) == QTY else 0
+	sell. Only a counted item's line is put by in units; a gun is held by its serial instead (a counter
+	hold), so it counts nothing here."""
+	return int(reserved_qty(item_code))
 
 
 channel_committed_units.channel = CHANNEL

@@ -410,7 +410,8 @@ class TheInstalledChannelsAreWired(FrappeTestCase):
 			if importlib.util.find_spec(app)}
 		if not expected:
 			self.skipTest("no channel app is installed on this bench")
-		self.assertEqual(set(committed_units("NO-SUCH-ITEM-POOL")), expected)
+		# Core answers too: the units put by for its own pre-orders (ffl_core.preorder).
+		self.assertEqual(set(committed_units("NO-SUCH-ITEM-POOL")), expected | {"preorder"})
 
 	def test_every_change_handler_resolves(self):
 		for path in frappe.get_hooks(CHANNEL_COMMITMENTS_CHANGED_HOOK):
