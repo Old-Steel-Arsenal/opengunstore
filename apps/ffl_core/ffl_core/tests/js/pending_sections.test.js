@@ -4,7 +4,7 @@
 // source, searches, and sorts each section oldest-first. No DOM / Frappe.
 const test = require('node:test');
 const assert = require('node:assert');
-const { PD_STAGE_ORDER, pdExtPrimary, pdMatchesFilter, pdMatchesQuery, pdSections, pdLocationFields, pdCollectLocations, pdEscape, pdDraftLegs, pdCanPlace } =
+const { PD_STAGE_ORDER, PD_PRIMARY, pdExtPrimary, pdMatchesFilter, pdMatchesQuery, pdSections, pdLocationFields, pdCollectLocations, pdEscape, pdDraftLegs, pdCanPlace } =
 	require('../../ffl_core/page/pending_dispositions/pending_dispositions.js');
 
 const rows = [
@@ -155,4 +155,13 @@ test('a pre-order is a counter order: the counter chip keeps it, its order and i
 	assert.strictEqual(pdMatchesQuery(pre, 'gen 6'), true);
 	assert.strictEqual(pdCanPlace(pre), false);
 	assert.deepStrictEqual(pdSections([pre], 'all', '').map((s) => s.stage), ['waiting']);
+});
+
+test('an arrived pre-order is ready for pickup, found by its gun, and Open pickup is the next step', () => {
+	const pre = { source: 'preorder', stage: 'ready_pickup', age_days: 3, customer_name: 'Fay', sales_order: 'SAL-ORD-10',
+		items: [{ item_code: 'G19', item_name: 'Glock 19 Gen 6', qty: 1, serial: 'ABC123', kind: 'serial' }] };
+	assert.deepStrictEqual(pdSections([pre], 'all', '').map((s) => s.stage), ['ready_pickup']);
+	assert.strictEqual(pdMatchesQuery(pre, 'abc123'), true);
+	assert.ok(PD_PRIMARY.ready_pickup.split(',').map((x) => x.trim()).includes('.btn-preorder-pickup'));
+	assert.ok(PD_PRIMARY.blocked.includes('.btn-preorder-refund'), 'money left after pickup is paid back');
 });

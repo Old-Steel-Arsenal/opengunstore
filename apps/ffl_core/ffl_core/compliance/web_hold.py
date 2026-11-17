@@ -18,6 +18,7 @@ from frappe.utils import flt
 
 from ffl_core.reservations import channel_claim_block_reason, is_uniform_firearm_item
 from ffl_core.serials import serials_for_line
+from ffl_core.setup.preorder import LINK_FIELD as PREORDER_LINK
 
 MANAGER_ROLES = ("Sales Manager", "System Manager")
 STORE_STOCK_HOOK = "store_stock_for_item"
@@ -38,16 +39,22 @@ def _free_on_shelf(item_code) -> int | None:
 		stock = frappe.get_attr(path)(item_code)
 		if stock is None:
 			return None
-		unmerged = 0.0
-		for table, qty_col in (("POS Invoice Item", "stock_qty"), ("Packed Item", "qty")):
-			unmerged += flt(frappe.db.sql(
-				f"""SELECT COALESCE(SUM(c.`{qty_col}`), 0) FROM `tab{table}` c
-				INNER JOIN `tabPOS Invoice` pi ON pi.name = c.parent
-				WHERE c.item_code = %s AND c.docstatus = 1 AND c.parenttype = 'POS Invoice'
-				  AND COALESCE(pi.consolidated_invoice, '') = ''
-				  AND COALESCE(pi.woo_online_order, '') = ''""", item_code)[0][0])
-		return int(stock.get("qty") or 0) - int(unmerged)
+		return int(stock.get("qty") or 0) - int(unmerged_register_qty(item_code))
 	return None
+
+
+def unmerged_register_qty(item_code) -> float:
+	"""Units of *item_code* on submitted register sales not merged yet (see :func:`_free_on_shelf`):
+	still in the Bin, no longer on the shelf. Web pickup tickets are left out."""
+	unmerged = 0.0
+	for table, qty_col in (("POS Invoice Item", "stock_qty"), ("Packed Item", "qty")):
+		unmerged += flt(frappe.db.sql(
+			f"""SELECT COALESCE(SUM(c.`{qty_col}`), 0) FROM `tab{table}` c
+			INNER JOIN `tabPOS Invoice` pi ON pi.name = c.parent
+			WHERE c.item_code = %s AND c.docstatus = 1 AND c.parenttype = 'POS Invoice'
+			  AND COALESCE(pi.consolidated_invoice, '') = ''
+			  AND COALESCE(pi.woo_online_order, '') = ''""", item_code)[0][0])
+	return unmerged
 
 
 def _held_by(item_code) -> list:
@@ -77,7 +84,12 @@ def refuse_held_units(doc, method=None) -> None:
 				"Item", item_code, "is_stock_item"):
 			continue
 		free = _free_on_shelf(item_code)
-		if free is None or qty <= free:
+		if free is None:
+			continue
+		# A pre-order's hand-over ticket sells the units put by for that order: the storefront's
+		# count already took them off (they are the pre-orders' committed units), so they go back.
+		free += preorder_units_on(doc, item_code)
+		if qty <= free:
 			continue
 		short.append((item_code, qty, free, _held_by(item_code)))
 	if not short:
@@ -109,7 +121,8 @@ def refuse_claimed_firearm_units(doc, method=None) -> None:
 	and what is at stake is a paid order that can no longer be filled.
 
 	The ticket is asked by name (``ignore_hold_ref``): its draft already holds the
-	gun it is selling, and that hold is not a rival claim on it.
+	gun it is selling, and that hold is not a rival claim on it — nor is its
+	pre-order's, on a pre-order's hand-over ticket.
 	"""
 	if doc.get("is_return") or doc.get("is_consolidated") or doc.get("woo_online_order"):
 		return
@@ -124,8 +137,20 @@ def refuse_claimed_firearm_units(doc, method=None) -> None:
 	reasons = []
 	for item_code, count in selling.items():
 		reason = channel_claim_block_reason(
-			item_code, selling=max(1, count), ignore_hold_ref=doc.name)
+			item_code, selling=max(1, count), ignore_hold_ref=_own_hold_refs(doc))
 		if reason:
 			reasons.append(reason)
 	if reasons:
 		frappe.throw("<br>".join(reasons), title=frappe._("Owed to an online order"))
+
+
+def _own_hold_refs(doc) -> tuple:
+	"""The holds a ticket sells from: its own draft's, and its pre-order's on a hand-over ticket."""
+	return tuple(r for r in (doc.name, doc.get(PREORDER_LINK)) if r)
+
+
+def preorder_units_on(doc, item_code) -> float:
+	"""Units of *item_code* put by for the pre-order this ticket hands over (none on any other)."""
+	from ffl_core.preorder import handover_reserved
+
+	return handover_reserved(doc, item_code)

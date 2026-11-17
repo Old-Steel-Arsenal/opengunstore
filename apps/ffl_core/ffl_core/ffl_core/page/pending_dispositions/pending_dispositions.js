@@ -166,7 +166,7 @@ const PD_PRIMARY = {
 	to_place: '.btn-release',
 	waiting: '.btn-preorder-pay',
 	ready_ship: '.btn-ship, .btn-mark-shipped, .btn-dispose, .btn-gb-invoice',
-	ready_pickup: '.btn-pickup, .btn-mark-shipped, .btn-dispose',
+	ready_pickup: '.btn-pickup, .btn-preorder-pickup, .btn-mark-shipped, .btn-dispose',
 	disposing: '.btn-dispose',
 };
 
@@ -188,7 +188,7 @@ function pdMatchesQuery(row, query) {
 	const q = String(query || '').trim().toLowerCase();
 	if (!q) return true;
 	const hay = [row.customer_name, row.customer, row.sales_invoice, row.sales_order, row.woo_order_id, row.gb_order_id,
-		...(row.source === 'preorder' ? (row.items || []).map((i) => i && (i.item_name || i.item_code)) : []),
+		...(row.source === 'preorder' ? (row.items || []).flatMap((i) => (i ? [i.item_name || i.item_code, i.serial] : [])) : []),
 		...(row.pending_serials || []).map((p) => p && p.serial),
 		...(row.disposed_serials || []).map((p) => (p && p.serial) || p),
 		// The DO and the house's web reference are what a distributor quotes on the phone.
@@ -474,7 +474,7 @@ class PendingDispositionsApp {
 		}
 		const titles = {
 			blocked: __('Needs attention'), to_place: __('To place with distributor'),
-			waiting: __('Waiting on distributor'), ready_ship: __('Ready to ship'),
+			waiting: __('Awaiting arrival'), ready_ship: __('Ready to ship'),
 			ready_pickup: __('Ready for pickup'), disposing: __('Shipped — dispose'),
 		};
 		sections.forEach((sec) => {
@@ -1101,26 +1101,34 @@ class PendingDispositionsApp {
 		}
 	}
 
-	// A pre-order (ffl_core.preorder): its money is taken and paid back at the
+	// A pre-order (ffl_core.preorder): its money is taken, taken off at pickup and paid back at the
 	// register, so each action opens a draft ticket there.
 	_renderPreorderCard(row, $list) {
 		const esc = frappe.utils.escape_html;
 		const payBadge = row.cancelled ? `<span class="badge warn">${__('Cancelled')}</span>`
+			: row.handed_over ? `<span class="badge ok">${__('Picked up')}</span>`
 			: row.paid ? `<span class="badge ok">${__('Paid')}</span>`
 			: (row.held > 0.005 ? `<span class="badge amber">${__('Partly paid')}</span>`
 				: `<span class="badge amber">${__('Unpaid')}</span>`);
 		const items = (row.items || []).map((i) =>
-			`<span class="pill">${esc(String(i.qty))} × ${esc(i.item_name || i.item_code)}</span>`).join('');
+			`<span class="pill">${esc(String(i.qty))} × ${esc(i.item_name || i.item_code)}${i.serial ? ` · ${esc(i.serial)}` : ''}</span>`).join('');
 		const drafts = row.drafts || {};
 		const refunds = drafts.refunds || [];
-		const actions = row.cancelled
-			? (refunds.length
-				? `<button class="btn btn-primary btn-sm btn-preorder-open" data-inv="${esc(refunds[0])}">${__('Open refund at register')}</button>`
-				: `<button class="btn btn-primary btn-sm btn-preorder-refund">${__('Refund')}</button>`)
-			: (drafts.payment
-				? `<button class="btn btn-primary btn-sm btn-preorder-open" data-inv="${esc(drafts.payment)}">${__('Open payment at register')}</button>`
-				: (row.paid ? '' : `<button class="btn btn-primary btn-sm btn-preorder-pay">${__('Take payment')}</button>`))
+		const guns = (row.items || []).filter((i) => i.kind === 'serial');
+		const open = (inv, label) => `<button class="btn btn-default btn-sm btn-preorder-open" data-inv="${esc(inv)}">${label}</button>`;
+		let actions;
+		if (row.cancelled || row.handed_over) {
+			actions = refunds.length ? open(refunds[0], __('Open refund at register'))
+				: `<button class="btn btn-default btn-sm btn-preorder-refund">${__('Refund')}</button>`;
+		} else {
+			actions = (drafts.payment ? open(drafts.payment, __('Open payment at register'))
+				: drafts.pickup ? open(drafts.pickup, __('Open pickup at register'))
+				: row.ready ? `<button class="btn btn-default btn-sm btn-preorder-pickup">${__('Open pickup')}</button>`
+				: (row.paid ? '' : `<button class="btn btn-default btn-sm btn-preorder-pay">${__('Take payment')}</button>`))
+				+ (guns.length && !drafts.pickup ? `<button class="btn btn-default btn-sm btn-preorder-gun">${
+					guns.some((i) => i.serial) ? __('Change gun') : __('Assign gun')}</button>` : '')
 				+ `<button class="btn btn-default btn-sm btn-preorder-cancel" style="color:var(--red-600); border-color:var(--red-400)">${__('Cancel & refund')}</button>`;
+		}
 		const $card = $(`
 			<div class="card">
 				<div>
@@ -1129,7 +1137,7 @@ class PendingDispositionsApp {
 						<a href="/app/sales-order/${encodeURIComponent(row.sales_order)}">${esc(row.sales_order)}</a>
 						· ${frappe.datetime.str_to_user(row.posting_date)}
 						<span>· ${__('{0}d', [row.age_days || 0])}</span>
-						${row.eta ? `· ${__('ETA')} ${frappe.datetime.str_to_user(row.eta)}` : ''}
+						${row.eta && !row.ready ? `· ${__('ETA')} ${frappe.datetime.str_to_user(row.eta)}` : ''}
 					</div>
 					<div class="meta">${__('Paid')} ${format_currency(row.held || 0)} / ${format_currency(row.grand_total || 0)}</div>
 					<div class="serials">${items}</div>
@@ -1142,9 +1150,49 @@ class PendingDispositionsApp {
 		row._$card = $card;
 		$card.find('.btn-preorder-pay').on('click', () => this._preorderPay(row));
 		$card.find('.btn-preorder-open').on('click', (e) => this._toRegister($(e.currentTarget).data('inv')));
+		$card.find('.btn-preorder-pickup').on('click', () => this._preorderPickup(row));
+		$card.find('.btn-preorder-gun').on('click', () => this._preorderGun(row));
 		$card.find('.btn-preorder-cancel').on('click', () => this._preorderCancel(row));
 		$card.find('.btn-preorder-refund').on('click', () => this._preorderRefund(row));
 		this._markPrimary($card, row);
+		// An open ticket is the next step wherever the card sits.
+		if (drafts.payment || drafts.pickup || refunds.length) {
+			$card.find('.btn').removeClass('btn-primary').addClass('btn-default');
+			$card.find('.btn-preorder-open').first().removeClass('btn-default').addClass('btn-primary');
+		}
+	}
+
+	_preorderPickup(row) {
+		frappe.call({ method: 'ffl_core.preorder.open_pickup', args: { sales_order: row.sales_order }, freeze: true })
+			.then((r) => r && r.message && this._toRegister(r.message.pos_invoice));
+	}
+
+	// One Select per gun line: the gun put by, or another free one of the same model.
+	_preorderGun(row) {
+		frappe.call({ method: 'ffl_core.preorder.serial_choices', args: { sales_order: row.sales_order } }).then((r) => {
+			const lines = (r && r.message && r.message.lines) || [];
+			const fields = lines.map((l, i) => ({
+				fieldname: `line_${i}`, fieldtype: 'Select', label: l.item_name || l.item_code,
+				options: [''].concat(l.choices || []).join('\n'), default: l.serial || '',
+			}));
+			const d = new frappe.ui.Dialog({
+				title: __('Gun · {0}', [row.sales_order]),
+				fields,
+				primary_action_label: __('Save'),
+				primary_action: (v) => {
+					const changes = lines.map((l, i) => ({ row: l.row, serial: v[`line_${i}`] }))
+						.filter((c, i) => c.serial && c.serial !== lines[i].serial);
+					const next = () => {
+						const c = changes.shift();
+						if (!c) { d.hide(); this._load(); return; }
+						frappe.call({ method: 'ffl_core.preorder.assign_serial', freeze: true,
+							args: { sales_order: row.sales_order, row: c.row, serial: c.serial } }).then(next);
+					};
+					next();
+				},
+			});
+			d.show();
+		});
 	}
 
 	_toRegister(posInvoice) {

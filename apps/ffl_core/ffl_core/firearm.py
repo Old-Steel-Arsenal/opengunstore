@@ -573,6 +573,10 @@ def _pos_picker_excluded_serials(item_codes, current_invoice: str | None = None,
 	counter_order = None
 	if current_invoice and frappe.db.has_column("POS Invoice", "ffl_counter_order"):
 		counter_order = frappe.db.get_value("POS Invoice", current_invoice, "ffl_counter_order")
+	# A pre-order's hand-over ticket likewise carries the gun its pre-order holds (kind 'preorder').
+	preorder = None
+	if current_invoice and frappe.db.has_column("POS Invoice", "ffl_preorder"):
+		preorder = frappe.db.get_value("POS Invoice", current_invoice, "ffl_preorder")
 	excluded: set[str] = set()
 	for code in codes:
 		for serial, hold in counter_holds(code).items():
@@ -582,7 +586,8 @@ def _pos_picker_excluded_serials(item_codes, current_invoice: str | None = None,
 			if serial in own_serials and (
 					(hold.get("kind") == "pos" and hold.get("ref") == current_invoice)
 					or (counter_order and hold.get("kind") == "sales_invoice"
-						and hold.get("ref") == counter_order)):
+						and hold.get("ref") == counter_order)
+					or (preorder and hold.get("kind") == "preorder" and hold.get("ref") == preorder)):
 				continue
 			if customer and hold.get("kind") == DEAL_HOLD and hold.get("customer") == customer:
 				if kept_for_customer is not None:

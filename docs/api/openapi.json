@@ -16242,7 +16242,7 @@
           "ffl_core"
         ],
         "summary": "Return {item_code: [in-stock serial, ...]} so the POS 4473 dialog can offer",
-        "description": "a pick-list of real on-hand serials instead of free-typing one.\n\nEvery firearm has has_serial_no=1 and its serials live in the Serial No\ntable — Item.firearm_serial fallback was removed when the Used Firearm\npath was unified. Codes with nothing on hand map to [] so the caller can\nwarn + block the sale.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:622`",
+        "description": "a pick-list of real on-hand serials instead of free-typing one.\n\nEvery firearm has has_serial_no=1 and its serials live in the Serial No\ntable — Item.firearm_serial fallback was removed when the Used Firearm\npath was unified. Codes with nothing on hand map to [] so the caller can\nwarn + block the sale.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:627`",
         "operationId": "ffl_core.firearm.available_serials_for_items",
         "responses": {
           "200": {
@@ -16308,7 +16308,7 @@
           "ffl_core"
         ],
         "summary": "Like available_serials_for_items but enriches each serial with sell_price",
-        "description": "and purchase_rate (cost), sorted by sell_price ascending so the POS picks\nthe cheapest in-stock unit by default. Used by the POS Item Details serial\npicker to render a price-first dropdown.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1363`",
+        "description": "and purchase_rate (cost), sorted by sell_price ascending so the POS picks\nthe cheapest in-stock unit by default. Used by the POS Item Details serial\npicker to render a price-first dropdown.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1368`",
         "operationId": "ffl_core.firearm.available_serials_with_prices",
         "responses": {
           "200": {
@@ -16422,7 +16422,7 @@
           "ffl_core"
         ],
         "summary": "POS transfer-dialog config: the fee item + default per-firearm fee.",
-        "description": "Lazily creates the TRANSFER-FEE service item on first use — by the time the POS\nis live the site's UOM/Item-Group masters exist, unlike at install/migrate time\n(a fresh install runs hooks/patches before ERPNext's setup wizard). Mirrors\nreceive_goods.get_receive_sources for reading FFL Settings.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1505`",
+        "description": "Lazily creates the TRANSFER-FEE service item on first use — by the time the POS\nis live the site's UOM/Item-Group masters exist, unlike at install/migrate time\n(a fresh install runs hooks/patches before ERPNext's setup wizard). Mirrors\nreceive_goods.get_receive_sources for reading FFL Settings.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1510`",
         "operationId": "ffl_core.firearm.get_transfer_config",
         "responses": {
           "200": {
@@ -16452,7 +16452,7 @@
           "ffl_core"
         ],
         "summary": "Every in-stock firearm serial, for the POS customer-transfer picker.",
-        "description": "The two cart-driven pickers (available_serials_for_items, firearm_items_in)\nneed item_codes up front; a transfer starts before any gun is in the cart,\nso this returns the whole in-stock firearm set instead. Price is informational\n(picker label) — reuses the uniform/per-serial logic of\navailable_serials_with_prices; the transfer always adds the gun at $0.\n\nCustody guns are deliberately NOT excluded here (exclude_custody=False),\nunlike in the two SALE pickers. This dialog is how a customer's gun goes\nhome: hiding custody guns from it would strand every gun the custody\nwarehouse receives, which is the opposite of the point.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1564`",
+        "description": "The two cart-driven pickers (available_serials_for_items, firearm_items_in)\nneed item_codes up front; a transfer starts before any gun is in the cart,\nso this returns the whole in-stock firearm set instead. Price is informational\n(picker label) — reuses the uniform/per-serial logic of\navailable_serials_with_prices; the transfer always adds the gun at $0.\n\nCustody guns are deliberately NOT excluded here (exclude_custody=False),\nunlike in the two SALE pickers. This dialog is how a customer's gun goes\nhome: hiding custody guns from it would strand every gun the custody\nwarehouse receives, which is the opposite of the point.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1569`",
         "operationId": "ffl_core.firearm.in_stock_firearm_serials",
         "responses": {
           "200": {
@@ -16504,7 +16504,7 @@
           "ffl_core"
         ],
         "summary": "Per-item POS pricing summary — the single data source for the POS card",
-        "description": "price range, the add-to-cart rate seed, the picker's auto-pick decision and\nthe checkout gate.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1457`",
+        "description": "price range, the add-to-cart rate seed, the picker's auto-pick decision and\nthe checkout gate.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1462`",
         "operationId": "ffl_core.firearm.pos_pricing_summary",
         "responses": {
           "200": {
@@ -16552,7 +16552,7 @@
           "ffl_core"
         ],
         "summary": "Flip Serial No.needs_service AND keep the gunsmith ToDo queue in sync.",
-        "description": "Used by the Service Needed pill on the Item form's Serial Numbers tab.\nGoes through this single helper (instead of raw db.set_value on the client)\nso the ToDo create/close stays glued to the flag — toggling on creates a\nToDo, toggling off closes the matching Open ones.\n\nPermission gate: the helpers below elevate via flags.ignore_permissions /\nraw db.set_value to bypass ToDo/Serial No DocPerms (managers vs cashiers).\nWithout this gate, any logged-in user could flip needs_service on any\nserial — including silently closing a gunsmith's Open ToDo queue. Restrict\nto roles that already own Serial No writes.\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\n**Permissions:** Frappe write permission on Serial No (a DocType permission check, not a fixed role list — whichever roles carry Serial No write).\n\nSource: `apps/ffl_core/ffl_core/firearm.py:717`",
+        "description": "Used by the Service Needed pill on the Item form's Serial Numbers tab.\nGoes through this single helper (instead of raw db.set_value on the client)\nso the ToDo create/close stays glued to the flag — toggling on creates a\nToDo, toggling off closes the matching Open ones.\n\nPermission gate: the helpers below elevate via flags.ignore_permissions /\nraw db.set_value to bypass ToDo/Serial No DocPerms (managers vs cashiers).\nWithout this gate, any logged-in user could flip needs_service on any\nserial — including silently closing a gunsmith's Open ToDo queue. Restrict\nto roles that already own Serial No writes.\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\n**Permissions:** Frappe write permission on Serial No (a DocType permission check, not a fixed role list — whichever roles carry Serial No write).\n\nSource: `apps/ffl_core/ffl_core/firearm.py:722`",
         "operationId": "ffl_core.firearm.toggle_serial_service_need",
         "responses": {
           "200": {
@@ -18125,13 +18125,71 @@
         }
       }
     },
+    "/api/method/ffl_core.preorder.assign_serial": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Put another gun of the same item by for one line of an open pre-order (the one it had goes",
+        "description": "back on the shelf), or a first one when none has arrived for it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:601`",
+        "operationId": "ffl_core.preorder.assign_serial",
+        "responses": {
+          "200": {
+            "description": "{\"serial\": the gun now put by, \"was\": the one it had or None}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sales_order": {
+                    "type": "string",
+                    "description": "The pre-order (open, not handed over)."
+                  },
+                  "row": {
+                    "type": "string",
+                    "description": "Its Sales Order Item row."
+                  },
+                  "serial": {
+                    "type": "string",
+                    "description": "A gun of that item on our shelf that nothing holds."
+                  }
+                },
+                "required": [
+                  "sales_order",
+                  "row",
+                  "serial"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.preorder.cancel_preorder": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "Cancel a pre-order and pay back everything held for it: the order is cancelled, its",
-        "description": "quantities go back on the items, and each payment gets a draft return for its full amount, the\nway it was paid. The register checks the returns out.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:283`",
+        "description": "quantities go back on the items, and each payment gets a draft return for its full amount, the\nway it was paid. The register checks the returns out.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:749`",
         "operationId": "ffl_core.preorder.cancel_preorder",
         "responses": {
           "200": {
@@ -18184,7 +18242,7 @@
           "ffl_core"
         ],
         "summary": "Take a pre-order at the counter: a submitted Sales Order marked as one, its quantities taken",
-        "description": "from the items' pre-order counts. No invoice and no money yet — payments go through\n:func:`open_payment`. The customer collects here.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:145`",
+        "description": "from the items' pre-order counts. No invoice and no money yet — payments go through\n:func:`open_payment`. The customer collects here.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:281`",
         "operationId": "ffl_core.preorder.create_preorder",
         "responses": {
           "200": {
@@ -18213,7 +18271,7 @@
                 "type": "object",
                 "properties": {
                   "payload": {
-                    "description": "{customer, items: [{item_code, qty, rate}], notes?, pos_profile?, price_approval?} — dict or JSON string. A gun is one unit per line. Every item must have pre-order slots left and none on our shelves."
+                    "description": "{customer, items: [{item_code, qty, rate}], notes?, pos_profile?, price_approval?} — dict or JSON string. A serial-numbered item is one unit per line. Every item must have pre-order slots left and none on our shelves."
                   }
                 },
                 "required": [
@@ -18230,12 +18288,12 @@
         "tags": [
           "ffl_core"
         ],
-        "summary": "Pre-orders for the Pending Order page: every open one (stage ``waiting``), and cancelled ones",
-        "description": "still holding money to pay back (``blocked``).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:353`",
+        "summary": "Pre-orders for the Pending Order page: open ones waiting for their goods (stage ``waiting``) or",
+        "description": "with everything here (``ready_pickup``), and cancelled or handed-over ones still holding money to\npay back (``blocked``).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:821`",
         "operationId": "ffl_core.preorder.list_preorders",
         "responses": {
           "200": {
-            "description": "[{\"source\": \"preorder\", \"sales_order\", \"customer\", \"customer_name\", \"posting_date\", \"grand_total\", \"held\", \"outstanding_amount\", \"paid\", \"cancelled\", \"eta\", \"items\": [{\"item_code\", \"item_name\", \"qty\"}], \"drafts\": {\"payment\", \"refunds\": [...]}, \"stage\", \"blocked_reason\", \"age_days\", \"overdue\"}].",
+            "description": "[{\"source\": \"preorder\", \"sales_order\", \"customer\", \"customer_name\", \"posting_date\", \"grand_total\", \"held\", \"outstanding_amount\", \"paid\", \"cancelled\", \"handed_over\", \"ready\", \"eta\", \"items\": [{\"row\", \"item_code\", \"item_name\", \"qty\", \"serial\", \"reserved\", \"kind\", \"ready\"}], \"drafts\": {\"payment\", \"pickup\", \"refunds\": [...]}, \"stage\", \"blocked_reason\", \"age_days\", \"overdue\"}].",
             "content": {
               "application/json": {
                 "schema": {
@@ -18279,7 +18337,7 @@
           "ffl_core"
         ],
         "summary": "A payment towards a pre-order, as a draft register invoice the register checks out (any",
-        "description": "tender). One open payment draft per order: a second call returns the one already open.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:243`",
+        "description": "tender). One open payment draft per order: a second call returns the one already open.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:378`",
         "operationId": "ffl_core.preorder.open_payment",
         "responses": {
           "200": {
@@ -18326,13 +18384,61 @@
         }
       }
     },
+    "/api/method/ffl_core.preorder.open_pickup": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Hand an arrived pre-order over: the draft register ticket with its goods at the order's",
+        "description": "prices, taxed as any sale today, and what is held coming off them (:func:`fit_release`). The\nregister takes the rest and the gun's 4473; the ticket's submit hands the order over.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:647`",
+        "operationId": "ffl_core.preorder.open_pickup",
+        "responses": {
+          "200": {
+            "description": "{\"pos_invoice\", \"already\": bool (the ticket was open already)}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sales_order": {
+                    "type": "string",
+                    "description": "An open pre-order whose goods are all here."
+                  }
+                },
+                "required": [
+                  "sales_order"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.preorder.preorder_options": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "Whether Create Order may offer *item_code* as a pre-order line: pre-order slots left and none",
-        "description": "on our shelves.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:118`",
+        "description": "on our shelves.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:254`",
         "operationId": "ffl_core.preorder.preorder_options",
         "responses": {
           "200": {
@@ -18386,8 +18492,8 @@
         "tags": [
           "ffl_core"
         ],
-        "summary": "The draft returns paying back what a cancelled pre-order still holds — the open ones, or new",
-        "description": "ones for every payment not returned yet.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:313`",
+        "summary": "The draft returns paying back what a pre-order still holds once it is cancelled, or handed over",
+        "description": "for less than was paid — the open ones, or new ones for every payment not returned yet.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:781`",
         "operationId": "ffl_core.preorder.refund_preorder",
         "responses": {
           "200": {
@@ -18417,7 +18523,55 @@
                 "properties": {
                   "sales_order": {
                     "type": "string",
-                    "description": "A cancelled pre-order."
+                    "description": "A cancelled or handed-over pre-order."
+                  }
+                },
+                "required": [
+                  "sales_order"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.preorder.serial_choices": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "The guns a pre-order's lines could have: for each serial-numbered line, the one put by for it",
+        "description": "and every other of the same item on our shelf that nothing holds.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:571`",
+        "operationId": "ffl_core.preorder.serial_choices",
+        "responses": {
+          "200": {
+            "description": "{\"lines\": [{\"row\", \"item_code\", \"item_name\", \"serial\", \"choices\": [serial, ...]}]}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sales_order": {
+                    "type": "string",
+                    "description": "An open pre-order."
                   }
                 },
                 "required": [
@@ -18569,7 +18723,7 @@
           "ffl_core"
         ],
         "summary": "Counter-hold registry for one Item's in-stock serials — the DISPLAY half.",
-        "description": "Drives the Pending pill on the Item form's Serial Numbers tab. Same data as\n:func:`counter_holds`, behind the shipping-role gate, because it names which\nregulated serials sit on which order.\n\n**Auth (derived from code):** Role-filtered: callers without Roles Sales User / Sales Manager / Stock Manager / System Manager receive an EMPTY result instead of an error.\n\n**Permissions:** Canonical shipping roles. A caller WITHOUT the role gets an empty {} back silently — no error is raised — so an empty result from THIS function is not proof of \"no holds\". Anything enforcing a rule must call :func:`counter_holds` instead; see its docstring for what went wrong when that distinction did not exist.\n\nSource: `apps/ffl_core/ffl_core/reservations.py:205`",
+        "description": "Drives the Pending pill on the Item form's Serial Numbers tab. Same data as\n:func:`counter_holds`, behind the shipping-role gate, because it names which\nregulated serials sit on which order.\n\n**Auth (derived from code):** Role-filtered: callers without Roles Sales User / Sales Manager / Stock Manager / System Manager receive an EMPTY result instead of an error.\n\n**Permissions:** Canonical shipping roles. A caller WITHOUT the role gets an empty {} back silently — no error is raised — so an empty result from THIS function is not proof of \"no holds\". Anything enforcing a rule must call :func:`counter_holds` instead; see its docstring for what went wrong when that distinction did not exist.\n\nSource: `apps/ffl_core/ffl_core/reservations.py:213`",
         "operationId": "ffl_core.reservations.reserved_counter_serials",
         "responses": {
           "200": {

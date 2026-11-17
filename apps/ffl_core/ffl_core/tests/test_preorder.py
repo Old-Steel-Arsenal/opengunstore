@@ -57,7 +57,8 @@ def _default_template(title: str, rows: list[tuple[str, float]]) -> str:
 
 
 def _profile(name: str, template: str) -> str:
-	bank = frappe.db.get_value("Account", {"company": COMPANY, "account_type": "Bank", "is_group": 0})
+	bank = frappe.db.get_value("Account", {"company": COMPANY, "account_type": "Bank", "is_group": 0}) \
+		or _account("_Test PO Bank", "Bank Accounts", "Bank")
 	for mode, account in (("Cash", f"Cash - {ABBR}"), (CARD, bank)):
 		mop = frappe.get_doc("Mode of Payment", mode)
 		if not any(r.company == COMPANY for r in mop.accounts):
@@ -230,11 +231,9 @@ class Setup(FrappeTestCase):
 		self.assertEqual(frappe.db.get_value("Custom Field", "Sales Order-ffl_is_preorder", "no_copy"), 1,
 			"an amended order took no pre-order slots")
 
-	def test_off_until_hand_over_is_built(self):
-		"""Nothing offers a pre-order while every count is 0, and the count is not on the Item form yet."""
-		for field in (AVAILABLE_FIELD, setup.ETA_FIELD):
-			self.assertEqual(frappe.db.get_value("Custom Field", f"Item-{field}", "hidden"), 1, field)
-		self.assertFalse(frappe.db.exists("Item", {AVAILABLE_FIELD: [">", 0], "name": ["not like", "\\_T-PO-%"]}))
+	def test_off_until_a_count_is_set(self):
+		"""Nothing offers a pre-order while every count is 0 (the migrate sets none)."""
+		self.assertFalse(frappe.db.exists("Item", {AVAILABLE_FIELD: [">", 0], "name": ["not like", "\\_T-PO%"]}))
 
 	def test_setup_is_idempotent(self):
 		setup.ensure()
@@ -379,7 +378,7 @@ class Money(_Base):
 			ticket(self.cust, {**line, "ffl_locked_rate": 0}).insert()
 		with self.subTest("two units"), self.assertRaises(frappe.ValidationError):
 			ticket(self.cust, {**line, "qty": 2}).insert()
-		with self.subTest("a release, before hand-over exists"), self.assertRaises(frappe.ValidationError):
+		with self.subTest("a release with no goods to take it off"), self.assertRaises(frappe.ValidationError):
 			ticket(self.cust, {**line, "rate": -100, "ffl_locked_rate": -100}).insert()
 		with self.subTest("invoice discount"), self.assertRaisesRegex(frappe.ValidationError, "invoice discount"):
 			ticket(self.cust, dict(line), discount_amount=10, apply_discount_on="Grand Total").insert()
