@@ -18,7 +18,7 @@ gunshop_extension = {
 	"publisher": "{{publisher}}",
 	"publisher_id": "{{vendor}}",
 	"version": "0.1.0",
-	"requires_core": ">=0.1.0,<1",
+	"requires_core": ">=0.1.0,<2",
 	"requires_extensions": {},
 	"permissions": ["doc_events:Customer", "pos_ui"],
 	"license_required": False,

@@ -371,7 +371,7 @@ def _rule_identity(root: Path, pkg: Path, hooks: dict[str, ast.AST], r: Report) 
 	if not isinstance(rc, str) or not rc.strip():
 		r.add("manifest", "error", "requires_core is required (PEP 440 range against ffl_core)", hooks_path, line, root=root)
 	elif not _has_upper_bound(rc):
-		r.add("manifest", "error", f"requires_core {rc!r} has no upper bound (e.g. \">=0.1.0,<1\")", hooks_path, line, root=root)
+		r.add("manifest", "error", f"requires_core {rc!r} has no upper bound (e.g. \">=1.0.0,<2\")", hooks_path, line, root=root)
 	perms = manifest.get("permissions")
 	if not isinstance(perms, list):
 		r.add("manifest", "error", "permissions must be a list", hooks_path, line, root=root)

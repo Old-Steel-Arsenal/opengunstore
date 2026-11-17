@@ -127,7 +127,7 @@ Any other top-level name in `hooks.py` fails the lint, except Frappe metadata ke
 | Do | Checked |
 |---|---|
 | `__version__` equals the manifest `version` | lint |
-| `requires_core` with an upper bound; on 0.x: `>=<lowest 0.x you support>,<1` | lint (bound) |
+| `requires_core` with an upper bound; on 1.x: `>=<lowest 1.x you support>,<2` | lint (bound) |
 | A release note at `change_log/v<major>/v<x_y_z>.md` for the current version | lint (warn) |
 | An upgrade carries a strictly higher version; breaking your own data format or public contract is a major bump | upload; review |
 | `patches.txt` idempotent; never drop a column or change a field type in a way that loses data | review |

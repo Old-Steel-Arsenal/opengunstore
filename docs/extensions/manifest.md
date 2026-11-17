@@ -19,7 +19,7 @@ gunshop_extension = {
     "publisher": "Acme Software LLC",
     "publisher_id": "acme",
     "version": "1.2.0",
-    "requires_core": ">=0.4.0,<1",
+    "requires_core": ">=1.0.0,<2",
     "requires_extensions": {},
     "permissions": ["doc_events:Sales Invoice", "custom_fields:Customer", "pos_ui", "scheduler",
                     "network:api.acme.example"],
@@ -36,7 +36,7 @@ gunshop_extension = {
 | `id` | yes | str | Equals `app_name`, the package folder and `[project].name` in `pyproject.toml`. `<vendor>_<name>`: regex `^[a-z][a-z0-9]{1,11}_[a-z][a-z0-9_]*$`. Must not collide with an extension already on the server. | lint; upload |
 | `title` | yes | str | Equals `app_title`, at most 30 characters. `modules.txt` holds exactly this one line. | lint |
 | `version` | yes | str | Equals `__version__ = "…"` in `<id>/__init__.py`. Write `x.y.z` or `x.y.z-beta.N` (PEP 440 readable; the release-note file name follows it). An upgrade must be strictly higher. | lint; upload |
-| `requires_core` | yes | str | PEP 440 range against `ffl_core`'s version, with an upper bound (`<`, `<=`, `==`, `~=` or `===`). On the 0.x line write `>=<lowest 0.x you tested>,<1`. A beta core is compared by its base release (`0.7.0-beta.1` satisfies `>=0.7.0`). Outside the range the extension is paused, not removed. | lint (bound); registry (range) |
+| `requires_core` | yes | str | PEP 440 range against `ffl_core`'s version, with an upper bound (`<`, `<=`, `==`, `~=` or `===`). On the 1.x line write `>=<lowest 1.x you tested>,<2`. A beta core is compared by its base release (`1.1.0-beta.1` satisfies `>=1.1.0`). Outside the range the extension is paused, not removed. | lint (bound); registry (range) |
 | `permissions` | yes | list[str] | What the code does, shown as chips on the review card ([below](#permissions)). Must cover everything the lint derives from the code. | lint |
 | `publisher` | no | str | Shown on the card. | — |
 | `publisher_id` | no | str | Your vendor (`make ext-new` writes the id's vendor part). `osa` is the maintainers' (required for `first_party`). The update source offers updates only for extensions whose `publisher_id` matches it. | lint (`first_party`) |

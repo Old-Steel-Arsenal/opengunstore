@@ -2,7 +2,7 @@
 
 1. **Version, in two places, equal.** `__version__ = "x.y.z"` in `<id>/__init__.py` and `"version"` in the manifest (lint). Strictly higher than the version stores have (an equal or lower one is refused as an upgrade). Use `x.y.z`, or `x.y.z-beta.N` for a beta.
 2. **Release note** (below) for exactly that version.
-3. **`requires_core`** still true: on the 0.x line `>=<lowest 0.x you tested>,<1`. Run the tests against that lowest core and the current one.
+3. **`requires_core`** still true: on the 1.x line `>=<lowest 1.x you tested>,<2`. Run the tests against that lowest core and the current one.
 4. **Permissions** cover any new behaviour; the review card shows the manager what was added and removed.
 5. **Patches** in `patches.txt` are idempotent and lose no data.
 6. **API docs** regenerated and committed: `python3 scripts/generate_api_docs.py --app <folder>`.

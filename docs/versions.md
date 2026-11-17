@@ -6,8 +6,9 @@
 
 ## Version line
 
-- 0.1.0 is the first release of this repository; it continues an earlier, privately developed line (last release 1.15.1) with the same features and data. After it, plain semver: the release job tags a version only when it is above every tag in this repository.
-- Extensions on the 0.x line declare `requires_core` as `>=<lowest 0.x they support>,<1` ([Manifest](extensions/manifest.md)).
+- 0.1.0 is the first release of this repository; it continues an earlier, privately developed line (last release 1.15.1) with the same features and data. After it, plain semver: the release job tags a version only when it is above every tag in this repository. 1.0.0 follows 0.10.3.
+- This repository's 1.x tags and images are not the private line's: that line's 1.x releases live in its own archive repository and image package.
+- Extensions on the 1.x line declare `requires_core` as `>=<lowest 1.x they support>,<2` ([Manifest](extensions/manifest.md)). An extension whose range ends at `<1` is paused on 1.0.0 until it publishes a release with the new bound.
 - Deploys pin a version tag, never `latest`.
 
 ## Core stack
