@@ -90,9 +90,11 @@ def asks(doc) -> bool:
 
 def stamp(doc, method=None) -> None:
 	"""ToDo before_validate: stamp a new assignment; any other save keeps the stored values."""
+	marked = doc.meta.has_field(CLOSED_WITH_RECORD)   # no column before the migrate that adds it
 	before = None if doc.is_new() else (doc.get_doc_before_save()
-		or frappe.db.get_value("ToDo", doc.name, ["allocated_to", REQUIRED, SEEN, REMINDED], as_dict=True))
-	if doc.meta.has_field(CLOSED_WITH_RECORD):
+		or frappe.db.get_value("ToDo", doc.name, ["allocated_to", REQUIRED, SEEN, REMINDED]
+			+ ([CLOSED_WITH_RECORD] if marked else []), as_dict=True))
+	if marked:
 		# Kept only while the ToDo stays Closed: one opened or re-assigned by hand is no longer the rule's.
 		keep = before is not None and before.get("allocated_to") == doc.allocated_to and doc.status == "Closed"
 		doc.set(CLOSED_WITH_RECORD, cint(before.get(CLOSED_WITH_RECORD)) if keep else 0)
