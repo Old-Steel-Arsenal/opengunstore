@@ -841,7 +841,8 @@ def queue_stage(row: dict) -> str:
 	if blocked_reason(row):
 		return STAGE_BLOCKED
 	legs = row.get("legs") or {}
-	if legs.get("releasable"):
+	# ``to_place`` is the web row's twin of the counter's ``legs.releasable``.
+	if legs.get("releasable") or row.get("to_place"):
 		return STAGE_TO_PLACE
 	if legs.get("awaiting_goods") or legs.get("awaiting_arrival") or legs.get("awaiting_dropship") \
 			or row.get("awaiting_serial") or (row.get("to_store") and not row.get("arrived")):

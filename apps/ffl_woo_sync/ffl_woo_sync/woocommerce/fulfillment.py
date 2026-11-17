@@ -84,6 +84,14 @@ def _locally_disposed_rows(serial_rows) -> list:
 _TO_STORE_LANE: str = "to_store"
 
 
+# A web order line a distributor supplies, and the two ``dropship_status`` roll-ups
+# that say a distributor line has no live order behind it. ffl_integrations' router
+# owns both vocabularies (DROPSHIP_LANES, DS_PENDING_ROUTE / DS_ERROR); they are read
+# here as data because this app does not import that one.
+_DISTRIBUTOR_LANES: frozenset[str] = frozenset({_TO_STORE_LANE, "fds", "direct"})
+_UNSOURCED_STATUSES: frozenset[str] = frozenset({"Pending Route", "Error"})
+
+
 def plan_procured_assignments(order_serial_rows, procured_by_item) -> list:
 	"""PURE. Which received procure-to-store serials fill which empty ``to_store``
 	rows — ``[(row, serial)]`` (P4c auto-hang).
@@ -296,9 +304,9 @@ def list_pending_web_orders() -> list[dict]:
 	so the page renders both sources uniformly (these carry source="woo").
 
 	An order POS cannot act on is omitted — no firearm serial row, no procure-to-store
-	leg, and positive proof that no line is a regulated firearm (see the guard in the
-	loop). An order that merely LOOKS actionless because we failed to recognise its
-	firearm line stays listed and is logged.
+	leg, nothing left to order from a distributor, and positive proof that no line is a regulated
+	firearm (see the guard in the loop). An order that merely LOOKS actionless because
+	we failed to recognise its firearm line stays listed and is logged.
 
 	Returns:
 	    Pending-order cards (source="woo"), shaped like
@@ -316,7 +324,7 @@ def list_pending_web_orders() -> list[dict]:
 		fields=["name", "site", "woo_order_id", "customer_name", "atf_ffl_record",
 			"ffl_license", "ffl_business_name", "ffl_expiration", "creation",
 			"woo_status", "currency", "order_total", "total_tax", "shipping_total",
-			"discount_total"],
+			"discount_total", "dropship_status"],
 		order_by="creation asc",
 	)
 	# P4c: which of these orders have their procure-to-store guns/accessories in the
@@ -385,7 +393,16 @@ def list_pending_web_orders() -> list[dict]:
 			if is_antique_item(sr.item_code)
 			and (sr.get("fulfillment") or "local") in _LOCALLY_DISPOSED_LANES
 			and not (sr.confirmed_serial or "").strip()]
-		if not actionable_rows and not to_store_legs and not to_store_lane and not unresolved_antiques:
+		# Goods a distributor ships that nobody has ordered from it yet are work
+		# POS owes, whatever else the order carries: a Draft distributor order not
+		# sent to the house, or a distributor line no live order covers (never
+		# routed, or its order failed or was cancelled). Once everything is placed
+		# the distributor ships the parcel and a pure drop-ship order drops out again.
+		to_place = any(d.get("status") == "Draft" for d in do_map.get(o.name, [])) or (
+			(o.get("dropship_status") or "") in _UNSOURCED_STATUSES
+			and any((ln.get("lane") or "") in _DISTRIBUTOR_LANES for ln in (doc.lines or [])))
+		if not actionable_rows and not to_store_legs and not to_store_lane \
+				and not unresolved_antiques and not to_place:
 			reason = _cannot_prove_actionless(doc)
 			if not reason:
 				continue
@@ -506,6 +523,11 @@ def list_pending_web_orders() -> list[dict]:
 			"destination_ffl_name": o.ffl_business_name or o.atf_ffl_record or o.ffl_license,
 			"ffl_expiry_date": expiry,
 			"ffl_expired": expired,
+			# With no transfer FFL the parcel goes to the buyer: the card names the
+			# town, and the row sections as a shipment rather than a pickup.
+			"has_ship_address": bool(doc.get("ship_to_line1")),
+			"ship_to_preview": {"city": doc.get("ship_to_city") or "",
+				"state": doc.get("ship_to_state") or ""},
 			"posting_date": o.creation,
 			"currency": o.currency,
 			"order_total": flt(o.order_total),
@@ -536,6 +558,7 @@ def list_pending_web_orders() -> list[dict]:
 			# received into the store — staff ship the accessory / dispose the gun.
 			"to_store": bool(to_store_legs) or to_store_lane,
 			"arrived": to_store_ready(to_store_legs),
+			"to_place": to_place,
 			"distributor_orders": do_map.get(o.name, []),
 		})
 		# Section / reason / age: the one rulebook in ffl_core.

@@ -4,7 +4,7 @@
 // source, searches, and sorts each section oldest-first. No DOM / Frappe.
 const test = require('node:test');
 const assert = require('node:assert');
-const { PD_STAGE_ORDER, pdMatchesFilter, pdMatchesQuery, pdSections, pdLocationFields, pdCollectLocations, pdEscape } =
+const { PD_STAGE_ORDER, PD_PRIMARY, pdExtPrimary, pdMatchesFilter, pdMatchesQuery, pdSections, pdLocationFields, pdCollectLocations, pdEscape } =
 	require('../../ffl_core/page/pending_dispositions/pending_dispositions.js');
 
 const rows = [
@@ -115,4 +115,12 @@ test('unsigned agreements are named with their gun, escaped', () => {
 	assert.strictEqual(pdAgreementNames([{ template: 'Used Item Agreement' }, { template: 'Bill <b>', serial_no: 'SN1' }]),
 		'Used Item Agreement, Bill &lt;b&gt; (SN1)');
 	assert.strictEqual(pdAgreementNames([]), '');
+});
+
+test("an extension's card button is the next action only in the sections it names", () => {
+	const action = { id: 'x', stages: ['to_place'] };
+	assert.strictEqual(pdExtPrimary(action, { stage: 'to_place' }), true);
+	assert.strictEqual(pdExtPrimary(action, { stage: 'ready_ship' }), false);
+	assert.strictEqual(pdExtPrimary({ id: 'y' }, { stage: 'to_place' }), false);
+	assert.ok(PD_PRIMARY.to_place.includes('.btn-ext-primary'));
 });
