@@ -64,6 +64,11 @@ sleep 2
 # queue-catalog (local catalog) is an opt-in compose profile: restarted only when
 # it runs, since restarting a service whose profile is off fails.
 optional="$("$UP" ps --services --status running 2>/dev/null | grep -x queue-catalog || true)"
+# `restart` keeps each container's writable layer, and with it the marker of its last start:
+# remove it first, or wait_for_replay below sees that one and goes on before this start's replay.
+for svc in backend websocket queue-short queue-long scheduler $optional; do
+	"$UP" exec -T "$svc" rm -f /home/frappe/frappe-bench/.ext-replay.done >/dev/null 2>&1 || true
+done
 "$UP" restart backend websocket queue-short queue-long scheduler $optional
 # restart re-runs the entrypoint (and its replay): wait again before frontend
 # resolves the backend and before install-app / migrate exec into it.

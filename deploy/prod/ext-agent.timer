@@ -1,10 +1,15 @@
 [Unit]
-Description=Run the POS extension agent every 20 s (docs/self-hosting.md#extensions)
+Description=Run the POS extension agent again 1 s after each run ends (docs/self-hosting.md#extensions)
 
+# Not a .path unit on the request file: the file is on a docker volume under /var/lib/docker,
+# which a user unit cannot read or watch. Each run waits for the request itself (IDLE_WAIT in
+# ext-agent.service), so this loop costs one docker ps + one docker exec per ~50 s.
 [Timer]
 OnBootSec=60
+OnUnitInactiveSec=1
+# Belt: the old cadence, in case a run that failed does not re-arm the line above.
 OnUnitActiveSec=20
-AccuracySec=5
+AccuracySec=1
 Unit=ext-agent.service
 
 [Install]

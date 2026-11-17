@@ -315,7 +315,7 @@ grep -E '^DB_PASSWORD=' deploy/prod/.env | cut -d= -f2- | \
 
 Extensions are not baked into the image. Their code lives on the `apps-ext` volume and is declared in `sites/extensions.json`; at every container start the entrypoint runs `deploy/prod/ext-replay.sh`, which wires each declared extension back into the bench. Recreating containers or swapping the image keeps them.
 
-- **Install, upgrade, uninstall:** from Settings → Extensions, no SSH ([Lifecycle](extensions/lifecycle.md)). An upload is staged by a background job; the **extension agent** on the host then restarts the stack and finishes the install. Install the agent once per server:
+- **Install, upgrade, uninstall:** from Settings → Extensions, no SSH ([Lifecycle](extensions/lifecycle.md)). An upload is staged by a background job; the **extension agent** on the host then makes every process load the new code without taking the POS down (workers restarted, the backend's gunicorn reloaded in place, no 502) and finishes the install. Install the agent once per server:
 
     ```bash
     cd ~/gunstore-pos && mkdir -p ~/.config/systemd/user
@@ -324,7 +324,7 @@ Extensions are not baked into the image. Their code lives on the `apps-ext` volu
     loginctl enable-linger $USER
     ```
 
-    Without it an upload stays Staged and turns Failed after 30 minutes.
+    Without it an upload stays Staged and turns Failed after 30 minutes. After pulling a release that changes `ext-agent.service` / `ext-agent.timer`, copy them again and run `systemctl --user daemon-reload && systemctl --user restart ext-agent.timer`.
 - **One job at a time.** While any extension is installing, staged, upgrading or uninstalling, the page refuses new work.
 - **Upgrades** take a database backup (`sites/.ext-backups/<site>/<id>/`) and keep the previous tree (`apps-ext/.previous/<id>`). A failed upgrade blocks further uploads of that id until it is rolled back by hand.
 - **Replay failures stop the container** (a restart loop, `ERROR` lines under `ext-replay` in `up.sh logs backend`). Recovery is to put the files back, never to delete the manifest entry alone.

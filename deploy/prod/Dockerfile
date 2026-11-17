@@ -104,8 +104,9 @@ VOLUME [ \
 USER root
 COPY deploy/prod/main-entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY deploy/prod/ext-replay.sh /usr/local/bin/ext-replay.sh
+COPY deploy/prod/ext-reload.sh /usr/local/bin/ext-reload.sh
 COPY deploy/prod/gunicorn.conf.py /etc/gunicorn.conf.py
-RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/ext-replay.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/ext-replay.sh /usr/local/bin/ext-reload.sh
 
 USER frappe
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

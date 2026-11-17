@@ -280,9 +280,9 @@ gunstore.ExtensionsPage = class ExtensionsPage {
 		const rp = d.restart && d.restart.pending;
 		const banner = xtRestartBanner(rp, d.extensions);
 		if (banner) {
-			const text = banner === 'install' ? __('The store is about to restart to load {0} — the POS pauses for a few seconds.', [e(rp.app)])
-				: banner === 'upgrade' ? __('The store is about to restart to upgrade {0} — the POS is unavailable for about 1–3 minutes.', [e(rp.app)])
-				: __('Upgrading {0}: the database is being updated — the POS may be unavailable for a minute or two.', [e(rp.app)]);
+			const text = banner === 'install' ? __('The POS is loading {0} — it keeps working meanwhile.', [e(rp.app)])
+				: banner === 'upgrade' ? __('The POS is loading the new version of {0} — it keeps working meanwhile.', [e(rp.app)])
+				: __('Upgrading {0}: the database is being updated — the POS keeps working meanwhile.', [e(rp.app)]);
 			parts.push(`<span class="xt-restart">${text}</span>`);
 		}
 		this.$root.find('.xt-status').html(
@@ -329,13 +329,13 @@ gunstore.ExtensionsPage = class ExtensionsPage {
 		switch (xtBusyKind(row, this.data.restart && this.data.restart.pending)) {
 			case 'installing': return { pill: __('Installing…'), text: __('Installing on this site — about a minute. You can leave this page.') };
 			// the Backup row under the line shows the message's path
-			case 'staged': return { pill: __('Waiting for restart…'), text: row.job_message ? this.sentence(xtSplitBackup(row.job_message).reason) : __('Waiting for the store to restart.') };
-			case 'staged-upgrade': return { pill: __('Upgrade waiting for restart…'), text: version
-				? __('Version {0} is on the server. The store restarts shortly to finish the upgrade — the POS is unavailable for about 1–3 minutes.', [version])
-				: __('The new version is on the server. The store restarts shortly to finish the upgrade — the POS is unavailable for about 1–3 minutes.') };
+			case 'staged': return { pill: __('Loading…'), text: row.job_message ? this.sentence(xtSplitBackup(row.job_message).reason) : __('Waiting for the POS to load it.') };
+			case 'staged-upgrade': return { pill: __('Loading upgrade…'), text: version
+				? __('Version {0} is on the server. The POS loads it shortly and keeps working meanwhile.', [version])
+				: __('The new version is on the server. The POS loads it shortly and keeps working meanwhile.') };
 			case 'upgrading': return { pill: __('Upgrading…'), text: version
-				? __('Updating the database for version {0}. The POS may be unavailable for a minute or two. You can leave this page.', [version])
-				: __('Updating the database. The POS may be unavailable for a minute or two. You can leave this page.') };
+				? __('Updating the database for version {0}. You can leave this page.', [version])
+				: __('Updating the database. You can leave this page.') };
 			case 'uninstalling': return { pill: __('Uninstalling…'), text: __('Backing up, then removing from this site. You can leave this page.') };
 			default: return { pill: `${e(row.job_state)}…`, text: e(row.job_message || '') };
 		}
@@ -747,8 +747,8 @@ gunstore.ExtensionsPage = class ExtensionsPage {
 					${up ? this.notesFold(up) : ''}
 					${blocked ? '' : `<div class="xt-kv">
 						<span class="k">${__('What happens')}</span><span class="v">${mode === 'upgrade'
-							? __('A database backup is taken, version {0} replaces {1} on the server, the store restarts and the database is updated. The POS is unavailable for about 1–3 minutes. Its data and its on/off switch are kept.', [e(up.to), e(up.from)])
-							: __('The code is copied to the server, the store restarts once (the POS pauses for a few seconds), then the extension is installed and turned on. You can turn it off or uninstall it from the Installed tab.')}</span>
+							? __('A database backup is taken, version {0} replaces {1} on the server, the POS loads it and the database is updated. The POS keeps working. Its data and its on/off switch are kept.', [e(up.to), e(up.from)])
+							: __('The code is copied to the server and loaded by the POS, then the extension is installed and turned on. You can turn it off or uninstall it from the Installed tab.')}</span>
 					</div>`}
 					<div class="xt-confirm ${blocked ? 'blocked' : ''}">
 						<label for="xt-confirm-id">${__('Type {0} to confirm', [`<span class="xt-mono">${e(r.app_id || '')}</span>`])}</label>
@@ -805,7 +805,7 @@ gunstore.ExtensionsPage = class ExtensionsPage {
 		const d = new frappe.ui.Dialog({
 			title: __('Upgrade {0} to {1}?', [e(r.title || r.app_id), e(up.to)]),
 			fields: [{ fieldtype: 'HTML', options: `
-				<div class="xt-notice warn"><span class="xt-ni">!</span><div><b>${__('The POS is unavailable for about 1–3 minutes while it upgrades.')}</b> ${__('Pick a moment with no sale in progress — outside business hours is best.')}</div></div>
+				<div class="xt-notice warn"><span class="xt-ni">!</span><div><b>${__('The POS keeps working while it upgrades.')}</b> ${__('Pick a moment with no sale in progress — outside business hours is best.')}</div></div>
 				<div class="xt-kv">
 					<span class="k">${__('First')}</span><span class="v">${__('A database backup is taken automatically.')}</span>
 					<span class="k">${__('Then')}</span><span class="v">${__('Version {0} replaces {1}, the store restarts and the database is updated.', [e(up.to), e(up.from)])}</span>
@@ -827,8 +827,8 @@ gunstore.ExtensionsPage = class ExtensionsPage {
 		return frappe.xcall('ffl_core.api.extensions.install_upload', { sha256: r.sha256, confirm_id: confirmId })
 			.then((res) => {
 				frappe.show_alert({ message: res && res.mode === 'upgrade'
-					? __('Upgrading {0} — the store restarts shortly; the POS is unavailable for about 1–3 minutes.', [title])
-					: __('Installing {0} — the store will restart shortly.', [title]), indicator: 'blue' });
+					? __('Upgrading {0} — the POS keeps working meanwhile.', [title])
+					: __('Installing {0}.', [title]), indicator: 'blue' });
 				if (!keepUpload) {                             // an Update from a card leaves the Upload tab as it was
 					this.upload = null;
 					this.tab = 'installed';
