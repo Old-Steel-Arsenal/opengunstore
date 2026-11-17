@@ -227,6 +227,7 @@ gunstore.extensions.register('acme_layaway', {
   }],
   serialActions:   [{ id, label, onClick({ frm }) }],
   customerActions: [{ id, label, onClick({ frm }) }],
+  pendingOrderActions: [{ id, label, stages: ['to_place'], condition: ({ row }) => row.source === 'woo', onClick({ row, reload }) }],
   settingsLinks:   [{ label: __('Layaway'), doctype: 'Acme Layaway Settings' }],
   onDeskReady() { /* once per page load */ },
 });
@@ -237,6 +238,7 @@ gunstore.extensions.register('acme_layaway', {
 | `posActions` | Sale-screen buttons, after the core's | `condition(ctx)` synchronous and O(1); `ctx` is a read-only snapshot (invoice, customer, selected serial, POS Profile). |
 | `serialActions` | Serial No form, **Extensions** group | `onClick({ frm })` |
 | `customerActions` | Customer form, **Extensions** group | `onClick({ frm })` |
+| `pendingOrderActions` | Pending Order cards, first among the card's buttons | `row` is the queue row as the server sent it (`source` is `sales_invoice`, `woo` or `gunbroker`; `stage` is the card's section). `condition({ row })` synchronous and O(1). `stages` lists the sections where the button is the card's primary one. Call `reload()` after changing the order. |
 | `settingsLinks` | **Settings** on the extension's card | One per Settings Single. |
 | `onDeskReady()` | — | Once after the desk is ready, per effective extension. A throw is logged to the console and does not stop the others. |
 

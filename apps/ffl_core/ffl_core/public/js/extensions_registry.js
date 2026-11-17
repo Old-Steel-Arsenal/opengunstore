@@ -6,6 +6,7 @@
 //     posActions:      [{ id, label, icon, condition(ctx), onClick(ctx) }],
 //     serialActions:   [{ id, label, onClick({ frm }) }],   // Serial No form
 //     customerActions: [{ id, label, onClick({ frm }) }],   // Customer form
+//     pendingOrderActions: [{ id, label, stages, condition({ row }), onClick({ row, reload }) }],
 //     settingsLinks:   [{ label, doctype }],
 //     onDeskReady()    {},                                   // once, re-entrant
 //   });

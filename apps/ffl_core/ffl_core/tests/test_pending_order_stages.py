@@ -56,6 +56,11 @@ class Stages(unittest.TestCase):
 			distributor_orders=[{"status": "Draft", "order_type": "Procure To Store"}]))
 		self.assertEqual(queue_stage(row), "to_place")
 
+	def test_a_web_row_with_an_unplaced_leg_is_to_place(self):
+		"""A web row carries no ``legs``; its builder stamps ``to_place`` instead."""
+		row = _row(source="woo", legs=None, to_place=True, needs_disposition=True)
+		self.assertEqual(queue_stage(row), "to_place")
+
 	def test_unpaid_dropship_legs_are_blocked_not_to_place(self):
 		"""Place order refuses an unpaid DROP-SHIP leg (business or pickup alike),
 		so the row must say why instead of sitting in To place with no button."""

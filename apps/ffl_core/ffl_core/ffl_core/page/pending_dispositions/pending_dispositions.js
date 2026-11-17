@@ -170,6 +170,12 @@ const PD_PRIMARY = {
 	disposing: '.btn-dispose',
 };
 
+// An extension's card button (gunstore.extensions pendingOrderActions) is the
+// section's next action when its `stages` names the row's section.
+function pdExtPrimary(action, row) {
+	return Array.isArray(action && action.stages) && action.stages.includes(row && row.stage);
+}
+
 function pdMatchesFilter(row, filter) {
 	if (!filter || filter === 'all') return true;
 	if (filter === 'woo') return row.source === 'woo';
@@ -466,7 +472,9 @@ class PendingDispositionsApp {
 		// Selectors in PD_PRIMARY are in preference order (not DOM order), the
 		// trouble-leg buttons live in the legs strip rather than .actions, and a
 		// disabled button is never the next action.
-		const sels = (PD_PRIMARY[row.stage] || '').split(',').map((x) => x.trim()).filter(Boolean);
+		// An extension's button that names this section comes after the core's own.
+		const sels = (PD_PRIMARY[row.stage] || '').split(',').map((x) => x.trim()).filter(Boolean)
+			.concat('.btn-ext-primary');
 		for (const sel of sels) {
 			const $btn = $card.find(sel).filter((i, el) => !el.disabled).first();
 			if ($btn.length) { $btn.removeClass('btn-default').addClass('btn-primary'); return; }
@@ -496,7 +504,12 @@ class PendingDispositionsApp {
 			// counter pickup, or a GunBroker order that is all antiques) has no
 			// license to badge or expire.
 			const isDirect = (isCounter && !row.destination_ffl) || row.ships_direct === true;
-			const fflBadge = isDirect ? ''
+			// A web order with no transfer FFL: accessories to the buyer have none to
+			// badge; a gun still waiting on one says so.
+			const webNoFfl = isWeb && !row.destination_ffl;
+			const webOwesFfl = webNoFfl && ((row.pending_serials || []).length > 0 || row.awaiting_serial);
+			const fflBadge = (isDirect || (webNoFfl && !webOwesFfl)) ? ''
+				: webOwesFfl ? `<span class="badge warn">${__('No FFL yet')}</span>`
 				: (row.source === 'gunbroker' && !row.destination_ffl)
 					? `<span class="badge warn">${__('No FFL yet')}</span>`
 				: (row.ffl_expired
@@ -726,6 +739,7 @@ class PendingDispositionsApp {
 			const legsStrip = legPills.length
 				? `<div class="serials" style="margin-top:4px">${legPills.join('')}</div>` : '';
 			const canRelease = !!(legs && legs.releasable);
+			const extActions = this._extActions(row);
 			// Reference link: a Sales Invoice or the Woo Online Order.
 			const ref = isWeb
 				? `<a href="/app/woo-online-order/${encodeURIComponent(row.woo_online_order)}">${__('Order #{0}', [frappe.utils.escape_html(row.woo_order_id)])}</a>`
@@ -757,6 +771,7 @@ class PendingDispositionsApp {
 					</div>
 					<div class="actions">
 						${canRelease ? `<button class="btn btn-primary btn-sm btn-release">${__('Place order')}</button>` : ''}
+						${extActions.map((a, i) => `<button class="btn btn-default btn-sm btn-ext-action ${pdExtPrimary(a, row) ? 'btn-ext-primary' : ''}" data-ext="${i}">${frappe.utils.escape_html(a.label || a.id)}</button>`).join('')}
 						${(can.recordPayment && !paid) ? `<button class="btn btn-default btn-sm btn-pay">${__('Record Payment')}</button>` : ''}
 						${can.markPaymentReceived && row.channel_stage === 'awaiting_payment' ? `<button class="btn btn-primary btn-sm btn-gb-paid">${__('Record Payment')}</button>` : ''}
 						${showDispose ? `<button class="btn btn-primary btn-sm btn-dispose" ${disposeDisabled ? 'disabled' : ''}>${__('Dispose')}</button>` : ''}
@@ -778,6 +793,8 @@ class PendingDispositionsApp {
 			$card.find('.btn-resend-agreement').on('click', (e) => this._resendAgreement(row,
 				agreementRows[$(e.currentTarget).data('i')]));
 			$card.find('.btn-release').on('click', () => this._releaseLegs(row));
+			$card.find('.btn-ext-action').on('click', (e) => this._runExtAction(
+				extActions[$(e.currentTarget).data('ext')], row));
 			$card.find('.pill.leg-do').on('click', (e) => frappe.set_route(
 				'Form', 'Distributor Order', $(e.currentTarget).data('do')));
 			$card.find('.btn-dispose').on('click', () => this._startDispose(row));
@@ -1043,6 +1060,26 @@ class PendingDispositionsApp {
 				d.show();
 			},
 		});
+	}
+
+	// Card buttons the switched-on extensions registered (pendingOrderActions).
+	// The extension decides which rows a button is for; the core decides where
+	// it renders and reloads the queue when the extension asks.
+	_extActions(row) {
+		const reg = window.gunstore && window.gunstore.extensions;
+		if (!reg || !reg.actions) return [];
+		return reg.actions('pendingOrderActions', frappe.boot)
+			.filter((a) => reg.applies(a, { row: Object.assign({}, row) }));
+	}
+
+	_runExtAction(action, row) {
+		const reg = window.gunstore.extensions;
+		const fail = (e) => (reg.reportFailure ? reg.reportFailure(action, e) : console.error(e));
+		try {
+			Promise.resolve(action.onClick({ row: Object.assign({}, row), reload: () => this._load() })).catch(fail);
+		} catch (e) {
+			fail(e);
+		}
 	}
 
 	// What this row's source may DO (CAPABILITIES keyed off row.source), in
@@ -1896,6 +1933,6 @@ class PendingDispositionsApp {
 // Node unit tests import the pure kernel (no DOM / Frappe). Harmless in the
 // browser, where `module` is undefined.
 if (typeof module !== 'undefined' && module.exports) {
-	module.exports = { PD_STAGE_ORDER, PD_PRIMARY, pdMatchesFilter, pdMatchesQuery, pdSections,
+	module.exports = { PD_STAGE_ORDER, PD_PRIMARY, pdExtPrimary, pdMatchesFilter, pdMatchesQuery, pdSections,
 		pdLocationFields, pdCollectLocations, pdEscape, pdAgreementKind, pdAgreementNames };
 }
