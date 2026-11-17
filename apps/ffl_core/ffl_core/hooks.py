@@ -471,6 +471,8 @@ doc_events = {
 			"ffl_core.compliance.trade_in_settlement.keep_merged_change",
 			# A gunsmith deposit line only on a register invoice (gunsmith.py).
 			"ffl_core.gunsmith.guard_deposit_lines",
+			# A pre-order payment line likewise (preorder.py).
+			"ffl_core.preorder.guard_payment_lines",
 			# A line ERPNext priced otherwise than its member price keeps no benefit record (membership_benefits.py).
 			"ffl_core.membership_benefits.settle_member_lines",
 			# Locked lines: refuse what ERPNext's own validate did to them after the
@@ -550,7 +552,13 @@ doc_events = {
 			"ffl_core.compliance.customer_tax_exempt.enforce_customer_tax_exemption",
 		],
 		"on_submit": "ffl_core.listing.status_sync.on_sales_order_submit",
-		"on_cancel": "ffl_core.listing.status_sync.on_sales_order_cancel",
+		# A pre-order holding money is cancelled with its refunds only (preorder.py).
+		"before_cancel": "ffl_core.preorder.before_order_cancel",
+		"on_cancel": [
+			"ffl_core.listing.status_sync.on_sales_order_cancel",
+			# A cancelled pre-order's quantities go back on its items (preorder.py).
+			"ffl_core.preorder.on_order_cancel",
+		],
 	},
 	"Delivery Note": {
 		"validate": [
@@ -664,6 +672,8 @@ doc_events = {
 			"ffl_core.api.counter_pickup.assert_ticket_free",
 			# A gunsmith deposit line comes only from its work order, within what it holds (gunsmith.py).
 			"ffl_core.gunsmith.guard_deposit_lines",
+			# A pre-order payment line comes only from its pre-order, within what it still owes (preorder.py).
+			"ffl_core.preorder.guard_payment_lines",
 			# A line ERPNext priced otherwise than its member price keeps no benefit record (membership_benefits.py).
 			"ffl_core.membership_benefits.settle_member_lines",
 			# Locked lines: refuse what ERPNext's own validate did to them after the
@@ -726,6 +736,8 @@ doc_events = {
 			"ffl_core.compliance.trade_in_settlement.void_payout_on_cancel",
 			# A gunsmith deposit already used, or a pick-up whose gun left the bound book, stays (gunsmith.py).
 			"ffl_core.gunsmith.before_invoice_cancel",
+			# A pre-order payment already refunded stays (preorder.py).
+			"ffl_core.preorder.before_invoice_cancel",
 		],
 		"on_cancel": [
 			"ffl_core.listing.status_sync.on_sales_invoice_cancel",
@@ -1040,6 +1052,8 @@ after_migrate = [
 	# Gunsmith work orders: labor + deposit items, invoice links, the intake agreement (after
 	# tax / customer_deposits / agreements, which it builds on).
 	"ffl_core.setup.gunsmith.ensure",
+	# Pre-orders: item / order fields, invoice links, Pre-order Deposits, the PREORDER-DEPOSIT item (after gunsmith).
+	"ffl_core.setup.preorder.ensure",
 	"ffl_core.setup.buyer_type.ensure",
 	"ffl_core.setup.shipping_charge.ensure",
 	# Pin "Allow Negative rates for Items" on so trade-in credit
