@@ -68,3 +68,24 @@ def add(contact: str, kind: str, *, sku: str = "", web_product_id: str = "", mod
 		"item": item or item_for(sku, web_product_id), "status": status, "requested_at": when,
 		"notified_at": notified_at, **{k: v or None for k, v in fields.items()}})
 	return doc.insert(ignore_permissions=True).name, True
+
+
+LIST_FIELDS = ("name", "contact", "kind", "status", "label", "item", "sku", "web_product_id", "model_key", "url",
+	"requested_at", "notified_at")
+
+
+def find(*, status: str | None = OPEN, kind: str | None = None, contact: str | None = None, item: str | None = None,
+		limit: int = 50, start: int = 0) -> list[dict]:
+	"""Requests, newest first, as the caller may read them (``frappe.get_list``). *status* None is every status."""
+	filters = {k: v for k, v in (("status", status), ("kind", kind), ("contact", contact), ("item", item)) if v}
+	return frappe.get_list(REQUEST, filters=filters, fields=list(LIST_FIELDS),
+		order_by="requested_at desc, creation desc", limit_start=start, limit_page_length=limit)
+
+
+def close(name: str) -> bool:
+	"""Stop waiting on an Open request: it becomes Closed and is never notified. True when it was Open; a
+	request already Notified or Closed is left as it is (False)."""
+	if frappe.db.get_value(REQUEST, name, "status", for_update=True) != OPEN:
+		return False
+	frappe.db.set_value(REQUEST, name, "status", CLOSED)
+	return True

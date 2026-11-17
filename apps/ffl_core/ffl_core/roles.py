@@ -59,6 +59,14 @@ PRICE_APPROVER_ROLES = ("Sales Manager", "System Manager")
 # (marketing/contacts.set_status, by hand and with a reason).
 MARKETING_MANAGER_ROLES = ("Sales Manager", "System Manager")
 
+# Marketing staff: Desk access to the marketing records only (Marketing Contact / Event / Request, read;
+# no sale, customer, lead, deal, item or A&D record). Its DocPerms are in those DocTypes' JSON.
+MARKETING_ROLE = "Marketing User"
+# Who may tag a marketing contact, record one's consent to marketing email, unsubscribe one (honouring an
+# opt-out moves the status forward) and close a reminder request (api/marketing.py). Resubscribing stays
+# MARKETING_MANAGER_ROLES.
+MARKETING_ROLES = (MARKETING_ROLE,) + MARKETING_MANAGER_ROLES
+
 # Frappe CRM's own roles (its pages are granted to Sales User / Sales Manager): the CRM endpoints (api/crm.py).
 CRM_ROLES = ("Sales User", "Sales Manager", "System Manager")
 
