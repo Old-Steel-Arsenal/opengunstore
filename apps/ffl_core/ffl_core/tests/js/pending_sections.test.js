@@ -4,7 +4,7 @@
 // source, searches, and sorts each section oldest-first. No DOM / Frappe.
 const test = require('node:test');
 const assert = require('node:assert');
-const { PD_STAGE_ORDER, pdExtPrimary, pdMatchesFilter, pdMatchesQuery, pdSections, pdLocationFields, pdCollectLocations, pdEscape } =
+const { PD_STAGE_ORDER, pdExtPrimary, pdMatchesFilter, pdMatchesQuery, pdSections, pdLocationFields, pdCollectLocations, pdEscape, pdDraftLegs, pdCanPlace } =
 	require('../../ffl_core/page/pending_dispositions/pending_dispositions.js');
 
 const rows = [
@@ -122,4 +122,26 @@ test("an extension's card button is the next action only in the sections it name
 	assert.strictEqual(pdExtPrimary(action, { stage: 'to_place' }), true);
 	assert.strictEqual(pdExtPrimary(action, { stage: 'ready_ship' }), false);
 	assert.strictEqual(pdExtPrimary({ id: 'y' }, { stage: 'to_place' }), false);
+});
+
+test('Place order: a web row in To place with a Draft distributor order gets the button', () => {
+	const web = { source: 'woo', stage: 'to_place', woo_online_order: 'WOO-1',
+		distributor_orders: [{ name: 'DO-1', status: 'Draft' }, { name: 'DO-2', status: 'Queued' },
+			{ name: 'DO-3', status: 'Draft' }] };
+	assert.strictEqual(pdCanPlace(web), true);
+	assert.deepStrictEqual(pdDraftLegs(web).map((d) => d.name), ['DO-1', 'DO-3']);
+	// Nothing in Draft (an unsourced line only), another section, or no orders at all: no button.
+	assert.strictEqual(pdCanPlace({ ...web, distributor_orders: [{ name: 'DO-2', status: 'Queued' }] }), false);
+	assert.strictEqual(pdCanPlace({ ...web, stage: 'blocked' }), false);
+	assert.strictEqual(pdCanPlace({ source: 'woo', stage: 'to_place' }), false);
+});
+
+test('Place order: a counter row follows the server verdict; GunBroker never gets it', () => {
+	const legs = { releasable: true, distributor_orders: [{ name: 'DO-9', status: 'Draft' }] };
+	assert.strictEqual(pdCanPlace({ source: 'sales_invoice', stage: 'to_place', legs }), true);
+	assert.strictEqual(pdCanPlace({ stage: 'blocked', legs }), true);
+	assert.deepStrictEqual(pdDraftLegs({ source: 'sales_invoice', legs }).map((d) => d.name), ['DO-9']);
+	assert.strictEqual(pdCanPlace({ source: 'sales_invoice', legs: { ...legs, releasable: false } }), false);
+	assert.strictEqual(pdCanPlace({ source: 'gunbroker', stage: 'to_place', legs,
+		distributor_orders: legs.distributor_orders }), false);
 });
