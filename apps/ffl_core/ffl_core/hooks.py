@@ -313,8 +313,11 @@ doc_events = {
 		"before_rename": "ffl_core.crm.product.before_rename",
 		"on_trash": "ffl_core.crm.product.on_trash",
 	},
-	# A lead off the Other mail status is an ordinary lead again (ffl_core.crm.mail).
-	"CRM Lead": {"validate": "ffl_core.crm.mail.other_mail_on_validate"},
+	# A lead off the Other mail status is an ordinary lead again (ffl_core.crm.mail). Converted or
+	# moved to Other mail, its assignments come off My tasks (ffl_core.crm.assignments; on_change also
+	# follows CRM's db_set conversion).
+	"CRM Lead": {"validate": "ffl_core.crm.mail.other_mail_on_validate",
+		"on_change": "ffl_core.crm.assignments.lead_changed"},
 	"CRM Deal": {
 		# The quote's lines priced; the value pinned to the deal's invoices (ffl_core.crm.orders).
 		# A deal with no title gets the person's name (ffl_core.crm.deals).
@@ -326,6 +329,9 @@ doc_events = {
 		# A gun held for the deal (crm/holds.py): Won / Lost, a gun off its lines, deleted or renamed
 		# ends or follows its holds.
 		"on_update": "ffl_core.crm.holds.on_deal_update",
+		# Won / Lost closes the deal's assignments, reopened back to an open status reopens them
+		# (ffl_core.crm.assignments).
+		"on_change": "ffl_core.crm.assignments.deal_changed",
 		"on_trash": "ffl_core.crm.holds.on_deal_trash",
 		"after_rename": "ffl_core.crm.holds.on_deal_rename",
 	},

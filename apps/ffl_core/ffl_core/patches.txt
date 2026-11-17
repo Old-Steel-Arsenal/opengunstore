@@ -101,3 +101,5 @@ ffl_core.patches.add_marketing_settings_workspace_entry
 ffl_core.patches.name_crm_deals
 # Website sell-your-gun requests become CRM deals of their own; inquiry notes keep their event id in a field, not the title.
 ffl_core.patches.crm_sell_request_deals
+# Frappe CRM: assignments still Open on won or lost deals and on converted or Other mail leads are closed (off My tasks).
+ffl_core.patches.close_finished_crm_assignments

@@ -15361,7 +15361,7 @@
           "ffl_core"
         ],
         "summary": "Say you saw these assignments. Each one is yours or the call is refused; one that is closed,",
-        "description": "cancelled, gone or never asked is skipped. The first time, the time is stored on the ToDo and\nthe document gets a timeline comment; after that it only dismisses today's reminder.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/assignment_notice.py:190`",
+        "description": "cancelled, gone or never asked is skipped. The first time, the time is stored on the ToDo and\nthe document gets a timeline comment; after that it only dismisses today's reminder.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/assignment_notice.py:196`",
         "operationId": "ffl_core.assignment_notice.acknowledge",
         "responses": {
           "200": {
@@ -15409,7 +15409,7 @@
           "ffl_core"
         ],
         "summary": "Close one of your tasks. Only the person it is assigned to can; one already closed or",
-        "description": "cancelled is left as it is. Closing goes through Frappe's own assignment close, so the\nassignment comes off the document, and the document gets a timeline comment.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/assignment_notice.py:259`",
+        "description": "cancelled is left as it is. Closing goes through Frappe's own assignment close, so the\nassignment comes off the document, and the document gets a timeline comment.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/assignment_notice.py:265`",
         "operationId": "ffl_core.assignment_notice.done",
         "responses": {
           "200": {
@@ -15457,7 +15457,7 @@
           "ffl_core"
         ],
         "summary": "Your open tasks: every Open ToDo assigned to you, including system alerts that never pop",
-        "description": "up; oldest first (at most 200).\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/assignment_notice.py:228`",
+        "description": "up; oldest first (at most 200).\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/assignment_notice.py:234`",
         "operationId": "ffl_core.assignment_notice.my_tasks",
         "responses": {
           "200": {
@@ -15487,7 +15487,7 @@
           "ffl_core"
         ],
         "summary": "Your assignments waiting for you to say you saw them, and the ones you saw but have not",
-        "description": "closed that are due today's reminder; oldest first (at most 50).\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/assignment_notice.py:176`",
+        "description": "closed that are due today's reminder; oldest first (at most 50).\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/assignment_notice.py:182`",
         "operationId": "ffl_core.assignment_notice.pending",
         "responses": {
           "200": {
@@ -15517,7 +15517,7 @@
           "ffl_core"
         ],
         "summary": "How many open tasks you have (the number next to My tasks).",
-        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/assignment_notice.py:249`",
+        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/assignment_notice.py:255`",
         "operationId": "ffl_core.assignment_notice.task_count",
         "responses": {
           "200": {
