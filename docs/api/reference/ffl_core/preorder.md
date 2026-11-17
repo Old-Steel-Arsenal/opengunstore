@@ -22,7 +22,7 @@ back on the shelf), or a first one when none has arrived for it.
 
 **Returns:** {"serial": the gun now put by, "was": the one it had or None}.
 
-<sub>`apps/ffl_core/ffl_core/preorder.py:601`</sub>
+<sub>`apps/ffl_core/ffl_core/preorder.py:602`</sub>
 
 ## `cancel_preorder`
 
@@ -42,7 +42,7 @@ way it was paid. The register checks the returns out.
 
 **Returns:** {"cancelled": True, "refunds": [{"pos_invoice", "amount"}]}.
 
-<sub>`apps/ffl_core/ffl_core/preorder.py:749`</sub>
+<sub>`apps/ffl_core/ffl_core/preorder.py:750`</sub>
 
 ## `create_preorder`
 
@@ -61,7 +61,7 @@ from the items' pre-order counts. No invoice and no money yet — payments go th
 
 **Returns:** {"sales_order", "customer", "grand_total": what the order comes to with tax, "eta"}.
 
-<sub>`apps/ffl_core/ffl_core/preorder.py:281`</sub>
+<sub>`apps/ffl_core/ffl_core/preorder.py:282`</sub>
 
 ## `list_preorders`
 
@@ -80,7 +80,7 @@ pay back (``blocked``).
 
 **Returns:** [{"source": "preorder", "sales_order", "customer", "customer_name", "posting_date", "grand_total", "held", "outstanding_amount", "paid", "cancelled", "handed_over", "ready", "eta", "items": [{"row", "item_code", "item_name", "qty", "serial", "reserved", "kind", "ready"}], "drafts": {"payment", "pickup", "refunds": [...]}, "stage", "blocked_reason", "age_days", "overdue"}].
 
-<sub>`apps/ffl_core/ffl_core/preorder.py:821`</sub>
+<sub>`apps/ffl_core/ffl_core/preorder.py:822`</sub>
 
 ## `open_payment`
 
@@ -99,7 +99,7 @@ tender). One open payment draft per order: a second call returns the one already
 
 **Returns:** {"pos_invoice", "already": bool, "amount": the draft's payment amount, "notice": for a draft already open at another amount, the sentence that says so (shown before it opens), else None}.
 
-<sub>`apps/ffl_core/ffl_core/preorder.py:378`</sub>
+<sub>`apps/ffl_core/ffl_core/preorder.py:379`</sub>
 
 ## `open_pickup`
 
@@ -118,7 +118,7 @@ register takes the rest and the gun's 4473; the ticket's submit hands the order 
 
 **Returns:** {"pos_invoice", "already": bool (the ticket was open already)}.
 
-<sub>`apps/ffl_core/ffl_core/preorder.py:647`</sub>
+<sub>`apps/ffl_core/ffl_core/preorder.py:648`</sub>
 
 ## `preorder_options`
 
@@ -137,7 +137,7 @@ on our shelves.
 
 **Returns:** {"available": slots left, "eta": the expected date or None, "in_stock": units on our shelves, "can_preorder": bool}.
 
-<sub>`apps/ffl_core/ffl_core/preorder.py:254`</sub>
+<sub>`apps/ffl_core/ffl_core/preorder.py:255`</sub>
 
 ## `refund_preorder`
 
@@ -155,7 +155,7 @@ for less than was paid — the open ones, or new ones for every payment not retu
 
 **Returns:** {"refunds": [{"pos_invoice", "amount"}]}.
 
-<sub>`apps/ffl_core/ffl_core/preorder.py:781`</sub>
+<sub>`apps/ffl_core/ffl_core/preorder.py:782`</sub>
 
 ## `serial_choices`
 
@@ -173,4 +173,4 @@ and every other of the same item on our shelf that nothing holds.
 
 **Returns:** {"lines": [{"row", "item_code", "item_name", "serial", "choices": [serial, ...]}]}.
 
-<sub>`apps/ffl_core/ffl_core/preorder.py:571`</sub>
+<sub>`apps/ffl_core/ffl_core/preorder.py:572`</sub>
