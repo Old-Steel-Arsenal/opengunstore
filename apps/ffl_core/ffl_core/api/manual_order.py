@@ -807,6 +807,10 @@ def blocked_reason(row: dict) -> str:
 			"hold": "{0} hold {1}", "error": "{0} placement failed {1}"}.get(
 			t.get("kind"), "{0} {1}")
 		return _(label).format(t.get("distributor", ""), t.get("detail", ""))
+	if row.get("failed_distributor_orders"):
+		# A web row carries no ``legs``; its builder names the failed orders.
+		return _("Distributor order failed — check {0} with the distributor").format(
+			", ".join(row["failed_distributor_orders"]))
 	if row.get("serial_errors"):
 		return _("Serial rejected")
 	# Only a KNOWN-expired licence blocks. A web order has no resolved ATF FFL

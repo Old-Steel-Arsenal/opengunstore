@@ -312,6 +312,19 @@ class TestPendingWebOrderDistributorLegs(FrappeTestCase):
 			rows = self._dropship_rows(do_status, dropship_status=dropship_status)
 			self.assertEqual([r["stage"] for r in rows], ["to_place"], dropship_status)
 
+	def test_a_failed_placement_needs_attention_not_another_order(self):
+		# It may be live at the distributor.
+		rows = self._dropship_rows("Error", dropship_status="Error")
+		self.assertEqual([(r["stage"], r["to_place"]) for r in rows], [("blocked", False)])
+		self.assertIn("DO-1", rows[0]["blocked_reason"])
+
+	def test_only_an_order_with_no_gun_to_transfer_reads_as_shipping_to_the_buyer(self):
+		accessory = self._dropship_rows("Draft")[0]
+		self.assertTrue(accessory["has_ship_address"])
+		gun = self._rows([_srow(confirmed_serial="SN-1")], [])[0]
+		self.assertFalse(gun["has_ship_address"])
+		self.assertIsNone(gun["ship_to_preview"])
+
 	def test_a_store_shipped_order_is_not_waiting_on_a_distributor(self):
 		# Every web order starts at Pending Route; only a distributor line makes
 		# that work owed.

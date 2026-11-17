@@ -163,7 +163,7 @@ const PD_STAGE_ORDER = ['blocked', 'to_place', 'waiting', 'ready_ship', 'ready_p
 // card drops to secondary styling.
 const PD_PRIMARY = {
 	blocked: '.btn-fulfill-stock, .btn-resource, .btn-pay, .btn-gb-paid',
-	to_place: '.btn-release, .btn-ext-primary',
+	to_place: '.btn-release',
 	waiting: '',
 	ready_ship: '.btn-ship, .btn-mark-shipped, .btn-dispose, .btn-gb-invoice',
 	ready_pickup: '.btn-pickup, .btn-mark-shipped, .btn-dispose',
@@ -472,7 +472,9 @@ class PendingDispositionsApp {
 		// Selectors in PD_PRIMARY are in preference order (not DOM order), the
 		// trouble-leg buttons live in the legs strip rather than .actions, and a
 		// disabled button is never the next action.
-		const sels = (PD_PRIMARY[row.stage] || '').split(',').map((x) => x.trim()).filter(Boolean);
+		// An extension's button that names this section comes after the core's own.
+		const sels = (PD_PRIMARY[row.stage] || '').split(',').map((x) => x.trim()).filter(Boolean)
+			.concat('.btn-ext-primary');
 		for (const sel of sels) {
 			const $btn = $card.find(sel).filter((i, el) => !el.disabled).first();
 			if ($btn.length) { $btn.removeClass('btn-default').addClass('btn-primary'); return; }
@@ -502,8 +504,12 @@ class PendingDispositionsApp {
 			// counter pickup, or a GunBroker order that is all antiques) has no
 			// license to badge or expire.
 			const isDirect = (isCounter && !row.destination_ffl) || row.ships_direct === true;
-			// A web order with no transfer FFL (accessories to the buyer) has none either.
-			const fflBadge = (isDirect || (isWeb && !row.destination_ffl)) ? ''
+			// A web order with no transfer FFL: accessories to the buyer have none to
+			// badge; a gun still waiting on one says so.
+			const webNoFfl = isWeb && !row.destination_ffl;
+			const webOwesFfl = webNoFfl && ((row.pending_serials || []).length > 0 || row.awaiting_serial);
+			const fflBadge = (isDirect || (webNoFfl && !webOwesFfl)) ? ''
+				: webOwesFfl ? `<span class="badge warn">${__('No FFL yet')}</span>`
 				: (row.source === 'gunbroker' && !row.destination_ffl)
 					? `<span class="badge warn">${__('No FFL yet')}</span>`
 				: (row.ffl_expired
@@ -1063,14 +1069,14 @@ class PendingDispositionsApp {
 		const reg = window.gunstore && window.gunstore.extensions;
 		if (!reg || !reg.actions) return [];
 		return reg.actions('pendingOrderActions', frappe.boot)
-			.filter((a) => reg.applies(a, { row }));
+			.filter((a) => reg.applies(a, { row: Object.assign({}, row) }));
 	}
 
 	_runExtAction(action, row) {
 		const reg = window.gunstore.extensions;
 		const fail = (e) => (reg.reportFailure ? reg.reportFailure(action, e) : console.error(e));
 		try {
-			Promise.resolve(action.onClick({ row, reload: () => this._load() })).catch(fail);
+			Promise.resolve(action.onClick({ row: Object.assign({}, row), reload: () => this._load() })).catch(fail);
 		} catch (e) {
 			fail(e);
 		}

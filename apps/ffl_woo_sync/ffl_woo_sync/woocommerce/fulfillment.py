@@ -398,11 +398,15 @@ def list_pending_web_orders() -> list[dict]:
 		# sent to the house, or a distributor line no live order covers (never
 		# routed, or its order failed or was cancelled). Once everything is placed
 		# the distributor ships the parcel and a pure drop-ship order drops out again.
-		to_place = any(d.get("status") == "Draft" for d in do_map.get(o.name, [])) or (
+		legs = do_map.get(o.name, [])
+		# A placement that failed may still be live at the distributor: that is
+		# for a person to check with the house, not something to order again.
+		failed = sorted(d.get("name") for d in legs if d.get("status") == "Error")
+		to_place = not failed and (any(d.get("status") == "Draft" for d in legs) or (
 			(o.get("dropship_status") or "") in _UNSOURCED_STATUSES
-			and any((ln.get("lane") or "") in _DISTRIBUTOR_LANES for ln in (doc.lines or [])))
+			and any((ln.get("lane") or "") in _DISTRIBUTOR_LANES for ln in (doc.lines or []))))
 		if not actionable_rows and not to_store_legs and not to_store_lane \
-				and not unresolved_antiques and not to_place:
+				and not unresolved_antiques and not to_place and not failed:
 			reason = _cannot_prove_actionless(doc)
 			if not reason:
 				continue
@@ -523,11 +527,12 @@ def list_pending_web_orders() -> list[dict]:
 			"destination_ffl_name": o.ffl_business_name or o.atf_ffl_record or o.ffl_license,
 			"ffl_expiry_date": expiry,
 			"ffl_expired": expired,
-			# With no transfer FFL the parcel goes to the buyer: the card names the
-			# town, and the row sections as a shipment rather than a pickup.
-			"has_ship_address": bool(doc.get("ship_to_line1")),
+			# An order with no gun to transfer goes to the buyer: the card names the
+			# town, and the row sections as a shipment rather than a pickup. Never
+			# for a firearm still waiting on its FFL — that one ships nowhere yet.
+			"has_ship_address": not actionable_rows and bool(doc.get("ship_to_line1")),
 			"ship_to_preview": {"city": doc.get("ship_to_city") or "",
-				"state": doc.get("ship_to_state") or ""},
+				"state": doc.get("ship_to_state") or ""} if not actionable_rows else None,
 			"posting_date": o.creation,
 			"currency": o.currency,
 			"order_total": flt(o.order_total),
@@ -559,6 +564,7 @@ def list_pending_web_orders() -> list[dict]:
 			"to_store": bool(to_store_legs) or to_store_lane,
 			"arrived": to_store_ready(to_store_legs),
 			"to_place": to_place,
+			"failed_distributor_orders": failed,
 			"distributor_orders": do_map.get(o.name, []),
 		})
 		# Section / reason / age: the one rulebook in ffl_core.
