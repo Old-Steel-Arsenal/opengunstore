@@ -1114,7 +1114,8 @@ class PendingDispositionsApp {
 			`<span class="pill">${esc(String(i.qty))} × ${esc(i.item_name || i.item_code)}${i.serial ? ` · ${esc(i.serial)}` : ''}</span>`).join('');
 		const drafts = row.drafts || {};
 		const refunds = drafts.refunds || [];
-		const guns = (row.items || []).filter((i) => i.kind === 'serial');
+		// A gun put by can be swapped for another free one of the same model.
+		const guns = (row.items || []).filter((i) => i.kind === 'serial' && i.serial);
 		const open = (inv, label) => `<button class="btn btn-default btn-sm btn-preorder-open" data-inv="${esc(inv)}">${label}</button>`;
 		let actions;
 		if (row.cancelled || row.handed_over) {
@@ -1125,8 +1126,7 @@ class PendingDispositionsApp {
 				: drafts.pickup ? open(drafts.pickup, __('Open pickup at register'))
 				: row.ready ? `<button class="btn btn-default btn-sm btn-preorder-pickup">${__('Open pickup')}</button>`
 				: (row.paid ? '' : `<button class="btn btn-default btn-sm btn-preorder-pay">${__('Take payment')}</button>`))
-				+ (guns.length && !drafts.pickup ? `<button class="btn btn-default btn-sm btn-preorder-gun">${
-					guns.some((i) => i.serial) ? __('Change gun') : __('Assign gun')}</button>` : '')
+				+ (guns.length && !drafts.pickup ? `<button class="btn btn-default btn-sm btn-preorder-gun">${__('Change gun')}</button>` : '')
 				+ `<button class="btn btn-default btn-sm btn-preorder-cancel" style="color:var(--red-600); border-color:var(--red-400)">${__('Cancel & refund')}</button>`;
 		}
 		const $card = $(`
