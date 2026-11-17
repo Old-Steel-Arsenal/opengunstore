@@ -420,11 +420,27 @@ class PaidGateTest(unittest.TestCase):
 		self.assertFalse(api.leg_needs_full_payment("Procure To Store"))
 		self.assertTrue(api.leg_needs_full_payment(None))   # unknown → fail closed
 
-	def test_non_counter_source_is_always_placeable(self):
-		# A web (Woo) DO has its own paid gate at route time; this gate is a no-op.
-		self.assertIsNone(api.placement_payment_block(
-			_dict(source_doctype="Woo Online Order", source_name="WOO-1",
-				order_type="Dropship Firearm")))
+	def test_paid_web_source_is_placeable(self):
+		for woo_status in ("processing", "completed", "awaiting-stock"):
+			with mock.patch.object(api.frappe.db, "get_value", lambda *a, **k: woo_status):
+				self.assertIsNone(api.placement_payment_block(
+					_dict(source_doctype="Woo Online Order", source_name="WOO-1",
+						order_type="Dropship Firearm")))
+
+	def test_web_source_no_longer_paid_is_not_placeable(self):
+		# Refunded / cancelled in WooCommerce while the Draft waited, or the order
+		# is gone: no leg of it — not even a ship-to-store one — may be placed.
+		for woo_status in ("refunded", "cancelled", "on-hold", "pending", None):
+			for order_type in ("Dropship Firearm", "Procure To Store"):
+				with mock.patch.object(api.frappe.db, "get_value", lambda *a, **k: woo_status):
+					self.assertIn("not paid on WooCommerce", api.placement_payment_block(
+						_dict(source_doctype="Woo Online Order", source_name="WOO-1",
+							order_type=order_type)))
+
+	def test_unsourced_order_is_always_placeable(self):
+		with mock.patch.object(api.frappe.db, "get_value",
+				side_effect=AssertionError("nothing to read")):
+			self.assertIsNone(api.placement_payment_block(_dict(order_type="Stocking")))
 
 
 if __name__ == "__main__":

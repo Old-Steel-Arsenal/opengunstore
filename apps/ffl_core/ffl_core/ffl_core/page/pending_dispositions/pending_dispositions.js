@@ -207,6 +207,20 @@ function pdSections(rows, filter, query) {
 	})).filter((s) => s.rows.length);
 }
 
+// Place order: the Draft distributor orders it confirms. A counter row carries
+// them under `legs` (and the server's `releasable` verdict); a web row carries
+// them on the row and offers the button only while it sits in To place.
+function pdDraftLegs(row) {
+	const dos = (row && KIND[row.source] === 'woo') ? row.distributor_orders : ((row && row.legs) || {}).distributor_orders;
+	return (dos || []).filter((d) => d && d.status === 'Draft');
+}
+
+function pdCanPlace(row) {
+	if (!row) return false;
+	if (row.source === 'woo') return row.stage === 'to_place' && pdDraftLegs(row).length > 0;
+	return !KIND[row.source] && !!(row.legs && row.legs.releasable);
+}
+
 if (typeof frappe !== 'undefined') {
 frappe.pages['pending-dispositions'].on_page_load = function (wrapper) {
 	const page = frappe.ui.make_app_page({
@@ -738,7 +752,7 @@ class PendingDispositionsApp {
 			});
 			const legsStrip = legPills.length
 				? `<div class="serials" style="margin-top:4px">${legPills.join('')}</div>` : '';
-			const canRelease = !!(legs && legs.releasable);
+			const canRelease = pdCanPlace(row);
 			const extActions = this._extActions(row);
 			// Reference link: a Sales Invoice or the Woo Online Order.
 			const ref = isWeb
@@ -1117,8 +1131,7 @@ class PendingDispositionsApp {
 	}
 
 	_releaseLegs(row) {
-		const n = ((row.legs || {}).distributor_orders || [])
-			.filter((d) => d.status === 'Draft').length;
+		const n = pdDraftLegs(row).length;
 		const owed = flt(row.outstanding_amount) > 0
 			? ' ' + __('This order still owes {0} — the goods come to the store and the balance is collected at pickup.', [format_currency(row.outstanding_amount)])
 			: '';
@@ -1130,7 +1143,7 @@ class PendingDispositionsApp {
 	_doReleaseLegs(row) {
 		frappe.call({
 			method: 'ffl_core.api.manual_order.release_order_legs',
-			args: { sales_invoice: row.sales_invoice },
+			args: row.source === 'woo' ? { woo_online_order: row.woo_online_order } : { sales_invoice: row.sales_invoice },
 			freeze: true, freeze_message: __('Placing the distributor order(s)…'),
 			callback: (r) => {
 				const m = r.message || {};
@@ -1933,6 +1946,6 @@ class PendingDispositionsApp {
 // Node unit tests import the pure kernel (no DOM / Frappe). Harmless in the
 // browser, where `module` is undefined.
 if (typeof module !== 'undefined' && module.exports) {
-	module.exports = { PD_STAGE_ORDER, PD_PRIMARY, pdExtPrimary, pdMatchesFilter, pdMatchesQuery, pdSections,
+	module.exports = { PD_STAGE_ORDER, PD_PRIMARY, pdExtPrimary, pdMatchesFilter, pdMatchesQuery, pdSections, pdDraftLegs, pdCanPlace,
 		pdLocationFields, pdCollectLocations, pdEscape, pdAgreementKind, pdAgreementNames };
 }
