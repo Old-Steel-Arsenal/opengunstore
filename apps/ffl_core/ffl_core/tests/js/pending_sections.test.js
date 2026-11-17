@@ -4,7 +4,7 @@
 // source, searches, and sorts each section oldest-first. No DOM / Frappe.
 const test = require('node:test');
 const assert = require('node:assert');
-const { PD_STAGE_ORDER, pdExtPrimary, pdMatchesFilter, pdMatchesQuery, pdSections, pdLocationFields, pdCollectLocations, pdEscape, pdDraftLegs, pdCanPlace } =
+const { PD_STAGE_ORDER, PD_PRIMARY, pdPreorderGunAction, pdExtPrimary, pdMatchesFilter, pdMatchesQuery, pdSections, pdLocationFields, pdCollectLocations, pdEscape, pdDraftLegs, pdCanPlace } =
 	require('../../ffl_core/page/pending_dispositions/pending_dispositions.js');
 
 const rows = [
@@ -155,4 +155,23 @@ test('a pre-order is a counter order: the counter chip keeps it, its order and i
 	assert.strictEqual(pdMatchesQuery(pre, 'gen 6'), true);
 	assert.strictEqual(pdCanPlace(pre), false);
 	assert.deepStrictEqual(pdSections([pre], 'all', '').map((s) => s.stage), ['waiting']);
+});
+
+test('an arrived pre-order is ready for pickup, found by its gun, and Open pickup is the next step', () => {
+	const pre = { source: 'preorder', stage: 'ready_pickup', age_days: 3, customer_name: 'Fay', sales_order: 'SAL-ORD-10',
+		items: [{ item_code: 'G19', item_name: 'Glock 19 Gen 6', qty: 1, serial: 'ABC123', kind: 'serial' }] };
+	assert.deepStrictEqual(pdSections([pre], 'all', '').map((s) => s.stage), ['ready_pickup']);
+	assert.strictEqual(pdMatchesQuery(pre, 'abc123'), true);
+	assert.ok(PD_PRIMARY.ready_pickup.split(',').map((x) => x.trim()).includes('.btn-preorder-pickup'));
+	assert.ok(PD_PRIMARY.blocked.includes('.btn-preorder-refund'), 'money left after pickup is paid back');
+});
+
+test('a pre-order gun line without a gun can be given one by hand; with one, changed', () => {
+	const gun = (serial) => ({ item_code: 'G19', qty: 1, kind: 'serial', serial });
+	assert.strictEqual(pdPreorderGunAction({ items: [gun(null)] }), 'assign');
+	assert.strictEqual(pdPreorderGunAction({ items: [gun('A1'), gun(null)] }), 'assign');
+	assert.strictEqual(pdPreorderGunAction({ items: [gun('A1')] }), 'change');
+	assert.strictEqual(pdPreorderGunAction({ items: [{ item_code: 'OPTIC', qty: 1, kind: 'qty' }] }), null);
+	assert.strictEqual(pdPreorderGunAction({ items: [gun(null)], cancelled: true }), null);
+	assert.strictEqual(pdPreorderGunAction({ items: [gun('A1')], handed_over: true }), null);
 });

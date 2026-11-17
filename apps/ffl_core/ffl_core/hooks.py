@@ -391,6 +391,8 @@ doc_events = {
 		# Units a web order is waiting on are not the counter's to sell (a counter
 		# order that ships from the shelf; web orders' own invoices are skipped).
 		"before_submit": [
+			# Units put by for a pre-order are not the counter's to sell (preorder.py).
+			"ffl_core.preorder.refuse_reserved_units",
 			"ffl_core.compliance.web_hold.refuse_held_units",
 			# The customer must have signed what the sale's Items (or extensions) require
 			# (agreements.refuse_missing_required: sign, a paper copy, or a manager skips it for one sale).
@@ -442,6 +444,10 @@ doc_events = {
 			# A gun held for a CRM deal goes to that deal's customer only (crm/holds.py; returns,
 			# merges and web / GunBroker mirrors pass). A manager's override ends the hold first.
 			"ffl_core.crm.holds.refuse_deal_held_serials",
+			# A gun put by for a pre-order goes out on that pre-order's pickup ticket only, and a pre-order
+			# is billed only there (preorder.py).
+			"ffl_core.preorder.refuse_held_serials",
+			"ffl_core.preorder.refuse_billing_outside_handover",
 			"ffl_core.compliance.firearm.require_serial_for_firearm",
 			"ffl_core.compliance.firearm.require_4473_and_nics_for_firearm_sale",
 			"ffl_core.compliance.dealer_transfer.require_shippable_ffl_dealer",
@@ -566,6 +572,9 @@ doc_events = {
 			# Same temporary gate as the invoices: a shipment's paperwork would print a
 			# same-serial / no-serial gun's internal key (serials.refuse_tagged_serial_sale).
 			"ffl_core.serials.refuse_tagged_serial_sale",
+			# Same as the invoices: a pre-order's gun and the pre-order itself go out on its pickup ticket (preorder.py).
+			"ffl_core.preorder.refuse_held_serials",
+			"ffl_core.preorder.refuse_billing_outside_handover",
 			"ffl_core.compliance.firearm.require_serial_for_firearm",
 			"ffl_core.compliance.dealer_transfer.require_shippable_ffl_dealer",
 			"ffl_core.compliance.interstate_tax.apply_interstate_tax",
@@ -615,6 +624,9 @@ doc_events = {
 			# A return of a negative trade-in ticket: goods only, no tax refunded
 			# (compliance/trade_in_settlement), before core totals it.
 			"ffl_core.compliance.trade_in_settlement.return_goods_only",
+			# A pre-order's pickup ticket takes off what is held, up to what the ticket comes to after the tax
+			# hooks above (preorder.py). Last.
+			"ffl_core.preorder.fit_release",
 		],
 		# The register's Return button maps the ticket, then asks the server for its POS
 		# defaults (set_missing_values): a return of a negative trade-in ticket comes back
@@ -644,6 +656,10 @@ doc_events = {
 			# A gun held for a CRM deal goes to that deal's customer only (crm/holds.py; returns,
 			# merges and web / GunBroker mirrors pass). A manager's override ends the hold first.
 			"ffl_core.crm.holds.refuse_deal_held_serials",
+			# A gun put by for a pre-order goes out on that pre-order's pickup ticket only, and a pre-order
+			# is billed only there (preorder.py).
+			"ffl_core.preorder.refuse_held_serials",
+			"ffl_core.preorder.refuse_billing_outside_handover",
 			"ffl_core.compliance.firearm.require_serial_for_firearm",
 			# One gun per line — fires on EVERY validate (Draft too) so a qty>1 /
 			# multi-serial firearm line never persists to break the 4473 match
@@ -690,6 +706,10 @@ doc_events = {
 			# The whole total paid, whatever the POS Profile's partial-payment flag says. Reads the
 			# outstanding amount ERPNext's own before_submit has just set — first, before anything books.
 			"ffl_core.compliance.payment_mode.require_full_payment",
+			# A pre-order's pickup ticket hands the whole order over (preorder.py).
+			"ffl_core.preorder.require_whole_order",
+			# Units put by for a pre-order are not the counter's to sell (preorder.py).
+			"ffl_core.preorder.refuse_reserved_units",
 			# Before anything books: units a web order is waiting on are not
 			# the counter's to sell.
 			"ffl_core.compliance.web_hold.refuse_held_units",
@@ -727,6 +747,8 @@ doc_events = {
 			"ffl_core.agreements.mark_firearm_agreements_used",
 			# A gunsmith work order's deposit / pick-up invoice (gunsmith.py).
 			"ffl_core.gunsmith.on_invoice_submit",
+			# A pre-order's pickup ticket hands the order over (preorder.py).
+			"ffl_core.preorder.on_invoice_submit",
 			# A gun held for a deal, sold to its customer: the hold ends (never blocks; crm/holds.py).
 			"ffl_core.crm.holds.release_sold",
 		],
@@ -752,6 +774,8 @@ doc_events = {
 			# Each firearm sold agreements this sale used (agreements.py).
 			"ffl_core.agreements.release_firearm_agreements",
 			"ffl_core.gunsmith.on_invoice_cancel",
+			# A cancelled pickup ticket opens its pre-order again (preorder.py).
+			"ffl_core.preorder.on_invoice_cancel",
 		],
 	},
 	"Purchase Receipt": {
@@ -769,6 +793,8 @@ doc_events = {
 			"ffl_core.cash_drawer.take_over_goods_payout_on_amend",
 			# Stock in that fits a customer's want: a task for its owner, queued after the commit (crm/wants.py).
 			"ffl_core.crm.wants.on_stock_receipt",
+			# Goods a pre-order waits for: put by for it, queued after the commit (preorder.py).
+			"ffl_core.preorder.on_stock_receipt",
 		],
 		"on_cancel": [
 			# Units this receipt put in a location come out again with it.
@@ -797,7 +823,9 @@ doc_events = {
 	# Cancelling one also replays the location moves it made (a GunBroker stock issue, say).
 	"Stock Entry": {
 		# A Material Receipt that fits a customer's want gives its owner a task (crm/wants.py).
-		"on_submit": ["ffl_core.storage.stock_entry_posted", "ffl_core.crm.wants.on_stock_receipt"],
+		# Goods a pre-order waits for are put by for it, likewise after the commit (preorder.py).
+		"on_submit": ["ffl_core.storage.stock_entry_posted", "ffl_core.crm.wants.on_stock_receipt",
+			"ffl_core.preorder.on_stock_receipt"],
 		"on_cancel": [
 			"ffl_core.storage.stock_entry_posted",
 			"ffl_core.storage.stock_document_cancelled",
@@ -1098,6 +1126,10 @@ importable_doctypes = ["Number Card"]
 # Core is the first provider of its own hook: an extension turning on/off re-shapes the Gun Shop
 # sidebar (it may declare gunshop_sidebar_items). See setup/gunshop_sidebar.py.
 gunshop_extension_toggled = ["ffl_core.setup.gunshop_sidebar.on_extension_toggled"]
+
+# Units put by for pre-orders come off every channel's count like a channel's sold units
+# (reservations.committed_units; preorder.py).
+channel_committed_units = ["ffl_core.preorder.channel_committed_units"]
 
 # Integration Cleanup
 # -------------------

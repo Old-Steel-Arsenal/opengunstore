@@ -64,7 +64,9 @@ def build_rows(company: str, as_of) -> list[dict]:
 	for line in lines:
 		o = by_order.setdefault(line.sales_order, frappe._dict(collected=0.0, refunded=0.0, applied=0.0, first=None))
 		amount = flt(line.amount)
-		if cint(line.is_return):
+		if cint(line.is_return) and amount > 0:
+			o.applied -= amount   # a hand-over ticket returned: what it took off is held again
+		elif cint(line.is_return):
 			o.refunded -= amount
 		elif amount >= 0:
 			o.collected += amount

@@ -5,6 +5,9 @@
   gives back.
 * **Sales Order** — ``ffl_is_preorder``: a submitted order taken before the goods are here. Not
   copied to an amendment (an amended order took no pre-order slots).
+* **Sales Order Item** — what has arrived for the line: ``ffl_preorder_serial`` (the gun put by
+  for it) or ``ffl_preorder_reserved`` (units of anything else put by). Written by the arrival
+  allocator and the counter's gun change (``ffl_core.preorder``), never typed.
 * **Row / header links** — ``ffl_preorder`` (the Sales Order's name) on POS Invoice, POS Invoice
   Item and Sales Invoice Item (copied on return and consolidation), what the payment guard, the held
   sum and the reports read. A Data field, not a Link: a cancelled pre-order's payments are returned
@@ -33,21 +36,27 @@ LINK_FIELD = "ffl_preorder"
 FLAG_FIELD = "ffl_is_preorder"
 AVAILABLE_FIELD = "ffl_preorder_available"
 ETA_FIELD = "ffl_preorder_eta"
+SERIAL_FIELD = "ffl_preorder_serial"
+RESERVED_FIELD = "ffl_preorder_reserved"
 
 _LINK = {"fieldname": LINK_FIELD, "fieldtype": "Data", "label": "Pre-order", "read_only": 1, "no_copy": 0}
-# Hidden until hand-over of an arrived pre-order is built: while every Item's count is 0 nothing can
-# be pre-ordered, so the counter offers no Pre-order line and the feature stays off.
-_ITEM_HIDDEN = 1
+_ON_ORDER = {"read_only": 1, "no_copy": 1, "allow_on_submit": 1, "depends_on": "eval:parent.ffl_is_preorder"}
 FIELDS = {
 	"Item": [
 		{"fieldname": AVAILABLE_FIELD, "fieldtype": "Int", "label": "Pre-order Available", "default": "0",
-			"non_negative": 1, "hidden": _ITEM_HIDDEN, "insert_after": "sells_through_item"},
-		{"fieldname": ETA_FIELD, "fieldtype": "Date", "label": "Pre-order ETA", "hidden": _ITEM_HIDDEN,
+			"non_negative": 1, "hidden": 0, "insert_after": "sells_through_item"},
+		{"fieldname": ETA_FIELD, "fieldtype": "Date", "label": "Pre-order ETA", "hidden": 0,
 			"insert_after": AVAILABLE_FIELD},
 	],
 	"Sales Order": [
 		{"fieldname": FLAG_FIELD, "fieldtype": "Check", "label": "Pre-order", "read_only": 1, "no_copy": 1,
 			"in_standard_filter": 1, "insert_after": "order_type"},
+	],
+	"Sales Order Item": [
+		{"fieldname": SERIAL_FIELD, "fieldtype": "Link", "options": "Serial No", "label": "Pre-order Serial",
+			"insert_after": "item_name", **_ON_ORDER},
+		{"fieldname": RESERVED_FIELD, "fieldtype": "Float", "label": "Pre-order Reserved",
+			"insert_after": SERIAL_FIELD, **_ON_ORDER},
 	],
 	"POS Invoice": [{**_LINK, "insert_after": "ffl_work_order", "in_standard_filter": 1}],
 	# Indexed: a payment's checkout reads its order's lines with a lock, which then covers that order's
