@@ -418,6 +418,23 @@ class ShipAndCancel(_Web):
 		self.assertEqual(getdate(kinds[1][1]), getdate(nowdate()), "refunded on the day it is booked")
 		self.assertEqual(mapping.stock_for_item(self.web_gun), 1, "the gun is ordinary stock again")
 
+	def test_an_in_store_pickup_ticket_releases_what_is_held_and_its_cancel_holds_it_again(self):
+		"""The pickup ticket takes the WooCommerce tender into Woo Clearing again; what the order holds
+		moves out of Pre-order Deposits on the ticket's date, and back if the ticket is cancelled."""
+		self._slots(self.acc, 3)
+		order = self._send(self._body([(self.acc, 1, 400, 0)]))
+		self._sync(order)
+		ticket = frappe._dict(name="POS-TEST-PICKUP", woo_online_order=order, company=COMPANY,
+			posting_date=getdate(nowdate()))
+		je = preorder.release_for_pickup(ticket)
+		self.assertEqual(frappe.db.get_value("Journal Entry", je, ["woo_preorder_entry", "posting_date"]),
+			("Applied", getdate(nowdate())))
+		self.assertEqual(_gl(voucher_no=je), {self.deposits: 400.0, self.clearing: -400.0})
+		self.assertEqual(_order_gl(order), {}, "held money released; Woo Clearing counted by the ticket")
+		self.assertIsNone(preorder.release_for_pickup(ticket), "nothing held: nothing more")
+		self.assertEqual(preorder.restore_on_pickup_cancel(ticket), [je])
+		self.assertEqual(_order_gl(order), {self.clearing: 400.0, self.deposits: -400.0})
+
 	def test_a_cancel_after_it_shipped_gives_nothing_back(self):
 		self._slots(self.acc, 3)
 		body = self._body([(self.acc, 1, 1000, 0)])
