@@ -149,3 +149,54 @@ class TestGunBrokerConversation(TeamMailCase):
 			self.assertEqual(facts, {"msgid": "H1gweZbRzl", "listing": "1219067857", "sku": "AB-1::SN1"}, sep)
 		self.assertIsNone(gunbroker.conversation("someone@example.org", subject, ""))
 		self.assertIsNone(gunbroker.conversation(GB, "Welcome", ""))
+
+
+class TestMailWithoutTo(TeamMailCase):
+	"""GunBroker's member mail reaches the team mailbox with no To the POS keeps; CRM's Reply needs one."""
+
+	def setUp(self):
+		super().setUp()
+		from ffl_core.tests.test_crm_team_mail import _settings
+
+		_settings(category_rules=[{"domain": "gunbroker.com", "category": "GunBroker"}])
+
+	def _no_to(self, raw: bytes) -> bytes:
+		from email import message_from_bytes
+		from email.policy import default
+
+		msg = message_from_bytes(raw, policy=default)
+		del msg["To"]
+		return msg.as_bytes()
+
+	def test_a_received_mail_without_to_gets_its_mailbox_address(self):
+		from ffl_core.tests.test_crm_team_mail import ADDRESS
+
+		raw = self._no_to(_raw(msgid="NoToMsg01"))
+		doctype, name = _file(raw)
+		self.assertEqual(doctype, "CRM Lead", "filed as a GunBroker conversation, as with a To")
+		[kept] = _stored(raw)
+		self.assertEqual(frappe.db.get_value("Communication", kept.name, "recipients"), ADDRESS[INFO])
+		# A mail with a To keeps it.
+		raw = _raw(msgid="WithToMsg01")
+		_file(raw)
+		self.assertEqual(frappe.db.get_value("Communication", _stored(raw)[0].name, "recipients"), SALES)
+
+	def test_the_patch_fills_old_mail_once(self):
+		from ffl_core.patches import fill_received_mail_recipients
+		from ffl_core.tests.test_crm_team_mail import ADDRESS
+
+		raw = _raw(msgid="OldMsg01")
+		_file(raw)
+		received = _stored(raw)[0].name
+		sent = frappe.get_doc({"doctype": "Communication", "communication_medium": "Email", "sent_or_received": "Sent",
+			"subject": "Out", "email_account": INFO, "recipients": "x@example.org"}).insert(ignore_permissions=True).name
+		frappe.db.set_value("Communication", received, "recipients", None, update_modified=False)
+		frappe.db.set_value("Communication", sent, "recipients", "", update_modified=False)
+		modified = frappe.db.get_value("Communication", received, "modified")
+		fill_received_mail_recipients.execute()
+		self.assertEqual(frappe.db.get_value("Communication", received, ["recipients", "modified"]),
+			(ADDRESS[INFO], modified))
+		self.assertEqual(frappe.db.get_value("Communication", sent, "recipients"), "", "sent mail is left alone")
+		frappe.db.set_value("Communication", received, "recipients", SALES, update_modified=False)
+		fill_received_mail_recipients.execute()
+		self.assertEqual(frappe.db.get_value("Communication", received, "recipients"), SALES, "a mail with recipients stays")
