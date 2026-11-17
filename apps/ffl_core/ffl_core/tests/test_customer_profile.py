@@ -154,7 +154,7 @@ class ProfileSetup(FrappeTestCase):
 
 
 class RetiredStatuses(FrappeTestCase):
-	"""Inactive → Active + Disabled, Prospect → Active; the old status stays on the timeline."""
+	"""Inactive and Prospect → Active (never Disabled); the old status stays on the timeline."""
 
 	def _retired(self, status: str, reason: str | None):
 		doc = _customer()
@@ -173,7 +173,7 @@ class RetiredStatuses(FrappeTestCase):
 		self.assertEqual(profile_setup.ensure(), {"ok": 1})
 		row = frappe.db.get_value("Customer", inactive,
 			["customer_status", "status_reason", "disabled", "modified"], as_dict=True)
-		self.assertEqual((row.customer_status, row.status_reason, row.disabled), ("Active", None, 1))
+		self.assertEqual((row.customer_status, row.status_reason, row.disabled), ("Active", None, 0))
 		self.assertEqual(row.modified, inactive_mod)
 		self.assertIn("Inactive", self._comments(inactive))
 		self.assertIn("Moved to &lt;b&gt;Ohio&lt;/b&gt;", self._comments(inactive))

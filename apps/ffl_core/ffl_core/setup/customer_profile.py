@@ -41,9 +41,11 @@ column was added under, or written by a path that skipped defaults). Raw SQL
 on purpose: no ``modified`` bump, no validate, nothing else on the row moves.
 
 Retired statuses (``RETIRED``): Inactive and Prospect were labels that stopped
-nothing. An Inactive customer becomes Active + ERPNext's own Disabled; a
-Prospect becomes Active (leads belong in the CRM). The old status and reason go
-on the customer's timeline. Same raw-SQL rule as above.
+nothing, so both become Active and the old status and reason go on the
+customer's timeline. Disabled is NOT ticked for a former Inactive: the Woo and
+CRM order paths still match a disabled customer by email, and ERPNext refuses a
+sale to one, so staff tick it by hand. Leads belong in the CRM. Same raw-SQL
+rule as above.
 
 ERPNext's Settings-tab controls a one-company store never uses (``IDLE_CONTROLS``:
 Company Restrictions, the two "Allow sales invoice creation without…" boxes,
@@ -62,8 +64,7 @@ from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 from frappe.utils import escape_html
 
 STATUSES = ("Active", "Banned")
-# Retired status → also tick ERPNext's Disabled?
-RETIRED = {"Inactive": True, "Prospect": False}
+RETIRED = ("Inactive", "Prospect")
 # ERPNext Customer field → shown only while it (or the section's switch) is set.
 IDLE_CONTROLS = {
 	"company_restrictions_section": "restrict_to_companies",
@@ -157,17 +158,13 @@ def ensure() -> dict:
 
 
 def _retire_statuses() -> None:
-	for row in frappe.get_all("Customer", filters={"customer_status": ("in", list(RETIRED))},
+	for row in frappe.get_all("Customer", filters={"customer_status": ("in", RETIRED)},
 			fields=["name", "customer_status", "status_reason"]):
-		disable = RETIRED[row.customer_status]
-		note = _("Customer Status {0} was retired: now Active{1}.").format(
-			row.customer_status, _(" and Disabled") if disable else "")
+		note = _("Customer Status {0} was retired: now Active.").format(row.customer_status)
 		if (row.status_reason or "").strip():
 			note += " " + _("Reason was: {0}").format(escape_html(row.status_reason))
-		values = {"customer_status": "Active", "status_reason": None}
-		if disable:
-			values["disabled"] = 1
-		frappe.db.set_value("Customer", row.name, values, update_modified=False)
+		frappe.db.set_value("Customer", row.name, {"customer_status": "Active", "status_reason": None},
+			update_modified=False)
 		frappe.get_doc("Customer", row.name).add_comment("Comment", note)
 
 
@@ -177,7 +174,7 @@ def _hide_idle_controls() -> None:
 		if not meta.has_field(field) or frappe.db.exists("Property Setter", {
 				"doc_type": "Customer", "field_name": field, "property": "depends_on"}):
 			continue
+		# make_property_setter clears the Customer cache itself.
 		frappe.make_property_setter({"doctype": "Customer", "fieldname": field,
 			"property": "depends_on", "value": f"eval:doc.{switch}"},
 			validate_fields_for_doctype=False)
-	frappe.clear_cache(doctype="Customer")
