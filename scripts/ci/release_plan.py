@@ -13,8 +13,8 @@ Any other `git ls-remote` failure stops the job: never guess that a tag is absen
 The image half (`image`) decides from `docker buildx imagetools inspect` whether the release
 job creates the image tag: only an explicit "not found" means absent, any other failure stops.
 `latest` is the newest release of THIS repository, so only the release job moves it, never below
-this repository's own tags. The private archive line (v1.*) shares the image package, so its
-hotfix can move `latest` across lines (docs/versions.md): deploys pin a version, never `latest`.
+this repository's own tags. The private archive line (its own v1.* tags) publishes to its own image
+package, so its tags never meet this line's 1.x (docs/versions.md); deploys pin a version, never `latest`.
 
   release_plan.py           → writes version/tag/action to $GITHUB_OUTPUT
   release_plan.py image     → writes image=create|keep and latest=true|false (env IMG, ACTION)
