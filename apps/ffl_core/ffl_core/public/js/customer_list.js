@@ -1,8 +1,8 @@
 // Customer list + form-header indicator by customer_status (Profile tab).
 //
 // Without this the pill and the list's Status column say "Enabled" for a Banned
-// customer, so a ban is invisible outside the Profile tab. Banned = red,
-// Inactive = gray, Prospect = orange. Active (and a blank status) falls through
+// customer, so a ban is invisible outside the Profile tab. Banned = red.
+// Active (and a blank status) falls through
 // to Frappe's own Enabled/Disabled, and a disabled customer stays "Disabled"
 // whatever its status. The form header uses the same settings
 // (frappe.get_indicator reads listview_settings[doctype].get_indicator).
@@ -21,10 +21,10 @@
 })(typeof self !== 'undefined' ? self : this, function () {
 	'use strict';
 
-	var COLORS = { Banned: 'red', Inactive: 'gray', Prospect: 'orange' };
+	var COLORS = { Banned: 'red' };
 	var ADD_FIELDS = ['customer_status', 'disabled'];
 
-	// [label, colour, filter] for a non-Active status, else null so Frappe shows
+	// [label, colour, filter] for Banned, else null so Frappe shows
 	// Enabled / Disabled. `L` is the translation function (identity in tests).
 	function indicator(doc, L) {
 		L = L || function (s) { return s; };

@@ -57,7 +57,7 @@ See [Cash drawer](../counter/cash-drawer.md).
 
 **Custody warehouse.** A stock location for firearms that belong to customers, such as a gun received for a transfer and waiting for its owner. A gun there is not yours to sell, so it is left out of sellable stock and hidden from Inventory Receipts unless you ask for it.
 
-**Customer status.** **Active**, **Inactive**, **Prospect** or **Banned** on a customer's Profile tab. A banned customer needs a reason and shows in red on the customer list. Two records for one person are joined with **Merge into…**. See [Customers](../counter/customers.md).
+**Customer status.** **Active** or **Banned** on a customer's Profile tab. A banned customer needs a reason and shows in red on the customer list. Two records for one person are joined with **Merge into…**. See [Customers](../counter/customers.md).
 
 **Dashboard.** The page staff land on after signing in: today's sales, open 4473s, guns waiting on pickup, the cash drawer, records not yet in the bound book, and distributor orders arriving, with **All records** at the bottom. See [The Dashboard](../start/dashboard.md).
 

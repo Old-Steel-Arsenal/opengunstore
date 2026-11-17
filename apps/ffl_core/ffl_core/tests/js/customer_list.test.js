@@ -3,14 +3,12 @@ const test = require('node:test');
 const assert = require('node:assert');
 const ind = require('../../public/js/customer_list.js');
 
-test('indicator: Banned red, Inactive gray, Prospect orange, each filterable', () => {
+test('indicator: Banned is red and filterable', () => {
 	assert.deepStrictEqual(ind.indicator({ customer_status: 'Banned' }), ['Banned', 'red', 'customer_status,=,Banned']);
-	assert.deepStrictEqual(ind.indicator({ customer_status: 'Inactive' }), ['Inactive', 'gray', 'customer_status,=,Inactive']);
-	assert.deepStrictEqual(ind.indicator({ customer_status: 'Prospect' }), ['Prospect', 'orange', 'customer_status,=,Prospect']);
 });
 
-test('indicator: Active, blank and unknown fall through to Frappe (Enabled / Disabled)', () => {
-	[{ customer_status: 'Active' }, { customer_status: '' }, {}, { customer_status: 'Whatever' }, null]
+test('indicator: Active, blank, retired and unknown fall through to Frappe (Enabled / Disabled)', () => {
+	[{ customer_status: 'Active' }, { customer_status: '' }, {}, { customer_status: 'Inactive' }, { customer_status: 'Whatever' }, null]
 		.forEach((doc) => assert.strictEqual(ind.indicator(doc), null));
 });
 

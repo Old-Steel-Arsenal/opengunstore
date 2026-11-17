@@ -20,15 +20,14 @@ test('summarize: Banned blocks; an open override does not, and says until when',
 	assert.deepStrictEqual(window.chips, [{ label: 'Banned — override until 14:35', tone: 'red' }]);
 });
 
-test('summarize: other statuses, IDs, family, tags and alerts', () => {
-	const s = cf.summarize({ ...base, status: 'Inactive', tags: ['VIP'],
+test('summarize: IDs, family, tags and alerts', () => {
+	const s = cf.summarize({ ...base, tags: ['VIP'],
 		alerts: [{ message: 'Owes $40' }, { message: '' }],
 		family: { primary: { name: 'C0', customer_name: 'John Roe' }, members: 0 },
 		ids: [{ id_type: 'Driver License', expiry_date: '2026-10-01', expired: true },
 			{ id_type: 'CCW', expiry_date: '2026-11-01', expired: false }] });
 	assert.deepStrictEqual(s.alerts, ['Owes $40']);
 	assert.deepStrictEqual(s.chips, [
-		{ label: 'Inactive', tone: 'orange' },
 		{ label: 'Driver License expired 2026-10-01', tone: 'orange' },
 		{ label: 'CCW expires 2026-11-01', tone: 'yellow' },
 		{ label: 'Family of John Roe', tone: 'blue' },
@@ -39,9 +38,9 @@ test('summarize: other statuses, IDs, family, tags and alerts', () => {
 });
 
 test('summarize: the member badge, after the status', () => {
-	const s = cf.summarize({ ...base, status: 'Inactive', membership: { text: 'Premium · to 2027-04 · Range 1/2 today' } });
+	const s = cf.summarize({ ...base, status: 'Banned', banned: true, membership: { text: 'Premium · to 2027-04 · Range 1/2 today' } });
 	assert.deepStrictEqual(s.chips, [
-		{ label: 'Inactive', tone: 'orange' },
+		{ label: 'Banned', tone: 'red' },
 		{ label: 'Premium · to 2027-04 · Range 1/2 today', tone: 'green' },
 	]);
 	assert.deepStrictEqual(cf.summarize({ ...base, membership: null }).chips, []);
