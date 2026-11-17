@@ -564,6 +564,20 @@ def skip_unwanted(doc, method=None):
 		raise SentEmailInInboxError(decision[1])
 
 
+def fill_recipients(doc, method=None):
+	"""Communication before_insert, after :func:`skip_unwanted` decided on the mail as it came: a received
+	mail with no To the POS keeps (GunBroker's member mail) gets its Email Account's address, the address
+	it reached. Frappe CRM's Reply splits ``recipients`` first and opens an empty composer on a mail
+	without; with it, Reply goes to the sender, from that mailbox.
+	Patch ``fill_received_mail_recipients`` does the same for the mail already in."""
+	if doc.get("sent_or_received") != "Received" or doc.get("communication_medium") != "Email" \
+			or (doc.get("recipients") or "").strip() or not doc.get("email_account"):
+		return
+	address = frappe.db.get_value("Email Account", doc.email_account, "email_id")
+	if address:
+		doc.recipients = address
+
+
 def _remember_skipped_uid(doc) -> None:
 	"""IMAP "ALL" sync: after the pull's rollback, raise the account's marker to this mail's uid, and put
 	back the folder place the rollback took with it (:func:`_write_marker`)."""

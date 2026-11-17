@@ -103,3 +103,5 @@ ffl_core.patches.name_crm_deals
 ffl_core.patches.crm_sell_request_deals
 # Frappe CRM: assignments still Open on won or lost deals and on converted or Other mail leads are closed (off My tasks).
 ffl_core.patches.close_finished_crm_assignments
+# Received mail with no recipients (GunBroker member mail) gets its mailbox's address, so CRM's Reply works on it.
+ffl_core.patches.fill_received_mail_recipients
