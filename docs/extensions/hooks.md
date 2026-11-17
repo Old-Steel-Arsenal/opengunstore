@@ -170,6 +170,18 @@ Declare them in `hooks.py` like any Frappe hook. The value is a dotted path to a
 - **Purpose:** judge mail to a team address (Lead Mail Settings) from someone with no lead and no customer contact yet. With at least one provider registered, such mail does not become a lead while it is pulled: a short background job asks the providers first. The first `customer: False` makes it other mail: a lead with the status Other mail and the answer's category, with a Comment "Not a customer inquiry (category): reason" on the mail; `None` is no opinion. Any other outcome makes an ordinary lead and shares it as without the hook. The job checks again before it asks: if the mail was linked or the sender has become a lead or a customer, the mail goes by the normal rules and no provider is asked. Later mail from that sender goes on the same lead and is not screened. Category rules, blocked domains, automated senders, known customers and known leads run before this and are not screened. With Lead Mail Settings › Spam folder set, the same providers also judge that folder's mail before anything is stored (`communication` is empty): `category: "spam"` leaves no record, `None` tries the mail again on the next run. Blocking network calls are fine (background job); wrap in `@extension_hook`.
 - **On failure:** logged; counts as no opinion, so the lead is made.
 
+### `gunshop_crm_reply_draft_ready`
+
+- **Signature:** `() -> bool`, no network call (asked on every Lead and Deal page load). Wrap it in `@extension_hook`.
+- **Purpose:** any truthy answer shows **Draft reply** on CRM Lead and Deal pages (`ffl_core.crm.reply_draft`).
+- **On failure:** logged; counts as not ready.
+
+### `gunshop_crm_reply_draft`
+
+- **Signature:** `(context: dict) -> {"body": str, "handoff": str | None, "refs": [str]} | {"refused": str} | None`. `context` is `{"channel": "email" or "gunbroker", "store_name", "latest": {"subject", "body" (plain text, 4000 characters at most), "at"}, "thread": [{"direction": "in" or "out", "at", "body"}] (the five other newest messages, newest first, 1500 characters each and 8000 in all), "customer": {"first_name", "state" (two letters or empty), "is_customer"}, "facts": [fact], "find_stock": callable}`. A fact is `{"ref", "name", "brand", "model", "caliber", "condition": "new" or "used", "price" (the register's today), "sale_price", "sale_ends", "available", "units": [{"ref", "price"}]}`, 12 at most: the record's product lines and what its open wants fit in stock. `find_stock(wants)` takes `[{"keywords": str, "budget": float | None}]`, finds Items in stock by the want list's keyword rule, adds them to the facts (still 12 at most) and returns the new facts. No serial number, ID, address beyond the state, phone, email address or internal note is in the context.
+- **Purpose:** write the plain-text reply to `latest` when an employee clicks **Draft reply**. The core turns `body` into paragraphs and puts it in CRM's composer above the quoted mail, or in a dialog with **Send**; the employee edits and sends it, nothing is sent by the hook. `handoff` shows as "Needs a person: …". `refused` is shown to the employee as written (for example a spending limit); `None` is no answer. Providers are asked in turn and the first `body` or `refused` wins. Blocking network calls are fine (the employee is waiting); keep your own timeout.
+- **On failure:** logged; counts as `None`. With no answer the employee sees "Couldn't write a draft. Reply as usual."
+
 ### `gunshop_serial_hold_changed`
 
 - **Signature:** `(serial_no) -> None`
@@ -227,6 +239,7 @@ gunstore.extensions.register('acme_layaway', {
   }],
   serialActions:   [{ id, label, onClick({ frm }) }],
   customerActions: [{ id, label, onClick({ frm }) }],
+  pendingOrderActions: [{ id, label, stages: ['to_place'], condition: ({ row }) => row.source === 'woo', onClick({ row, reload }) }],
   settingsLinks:   [{ label: __('Layaway'), doctype: 'Acme Layaway Settings' }],
   onDeskReady() { /* once per page load */ },
 });
@@ -237,6 +250,7 @@ gunstore.extensions.register('acme_layaway', {
 | `posActions` | Sale-screen buttons, after the core's | `condition(ctx)` synchronous and O(1); `ctx` is a read-only snapshot (invoice, customer, selected serial, POS Profile). |
 | `serialActions` | Serial No form, **Extensions** group | `onClick({ frm })` |
 | `customerActions` | Customer form, **Extensions** group | `onClick({ frm })` |
+| `pendingOrderActions` | Pending Order cards, first among the card's buttons | `row` is the queue row as the server sent it (`source` is `sales_invoice`, `woo` or `gunbroker`; `stage` is the card's section). `condition({ row })` synchronous and O(1). `stages` lists the sections where the button is the card's primary one. Call `reload()` after changing the order. |
 | `settingsLinks` | **Settings** on the extension's card | One per Settings Single. |
 | `onDeskReady()` | — | Once after the desk is ready, per effective extension. A throw is logged to the console and does not stop the others. |
 

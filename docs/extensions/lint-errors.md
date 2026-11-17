@@ -43,8 +43,8 @@ Columns: level, rule, `path:line`, message. `WARN` findings are shown on the rev
 | `manifest id '<x>' != app id '<id>'` / `manifest title != app_title` | Make them equal. |
 | `__init__.py must contain __version__ = "x.y.z"` | Double quotes, at the start of a line. |
 | `manifest version '<x>' != __version__ '<y>'` | Bump both together. |
-| `requires_core is required (PEP 440 range against ffl_core)` | Add it: `">=0.4.0,<1"`. |
-| `requires_core '<x>' has no upper bound (e.g. ">=0.1.0,<1")` | Add `,<1` on the 0.x line. |
+| `requires_core is required (PEP 440 range against ffl_core)` | Add it: `">=1.0.0,<2"`. |
+| `requires_core '<x>' has no upper bound (e.g. ">=1.0.0,<2")` | Add `,<2` on the 1.x line. |
 | `permissions must be a list` / `unknown permission '<x>'` | Use only the values in [Permissions](manifest.md#permissions); DocType names letters, digits and spaces; hosts lowercase. |
 | `modules.txt must hold exactly one line equal to the title '<title>'` | One line, the exact `app_title`. |
 | `fixtures/custom_field.json is not valid JSON` | Fix the file (re-export it). |

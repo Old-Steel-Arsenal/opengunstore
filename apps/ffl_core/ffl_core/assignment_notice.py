@@ -31,6 +31,8 @@ from frappe import _
 from frappe.utils import cint, convert_utc_to_system_timezone, get_fullname, getdate, now_datetime
 
 REQUIRED, SEEN, REMINDED = "ffl_ack_required", "ffl_acknowledged_on", "ffl_reminded_on"
+# Set on a ToDo closed because its CRM lead or deal finished; only those reopen with it (crm/assignments.py).
+CLOSED_WITH_RECORD = "ffl_closed_with_record"
 EVENT = "ffl_assignment"
 
 # Request-local marks a caller sets around its assign call (:func:`marked`).
@@ -88,8 +90,14 @@ def asks(doc) -> bool:
 
 def stamp(doc, method=None) -> None:
 	"""ToDo before_validate: stamp a new assignment; any other save keeps the stored values."""
+	marked = doc.meta.has_field(CLOSED_WITH_RECORD)   # no column before the migrate that adds it
 	before = None if doc.is_new() else (doc.get_doc_before_save()
-		or frappe.db.get_value("ToDo", doc.name, ["allocated_to", REQUIRED, SEEN, REMINDED], as_dict=True))
+		or frappe.db.get_value("ToDo", doc.name, ["allocated_to", REQUIRED, SEEN, REMINDED]
+			+ ([CLOSED_WITH_RECORD] if marked else []), as_dict=True))
+	if marked:
+		# Kept only while the ToDo stays Closed: one opened or re-assigned by hand is no longer the rule's.
+		keep = before is not None and before.get("allocated_to") == doc.allocated_to and doc.status == "Closed"
+		doc.set(CLOSED_WITH_RECORD, cint(before.get(CLOSED_WITH_RECORD)) if keep else 0)
 	if before is not None and before.get("allocated_to") == doc.allocated_to:
 		for field in (REQUIRED, SEEN, REMINDED):
 			doc.set(field, before.get(field))

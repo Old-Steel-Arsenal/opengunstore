@@ -23,7 +23,7 @@ from ffl_core.gate_audit import DEFAULT_GATE_PATTERNS
 FAKE = "ext_fake"
 MANIFEST = {
 	"id": FAKE, "title": "Fake Ext", "publisher": "Test Co", "publisher_id": "testco",
-	"version": "0.3.0", "requires_core": ">=0.1.0b1,<1",
+	"version": "0.3.0", "requires_core": ">=0.1.0b1,<2",
 	"permissions": ["pos_ui", "network:api.example.com"], "license_required": False,
 }
 

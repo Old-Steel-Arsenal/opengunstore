@@ -8,6 +8,7 @@ A deal never sells anything by itself. **Open order** fills in the [Create Order
 
 - A manager turns the link on in [Lead Mail Settings](../manager/settings.md#lead-mail-settings). While it is off, a deal shows no **Open order** button and no **Customer** section.
 - You see only the deals your CRM access lets you see.
+- A deal's page is titled with the person's name. To find a deal, type the name in the **Full Name** filter at the top of the Deals list.
 
 ## Check the customer
 

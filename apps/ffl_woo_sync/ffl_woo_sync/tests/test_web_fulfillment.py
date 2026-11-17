@@ -207,9 +207,10 @@ class TestPendingWebOrderDistributorLegs(FrappeTestCase):
 	reference) and, for a to_store unit, does not ask WooCommerce for a serial —
 	it arrives with the distributor receive."""
 
-	def _rows(self, serials, dos, antique=False, lines=()):
+	def _rows(self, serials, dos, antique=False, lines=(), dropship_status=""):
 		from ffl_woo_sync.woocommerce.fulfillment import list_pending_web_orders
 		orders = [frappe._dict({
+			"dropship_status": dropship_status,
 			"name": "WOO-ORD-TS", "woo_status": "awaiting-stock", "woo_order_id": "15353",
 			"customer_name": "Test Buyer", "atf_ffl_record": "", "ffl_license": "9-99-999-01-9B-00001",
 			"ffl_business_name": "Test Dealer", "ffl_expiration": "2027-04-30",
@@ -282,6 +283,66 @@ class TestPendingWebOrderDistributorLegs(FrappeTestCase):
 		self.assertEqual(len(rows), 1)
 		self.assertTrue(rows[0]["to_store"])
 		self.assertFalse(rows[0]["arrived"])
+
+	_DROPSHIP_LEG = {"source_name": "WOO-ORD-TS", "name": "DO-1", "distributor": "RSR",
+		"order_type": "Dropship Accessory", "receive_status": "Not Received"}
+
+	def _dropship_rows(self, status, dropship_status="Ordered", lane="direct"):
+		# A pure accessory order: no serial row, no to_store line.
+		dos = [dict(self._DROPSHIP_LEG, status=status)] if status else []
+		with patch("ffl_woo_sync.woocommerce.fulfillment._cannot_prove_actionless",
+				return_value=""):
+			return self._rows([], dos, lines=[{"item_code": "ACC-1", "lane": lane}],
+				dropship_status=dropship_status)
+
+	def test_a_drop_ship_order_with_an_unplaced_leg_stays_queued(self):
+		# Nobody has sent the distributor order yet — placing it is the action owed.
+		rows = self._dropship_rows("Draft")
+		self.assertEqual(len(rows), 1)
+		self.assertTrue(rows[0]["to_place"])
+		self.assertEqual(rows[0]["stage"], "to_place")
+
+	def test_a_drop_ship_order_leaves_the_queue_once_its_leg_is_placed(self):
+		# From here the distributor ships it; POS has nothing left to do.
+		self.assertEqual(self._dropship_rows("Placed"), [])
+
+	def test_a_drop_ship_order_nobody_has_sourced_stays_queued(self):
+		# Never routed, or its only distributor order failed or was cancelled.
+		for dropship_status, do_status in (("Pending Route", ""), ("Error", "Cancelled")):
+			rows = self._dropship_rows(do_status, dropship_status=dropship_status)
+			self.assertEqual([r["stage"] for r in rows], ["to_place"], dropship_status)
+
+	def test_a_failed_placement_needs_attention_not_another_order(self):
+		# It may be live at the distributor.
+		rows = self._dropship_rows("Error", dropship_status="Error")
+		self.assertEqual([(r["stage"], r["to_place"]) for r in rows], [("blocked", False)])
+		self.assertIn("DO-1", rows[0]["blocked_reason"])
+
+	def test_only_an_order_with_no_gun_to_transfer_reads_as_shipping_to_the_buyer(self):
+		accessory = self._dropship_rows("Draft")[0]
+		self.assertTrue(accessory["has_ship_address"])
+		gun = self._rows([_srow(confirmed_serial="SN-1")], [])[0]
+		self.assertFalse(gun["has_ship_address"])
+		self.assertIsNone(gun["ship_to_preview"])
+
+	def test_a_store_shipped_order_is_not_waiting_on_a_distributor(self):
+		# Every web order starts at Pending Route; only a distributor line makes
+		# that work owed.
+		self.assertEqual(
+			self._dropship_rows("", dropship_status="Pending Route", lane="local"), [])
+
+	def test_the_lane_and_status_words_are_the_routers(self):
+		from ffl_integrations.distributor import router
+		from ffl_woo_sync.woocommerce import fulfillment
+		self.assertEqual(fulfillment._DISTRIBUTOR_LANES, router.DROPSHIP_LANES)
+		self.assertEqual(fulfillment._UNSOURCED_STATUSES,
+			{router.DS_PENDING_ROUTE, router.DS_ERROR})
+
+	def test_a_placed_leg_does_not_mark_a_firearm_order_to_place(self):
+		row = dict(_srow(confirmed_serial="SN-1"))
+		rows = self._rows([frappe._dict(row)], [dict(self._DROPSHIP_LEG, status="Placed")])
+		self.assertFalse(rows[0]["to_place"])
+		self.assertNotEqual(rows[0]["stage"], "to_place")
 
 
 class TestDisposeWebOrder(FrappeTestCase):

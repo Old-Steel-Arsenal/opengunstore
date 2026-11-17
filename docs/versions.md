@@ -6,8 +6,9 @@
 
 ## Version line
 
-- 0.1.0 is the first release of this repository; it continues an earlier, privately developed line (last release 1.15.1) with the same features and data. After it, plain semver: the release job tags a version only when it is above every tag in this repository.
-- Extensions on the 0.x line declare `requires_core` as `>=<lowest 0.x they support>,<1` ([Manifest](extensions/manifest.md)).
+- 0.1.0 is the first release of this repository; it continues an earlier, privately developed line (last release 1.15.1) with the same features and data. After it, plain semver: the release job tags a version only when it is above every tag in this repository. 1.0.0 follows 0.10.3.
+- This repository's 1.x tags and images are not the private line's: that line's 1.x releases live in its own archive repository and image package.
+- Extensions on the 1.x line declare `requires_core` as `>=<lowest 1.x they support>,<2` ([Manifest](extensions/manifest.md)). An extension whose range ends at `<1` is paused on 1.0.0 until it publishes a release with the new bound.
 - Deploys pin a version tag, never `latest`.
 
 ## Core stack
@@ -17,7 +18,8 @@
 | ERPNext | `v16.55.0` (`deploy/prod/frappe-refs.env` is the single source: the image build and the CI bench reuse it; the Dockerfile ARG defaults are pinned in line by the `scripts/ci` tests) | https://github.com/frappe/erpnext | Rolls with v16 stable; the daily `ci.yml` runs a regression against the version-16 head |
 | Frappe Framework | `v16.56.0` (`FRAPPE_REF`, same as above) | https://github.com/frappe/frappe | Same as above |
 | Frappe HR (hrms) | `v16.53.2` (`HRMS_REF`, same as above) | https://github.com/frappe/hrms | Same as above. Baked into the image and installed on the CI site; a store's site gets it only with `bench --site <site> install-app hrms` (attendance, shifts, leave) |
-| Frappe CRM (crm) | `v16.0.3` (`CRM_REF`, same as above) | https://github.com/frappe/crm | Same as above. Baked into the image with its front end built, and installed on every site: ffl_core requires it (`ffl_core/crm/`). A site made before 0.6.4 gets it on its first deploy (`deploy/prod/auto_deploy.sh` installs it before the migrate) |
+| Frappe CRM (crm) | `v16.0.3` (`CRM_REF`, same as above) | https://github.com/frappe/crm | Same as above. Baked into the image with its front end built, and installed on every site: ffl_core requires it (`ffl_core/crm/`). A site made before 0.6.4 gets it on its first deploy (`deploy/prod/auto_deploy.sh` installs it before the migrate). **On a CRM upgrade:** `ffl_core/tests/test_crm_composer_contract.py` (in `make test`) checks the composer anchors Draft reply relies on; then in a browser, with a test provider: Reply on a received mail → Draft reply puts the draft above the quote and keeps what was typed, CRM's Send sends it; close the composer → Draft reply opens the dialog; Insert price in the open composer inserts at the cursor, with it closed it copies. A broken anchor shows as the dialog every time, never as text in the wrong place |
+| Anthropic Python SDK (anthropic) | `2.4.0`, pinned in `apps/ffl_integrations/pyproject.toml` | https://pypi.org/project/anthropic/ | Baked into the image for extensions that call Claude with the store's own key (an extension may only ship pure-Python wheels; the SDK needs the compiled `jiter`). Bump deliberately, with the extensions that import it |
 | ~~POS Awesome~~ | **Removed** | Upstream stopped updating in 2024-02; no longer used | - |
 | **POS UI** | ERPNext built-in `/app/point-of-sale` | Moves with ERPNext | No extra upgrade risk |
 | frappe_docker | main (upgrade by re-cloning) | https://github.com/frappe/frappe_docker | Follows main |

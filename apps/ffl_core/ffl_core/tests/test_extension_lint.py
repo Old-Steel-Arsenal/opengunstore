@@ -93,7 +93,7 @@ class Structure(Fixture):
 
 class Identity(Fixture):
 	def test_version_mismatch_and_missing_upper_bound(self):
-		self.write_hooks(self.hooks().replace('"version": "0.1.0"', '"version": "0.2.0"').replace('">=0.1.0,<1"', '">=0.1.0"'))
+		self.write_hooks(self.hooks().replace('"version": "0.1.0"', '"version": "0.2.0"').replace('">=0.1.0,<2"', '">=0.1.0"'))
 		msgs = [f.message for f in self.lint().errors]
 		self.assertTrue(any("__version__" in m for m in msgs), msgs)
 		self.assertTrue(any("upper bound" in m for m in msgs), msgs)

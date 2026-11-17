@@ -5,7 +5,8 @@ sign-in that connects their own mailbox; **Make lead** on a Communication (``pub
 files a mail the AI screening left without a lead; the Deal page's customer card, **Open order** and **Add want**
 (``ffl_core.crm.setup.DEAL_SCRIPT``), behind Lead Mail Settings' switch; a sell request's Gun offered card,
 **Make offer**, **Seller accepted** and **Receive gun** (``ffl_core.crm.sell_requests``), behind the same switch; guns held for a deal (the Deal page's
-**Hold gun**, and the counter's check and manager override, ``ffl_core.crm.holds``); the stand-ins that take quotes off the Deal page and other mail off the Leads list."""
+**Hold gun**, and the counter's check and manager override, ``ffl_core.crm.holds``); the stand-ins that take quotes off the Deal page and other mail off the Leads list; **Draft reply** and
+**Insert price** on the Lead and Deal pages (``ffl_core.crm.reply_draft``, ``ffl_core.crm.price_insert``)."""
 from __future__ import annotations
 
 import frappe
@@ -487,3 +488,80 @@ def override_hold(serial: str, reason: str, approver: str | None = None, pin: st
 	frappe.only_for(COUNTER_ROLES)
 	return holds.override(str(serial or "").strip(), reason, approver=approver or None, pin=pin or None,
 		password=password or None)
+
+
+@frappe.whitelist()
+def reply_draft_ready(doctype: str, name: str) -> dict:
+	"""Which of a Lead or Deal page's Draft reply and Insert price buttons show. No network call.
+
+	Args:
+	    doctype: "CRM Lead" or "CRM Deal".
+	    name: The record's name.
+
+	Returns:
+	    dict: {"ready": an extension drafts replies, "insert_price": linking deals to POS orders is on}.
+	    Both false on a sell request.
+	"""
+	from ffl_core.crm import reply_draft
+
+	frappe.only_for(CRM_ROLES)
+	return reply_draft.buttons(doctype, name)
+
+
+@frappe.whitelist(methods=["POST"])
+def draft_reply(doctype: str, name: str, quote_text: str = "", composer: int = 0) -> dict:
+	"""A draft reply to the customer's message, written by an extension. Nothing is sent or saved.
+
+	Args:
+	    doctype: "CRM Lead" or "CRM Deal".
+	    name: The record's name.
+	    quote_text: The text of the quote in CRM's open composer (the mail Reply was clicked on), if any.
+	    composer: 1 when CRM's composer is open.
+
+	Returns:
+	    dict: {"native_ok": 1 when the draft goes into that composer, "to", "subject", "sender",
+	    "in_reply_to": the Communication answered, "channel": "email" or "gunbroker", "content_html",
+	    "signature_html", "handoff": what needs a person, or None}. The envelope fields are for the
+	    page's own dialog when the composer is not used. Refused when the record has nothing from the
+	    customer to answer, or with the extension's own reason.
+	"""
+	from ffl_core.crm import reply_draft
+
+	frappe.only_for(CRM_ROLES)
+	return reply_draft.draft(doctype, name, quote_text=quote_text or "")
+
+
+@frappe.whitelist()
+def price_options(doctype: str, name: str) -> dict:
+	"""The products Insert price offers on a Lead or Deal, most relevant first, at the register's price.
+
+	Args:
+	    doctype: "CRM Lead" or "CRM Deal".
+	    name: The record's name.
+
+	Returns:
+	    dict: {"options": [{"item_code", "serial_no", "label"}] (15 at most), "default": 0}.
+	"""
+	from ffl_core.crm import price_insert
+
+	frappe.only_for(CRM_ROLES)
+	return price_insert.options(doctype, name)
+
+
+@frappe.whitelist()
+def price_text(doctype: str, name: str, item_code: str, serial_no: str | None = None) -> dict:
+	"""The line Insert price puts in the reply, priced now.
+
+	Args:
+	    doctype: "CRM Lead" or "CRM Deal".
+	    name: The record's name.
+	    item_code: The Item.
+	    serial_no: The gun, for a model priced gun by gun; it must be one of the Item's in stock.
+
+	Returns:
+	    dict: {"text": "{product} — ${price}"}. Refused when the Item has no price.
+	"""
+	from ffl_core.crm import price_insert
+
+	frappe.only_for(CRM_ROLES)
+	return price_insert.text(doctype, name, item_code, serial_no=serial_no or None)

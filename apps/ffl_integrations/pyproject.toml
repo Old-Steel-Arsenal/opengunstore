@@ -15,6 +15,8 @@ dependencies = [
     # "frappe~=16.0.0" # Installed and managed by bench.
     "beautifulsoup4>=4.12",
     "requests>=2.31",
+    # Not used by this app: baked into the image for extensions (docs/versions.md).
+    "anthropic==2.4.0",
 ]
 
 [build-system]
