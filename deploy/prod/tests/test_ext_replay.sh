@@ -46,6 +46,8 @@ in_image() {
 	if [ -z "$BAKED" ]; then
 		mounts+=(-v "$PROD/ext-replay.sh:/usr/local/bin/ext-replay.sh:ro"
 		         -v "$PROD/main-entrypoint.sh:/usr/local/bin/entrypoint.sh:ro"
+		         -v "$PROD/ext-reload.sh:/usr/local/bin/ext-reload.sh:ro"
+		         -v "$PROD/gunicorn.conf.py:/etc/gunicorn.conf.py:ro"
 		         -v "$REPO/apps/ffl_core/ffl_core/extensions/lint.py:$BENCH/apps/ffl_core/ffl_core/extensions/lint.py:ro")
 	fi
 	# NET="--network none": the step must work with no network at all
@@ -519,6 +521,59 @@ echo STALE_LINES=\$(grep -cx ext_hello sites/apps.txt); [ -e apps/ext_hello ] ||
 EOF
 )" || true
 grep -q STALE_LINES=0 <<<"$out" && grep -q STALE_LINK_GONE <<<"$out" && ok "reconciled" || bad "stale entry survived: $out"
+
+step "in-place reload (ext-agent's hot path): a --preload gunicorn that imported 0.1.0 in its master serves 0.2.0 and its bundled wheel after ext-replay.sh + ext-reload.sh, without a failed request; a container whose PID 1 is not gunicorn is refused"
+out="$(in_image <<<'ext-reload.sh; echo RELOAD_EXIT=$?')" || true
+grep -qx 'RELOAD_EXIT=1' <<<"$out" && grep -q 'PID 1 is not gunicorn' <<<"$out" && ok "not gunicorn → exit 1 with a message" || bad "refusal: $out"
+python3 "$HERE/make_ext_hello_upgrade.py" "$TMP/up.zip" >/dev/null
+mkdir -p "$TMP/up/ext_hello" "$TMP/v1" && (cd "$TMP/up/ext_hello" && python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(".")' "$TMP/up.zip")
+cp -R "$HERE/ext_hello" "$TMP/v1/"
+docker run --rm $PLATFORM -v "$VOL:$BENCH/apps-ext" --entrypoint bash "$IMAGE" -c "rm -rf $BENCH/apps-ext/ext_hello $BENCH/apps-ext/.deps/ext_hello $BENCH/apps-ext/.built/ext_hello"
+into_volume "$TMP/v1/ext_hello" "" ""
+mkdir -p "$TMP/probe"
+cat > "$TMP/probe/probe.py" <<'PY'
+import importlib
+try:
+	import ext_hello          # the master imports the extension at preload: the worst case for a fork
+except ImportError:
+	pass
+
+
+def app(environ, start_response):
+	out = []
+	for name in ("ext_hello", "ext_hello_dep"):
+		try:
+			out.append(f"{name}={importlib.import_module(name).__version__}")
+		except ImportError:
+			out.append(f"{name}=missing")
+	start_response("200 OK", [("Content-Type", "text/plain")])
+	return [" ".join(out).encode()]
+PY
+manifest '"ext_hello": {"version": "0.1.0"}' > "$TMP/extensions.json"
+mounts=(-v "$VOL:$BENCH/apps-ext" -v "$TMP/probe:/tmp/probe:ro" -v "$TMP/extensions.json:$BENCH/sites/extensions.json")
+[ -n "$BAKED" ] || mounts+=(-v "$PROD/ext-replay.sh:/usr/local/bin/ext-replay.sh:ro" -v "$PROD/main-entrypoint.sh:/usr/local/bin/entrypoint.sh:ro"
+	-v "$PROD/ext-reload.sh:/usr/local/bin/ext-reload.sh:ro" -v "$PROD/gunicorn.conf.py:/etc/gunicorn.conf.py:ro")
+GC="ext-smoke-gunicorn-$$"
+docker run -d --name "$GC" $PLATFORM "${mounts[@]}" "$IMAGE" \
+	$BENCH/env/bin/gunicorn --config=/etc/gunicorn.conf.py --chdir=/tmp/probe --bind=127.0.0.1:8000 --workers=2 --threads=2 --worker-class=gthread --preload probe:app >/dev/null
+trap 'docker rm -f "$GC" >/dev/null 2>&1 || true; docker volume rm -f "$VOL" >/dev/null 2>&1 || true; rm -rf "$TMP"' EXIT
+get() { docker exec "$GC" curl -s --max-time 5 http://127.0.0.1:8000/ || true; }
+for _ in $(seq 1 60); do [ -n "$(get)" ] && break; sleep 2; done
+[ "$(get)" = "ext_hello=0.1.0 ext_hello_dep=missing" ] && ok "started: 0.1.0, no deps" || bad "start: $(get) $(docker logs --tail 20 "$GC" 2>&1)"
+docker run --rm $PLATFORM -v "$VOL:$BENCH/apps-ext" --entrypoint bash "$IMAGE" -c "rm -rf $BENCH/apps-ext/ext_hello"
+into_volume "$TMP/up/ext_hello" "" ""
+manifest '"ext_hello": {"version": "0.2.0"}' > "$TMP/extensions.json"            # in place: the bind mount follows the inode
+docker exec "$GC" ext-replay.sh >/dev/null 2>&1 && ok "ext-replay.sh in the running container" || bad "replay failed: $(docker exec "$GC" ext-replay.sh 2>&1 | tail -3)"
+[ "$(get)" = "ext_hello=0.1.0 ext_hello_dep=missing" ] && ok "replay alone changes nothing the workers run (why the reload is needed)" || bad "before reload: $(get)"
+docker exec -d "$GC" sh -c 'n=0; f=0; while [ $n -lt 60 ]; do curl -s -f --max-time 5 -o /dev/null http://127.0.0.1:8000/ || f=$((f+1)); n=$((n+1)); sleep 0.1; done; echo "$n $f" > /tmp/load.out'
+sleep 1
+out="$(docker exec "$GC" ext-reload.sh 2>&1; echo "RELOAD_EXIT=$?")"
+grep -qx 'RELOAD_EXIT=0' <<<"$out" && ok "ext-reload.sh: $(grep reloaded <<<"$out")" || bad "reload: $out"
+[ "$(get)" = "ext_hello=0.2.0 ext_hello_dep=1.0.0" ] && ok "after the reload: 0.2.0 and its wheel, in a worker forked from the 0.1.0 master" || bad "after reload: $(get)"
+for _ in $(seq 1 30); do docker exec "$GC" test -f /tmp/load.out && break; sleep 1; done
+load="$(docker exec "$GC" cat /tmp/load.out 2>/dev/null || echo '? ?')"
+[ "${load#* }" = 0 ] && ok "requests during the reload: ${load% *} sent, none failed" || bad "requests during the reload (sent failed): $load"
+docker rm -f "$GC" >/dev/null 2>&1 || true
 
 echo
 echo "ext-replay smoke: $pass passed, $fail failed ($IMAGE)"

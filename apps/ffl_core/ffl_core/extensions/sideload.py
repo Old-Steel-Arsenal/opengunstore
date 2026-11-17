@@ -10,14 +10,16 @@ worker that cannot import it answers 500 to everything):
    to prove it wires and builds, then leave a request file for the agent.
    Any failure puts the volume and the manifest back exactly as they were.
 2. The host agent (deploy/prod/ext-agent.sh, a systemd timer) sees the
-   request, restarts every app container (each replays the manifest on
-   start), then runs ``finish_install`` in the backend: the same
-   install-on-this-site job the page already offers.
+   request, makes every process load the code — workers restarted (each
+   replays the manifest on start), the backend replayed in place and its
+   gunicorn reloaded gracefully, so the POS keeps serving — then runs
+   ``finish_install`` in the backend: the same install-on-this-site job the
+   page already offers.
 
 An upload whose id is already on the bench is an *upgrade*
 when it came from upload or git and its version is newer: ``stage_upgrade``
 backs the site up, keeps the old tree in apps-ext/.previous/<id> and swaps the
-new one in; the agent restarts, then ``begin_upgrade`` → ``bench migrate`` →
+new one in; the agent reloads, then ``begin_upgrade`` → ``bench migrate`` →
 ``finish_upgrade``. A public https git repository becomes an upload
 through ``inspect_git`` and follows the same path.
 
@@ -35,7 +37,7 @@ apps-ext/.previous/<id>; the backup is sites/.ext-backups/<site>/<id>/, out of
 reach of frappe's backup pruning. It moves on when the next upgrade is staged
 (the older one is deleted then) and goes when the extension is uninstalled. One
 thing runs on the pipeline at a time (``pipeline_busy``): the restart request is
-a single file and the agent restarts every container.
+a single file and the agent reloads every process.
 
 Uploads live under the site's private files until staged; the manifest and
 the request/done files live in sites/ (the shared volume), the code in
@@ -581,7 +583,7 @@ def stage(sha256: str, app_id: str, user: str) -> None:
 			raise RuntimeError("the registry did not pick the extension up after the replay")
 		request_restart("install", app_id, user)
 		set_state(app_id, "Staged",
-			_("Code is on the server. Waiting for the store to restart so every part of the POS can load it — usually under a minute."))
+			_("Code is on the server. Waiting for every part of the POS to load it — usually under a minute."))
 		zip_path.unlink(missing_ok=True)
 		commit()
 	except Exception as e:
@@ -707,8 +709,8 @@ def stage_upgrade(sha256: str, app_id: str, user: str) -> None:
 		run_replay()                                   # this worker proves the new package wires and builds
 		request_restart("upgrade", app_id, user)
 		undo.append(lambda: _withdraw_request(app_id))
-		set_state(app_id, "Staged", _("{0} {1} is on the server. Waiting for the store to restart; the POS is unavailable for a minute "
-			"or two while the database is updated. {2}").format(app_id, report.version, _backup_note(backup)))
+		set_state(app_id, "Staged", _("{0} {1} is on the server. Waiting for the POS to load it; it keeps working while the database "
+			"is updated. {2}").format(app_id, report.version, _backup_note(backup)))
 		zip_path.unlink(missing_ok=True)
 		commit()
 	except Exception as e:
@@ -787,7 +789,7 @@ def begin_upgrade(app_id: str) -> dict:
 	if record.get("migrate") == "not_started":
 		set_upgrade(app_id, migrate="started")
 	entry = registry.manifest_file().get(app_id) or {}
-	set_state(app_id, "Upgrading", _("Updating the database for {0} {1}. The POS is unavailable until this finishes. {2}").format(
+	set_state(app_id, "Upgrading", _("Updating the database for {0} {1}. {2}").format(
 		app_id, entry.get("version") or "", _backup_note(entry.get("backup"))))
 	return {"ok": True}
 

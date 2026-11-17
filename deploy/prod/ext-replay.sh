@@ -169,6 +169,11 @@ core_frappe="$(py_version apps/frappe/frappe/__init__.py)"
 core_ffl="$(py_version apps/ffl_core/ffl_core/__init__.py)"
 CORE="$core_frappe|$core_ffl"
 
+put_line() {   # put_line <file> <line>: the file holds exactly that line, replaced atomically when it did not
+	[ "$(cat "$1" 2>/dev/null)" = "$2" ] && return 0
+	printf '%s\n' "$2" > "$1.tmp" && mv -f "$1.tmp" "$1"
+}
+
 # --- pass 1: every declared extension gets its code path ---------------------------
 # Container-local (apps/<id> symlink, this env's .pth) and cheap, so it runs BEFORE
 # the shared lock: a `docker compose exec … bench migrate` fired the moment the
@@ -187,9 +192,11 @@ for id in $ids; do
 	if ! compile_out="$("$PY" -m compileall -q "$app/$id" 2>&1)"; then
 		die "'$id' does not compile: $(echo "$compile_out" | grep -m1 -E 'File|Error' | sed 's/^ *//') — fix the file on the volume (or reinstall the package) and restart"
 	fi
-	ln -sfn "$app" "apps/$id"
-	printf '%s\n' "$BENCH/apps/$id" > "$PURELIB/$id.pth"
-	printf '%s\n' "$DEPS/$id" > "$PURELIB/zz-ext-deps-$id.pth"
+	# Written only when different: a replay exec'd into a running container (the agent's in-place
+	# install / upgrade) must not leave a moment without the link or with an empty .pth.
+	[ "$(readlink "apps/$id" 2>/dev/null)" = "$app" ] || ln -sfn "$app" "apps/$id"
+	put_line "$PURELIB/$id.pth" "$BENCH/apps/$id"
+	put_line "$PURELIB/zz-ext-deps-$id.pth" "$DEPS/$id"
 done
 
 # One container at a time from here: sites/apps.txt and the compiled assets are shared.
