@@ -81,7 +81,8 @@ def open_drafts(kind: Kind, name: str, which: str) -> list[str]:
 			fields=["name", "is_return"], order_by="creation"):
 		amounts = frappe.get_all("POS Invoice Item", filters={"parent": row.name, "item_code": kind.item},
 			pluck="amount")
-		if which == "refund" and row.is_return:
+		if which == "refund" and row.is_return and any(flt(a) < 0 for a in amounts):
+			# A return of other goods on a payment ticket is not this source's refund.
 			out.append(row.name)
 		elif which == "deposit" and not row.is_return and any(flt(a) > 0 for a in amounts):
 			out.append(row.name)
@@ -148,13 +149,22 @@ def sources_on(kind: Kind, doc) -> list[str]:
 
 
 def refundable_payments(kind: Kind, name: str) -> list[tuple[str, float]]:
-	"""The submitted payments towards *name* no return has been made for yet (draft or submitted),
-	newest first, with each one's *kind* amount."""
-	return [(r[0], flt(r[1], 2)) for r in frappe.db.sql("""
-		SELECT p.name, SUM(i.amount) FROM `tabPOS Invoice` p INNER JOIN `tabPOS Invoice Item` i ON i.parent = p.name
+	"""The submitted payments towards *name* whose *kind* line can still be returned, newest first,
+	with each one's amount. Only a return of that line counts (draft or submitted): goods returned
+	from the same ticket leave the payment refundable.
+
+	A payment line already returned once is left out even when part of it is still held: the line
+	is one unit and ERPNext returns a line's quantity once (``validate_returned_items`` counts the
+	returned qty per line), so a second return of it is refused. Our own refunds return what is held
+	in one go; a partial return of the line is made only by hand at the register."""
+	rows = frappe.db.sql("""
+		SELECT p.name, SUM(i.amount),
+			(SELECT COUNT(*) FROM `tabPOS Invoice` r INNER JOIN `tabPOS Invoice Item` ri ON ri.parent = r.name
+				WHERE r.return_against = p.name AND r.docstatus < 2 AND ri.item_code = %s)
+		FROM `tabPOS Invoice` p INNER JOIN `tabPOS Invoice Item` i ON i.parent = p.name
 		WHERE p.docstatus = 1 AND p.is_return = 0 AND i.item_code = %s AND i.{link} = %s AND i.amount > 0
-			AND NOT EXISTS (SELECT 1 FROM `tabPOS Invoice` r WHERE r.return_against = p.name AND r.docstatus < 2)
-		GROUP BY p.name ORDER BY p.creation DESC""".format(link=kind.link_field), (kind.item, name))]
+		GROUP BY p.name ORDER BY p.creation DESC""".format(link=kind.link_field), (kind.item, kind.item, name))
+	return [(r[0], flt(r[1], 2)) for r in rows if not r[2] and flt(r[1]) > TOL]
 
 
 def refund_return(kind: Kind, name: str, source: str, amount: float):

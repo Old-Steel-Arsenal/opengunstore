@@ -14,6 +14,67 @@
 // Sales Order → Sales Invoice; the receipt is emailed and (when shipping now)
 // one FFL/Dealer Transfer disposition is booked per serial.
 
+// ---- Draft lines — PURE KERNEL, no DOM / frappe; Node-tested in tests/js/create_order_drafts.test.js ----
+
+// One order line as the payload carries it (create_order, Save Draft). create_order reads
+// item_code/qty/rate/serials; the display fields serve resumed ACCESSORY lines (no refetch);
+// firearm lines are rebuilt from re-validation on load, which also refreshes their display
+// data — only their staff-set rate is kept.
+function coPayloadItem(l) {
+	return {
+		item_code: l.item_code, item_name: l.item_name,
+		is_firearm: !!l.is_firearm, is_antique: !!l.is_antique,
+		qty: l.qty, rate: l.rate,
+		serials: l.serial ? [l.serial] : [],
+		// Planner state rides along for drafts; the SERVER contract stays
+		// `source` and only a CONFIRMED drop-ship line earns it (an
+		// unconfirmed one has no ensured item_code yet — submitting it is
+		// exactly the old hole, so _submit gates on confirmation).
+		channel: l.channel, channel_confirmed: !!l.channel_confirmed,
+		distributor: l.distributor || undefined, sku: l.sku || undefined,
+		upc: l.upc || undefined,
+		// A pre-order line's expected date, so a resumed draft shows it again.
+		eta: l.eta || undefined,
+		// Where in the store a loose-stock line is taken from (blank = not said).
+		storage_location: l.storage_location || undefined,
+		...(l.channel === 'dropship' && l.channel_confirmed
+			? { source: 'dropship', dropship_distributor: l.distributor || undefined }
+			: {}),
+		...(l.channel === 'to_store' && l.channel_confirmed ? { source: 'to_store' } : {}),
+	};
+}
+
+// A draft's line with no serial, as _addLine takes it back. A distributor line and a
+// pre-order line resume on their own channel; anything else is born local by _addLine.
+function coDraftLine(i) {
+	const channel = i.channel || i.source;
+	const ordered = channel === 'dropship' || channel === 'to_store';
+	return {
+		item_code: i.item_code, item_name: i.item_name || i.item_code,
+		is_firearm: !!i.is_firearm, is_antique: !!i.is_antique,
+		qty: Number(i.qty) || 1, rate: Number(i.rate) || 0, serial: null,
+		storage_location: i.storage_location || '',
+		// A drop-ship line resumes AS a drop-ship line. Legacy drafts
+		// (pre-planner) carry only `source` + an ensured item_code —
+		// resume those as confirmed; planner-era drafts round-trip
+		// their own channel/confirmed state.
+		...(ordered ? {
+			channel,
+			channel_confirmed: i.channel ? !!i.channel_confirmed : true,
+			distributor: i.distributor || i.dropship_distributor || undefined,
+			upc: i.upc || undefined,
+			sku: i.sku || undefined,
+			// Bought already (get_order_for_edit says so): the line rides the
+			// edit locked — its order moves to the new invoice untouched.
+			ordered_do: i.ordered_do || undefined,
+		} : {}),
+		// A pre-order line stays one: submitted, it goes to create_preorder, which checks the
+		// slots and the shelf again (they may have moved since the draft was saved).
+		...(channel === 'preorder' ? { channel, channel_confirmed: true, eta: i.eta || null } : {}),
+	};
+}
+
+if (typeof frappe !== 'undefined') {
 frappe.pages['create-order'].on_page_load = function (wrapper) {
 	const page = frappe.ui.make_app_page({
 		parent: wrapper,
@@ -30,6 +91,7 @@ frappe.pages['create-order'].on_page_load = function (wrapper) {
 frappe.pages['create-order'].on_page_show = function (wrapper) {
 	wrapper.create_order_app?._syncEditRoute();
 };
+}
 
 
 class CreateOrderApp {
@@ -1286,29 +1348,7 @@ class CreateOrderApp {
 			destination_ffl: this.destinationFfl || null,
 			dispose_now: this.disposeNow ? 1 : 0,
 			ship_to: {},
-			// Full line objects: create_order reads item_code/qty/rate/serials.
-			// The display fields serve resumed ACCESSORY lines (no refetch);
-			// firearm lines are rebuilt from re-validation on load, which also
-			// refreshes their display data — only their staff-set rate is kept.
-			items: this.lines.map((l) => ({
-				item_code: l.item_code, item_name: l.item_name,
-				is_firearm: !!l.is_firearm, is_antique: !!l.is_antique,
-				qty: l.qty, rate: l.rate,
-				serials: l.serial ? [l.serial] : [],
-				// Planner state rides along for drafts; the SERVER contract stays
-				// `source` and only a CONFIRMED drop-ship line earns it (an
-				// unconfirmed one has no ensured item_code yet — submitting it is
-				// exactly the old hole, so _submit gates on confirmation).
-				channel: l.channel, channel_confirmed: !!l.channel_confirmed,
-				distributor: l.distributor || undefined, sku: l.sku || undefined,
-				upc: l.upc || undefined,
-				// Where in the store a loose-stock line is taken from (blank = not said).
-				storage_location: l.storage_location || undefined,
-				...(l.channel === 'dropship' && l.channel_confirmed
-					? { source: 'dropship', dropship_distributor: l.distributor || undefined }
-					: {}),
-				...(l.channel === 'to_store' && l.channel_confirmed ? { source: 'to_store' } : {}),
-			})),
+			items: this.lines.map(coPayloadItem),
 		};
 		payload.distributor_options = this.deliveryOptions || {};
 		// The CRM deal this order came from: the invoice writes back to it.
@@ -1501,26 +1541,7 @@ class CreateOrderApp {
 					is_firearm: true, is_antique: !!c.is_antique,
 					qty: 1, rate: flt(i.rate) || 0, serial: c.serial });
 			} else {
-				const channel = i.channel || i.source;
-				const ordered = channel === 'dropship' || channel === 'to_store';
-				this._addLine({ item_code: i.item_code, item_name: i.item_name || i.item_code,
-					is_firearm: !!i.is_firearm, is_antique: !!i.is_antique,
-					qty: flt(i.qty) || 1, rate: flt(i.rate) || 0, serial: null,
-					storage_location: i.storage_location || '',
-					// A drop-ship line resumes AS a drop-ship line. Legacy drafts
-					// (pre-planner) carry only `source` + an ensured item_code —
-					// resume those as confirmed; planner-era drafts round-trip
-					// their own channel/confirmed state.
-					...(ordered ? {
-						channel,
-						channel_confirmed: i.channel ? !!i.channel_confirmed : true,
-						distributor: i.distributor || i.dropship_distributor || undefined,
-						upc: i.upc || undefined,
-						sku: i.sku || undefined,
-						// Bought already (get_order_for_edit says so): the line rides the
-						// edit locked — its order moves to the new invoice untouched.
-						ordered_do: i.ordered_do || undefined,
-					} : {}) });
+				this._addLine(coDraftLine(i));
 			}
 		});
 		if (p.buyer_type !== 'business' && p.destination_ffl) {
@@ -2894,6 +2915,7 @@ class CreateOrderApp {
 				}).then((res) => {
 					d.hide();
 					if (res && res.message) {
+						if (res.message.notice) frappe.show_alert({ message: res.message.notice, indicator: 'orange' }, 10);
 						frappe.route_options = { ffl_pos_invoice: res.message.pos_invoice };
 						frappe.set_route('point-of-sale');
 					}
@@ -3163,4 +3185,10 @@ class CreateOrderApp {
 		});
 	}
 
+}
+
+// Node unit tests import the pure kernel (no DOM / Frappe). Harmless in the
+// browser, where `module` is undefined.
+if (typeof module !== 'undefined' && module.exports) {
+	module.exports = { coPayloadItem, coDraftLine };
 }

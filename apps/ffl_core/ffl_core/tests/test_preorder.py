@@ -27,6 +27,7 @@ COMPANY = "FFL Test"
 ABBR = "FT"
 GUN = "_T-PO-GUN"
 ACC = "_T-PO-ACC"
+SVC = "_T-PO-SVC"
 CARD = "Credit Card"
 
 
@@ -82,6 +83,9 @@ def _items() -> None:
 		frappe.get_doc({"doctype": "Item", "item_code": GUN, "item_name": "Test Pre-order Pistol", "item_group": "Pistol",
 			"stock_uom": "Nos", "is_stock_item": 1, "has_serial_no": 1, "is_firearm": 1,
 			"serial_no_series": "TPOG-.####"}).insert(ignore_permissions=True)
+	if not frappe.db.exists("Item", SVC):
+		frappe.get_doc({"doctype": "Item", "item_code": SVC, "item_name": "Test Cleaning Kit",
+			"item_group": "All Item Groups", "stock_uom": "Nos", "is_stock_item": 0}).insert(ignore_permissions=True)
 	if not frappe.db.exists("Item", ACC):
 		frappe.get_doc({"doctype": "Item", "item_code": ACC, "item_name": "Test Pre-order Optic",
 			"item_group": "All Item Groups", "stock_uom": "Nos", "is_stock_item": 1}).insert(ignore_permissions=True)
@@ -221,6 +225,8 @@ class Setup(FrappeTestCase):
 				("POS Invoice", setup.LINK_FIELD), ("POS Invoice Item", setup.LINK_FIELD),
 				("Sales Invoice Item", setup.LINK_FIELD)):
 			self.assertTrue(frappe.db.has_column(dt, field), f"{dt}.{field}")
+		self.assertTrue(frappe.db.has_index("tabPOS Invoice Item", "ffl_preorder_index"),
+			"a payment's locking read covers its own order's lines")
 		self.assertEqual(frappe.db.get_value("Custom Field", "Sales Order-ffl_is_preorder", "no_copy"), 1,
 			"an amended order took no pre-order slots")
 
@@ -458,6 +464,87 @@ class Money(_Base):
 		self.assertEqual(frappe.db.get_value("Item", GUN, AVAILABLE_FIELD), 2)
 
 
+class Review(_Base):
+	"""Fixes from review: a returned item beside the payment, a partly returned payment, the Item's
+	modified on give-back, and a second amount while a payment is open."""
+
+	def _return_goods(self, source: str, *, submit: bool):
+		"""The register's Return of the goods on a payment ticket (not its payment line)."""
+		from erpnext.accounts.doctype.pos_invoice.pos_invoice import make_sales_return
+
+		ret = make_sales_return(source)
+		ret.items = [r for r in ret.items if r.item_code != PREORDER_ITEM]
+		ret.flags.ignore_permissions = True
+		ret.set_missing_values()
+		ret.calculate_taxes_and_totals()
+		for p in ret.payments:
+			p.amount = p.base_amount = 0
+		ret.payments[0].amount = ret.payments[0].base_amount = flt(ret.rounded_total) or flt(ret.grand_total)
+		ret.paid_amount = ret.base_paid_amount = ret.payments[0].amount
+		ret.insert()
+		if submit:
+			ret.submit()
+		return ret
+
+	def test_f2_goods_returned_from_the_payment_ticket_leave_the_payment_refundable(self):
+		so = self._preorder()
+		inv = frappe.get_doc("POS Invoice", self._payment(so, 200))
+		inv.append("items", {"item_code": SVC, "qty": 1, "rate": 40})
+		inv.set_missing_values()
+		inv.save(ignore_permissions=True)
+		pay = _checkout(inv.name)
+		self._return_goods(pay.name, submit=True)
+		out = preorder.cancel_preorder(so, "No")
+		self.assertEqual([r["amount"] for r in out["refunds"]], [200])
+		ret = frappe.get_doc("POS Invoice", out["refunds"][0]["pos_invoice"])
+		self.assertEqual([(r.item_code, flt(r.amount)) for r in ret.items], [(PREORDER_ITEM, -200)])
+		_checkout(ret.name)
+		self.assertEqual(preorder.held(so), 0)
+		self.assertFalse(deposits.refundable_payments(deposits.PREORDER, so))
+
+	def test_f2_a_partly_returned_payment_line_is_not_offered_again(self):
+		"""A payment line ERPNext has already returned once cannot be returned again (it counts returned
+		qty per line): what it still holds is named, not silently dropped."""
+		so = self._preorder()
+		pay = _checkout(self._payment(so, 100))
+		part = deposits.refund_return(deposits.PREORDER, so, pay.name, 40)
+		_checkout(part.name)
+		self.assertEqual(preorder.held(so), 60)
+		self.assertEqual(deposits.refundable_payments(deposits.PREORDER, so), [])
+		self.assertEqual(preorder.cancel_preorder(so, "No")["refunds"], [])
+		with self.assertRaisesRegex(frappe.ValidationError, "returned only once"):
+			preorder.refund_preorder(so)
+		self.assertEqual(preorder.held(so), 60)
+
+	def test_f5_giving_slots_back_moves_the_items_modified(self):
+		"""A form opened before an order takes or gives back slots is refused on save, both ways."""
+		frappe.db.set_value("Item", GUN, AVAILABLE_FIELD, 3)
+		opened = frappe.get_doc("Item", GUN)
+		so = self._preorder(available=3)
+		opened.description = "edited"
+		with self.assertRaises(frappe.TimestampMismatchError):
+			opened.save(ignore_permissions=True)
+		opened = frappe.get_doc("Item", GUN)
+		before = opened.modified
+		preorder.cancel_preorder(so, "No")
+		self.assertEqual(frappe.db.get_value("Item", GUN, AVAILABLE_FIELD), 3)
+		self.assertGreater(str(frappe.db.get_value("Item", GUN, "modified")), str(before))
+		opened.description = "edited"
+		with self.assertRaises(frappe.TimestampMismatchError):
+			opened.save(ignore_permissions=True)
+
+	def test_f6_a_second_amount_names_the_payment_already_open(self):
+		so = self._preorder()
+		first = preorder.open_payment(so, 100)
+		self.assertIsNone(first["notice"])
+		same = preorder.open_payment(so, 100)
+		self.assertEqual((same["pos_invoice"], same["already"], same["notice"]), (first["pos_invoice"], True, None))
+		other = preorder.open_payment(so, 300)
+		self.assertEqual((other["pos_invoice"], other["amount"]), (first["pos_invoice"], 100))
+		self.assertIn("100", other["notice"])
+		self.assertIn(so, other["notice"])
+
+
 class SubLedger(_Base):
 	"""AC6: three pre-orders — part paid, paid in full, cancelled and refunded — and the report's balance
 	equals the GL balance of Pre-order Deposits to the cent, once the register's invoices are merged."""
@@ -622,3 +709,56 @@ class SalesReport(FrappeTestCase):
 		detail = _build_product_rows(headers, lines, {}, {}, {}, {}, {}, {}, "", True)
 		self.assertFalse(any(r.get("item_code") == PREORDER_ITEM for r in detail))
 		self.assertIn(PREORDER_ITEM, deposits.ITEMS)
+
+
+class PaymentLockRace(FrappeTestCase):
+	"""F4: a payment checked out while another session changed its pre-order after this one began
+	reading: MariaDB refuses the locking read (1020). The cashier is told to try again, not shown a
+	database error. Committed fixtures (deleted in the finally below): the other session must see them."""
+
+	def test_f4_a_lock_conflict_at_checkout_says_try_again(self):
+		setup.ensure()
+		token = frappe.generate_hash(length=6).upper()
+		item = f"_T-PO-LOCK-{token}"
+		frappe.get_doc({"doctype": "Item", "item_code": item, "item_name": item, "item_group": "All Item Groups",
+			"stock_uom": "Nos", "is_stock_item": 0, AVAILABLE_FIELD: 1}).insert(ignore_permissions=True)
+		customer = frappe.get_doc({"doctype": "Customer", "customer_name": f"_Test PO Lock {token}",
+			"customer_type": "Individual", "customer_group": "Individual", "territory": "All Territories"}
+			).insert(ignore_permissions=True).name
+		so = preorder.create_preorder({"customer": customer, "items": [{"item_code": item, "qty": 1, "rate": 10}]})[
+			"sales_order"]
+		frappe.db.commit()   # the other session must see the order (deleted in the finally below)
+		site = frappe.local.site
+		try:
+			with patch.object(frappe.db, "commit"):
+				frappe.db.get_value("Sales Order", so, "modified")   # this transaction's snapshot starts here
+
+				def touch():
+					frappe.init(site=site, sites_path=frappe.local.sites_path if hasattr(frappe.local, "sites_path") else ".")
+					frappe.connect()
+					try:
+						frappe.db.sql("UPDATE `tabSales Order` SET modified = NOW(6) WHERE name = %s", so)
+						frappe.db.commit()
+					finally:
+						frappe.destroy()
+
+				t = threading.Thread(target=touch)
+				t.start()
+				t.join(timeout=60)
+				from ffl_core.tests.pos_opening import todays_pos_opening
+				company = frappe.db.get_value("Sales Order", so, "company")
+				profile = frappe.db.get_value("POS Profile", {"company": company, "disabled": 0}, "name")
+				todays_pos_opening(company, profile)
+				pay = preorder.open_payment(so, 10)["pos_invoice"]
+				with self.assertRaisesRegex(frappe.ValidationError, "Try again"):
+					_checkout(pay)
+		finally:
+			frappe.db.rollback()
+			doc = frappe.get_doc("Sales Order", so)
+			if doc.docstatus == 1:
+				doc.flags.ignore_permissions = True
+				doc.cancel()
+			frappe.delete_doc("Sales Order", so, force=True, ignore_permissions=True)
+			frappe.delete_doc("Customer", customer, force=True, ignore_permissions=True)
+			frappe.delete_doc("Item", item, force=True, ignore_permissions=True)
+			frappe.db.commit()

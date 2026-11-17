@@ -18131,7 +18131,7 @@
           "ffl_core"
         ],
         "summary": "Cancel a pre-order and pay back everything held for it: the order is cancelled, its",
-        "description": "quantities go back on the items, and each payment gets a draft return for its full amount, the\nway it was paid. The register checks the returns out.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:278`",
+        "description": "quantities go back on the items, and each payment gets a draft return for its full amount, the\nway it was paid. The register checks the returns out.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:283`",
         "operationId": "ffl_core.preorder.cancel_preorder",
         "responses": {
           "200": {
@@ -18231,7 +18231,7 @@
           "ffl_core"
         ],
         "summary": "Pre-orders for the Pending Order page: every open one (stage ``waiting``), and cancelled ones",
-        "description": "still holding money to pay back (``blocked``).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:343`",
+        "description": "still holding money to pay back (``blocked``).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:353`",
         "operationId": "ffl_core.preorder.list_preorders",
         "responses": {
           "200": {
@@ -18283,7 +18283,7 @@
         "operationId": "ffl_core.preorder.open_payment",
         "responses": {
           "200": {
-            "description": "{\"pos_invoice\", \"already\": bool, \"amount\": the draft's payment amount}.",
+            "description": "{\"pos_invoice\", \"already\": bool, \"amount\": the draft's payment amount, \"notice\": for a draft already open at another amount, the sentence that says so (shown before it opens), else None}.",
             "content": {
               "application/json": {
                 "schema": {
@@ -18387,7 +18387,7 @@
           "ffl_core"
         ],
         "summary": "The draft returns paying back what a cancelled pre-order still holds — the open ones, or new",
-        "description": "ones for every payment not returned yet.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:308`",
+        "description": "ones for every payment not returned yet.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:313`",
         "operationId": "ffl_core.preorder.refund_preorder",
         "responses": {
           "200": {

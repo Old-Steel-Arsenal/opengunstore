@@ -22,7 +22,7 @@ way it was paid. The register checks the returns out.
 
 **Returns:** {"cancelled": True, "refunds": [{"pos_invoice", "amount"}]}.
 
-<sub>`apps/ffl_core/ffl_core/preorder.py:278`</sub>
+<sub>`apps/ffl_core/ffl_core/preorder.py:283`</sub>
 
 ## `create_preorder`
 
@@ -59,7 +59,7 @@ still holding money to pay back (``blocked``).
 
 **Returns:** [{"source": "preorder", "sales_order", "customer", "customer_name", "posting_date", "grand_total", "held", "outstanding_amount", "paid", "cancelled", "eta", "items": [{"item_code", "item_name", "qty"}], "drafts": {"payment", "refunds": [...]}, "stage", "blocked_reason", "age_days", "overdue"}].
 
-<sub>`apps/ffl_core/ffl_core/preorder.py:343`</sub>
+<sub>`apps/ffl_core/ffl_core/preorder.py:353`</sub>
 
 ## `open_payment`
 
@@ -76,7 +76,7 @@ tender). One open payment draft per order: a second call returns the one already
 | `sales_order` | string | yes | — | The pre-order (submitted). |
 | `amount` | number | yes | — | What the customer pays now: above 0, no more than the order's total with tax less what is already held. |
 
-**Returns:** {"pos_invoice", "already": bool, "amount": the draft's payment amount}.
+**Returns:** {"pos_invoice", "already": bool, "amount": the draft's payment amount, "notice": for a draft already open at another amount, the sentence that says so (shown before it opens), else None}.
 
 <sub>`apps/ffl_core/ffl_core/preorder.py:243`</sub>
 
@@ -115,4 +115,4 @@ ones for every payment not returned yet.
 
 **Returns:** {"refunds": [{"pos_invoice", "amount"}]}.
 
-<sub>`apps/ffl_core/ffl_core/preorder.py:308`</sub>
+<sub>`apps/ffl_core/ffl_core/preorder.py:313`</sub>

@@ -1158,7 +1158,14 @@ class PendingDispositionsApp {
 			method: 'ffl_core.preorder.open_payment',
 			args: { sales_order: row.sales_order, amount },
 			freeze: true,
-		}).then((r) => { d.hide(); if (r && r.message) this._toRegister(r.message.pos_invoice); });
+		}).then((r) => {
+			d.hide();
+			const m = r && r.message;
+			if (!m) return;
+			// A payment already open at another amount: say so, then open that one.
+			if (m.notice) frappe.show_alert({ message: m.notice, indicator: 'orange' }, 10);
+			this._toRegister(m.pos_invoice);
+		});
 		const d = new frappe.ui.Dialog({
 			title: __('Take payment · {0}', [row.sales_order]),
 			fields: [{ fieldname: 'amount', fieldtype: 'Currency', label: __('Amount'), reqd: 1 }],

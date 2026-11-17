@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.utils import add_days, cint, escape_html, flt, fmt_money, getdate, nowdate
+from frappe.utils import add_days, cint, escape_html, flt, fmt_money, getdate, now, nowdate
 
 from ffl_core import deposits
 from ffl_core.deposits import PREORDER, TOL
@@ -93,14 +93,14 @@ def take_slots(wanted: dict[str, int]) -> None:
 		name = frappe.db.get_value("Item", item_code, "item_name") or item_code
 		try:
 			have = cint(frappe.db.get_value("Item", item_code, AVAILABLE_FIELD, for_update=True))
-		except frappe.QueryDeadlockError:
+		except (frappe.QueryDeadlockError, frappe.QueryTimeoutError):
 			frappe.throw(_("{0} was just pre-ordered at another counter. Check what is left and try again.").format(
 				escape_html(name)), title=_("Pre-order"))
 		if have < wanted[item_code]:
 			frappe.throw(_("Only {0} of {1} can still be pre-ordered.").format(have, escape_html(name)),
 				title=_("Pre-order"))
-		# The Item's modified moves too: a form opened before this is refused on save rather than
-		# writing its stale count back.
+		# The Item's modified moves too (here and on give-back, on_order_cancel): a form opened before
+		# this is refused on save rather than writing its stale count back.
 		frappe.db.set_value("Item", item_code, AVAILABLE_FIELD, have - wanted[item_code])
 
 
@@ -250,16 +250,21 @@ def open_payment(sales_order: str, amount: float) -> dict:
 	        what is already held.
 
 	Returns:
-	    {"pos_invoice", "already": bool, "amount": the draft's payment amount}.
+	    {"pos_invoice", "already": bool, "amount": the draft's payment amount, "notice": for a draft
+	    already open at another amount, the sentence that says so (shown before it opens), else None}.
 	"""
 	frappe.only_for(COUNTER_ROLES)
 	so = _order(sales_order)
 	if so.docstatus != 1:
 		frappe.throw(_("Pre-order {0} is cancelled; it takes no payment.").format(so.name))
+	amount = flt(amount, 2)
 	existing = deposits.open_draft(PREORDER, so.name, "deposit")
 	if existing:
-		return {"pos_invoice": existing, "already": True, "amount": deposits.draft_amount(PREORDER, existing)}
-	amount = flt(amount, 2)
+		have = deposits.draft_amount(PREORDER, existing)
+		notice = None if abs(have - amount) <= TOL else _(
+			"A payment of {0} for {1} is already open. It opens now; finish or delete it first.").format(
+				_money(have, so.company), so.name)
+		return {"pos_invoice": existing, "already": True, "amount": have, "notice": notice}
 	if amount <= 0:
 		frappe.throw(_("Enter the amount the customer pays now."))
 	due = flt(flt(so.grand_total) - held(so.name), 2)
@@ -268,7 +273,7 @@ def open_payment(sales_order: str, amount: float) -> dict:
 	inv = deposits.new_invoice(PREORDER, so, [deposits.line(PREORDER, so, amount,
 		_("Payment towards pre-order {0}").format(so.name))])
 	inv.insert()
-	return {"pos_invoice": inv.name, "already": False, "amount": amount}
+	return {"pos_invoice": inv.name, "already": False, "amount": amount, "notice": None}
 
 
 # ------------------------------------------------------------------ cancel
@@ -319,7 +324,12 @@ def refund_preorder(sales_order: str) -> dict:
 	so = _order(sales_order)
 	if so.docstatus != 2:
 		frappe.throw(_("Cancel the pre-order to refund it (Cancel & refund)."))
-	return {"refunds": _refund_all(so)}
+	refunds = _refund_all(so)
+	if not refunds and held(so.name) > TOL:
+		frappe.throw(_("{0} of {1} is on a payment line that was already returned once, and a payment line can "
+			"be returned only once at the register. Ask a manager.").format(_money(held(so.name), so.company), so.name),
+			title=_("Refund"))
+	return {"refunds": refunds}
 
 
 def _refund_all(so) -> list[dict]:
@@ -419,15 +429,26 @@ def guard_payment_lines(doc, method=None) -> None:
 		frappe.throw(_("A pre-order payment line comes from its pre-order (Take payment on Pending Order), not from "
 			"the item list. Remove the line."), title=_("Pre-order payment"))
 	submitting = cint(doc.docstatus) == 1
-	# Submitting: lock the order so two payments for it are checked one after the other, each
-	# seeing the other's committed line (held below is a locking read for the same reason).
-	order = frappe.db.get_value(DOCTYPE, name, ["customer", "docstatus", "grand_total", "company"], as_dict=True,
-		for_update=submitting)
+	# Submitting: lock the order so two payments for it are checked one after the other, and read
+	# what is held with a lock too — under REPEATABLE READ a plain read is this transaction's
+	# snapshot, taken before the lock, and would miss a payment committed in between. The lines are
+	# found by the indexed ffl_preorder, so the lock covers this order's payments.
+	# lazy: relies on the optimizer picking the ffl_preorder index; on a full scan the lock would
+	# cover every pre-order payment line for the length of this checkout. Upgrade path: a per-order
+	# running total row updated in place.
+	# MariaDB may refuse either locking read (1020: the row changed after this snapshot) or time out:
+	# another payment for the same order is in flight, and this one is simply tried again.
+	try:
+		order = frappe.db.get_value(DOCTYPE, name, ["customer", "docstatus", "grand_total", "company"], as_dict=True,
+			for_update=submitting)
+		have = held(name, exclude=doc.name, for_update=submitting)
+	except (frappe.QueryDeadlockError, frappe.QueryTimeoutError):
+		frappe.throw(_("Another payment for {0} is being taken right now. Try again.").format(name),
+			title=_("Pre-order payment"))
 	if doc.customer != order.customer:
 		frappe.throw(_("Pre-order {0} belongs to another customer.").format(name))
 	doc.set(LINK_FIELD, name)
 	amount = flt(row.amount, 2)
-	have = held(name, exclude=doc.name, for_update=submitting)
 	deposits.refuse_taxed_line(doc, row, _("pre-order payment"))
 	if cint(doc.is_return):
 		if -amount > have + TOL:
@@ -467,7 +488,8 @@ def on_order_cancel(doc, method=None) -> None:
 	"""Sales Order on_cancel: a cancelled pre-order's quantities go back on its items."""
 	if not cint(doc.get(FLAG_FIELD)):
 		return
+	# Added in place (never read and written back), and the Item's modified moves as take_slots's does.
 	for item_code, qty in sorted(_wanted(doc.items).items()):
-		frappe.db.sql(f"UPDATE `tabItem` SET `{AVAILABLE_FIELD}` = `{AVAILABLE_FIELD}` + %s WHERE name = %s",
-			(qty, item_code))
+		frappe.db.sql(f"""UPDATE `tabItem` SET `{AVAILABLE_FIELD}` = `{AVAILABLE_FIELD}` + %s,
+			modified = %s, modified_by = %s WHERE name = %s""", (qty, now(), frappe.session.user, item_code))
 		frappe.clear_document_cache("Item", item_code)

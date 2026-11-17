@@ -50,7 +50,9 @@ FIELDS = {
 			"in_standard_filter": 1, "insert_after": "order_type"},
 	],
 	"POS Invoice": [{**_LINK, "insert_after": "ffl_work_order", "in_standard_filter": 1}],
-	"POS Invoice Item": [{**_LINK, "insert_after": "ffl_work_order"}],
+	# Indexed: a payment's checkout reads its order's lines with a lock, which then covers that order's
+	# lines only rather than every pre-order payment (preorder.guard_payment_lines).
+	"POS Invoice Item": [{**_LINK, "insert_after": "ffl_work_order", "search_index": 1}],
 	"Sales Invoice Item": [{**_LINK, "insert_after": "ffl_work_order"}],
 }
 
