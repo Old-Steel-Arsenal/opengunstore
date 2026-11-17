@@ -1668,6 +1668,7 @@ app: `ffl_woo_sync` · module: FFL Woo Sync · roles: System Manager
 | `site` | Select | Site |  | retail |
 | `dropship_status` | Select | Drop-ship Status |  | , Pending Route, Ordered, Complete, Error |
 | `transferred_at` | Datetime | Transferred At |  |  |
+| `paid_at` | Datetime | Paid At |  |  |
 | `customer_name` | Data | Customer Name |  |  |
 | `customer_phone` | Data | Phone |  |  |
 | `customer_email` | Data | Email |  | Email |
@@ -1727,6 +1728,8 @@ app: `ffl_woo_sync` · module: FFL Woo Sync · child table
 | `source_distributor` | Data | Source Distributor |  |  |
 | `source_sku` | Data | Source SKU |  |  |
 | `storage_location` | Link | Taken From Location |  | Storage Location |
+| `preorder_slots` | Int | Pre-order Slots Taken |  |  |
+| `preorder_reserved` | Float | Pre-order Units Put By |  |  |
 
 ## Woo Online Order Refund
 
@@ -1755,7 +1758,7 @@ app: `ffl_woo_sync` · module: FFL Woo Sync · child table
 | `confirmed_serial` | Data | Confirmed Serial |  |  |
 | `stock_hold_serial` | Data | Stock Hold Serial |  |  |
 | `reservation_error` | Small Text | Reservation Error |  |  |
-| `fulfillment` | Select | Fulfillment |  | local, to_store, fds, direct |
+| `fulfillment` | Select | Fulfillment |  | local, to_store, fds, direct, preorder |
 
 ## WooCommerce Settings
 

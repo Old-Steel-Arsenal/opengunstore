@@ -19,7 +19,9 @@
   it), anything else by quantity (``ffl_preorder_reserved``, off the shelf every channel counts:
   the website through ``channel_committed_units``, the register through
   :func:`refuse_reserved_units`). Whatever is left over is ordinary stock. Staff can put another
-  free gun of the same item by for a line (:func:`assign_serial`).
+  free gun of the same item by for a line (:func:`assign_serial`). The website's pre-orders join
+  the same queue through the ``preorder_demand_sources`` hook (:data:`DEMAND_SOURCES`), and take
+  their slots through :func:`take_slots` as these do.
 * **Hand-over** — once everything on the order is here (stage ``ready_pickup``), Open pickup
   (:func:`open_pickup`) makes the register ticket: the goods at the order's prices, taxed as any
   sale that day, and one negative PREORDER-DEPOSIT line releasing what is held, up to what the
@@ -226,7 +228,12 @@ def take_slots(wanted: dict[str, int]) -> None:
 
 	MariaDB may instead refuse that locking read with error 1020 ("Record has changed since last
 	read") when another order changed the row after this transaction's snapshot: the same race,
-	told the other way. Either way this order takes nothing."""
+	told the other way. Either way this order takes nothing.
+
+	The website order path takes its slots here too (``ffl_woo_sync.woocommerce.preorder``); every
+	count that moves is announced to the channels, so the storefront re-publishes what is left."""
+	from ffl_core.reservations import notify_channel_commitments_changed
+
 	for item_code in sorted(wanted):
 		name = frappe.db.get_value("Item", item_code, "item_name") or item_code
 		try:
@@ -237,9 +244,30 @@ def take_slots(wanted: dict[str, int]) -> None:
 		if have < wanted[item_code]:
 			frappe.throw(_("Only {0} of {1} can still be pre-ordered.").format(have, escape_html(name)),
 				title=_("Pre-order"))
-		# The Item's modified moves too (here and on give-back, on_order_cancel): a form opened before
+		# The Item's modified moves too (here and on give-back, give_back_slots): a form opened before
 		# this is refused on save rather than writing its stale count back.
 		frappe.db.set_value("Item", item_code, AVAILABLE_FIELD, have - wanted[item_code])
+	for item_code in sorted(wanted):
+		notify_channel_commitments_changed(item_code, source=CHANNEL)
+
+
+def give_back_slots(wanted: dict[str, int]) -> None:
+	"""Put *wanted* ({item_code: qty}) back on the items' pre-order counts: added in place (never read
+	and written back), the Item's modified moving as :func:`take_slots`'s does, and the channels told."""
+	from ffl_core.reservations import notify_channel_commitments_changed
+
+	for item_code, qty in sorted(wanted.items()):
+		if cint(qty) <= 0:
+			continue
+		frappe.db.sql(f"""UPDATE `tabItem` SET `{AVAILABLE_FIELD}` = `{AVAILABLE_FIELD}` + %s,
+			modified = %s, modified_by = %s WHERE name = %s""", (cint(qty), now(), frappe.session.user, item_code))
+		frappe.clear_document_cache("Item", item_code)
+		notify_channel_commitments_changed(item_code, source=CHANNEL)
+
+
+def has_open_preorders(item_code: str) -> bool:
+	"""Whether any open counter pre-order has a line of *item_code*."""
+	return bool(_open_lines(item_code))
 
 
 def _wanted(rows) -> dict[str, int]:
@@ -427,10 +455,7 @@ def on_stock_receipt(doc, method=None) -> None:
 		if doc.get("is_return") or not frappe.db.has_column("Sales Order Item", SERIAL_FIELD):
 			return
 		codes = sorted({r.item_code for r in doc.get("items") or [] if r.get("item_code")})
-		if not codes or not frappe.db.sql(f"""SELECT 1 FROM `tabSales Order Item` i
-				INNER JOIN `tabSales Order` o ON o.name = i.parent
-				WHERE o.docstatus = 1 AND o.`{FLAG_FIELD}` = 1 AND o.status NOT IN ('Completed', 'Closed')
-					AND i.item_code IN %s LIMIT 1""", (tuple(codes),)):
+		if not codes or not any(source.waiting(codes) for source in _sources()):
 			return
 		frappe.enqueue(ALLOCATE_JOB, queue="short", enqueue_after_commit=True, doctype=doc.doctype, name=doc.name)
 	except Exception:
@@ -500,15 +525,38 @@ def _fill_counter_line(demand, *, serial: str | None = None, qty: float = 0) -> 
 			update_modified=False)
 
 
-# Where the waiting comes from, and how each is filled. One queue across them, oldest first.
-# lazy: counter pre-orders only; upgrade path: web pre-orders join with their own demand and fill
-# functions here, and the oldest order still comes first whichever channel it came in on.
+def _counter_waiting(item_codes) -> bool:
+	"""Whether an open counter pre-order has a line of any of *item_codes*."""
+	return bool(item_codes) and bool(frappe.db.sql(f"""SELECT 1 FROM `tabSales Order Item` i
+		INNER JOIN `tabSales Order` o ON o.name = i.parent
+		WHERE o.docstatus = 1 AND o.`{FLAG_FIELD}` = 1 AND o.status NOT IN ('Completed', 'Closed')
+			AND i.item_code IN %s LIMIT 1""", (tuple(item_codes),)))
+
+
+_counter_demands.doctype = DOCTYPE
+_counter_demands.fill = _fill_counter_line
+_counter_demands.waiting = _counter_waiting
+
+# Where the waiting comes from, and how each is filled. One queue across them, oldest first by when
+# the order was placed, whichever channel it came in on. A source is ``fn(item_code) -> [demand]``
+# (a demand: ``{doctype, name, row, need, placed, reserved}``, read with a lock) carrying ``doctype``,
+# ``fill(demand, *, serial=None, qty=0)`` and ``waiting(item_codes) -> bool`` as attributes. Other
+# apps add theirs through the ``preorder_demand_sources`` hook (the website's pre-orders:
+# ``ffl_woo_sync.woocommerce.preorder``), so this module imports none of them.
 DEMAND_SOURCES = (_counter_demands,)
-FILL = {DOCTYPE: _fill_counter_line}
+DEMAND_HOOK = "preorder_demand_sources"
+
+
+def _sources() -> tuple:
+	return DEMAND_SOURCES + tuple(frappe.get_attr(path) for path in frappe.get_hooks(DEMAND_HOOK) or [])
+
+
+def _fill(demand, **kwargs) -> None:
+	next(s for s in _sources() if s.doctype == demand.doctype).fill(demand, **kwargs)
 
 
 def _demands(item_code: str) -> list:
-	return sorted((d for source in DEMAND_SOURCES for d in source(item_code)), key=lambda d: (d.placed, d.name))
+	return sorted((d for source in _sources() for d in source(item_code)), key=lambda d: (d.placed, d.name))
 
 
 def allocate_item(item_code: str, company: str) -> list[dict]:
@@ -537,11 +585,16 @@ def allocate_item(item_code: str, company: str) -> list[dict]:
 		# warehouse in the query.
 		pool = [s for s in frappe.get_all("Serial No", filters={"item_code": item_code, "status": "Active"},
 			order_by="creation asc, name asc", pluck="name") if _free_gun(s, item_code, holds, excluded)]
+		# A uniform-price gun sold on another channel and not named yet (a web or GunBroker claim)
+		# reserves no serial, so it is still in the pool: those units are not ours to put by
+		# (raises when a channel cannot answer, as below).
+		claimed = int(sum(committed_units(item_code, exclude=CHANNEL).values()))
+		pool = pool[:max(0, len(pool) - claimed)]
 		for demand in waiting:
 			if not pool:
 				break
 			serial = pool.pop(0)
-			FILL[demand.doctype](demand, serial=serial)
+			_fill(demand, serial=serial)
 			given.append({"doctype": demand.doctype, "name": demand.name, "serial": serial})
 	elif kind == QTY:
 		# Units already sold on another channel and not shipped are not ours to put by (raises when a
@@ -552,7 +605,7 @@ def allocate_item(item_code: str, company: str) -> list[dict]:
 			if left <= TOL:
 				break
 			take = min(demand.need, left)
-			FILL[demand.doctype](demand, qty=take)
+			_fill(demand, qty=take)
 			given.append({"doctype": demand.doctype, "name": demand.name, "qty": take})
 			left -= take
 	for g in given:
@@ -996,11 +1049,7 @@ def on_order_cancel(doc, method=None) -> None:
 
 	if not cint(doc.get(FLAG_FIELD)):
 		return
-	# Added in place (never read and written back), and the Item's modified moves as take_slots's does.
-	for item_code, qty in sorted(_wanted(doc.items).items()):
-		frappe.db.sql(f"""UPDATE `tabItem` SET `{AVAILABLE_FIELD}` = `{AVAILABLE_FIELD}` + %s,
-			modified = %s, modified_by = %s WHERE name = %s""", (qty, now(), frappe.session.user, item_code))
-		frappe.clear_document_cache("Item", item_code)
+	give_back_slots(_wanted(doc.items))
 	if not frappe.db.has_column("Sales Order Item", SERIAL_FIELD):
 		return
 	freed = set()

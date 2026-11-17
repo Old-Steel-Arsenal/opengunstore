@@ -853,6 +853,9 @@ _POS_OWNED_META_KEYS = frozenset({
     "_firearm_product", "_ammunition_product", "_osa_serial",
     "_osa_restricted_states", "_osa_fulfillment_mode", "_osa_lead_days",
     *mapping.MAP_META_KEYS,
+    # The pre-order state (mapping.preorder_stock): the storefront's Pre-order
+    # notice and checkout read it, so a lean push must be able to set and clear it.
+    *mapping.PREORDER_META_KEYS,
 })
 
 
@@ -1343,10 +1346,12 @@ def push_stock(
         raise ValueError(
             f"Item {item_code!r} has no {_f(site, 'product_id')} — call push_item() first."
         )
-    qty = mapping.stock_for_item(item_code)
+    # {stock_quantity}, plus the pre-order state for an Item pre-orders touch
+    # (mapping.stock_payload).
+    payload = mapping.stock_payload(item_code)
     try:
         result = _push_with_retry(
-            lambda: wc.update_product(woo_id, {"stock_quantity": qty}), retries=_retries
+            lambda: wc.update_product(woo_id, payload), retries=_retries
         )
     except WooCommerceError as exc:
         # A dangling product_id: the WC product behind this id was deleted on the
@@ -1446,7 +1451,7 @@ def push_stock_batch(
             if not woo_id:
                 results[code] = {"skipped": "no_product_id", "item_code": code}
                 continue
-            update = {"id": int(woo_id), "stock_quantity": mapping.stock_for_item(code)}
+            update = {"id": int(woo_id), **mapping.stock_payload(code)}
         except Exception as exc:  # one bad item must not sink the chunk
             results[code] = exc
             continue

@@ -582,8 +582,10 @@ class PendingDispositionsApp {
 			const openUnits = can.assignSerial ? pdOpenUnits(row.assign_units) : 0;
 			// GunBroker: nothing disposes before Record Payment (the server's
 			// _require_ready_to_dispose refuses it, same stage as shipDisabled below).
+			// A web pre-order ships whole, once all of it has arrived (the server refuses earlier).
+			const awaitingPreorder = !isCounter && !!row.awaiting_preorder;
 			const disposeDisabled = row.ffl_expired || blockShipUnpaid || awaiting || openUnits > 0
-				|| (isGb && row.channel_stage === 'awaiting_payment');
+				|| awaitingPreorder || (isGb && row.channel_stage === 'awaiting_payment');
 			// A pickup with a gun on it is NOT "hand it over and Mark Picked Up":
 			// the server refuses Mark Picked Up for exactly those rows, and the
 			// gun leaves on its 4473 ticket. Its hint is the server's pickup_block
@@ -598,6 +600,7 @@ class PendingDispositionsApp {
 			const waitLanes = row.awaiting_serial_lanes || [];
 			const serialFromDistributor = awaiting && waitLanes.length > 0 && !waitLanes.includes('local');
 			const disposeHint = row.ffl_expired ? __('Verify the FFL first.')
+				: awaitingPreorder ? __('Pre-order — waiting for the goods to arrive.')
 				: (serialFromDistributor ? ((row.arrived && waitLanes.includes('to_store'))
 					? __('Arrived — assign the received serial on the WooCommerce order.')
 					: __('Serial comes with the distributor order when it arrives.'))
@@ -626,7 +629,7 @@ class PendingDispositionsApp {
 			const canShip = can.ship && row.shipstation_enabled && !row.ship_pushed && !noAddress
 				&& !needsGbInvoice;
 			// GunBroker: nothing ships before Record Payment.
-			const shipDisabled = row.ffl_expired || blockShipUnpaid || awaitingGoods
+			const shipDisabled = row.ffl_expired || blockShipUnpaid || awaitingGoods || awaitingPreorder
 				|| openUnits > 0 || serialErrors.length > 0
 				|| (isGb && row.channel_stage === 'awaiting_payment');
 			// Mark Shipped / Picked Up renders off the server-computed gate

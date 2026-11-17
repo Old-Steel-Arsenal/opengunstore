@@ -17,7 +17,9 @@
   "lane",
   "source_distributor",
   "source_sku",
-  "storage_location"
+  "storage_location",
+  "preorder_slots",
+  "preorder_reserved"
  ],
  "fields": [
   {
@@ -107,11 +109,25 @@
    "label": "Taken From Location",
    "read_only": 1,
    "no_copy": 1
+  },
+  {
+   "fieldname": "preorder_slots",
+   "fieldtype": "Int",
+   "label": "Pre-order Slots Taken",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "preorder_reserved",
+   "fieldtype": "Float",
+   "label": "Pre-order Units Put By",
+   "read_only": 1,
+   "no_copy": 1
   }
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-10-02 12:00:00.000000",
+ "modified": "2026-11-17 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Woo Sync",
  "name": "Woo Online Order Line",

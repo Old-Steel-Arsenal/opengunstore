@@ -1,9 +1,11 @@
 """Pre-order Deposits: the sub-ledger behind the Pre-order Deposits liability account.
 
 One row per pre-order with money on it up to the date: what was collected, refunded and applied to
-its bill, the balance still held, and how long it has been held (from the first payment). Read
-from the submitted register invoices' PREORDER-DEPOSIT lines (``ffl_core.deposits``), the same
-lines every other pre-order figure reads.
+its bill, the balance still held, and how long it has been held (from the first payment). A counter
+pre-order is read from the submitted register invoices' PREORDER-DEPOSIT lines
+(``ffl_core.deposits``), the same lines every other pre-order figure reads; other channels add
+their own rows through the ``preorder_deposit_rows`` hook (``fn(company, as_of) -> [row]``, the
+keys of :func:`build_rows`' rows — the website's pre-orders, ``ffl_woo_sync.woocommerce.preorder``).
 
 A register invoice books to the general ledger when it is merged into a Sales Invoice (the
 nightly close, or at once for a firearm sale), so the summary sets the balance next to the
@@ -23,10 +25,19 @@ CHANNEL_COUNTER = "Counter"
 AGING = ((30, "0–30"), (90, "31–90"), (180, "91–180"), (365, "181–365"), (None, ">365"))
 
 
+CHANNEL_HOOK = "preorder_deposit_rows"
+
+
 def execute(filters=None):
 	filters = _validate(filters)
-	rows = build_rows(filters.company, filters.as_of_date)
+	rows = build_rows(filters.company, filters.as_of_date) + channel_rows(filters.company, filters.as_of_date)
 	return _columns(), rows, None, None, _summary(rows, filters)
+
+
+def channel_rows(company: str, as_of) -> list[dict]:
+	"""The other channels' pre-orders (the ``preorder_deposit_rows`` hook), oldest first payment first."""
+	rows = [r for path in frappe.get_hooks(CHANNEL_HOOK) or [] for r in frappe.get_attr(path)(company, as_of) or []]
+	return sorted(rows, key=lambda r: (str(r.get("first_payment") or ""), r.get("sales_order") or ""))
 
 
 def _validate(filters) -> frappe._dict:
@@ -89,7 +100,7 @@ def build_rows(company: str, as_of) -> list[dict]:
 		status = _("Cancelled") if cint(so.docstatus) == 2 else (_(so.status) if so.status in ("Completed", "Closed")
 			else _("Open"))
 		out.append({
-			"sales_order": name, "channel": _(CHANNEL_COUNTER), "customer": so.customer,
+			"sales_order": name, "ref_doctype": "Sales Order", "channel": _(CHANNEL_COUNTER), "customer": so.customer,
 			"customer_name": so.customer_name, "items": ", ".join(items.get(name, [])),
 			"first_payment": o.first, "collected": flt(o.collected, 2), "refunded": flt(o.refunded, 2),
 			"applied": flt(o.applied, 2), "balance": balance, "status": status,
@@ -121,7 +132,9 @@ def _summary(rows, filters) -> list[dict]:
 
 def _columns() -> list[dict]:
 	return [
-		{"fieldname": "sales_order", "label": _("Pre-order"), "fieldtype": "Link", "options": "Sales Order", "width": 140},
+		{"fieldname": "ref_doctype", "label": _("Type"), "fieldtype": "Data", "hidden": 1},
+		{"fieldname": "sales_order", "label": _("Pre-order"), "fieldtype": "Dynamic Link", "options": "ref_doctype",
+			"width": 140},
 		{"fieldname": "channel", "label": _("Channel"), "fieldtype": "Data", "width": 90},
 		{"fieldname": "customer", "label": _("Customer"), "fieldtype": "Link", "options": "Customer", "width": 120},
 		{"fieldname": "customer_name", "label": _("Customer Name"), "fieldtype": "Data", "width": 160},
