@@ -50,8 +50,6 @@
 			chips.push(f.banned
 				? { label: L('Banned'), tone: 'red' }
 				: { label: L('Banned — override until {0}', [String(f.override_until || '').slice(11, 16)]), tone: 'red' });
-		} else if (f.status && f.status !== 'Active') {
-			chips.push({ label: L(f.status), tone: 'orange' });
 		}
 		// The member badge (membership_benefits.membership_badge): plans, their end, today's uses.
 		if (f.membership && f.membership.text) chips.push({ label: f.membership.text, tone: 'green' });
@@ -275,8 +273,8 @@
 					return '<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border-color)">'
 						+ '<div><b>' + api.escText(row.customer_name) + '</b>'
 						+ (row.name !== row.customer_name ? ' <span class="text-muted">' + api.escText(row.name) + '</span>' : '')
-						+ (row.customer_status && row.customer_status !== 'Active'
-							? ' <span class="indicator-pill ' + (row.customer_status === 'Banned' ? 'red' : 'orange') + '">' + api.escText(__(row.customer_status)) + '</span>' : '')
+						+ (row.customer_status === 'Banned'
+							? ' <span class="indicator-pill red">' + api.escText(__('Banned')) + '</span>' : '')
 						+ '<div class="small text-muted">' + __('Same {0}', [api.escText(api.dupLabel(row, __))]) + '</div></div>'
 						+ '<button class="btn btn-xs btn-default ffl-use-customer" data-name="' + api.escText(row.name) + '">' + __('Use this customer') + '</button></div>';
 				}).join('');

@@ -13,7 +13,7 @@ For counter staff adding or looking up a customer, and for managers keeping cust
 
 <figure markdown>
 ![The Customer list](../screenshots/list-customer.webp){ .screenshot }
-<figcaption>The Customer list. A Banned, Inactive or Prospect customer carries a colored status.</figcaption>
+<figcaption>The Customer list. A Banned customer carries a red status.</figcaption>
 </figure>
 
 The **New Customer** dialog is the same at the register and on the customer list.
@@ -75,16 +75,9 @@ Each alert records who added it and when. **Copy of ID** is kept as a private fi
 
 ### Customer status
 
-A new customer is **Active**. Set **Customer Status** to:
+A new customer is **Active**. A manager sets **Customer Status** to **Banned** for someone the store will not serve; a reason is required. **Banned** shows in red on the customer list and at the top of the record, and stops a sale at the register and on Create Order until a manager overrides it for 30 minutes.
 
-- **Inactive** for someone who no longer shops here.
-- **Prospect** for someone who has not bought yet.
-- **Banned** for someone the store will not serve. A reason is required.
-
-The status shows on the customer list and at the top of the record: **Banned** in red, **Prospect** in orange, **Inactive** in gray. Filter the list by **Customer Status** to find them.
-
-!!! note
-    **Banned** stops a sale at the register and on Create Order until a manager overrides it for 30 minutes. **Inactive** and **Prospect** are records for staff and stop nothing.
+For someone who no longer shops here, tick **Disabled** on the **Settings** tab instead. A disabled customer cannot be put on any new sale; untick it if they come back.
 
 ### Family
 
