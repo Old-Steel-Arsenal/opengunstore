@@ -308,6 +308,158 @@ def deal_script_js(holds: bool) -> str:
 
 
 DEAL_SCRIPT_JS = deal_script_js(False)
+# Draft reply and Insert price on the Lead and Deal pages (crm/reply_draft.py, crm/price_insert.py): one
+# script per doctype, always on; the page asks reply_draft_ready which buttons to show. The draft goes into
+# CRM's own composer above the quote when it is open on the mail being answered (TipTap keeps its editor on
+# the editable element: el.editor), else into the dialog below, which sends through the endpoint CRM's
+# composer calls. docs/versions.md lists what a CRM upgrade must check.
+LEAD_SCRIPT = "OpenGunstore: Lead"
+DEAL_REPLY_SCRIPT = "OpenGunstore: Deal reply"
+_REPLY_SCRIPT_TEMPLATE = """class %(cls)s {
+	onLoad() {
+		if (this.doc.__newDocument) return
+		call("ffl_core.api.crm.reply_draft_ready", { doctype: "%(dt)s", name: this.doc.name })
+			.then((shown) => {
+				const add = []
+				if (shown.ready) add.push({ label: __("Draft reply"), onClick: () => this.fflDraftReply() })
+				if (shown.insert_price) add.push({ label: __("Insert price"), onClick: () => this.fflInsertPrice() })
+				this.actions.unshift(...add)
+			})
+			.catch((e) => console.warn("[OpenGunstore] reply buttons", e))
+	}
+	fflMessage(e) {
+		return e?.messages?.[0] || e?.message || __("Something went wrong.")
+	}
+	fflComposer() {
+		try {
+			const found = [...window.document.querySelectorAll(".ProseMirror")].filter((el) => {
+				const editor = el.editor
+				return editor && editor.isEditable && el.offsetParent !== null
+					&& "class" in (editor.schema.nodes.paragraph?.spec?.attrs || {})
+			})
+			if (found.length === 1) return found[0].editor
+		} catch (e) {
+			// fall through: the dialog takes the draft
+		}
+		console.warn("[OpenGunstore] composer not found")
+		return null
+	}
+	fflQuoteAt(editor) {
+		let at = null
+		editor.state.doc.forEach((node, offset) => {
+			if (at === null && node.type.name === "blockquote") at = { pos: offset, text: node.textContent }
+		})
+		return at
+	}
+	async fflDraftReply() {
+		if (this.fflDrafting) return
+		this.fflDrafting = true
+		const waiting = toast.loading(__("Drafting…"))
+		try {
+			const open = this.fflComposer()
+			const quote = open && this.fflQuoteAt(open)
+			const draft = await call("ffl_core.api.crm.draft_reply", {
+				doctype: "%(dt)s", name: this.doc.name, composer: open ? 1 : 0,
+				quote_text: quote ? quote.text.replace(/\\s+/g, " ").trim().slice(0, 1000) : "",
+			})
+			toast.dismiss(waiting)
+			const editor = this.fflComposer()
+			if (editor && draft.native_ok) {
+				const at = this.fflQuoteAt(editor)
+				const pos = at ? at.pos : editor.state.doc.content.size
+				editor.chain().insertContentAt(pos, draft.content_html).setTextSelection(pos + 1).focus().scrollIntoView().run()
+				if (draft.handoff) toast.error(__("Needs a person: {0}", [draft.handoff]), { duration: Infinity })
+				else toast.success(__("Draft added."))
+			} else {
+				this.fflReplyDialog(draft)
+			}
+		} catch (e) {
+			toast.dismiss(waiting)
+			toast.error(this.fflMessage(e))
+		} finally {
+			this.fflDrafting = false
+		}
+	}
+	fflReplyDialog(draft) {
+		const esc = (s) => String(s ?? "").replace(/[&<>"'{}]/g, (c) => "&#" + c.charCodeAt(0) + ";")
+		const fields = [{ fieldname: "ffl_envelope", fieldtype: "HTML",
+			options: "<div class='text-ink-gray-7'>" + esc(draft.to) + " · " + esc(draft.subject) + "</div>" }]
+		if (draft.handoff) fields.push({ fieldname: "ffl_handoff", fieldtype: "HTML",
+			options: "<div class='text-ink-red-4'>" + esc(__("Needs a person: {0}", [draft.handoff])) + "</div>" })
+		fields.push({ fieldname: "content", fieldtype: "Text Editor", label: "" })
+		formDialog({
+			title: __("Reply to {0}", [this.doc.first_name || draft.to]),
+			fields,
+			defaults: { content: draft.content_html + (draft.signature_html || "") },
+			actions: [
+				{ label: __("Send"), variant: "solid", onClick: async ({ data, close }) => {
+					try {
+						await call("frappe.core.doctype.communication.email.make", {
+							recipients: draft.to, cc: "", bcc: "", subject: draft.subject, content: data.content,
+							doctype: "%(dt)s", name: this.doc.name, send_email: 1, sender: draft.sender || undefined,
+							attachments: [], in_reply_to: draft.in_reply_to || undefined,
+						})
+					} catch (e) {
+						toast.error(this.fflMessage(e))
+						return
+					}
+					close()
+					toast.success(__("Sent."))
+				} },
+				{ label: __("Close"), onClick: ({ close }) => close() },
+			],
+		})
+	}
+	async fflInsertPrice() {
+		try {
+			const found = await call("ffl_core.api.crm.price_options", { doctype: "%(dt)s", name: this.doc.name })
+			const picked = found.options.length === 1 ? found.options[0] : await this.fflPickPrice(found)
+			if (!picked) return
+			const line = await call("ffl_core.api.crm.price_text", {
+				doctype: "%(dt)s", name: this.doc.name, item_code: picked.item_code, serial_no: picked.serial_no || undefined })
+			const editor = this.fflComposer()
+			if (editor) {
+				editor.chain().focus().insertContent({ type: "text", text: line.text }).run()
+			} else if (navigator.clipboard) {
+				navigator.clipboard.writeText(line.text).then(
+					() => toast.success(__("Copied: {0}", [line.text])), () => toast(line.text))
+			} else {
+				toast(line.text)
+			}
+		} catch (e) {
+			toast.error(this.fflMessage(e))
+		}
+	}
+	fflPickPrice(found) {
+		const fields = []
+		if (found.options.length) fields.push({ fieldname: "choice", fieldtype: "Select", label: "",
+			options: found.options.map((o, i) => ({ label: o.label, value: String(i) })) })
+		fields.push({ fieldname: "other_item", fieldtype: "Link", options: "Item", label: __("Other item") })
+		return new Promise((resolve) => {
+			formDialog({
+				title: __("Insert price"),
+				fields,
+				defaults: found.options.length ? { choice: String(found.default || 0) } : {},
+				actions: [{ label: __("Insert"), variant: "solid", onClick: ({ data, close }) => {
+					const picked = data.other_item ? { item_code: data.other_item }
+						: found.options[Number(data.choice ?? found.default ?? 0)]
+					close()
+					resolve(picked || null)
+				} }],
+				onCancel: () => resolve(null),
+			})
+		})
+	}
+}
+"""
+
+
+def reply_script_js(doctype: str) -> str:
+	"""The Draft reply / Insert price script of the Lead or Deal page."""
+	return _REPLY_SCRIPT_TEMPLATE % {"cls": doctype.replace(" ", ""), "dt": doctype}
+
+
+REPLY_SCRIPTS = {LEAD_SCRIPT: (LEAD, reply_script_js(LEAD)), DEAL_REPLY_SCRIPT: (DEAL, reply_script_js(DEAL))}
 # Where the card sits on the Deal page: after Contacts, as CRM places its own Lost Reason section.
 SIDE_PANEL = f"{DEAL}-Side Panel"
 CARD_SECTION = "ffl_customer_section"
@@ -425,6 +577,7 @@ def ensure(backfill: bool = True) -> dict:
 		_as_administrator(ensure_follow_up_status)
 		_as_administrator(take_over_lead_flags)
 		_as_administrator(ensure_contact_script)
+		_as_administrator(ensure_reply_scripts)
 		_as_administrator(apply_pos_link)
 		_as_administrator(team.apply)
 		if backfill:
@@ -745,6 +898,20 @@ def ensure_contact_script() -> None:
 	current = frappe.db.get_value("CRM Form Script", CONTACT_SCRIPT, ["script", "enabled"], as_dict=True)
 	if current.script != CONTACT_SCRIPT_JS or not current.enabled:
 		frappe.db.set_value("CRM Form Script", CONTACT_SCRIPT, {"script": CONTACT_SCRIPT_JS, "enabled": 1})
+
+
+def ensure_reply_scripts() -> None:
+	"""The Lead and Deal pages' Draft reply and Insert price buttons: on always, each button shown by
+	what ``reply_draft_ready`` answers (an extension drafting, the POS link on)."""
+	if not frappe.db.exists("DocType", "CRM Form Script"):
+		return
+	for name, (doctype, script) in REPLY_SCRIPTS.items():
+		want = {"script": script, "enabled": 1}
+		if not frappe.db.exists("CRM Form Script", name):
+			frappe.get_doc({"doctype": "CRM Form Script", "name": name, "dt": doctype, "view": "Form", **want}
+				).insert(ignore_permissions=True)
+		elif frappe.db.get_value("CRM Form Script", name, list(want), as_dict=True) != want:
+			frappe.db.set_value("CRM Form Script", name, want)
 
 
 def apply_pos_link() -> None:
