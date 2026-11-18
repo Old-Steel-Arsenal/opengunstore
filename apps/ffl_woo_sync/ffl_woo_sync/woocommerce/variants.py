@@ -64,7 +64,15 @@ def make_variants(template: str, variants, dry_run=1) -> dict:
 
 	Sets each Item's ``variant_of`` and its attribute values. Nothing is written
 	when any Item fails a check (unknown Item, already another template's variant,
-	missing or unknown attribute value, two Items with the same values).
+	missing or unknown attribute value, the same values as another requested Item
+	or an existing variant).
+
+	An Item that is listed as its own simple product loses that link
+	(``{site}_product_id`` / ``listed`` cleared, returned in ``cleared``): as a
+	variant its id must be a variation of the template's product, so a stale
+	simple-product id would be sent as a variation id. The simple product itself
+	is left on the store — draft or trash it there, or link the variant to its
+	variation with :func:`adopt_variable_product`.
 
 	Args:
 	    template: The template Item (Has Variants on, with its attributes).
@@ -72,29 +80,47 @@ def make_variants(template: str, variants, dry_run=1) -> dict:
 	    dry_run: 1 (default) only checks; 0 writes.
 
 	Returns:
-	    {ok, dry_run, template, errors, variants}: ``variants`` is the item codes
-	    that are (or would be) variants of the template.
+	    {ok, dry_run, template, errors, variants, cleared}: ``variants`` is the item
+	    codes that are (or would be) variants of the template; ``cleared`` is
+	    {item_code: the simple product id it held} for Items that were not yet
+	    variants.
 	"""
 	frappe.only_for("System Manager")
 	if isinstance(variants, str):
 		variants = json.loads(variants)
 	dry_run = frappe.utils.cint(dry_run)
 	names = _template_attributes(template)
+	variants = variants or {}
 	errors = []
+
+	def combo(values) -> tuple:
+		return tuple(str((values or {}).get(n) or "").strip() for n in names)
+
+	# Existing variants only as something a requested Item may not repeat — their
+	# own gaps or clashes are not this call's to judge.
 	seen: dict[tuple, str] = {}
-	existing = {code: {r.attribute: r.attribute_value for r in frappe.get_all(
-		"Item Variant Attribute", filters={"parenttype": "Item", "parent": code},
-		fields=["attribute", "attribute_value"])}
-		for code in mapping.template_variants(template) if code not in variants}
-	for code, values in {**existing, **(variants or {})}.items():
-		if code in (variants or {}):
-			errors += _check_variant(code, values, template, names)
-		combo = tuple(str((values or {}).get(n) or "").strip() for n in names)
-		if combo in seen:
-			errors.append(f"{code}: same attributes as {seen[combo]}")
-		seen.setdefault(combo, code)
+	for code in mapping.template_variants(template):
+		if code in variants:
+			continue
+		key = combo({r.attribute: r.attribute_value for r in frappe.get_all(
+			"Item Variant Attribute", filters={"parenttype": "Item", "parent": code},
+			fields=["attribute", "attribute_value"])})
+		if all(key):
+			seen.setdefault(key, code)
+	for code, values in variants.items():
+		errors += _check_variant(code, values, template, names)
+		key = combo(values)
+		if key in seen:
+			errors.append(f"{code}: same attributes as {seen[key]}")
+		seen.setdefault(key, code)
+	pid, listed = _f("retail", "product_id"), _f("retail", "listed")
+	cleared = {}
+	for code in variants:
+		row = frappe.db.get_value("Item", code, [pid, "variant_of"], as_dict=True) or {}
+		if row.get(pid) and row.get("variant_of") != template:
+			cleared[code] = str(row[pid])
 	out = {"ok": not errors, "dry_run": bool(dry_run), "template": template,
-		"errors": errors, "variants": sorted(variants or {})}
+		"errors": errors, "variants": sorted(variants), "cleared": cleared}
 	if errors or dry_run:
 		return out
 	for code, values in variants.items():
@@ -105,7 +131,10 @@ def make_variants(template: str, variants, dry_run=1) -> dict:
 				"parent": code, "idx": idx, "attribute": name,
 				"attribute_value": str(values[name]).strip(), "variant_of": template,
 			}).db_insert()
-		frappe.db.set_value("Item", code, {"variant_of": template, "has_variants": 0})
+		update = {"variant_of": template, "has_variants": 0}
+		if code in cleared:
+			update.update({pid: None, listed: 0})
+		frappe.db.set_value("Item", code, update)
 		frappe.get_doc("Item", code).add_comment("Comment",
 			_("Made a variant of {0} ({1}).").format(template,
 				", ".join(f"{n}: {values[n]}" for n in names)))

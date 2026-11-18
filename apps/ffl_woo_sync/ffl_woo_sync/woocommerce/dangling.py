@@ -28,8 +28,7 @@ from ffl_woo_sync.woocommerce.client import (
     WooCommerceError,
     assert_store_site,
 )
-from ffl_woo_sync.woocommerce import mapping
-from ffl_woo_sync.woocommerce.sync import _f, _item_target
+from ffl_woo_sync.woocommerce.sync import _f
 
 _MAX_BATCH = 200
 # The doctypes that carry a woo_product_id (fixtures/custom_field.json).
@@ -48,7 +47,8 @@ def _candidates(doctype: str, field: str) -> list:
     ``["!=", ""]`` excludes both the empty string and NULL in SQL, so a never-listed
     record is skipped.
     """
-    return frappe.get_all(doctype, filters={field: ["!=", ""]}, fields=["name", field])
+    extra = ["variant_of"] if doctype == "Item" else []
+    return frappe.get_all(doctype, filters={field: ["!=", ""]}, fields=["name", field, *extra])
 
 
 def _is_dangling(client, woo_id: str, parent: str = "") -> bool:
@@ -117,9 +117,10 @@ def _audit_site(site: str, batch_size: int, fix: bool, dangling: list) -> int:
                 if not woo_id:
                     continue
                 parent = ""
-                if doctype == "Item":
-                    kind, _template, parent = _item_target(row["name"], site)
-                    if kind == mapping.VARIANT and not parent:
+                if row.get("variant_of"):
+                    parent = str(frappe.db.get_value(
+                        "Item", row["variant_of"], field) or "")
+                    if not parent:
                         continue  # nothing to ask under; the template's own id is audited
                 checked += 1
                 if _is_dangling(client, woo_id, parent):

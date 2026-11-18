@@ -111,9 +111,10 @@ class Push(_Variable):
 		self.assertEqual((payload["stock_quantity"], payload["manage_stock"]), (10, True))
 		self.assertEqual(_meta(payload)["_osa_preorder"], "1")
 		self.assertEqual(_meta(payload)["_osa_preorder_eta"], "2026-12-31")
-		# The parent says it is not itself on pre-order; the variation decides.
+		# The parent shows pre-order while a variation sells slots (its earliest ETA).
 		parent = self.client.create_product.call_args.args[0]
-		self.assertEqual(_meta(parent).get("_osa_preorder"), "")
+		self.assertEqual((_meta(parent)["_osa_preorder"], _meta(parent)["_osa_preorder_eta"]),
+			("1", "2026-12-31"))
 
 	def test_a_second_push_updates_the_same_variations(self):
 		self._push_all()
@@ -150,7 +151,9 @@ class Changes(_Variable):
 		self.client.update_variation.assert_called_once()
 		parent, vid, payload = self.client.update_variation.call_args.args
 		self.assertEqual((parent, vid, payload["stock_quantity"]), (str(self.P), self.vid, 4))
-		self.client.update_product.assert_not_called()
+		# Pre-order touches this variant, so only the parent's pre-order meta follows.
+		self.client.update_product.assert_called_once_with(str(self.P), {"meta_data": [
+			{"key": "_osa_preorder", "value": "1"}, {"key": "_osa_preorder_eta", "value": ""}]})
 		self.assertEqual(sync.push_stock(self.template)["skipped"], "template")
 
 	def test_the_stock_batch_sends_a_variant_under_its_parent(self):
@@ -328,7 +331,12 @@ class Migration(_Variable):
 			self.plain[1]: {self.fits: "SP5K", self.sel: "SEF"}}
 		self.assertTrue(variants.make_variants(self.template, wanted)["ok"])
 		self.assertFalse(frappe.db.get_value("Item", self.plain[0], "variant_of"), "dry run wrote")
-		self.assertTrue(variants.make_variants(self.template, wanted, dry_run=0)["ok"])
+		made = variants.make_variants(self.template, wanted, dry_run=0)
+		self.assertTrue(made["ok"])
+		# Their simple-product ids are not variation ids: cleared, and reported.
+		self.assertEqual(made["cleared"], {self.plain[0]: "77", self.plain[1]: "77"})
+		self.assertEqual(frappe.db.get_value("Item", self.plain[0], ["woo_product_id", "woo_listed"]),
+			(None, 0))
 		self.assertEqual(mapping.variant_kind(self.plain[0]), (mapping.VARIANT, self.template))
 		doc = frappe.get_doc("Item", self.plain[1])
 		self.assertEqual({(a.attribute, a.attribute_value) for a in doc.attributes},
@@ -345,7 +353,7 @@ class Migration(_Variable):
 		self.assertEqual(dry["matched"], {self.plain[0]: "801", self.plain[1]: "802"})
 		self.assertEqual(dry["woo_only"], ["SOMETHING-ELSE"])
 		self.assertEqual(sorted(dry["pos_only"]), sorted(self.v.values()))
-		self.assertEqual(dry["replaced"], {self.plain[0]: "77", self.plain[1]: "77"})
+		self.assertEqual(dry["replaced"], {})
 		self.assertEqual(self._pid(self.template), None)
 
 		variants.adopt_variable_product(self.template, 20964, dry_run=0)
@@ -366,3 +374,111 @@ class Migration(_Variable):
 		self.client.get_product.return_value = {"id": 5, "type": "simple"}
 		with self.assertRaisesRegex(frappe.ValidationError, "not a variable product"):
 			variants.adopt_variable_product(self.template, 5)
+
+
+class ReviewFixes(_Variable):
+
+	def test_the_parent_preorder_meta_follows_the_variants(self):
+		a, b = self.v[("SP5", "Navy")], self.v[("PTR", "SEF")]
+		frappe.db.set_value("Item", a, {AVAILABLE_FIELD: 3, ETA_FIELD: "2027-02-01"})
+		frappe.db.set_value("Item", b, {AVAILABLE_FIELD: 2, ETA_FIELD: "2027-01-15"})
+		self.assertEqual(mapping.template_preorder_meta(self.template),
+			{"_osa_preorder": "1", "_osa_preorder_eta": "2027-01-15"})
+		self._push_all()
+		self.client.reset_mock()
+		self.client.update_variation.side_effect = lambda parent, vid, payload: {"id": int(vid)}
+		# Every slot gone: the variation's stock push turns the parent's notice off.
+		frappe.db.set_value("Item", a, AVAILABLE_FIELD, 0)
+		frappe.db.set_value("Item", b, AVAILABLE_FIELD, 0)
+		sync.push_stock(b)
+		self.client.update_product.assert_called_once_with(str(self.P), {"meta_data": [
+			{"key": "_osa_preorder", "value": ""}, {"key": "_osa_preorder_eta", "value": ""}]})
+		# A lean template push carries the derived meta, never the template's own blanks.
+		frappe.db.set_value("Item", b, AVAILABLE_FIELD, 4)
+		self.client.reset_mock()
+		sync.push_item(self.template, pos_fields_only=True)
+		lean = self.client.update_product.call_args.args[1]
+		self.assertEqual(_meta(lean)["_osa_preorder"], "1")
+		self.client.update_variation.assert_not_called()
+
+	def test_reconcile_heals_a_parent_whose_preorder_meta_drifted(self):
+		self._push_all()
+		frappe.db.set_value("Item", self.v[("PTR", "SEF")], {AVAILABLE_FIELD: 5})
+		self.client.reset_mock()
+		self.client.get_attribute_ids.return_value = {}
+		self.client.get_products.side_effect = lambda ids, **kw: {str(self.P): {
+			"id": self.P, "status": "publish", "meta_data": []}} if str(self.P) in map(str, ids) else {}
+		self.client.get_product.side_effect = lambda pid: {"id": int(pid), "status": "draft"}
+		self.client.list_variations.side_effect = lambda parent: {}
+		self.client.get_variation.side_effect = WooCommerceError("gone", status_code=404)
+		self.client.update_product.side_effect = lambda pid, payload: {"id": int(pid)}
+		with patch("frappe.enqueue"):
+			tasks._run_reconcile("retail")
+		mine = [c for c in self.client.update_product.call_args_list if c.args[0] == str(self.P)]
+		self.assertEqual(len(mine), 1)
+		self.assertEqual(_meta(mine[0].args[1])["_osa_preorder"], "1")
+
+	def test_a_dead_variation_image_is_dropped_and_the_push_retried(self):
+		code = self.v[("SP5", "Navy")]
+		url = "https://cdn.example.com/dead-lower.jpg"
+		frappe.db.set_value("Item", code, "image", url)
+		created = {}
+
+		def create_variation(parent, payload):
+			if (payload.get("image") or {}).get("src") == url:
+				raise WooCommerceError(f"Error getting remote image {url}. Error: 404", status_code=400)
+			created[payload["sku"]] = payload
+			return {"id": next(self.next_id)}
+
+		self.client.create_variation.side_effect = create_variation
+		result = self._push_all()
+		self.assertNotIn("image", created[code])
+		self.assertTrue(self._pid(code))
+		self.assertFalse(frappe.db.get_value("Item", code, "image"))
+		self.assertEqual(result["variation_errors"], {})
+
+	def test_a_failing_variation_is_that_variants_error_not_the_templates(self):
+		bad = self.v[("PTR", "SEF")]
+
+		def create_variation(parent, payload):
+			if payload["sku"] == bad:
+				raise WooCommerceError("refused", status_code=400)
+			return {"id": next(self.next_id)}
+
+		self.client.create_variation.side_effect = create_variation
+		result = self._push_all()
+		self.assertEqual(frappe.db.get_value("Item", self.template, "woo_sync_error"), "")
+		self.assertEqual(self._pid(self.template), str(self.P))
+		self.assertEqual(list(result["variation_errors"]), [bad])
+		self.assertIn("refused", frappe.db.get_value("Item", bad, "woo_sync_error"))
+
+	def test_a_deleted_variation_reaches_the_button_as_dangling(self):
+		from ffl_woo_sync.woocommerce.client_api import push_item_now
+
+		self._push_all()
+		gone = self.v[("SP5", "Navy")]
+
+		def update_variation(parent, vid, payload):
+			if vid == self._pid(gone):
+				raise WooCommerceError("no such variation", status_code=404)
+			return {"id": int(vid)}
+
+		self.client.update_variation.side_effect = update_variation
+		out = push_item_now(self.template)
+		self.assertEqual((out["ok"], out["dangling_variations"], out["variation_errors"]),
+			(True, [gone], {}))
+
+	def test_make_variants_ignores_gaps_among_existing_variants(self):
+		# Two existing variants missing a value would share the tuple (x, "").
+		for code in list(self.v.values())[:2]:
+			frappe.db.delete("Item Variant Attribute", {"parent": code, "attribute": self.sel})
+		token = frappe.generate_hash(length=5).upper()
+		new = f"_T-PLAIN-{token}"
+		frappe.get_doc({"doctype": "Item", "item_code": new, "item_name": new,
+			"item_group": "All Item Groups", "stock_uom": "Nos", "is_stock_item": 1}).insert(
+			ignore_permissions=True)
+		out = variants.make_variants(self.template, {new: {self.fits: "SP5K", self.sel: "Navy"}})
+		self.assertEqual(out["errors"], [])
+		# A requested Item repeating a complete existing combination is still refused.
+		clash = variants.make_variants(self.template, {new: {self.fits: "SP5", self.sel: "SEF"}})
+		self.assertEqual(clash["errors"], [f"{new}: same attributes as {self.v[('SP5', 'SEF')]}"])

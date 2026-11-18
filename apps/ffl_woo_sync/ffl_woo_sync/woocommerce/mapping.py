@@ -1937,6 +1937,15 @@ def variant_kind(item_code: str) -> tuple[str, str]:
     return "", ""
 
 
+def variable_items(item_codes) -> list[str]:
+    """Which of *item_codes* are templates or variants — one query for a batch."""
+    codes = [c for c in item_codes or [] if c]
+    if not codes:
+        return []
+    return frappe.db.sql_list("""SELECT name FROM `tabItem` WHERE name IN %(codes)s
+        AND (has_variants = 1 OR IFNULL(variant_of, '') != '')""", {"codes": tuple(codes)})
+
+
 def template_variants(template: str) -> list[str]:
     """The template's enabled variant Items, in creation order."""
     return frappe.get_all("Item", filters={"variant_of": template, "disabled": 0},
@@ -1993,6 +2002,23 @@ _VARIATION_KEYS = ("sku", "status", "regular_price", "sale_price", "date_on_sale
     "shipping_class")
 
 
+def template_preorder_meta(template: str) -> dict:
+    """The variable parent's pre-order meta, from its enabled variants: ``"1"`` while
+    any of them sells pre-order slots (:func:`preorder_stock`), with the earliest of
+    their ETAs; both ``""`` otherwise. Derived rather than left off the parent: the
+    product page, archive cards and ffl-core's parent fallback read the parent, and a
+    parent that once said "1" would otherwise say it for ever."""
+    etas = []
+    on = False
+    for code in template_variants(template):
+        _qty, meta = preorder_stock(code, stock_for_item(code))
+        if meta and meta.get("_osa_preorder") == "1":
+            on = True
+            if meta.get("_osa_preorder_eta"):
+                etas.append(meta["_osa_preorder_eta"])
+    return {"_osa_preorder": "1" if on else "", "_osa_preorder_eta": min(etas) if on and etas else ""}
+
+
 def template_to_product_payload(template: str, attr_ids: dict[str, int] | None = None,
         site: str = "retail", brand_id: int | None = None, shipping_class: str | None = None,
         listing: bool = False) -> dict:
@@ -2003,6 +2029,9 @@ def template_to_product_payload(template: str, attr_ids: dict[str, int] | None =
         brand_id=brand_id, shipping_class=shipping_class, listing=listing)
     for key in _PARENT_ONLY_DROP:
         payload.pop(key, None)
+    # The template's own slots mean nothing: its variants' pre-order state does.
+    payload["meta_data"] = [m for m in payload.get("meta_data") or []
+        if m.get("key") not in PREORDER_META_KEYS] + _meta_data(template_preorder_meta(template))
     variation = variation_attributes(template, attr_ids)
     taken = {a["name"] for a in variation}
     payload.update(type="variable", manage_stock=False, attributes=[

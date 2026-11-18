@@ -559,7 +559,9 @@ def _without_dead_images(item_code: str, payload: dict, send) -> dict:
             if attempt == _DEAD_IMAGE_TRIES:
                 raise
             text = str(exc)
-            srcs = [i.get("src") for i in (payload.get("images") or []) if i.get("src")]
+            # A variation carries one ``image``; a product an ``images`` list.
+            srcs = [i.get("src") for i in [*(payload.get("images") or []), payload.get("image") or {}]
+                    if i.get("src")]
             match = _DEAD_IMAGE.search(text)
             if match:
                 bad = {match.group(1).replace("\\/", "/")} & set(srcs)
@@ -592,6 +594,8 @@ def _drop_images(item_code: str, payload: dict, bad: set[str]) -> None:
         # An empty list on an UPDATE deletes every image the product already
         # has on the store; no key leaves them alone (and a create gets none).
         payload.pop("images", None)
+    if (payload.get("image") or {}).get("src") in bad:
+        payload.pop("image")  # a variation's one image: no key keeps the store's
     for std, resolved in list(mapping._HIGHRES_CACHE.items()):
         if resolved in bad and resolved != std:
             mapping._HIGHRES_CACHE[std] = std
@@ -928,6 +932,7 @@ def push_item(
     shipping_class: str = "",
     listing: bool = False,
     pos_fields_only: bool = False,
+    _parent_meta: bool = True,
 ) -> dict:
     """Create or update the WooCommerce product for an Item.
 
@@ -1115,10 +1120,6 @@ def push_item(
         # commit makes durable is only bookkeeping that already matches the store.
         safe_commit()
         frappe.db.set_value("Item", item_code, writeback)
-        if kind == mapping.TEMPLATE and not lean:
-            result = dict(result, variations=_push_variations(
-                item_code, wc=wc, attr_ids=attr_ids, _retries=_retries, site=site))
-        return result
     except WooCommerceError as exc:
         safe_commit()  # a fresh snapshot for the error write (see the write-back above)
         if exc.status_code == 404:
@@ -1140,30 +1141,53 @@ def push_item(
         safe_commit()
         frappe.db.set_value("Item", item_code, _f(site, "sync_error"), str(exc))
         raise
+    # Outside the try: the parent landed and its write-back stands; a variation
+    # that fails is that variant's error (its own sync_error), not the template's.
+    if kind == mapping.TEMPLATE and not lean:
+        result = dict(result, **_push_variations(
+            item_code, wc=wc, attr_ids=attr_ids, _retries=_retries, site=site))
+    elif (kind == mapping.VARIANT and _parent_meta
+            and mapping.preorder_stock(item_code, 0)[1] is not None):  # pre-order touches it
+        _refresh_parent_preorder(wc, template, parent, _retries=_retries)
+    return result
+
+
+def _refresh_parent_preorder(wc: WooCommerceClient, template: str, parent: str, *,
+        _retries: int = 2) -> None:
+    """Re-derive the variable parent's pre-order meta after one of its variations
+    changed (``mapping.template_preorder_meta``) — a slot taken or opened on a variant
+    can turn the parent's Pre-order notice on or off. Best effort: the variation
+    already landed, and reconcile Pass 1 heals a parent whose meta drifted."""
+    try:
+        _push_with_retry(lambda: wc.update_product(parent, {"meta_data": mapping._meta_data(
+            mapping.template_preorder_meta(template))}), retries=_retries)
+    except Exception as exc:
+        frappe.logger("woo.sync").warning(
+            f"pre-order meta of {template!r} (product {parent}) not refreshed: {exc}")
 
 
 def _push_variations(template: str, *, wc: WooCommerceClient, attr_ids, _retries: int,
-        site: str) -> dict[str, str]:
+        site: str) -> dict:
     """Full-push every enabled variant of *template* after its parent product:
-    ``{item_code: variation id | skip reason}``. Each variant is tried; failures are
-    raised together at the end (each variant's own ``sync_error`` says why).
+    ``{"variations": {item_code: variation id | skip reason},
+    "variation_errors": {item_code: {"error", "status_code"}}}``. Each variant is
+    tried and writes its own ``sync_error``; a 404 keeps its status (a dangling
+    variation id, for the audit — not a failure to retry).
 
     Not ``_relist``: a variant delisted on its own stays off, as a hidden gun does
     under ``push_all_serials`` — its own button relists it."""
     out: dict[str, str] = {}
-    failed: list[str] = []
+    errors: dict[str, dict] = {}
     for code in mapping.template_variants(template):
         try:
-            res = push_item(code, client=wc, attr_ids=attr_ids, _retries=_retries, site=site)
+            # The parent's pre-order meta was derived from all of them in its own push.
+            res = push_item(code, client=wc, attr_ids=attr_ids, _retries=_retries, site=site,
+                            _parent_meta=False)
             out[code] = res.get("skipped") or str(res.get("id") or "")
         except Exception as exc:
-            out[code] = f"error: {str(exc)[:200]}"
-            failed.append(code)
-    if failed:
-        raise WooCommerceError(
-            f"{len(failed)} of {len(out)} variations failed ({', '.join(failed)}) — "
-            "see each variant Item's WooCommerce sync error.")
-    return out
+            errors[code] = {"error": str(exc)[:300],
+                            "status_code": getattr(exc, "status_code", None)}
+    return {"variations": out, "variation_errors": errors}
 
 
 # A variant whose template has no product on the store yet: a machine (lean) push
@@ -1432,7 +1456,7 @@ def push_stock(
     warning and returns ``{"skipped": "dangling_product_id", ...}`` instead of
     raising, so the caller doesn't record an ERROR.
     """
-    kind, _template, parent = _item_target(item_code, site)
+    kind, template, parent = _item_target(item_code, site)
     if kind == mapping.TEMPLATE:  # the variable parent holds no stock; its variations do
         return {"skipped": "template", "item_code": item_code}
     if kind == mapping.VARIANT and not parent:
@@ -1450,6 +1474,8 @@ def push_stock(
         result = _push_with_retry(
             lambda: _update(wc, woo_id, payload, parent), retries=_retries
         )
+        if kind == mapping.VARIANT and "meta_data" in payload:  # pre-order touched it
+            _refresh_parent_preorder(wc, template, parent, _retries=_retries)
     except WooCommerceError as exc:
         # A dangling product_id: the WC product behind this id was deleted on the
         # store, so update_product returns 404 forever. Downgrade the recurring
@@ -1542,12 +1568,14 @@ def push_stock_batch(
     results: dict[str, object] = {}
     by_id: dict[str, list[str]] = {}
     updates: list[dict] = []
-    for code in dict.fromkeys(c for c in item_codes if c):
+    codes = list(dict.fromkeys(c for c in item_codes if c))
+    variable = set(mapping.variable_items(codes))
+    for code in codes:
         try:
             # lazy: a variation is not in products/batch — one push_stock each (per
             # variant, under its parent); group by parent into variations/batch if
             # variable products ever carry hundreds of variants.
-            if mapping.variant_kind(code)[0]:
+            if code in variable:
                 results[code] = push_stock(code, client=wc, _retries=_retries, site=site)
                 continue
             woo_id = frappe.db.get_value("Item", code, _f(site, "product_id")) or ""

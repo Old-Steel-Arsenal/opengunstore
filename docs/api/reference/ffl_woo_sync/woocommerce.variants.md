@@ -27,7 +27,7 @@ variant is left as it is (``woo_only``).
 
 **Returns:** {ok, dry_run, template, product, matched, pos_only, woo_only, replaced}: ``matched`` is {item_code: variation id}; ``replaced`` the product ids the Items held before.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/variants.py:116`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/variants.py:145`</sub>
 
 ## `make_variants`
 
@@ -39,7 +39,15 @@ Make existing Items variants of a template, keeping their item codes.
 
 Sets each Item's ``variant_of`` and its attribute values. Nothing is written
 when any Item fails a check (unknown Item, already another template's variant,
-missing or unknown attribute value, two Items with the same values).
+missing or unknown attribute value, the same values as another requested Item
+or an existing variant).
+
+An Item that is listed as its own simple product loses that link
+(``{site}_product_id`` / ``listed`` cleared, returned in ``cleared``): as a
+variant its id must be a variation of the template's product, so a stale
+simple-product id would be sent as a variation id. The simple product itself
+is left on the store — draft or trash it there, or link the variant to its
+variation with :func:`adopt_variable_product`.
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
@@ -47,6 +55,6 @@ missing or unknown attribute value, two Items with the same values).
 | `variants` | — | yes | — | ``{item_code: {attribute: value}}`` (a dict or its JSON). |
 | `dry_run` | — | no | `1` | 1 (default) only checks; 0 writes. |
 
-**Returns:** {ok, dry_run, template, errors, variants}: ``variants`` is the item codes that are (or would be) variants of the template.
+**Returns:** {ok, dry_run, template, errors, variants, cleared}: ``variants`` is the item codes that are (or would be) variants of the template; ``cleared`` is {item_code: the simple product id it held} for Items that were not yet variants.
 
 <sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/variants.py:62`</sub>

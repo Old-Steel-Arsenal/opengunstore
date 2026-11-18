@@ -1178,11 +1178,17 @@ def _run_reconcile(site: str = "retail") -> None:
                     continue
                 if item.has_variants:
                     # A variable parent has no price or stock of its own (its
-                    # variations do — the pass below): only whether it is still live.
+                    # variations do — the pass below): whether it is still live, and
+                    # its pre-order meta, derived from those variations.
                     if sync.is_hidden_on_woo(wc):
                         wc = _reread(client, products, pid, wc)
                         if wc is not None and sync.is_hidden_on_woo(wc):
                             sync.mark_woo_delisted("Item", item.name, site=site)
+                            continue
+                    if wc is not None and _meta_drifted(wc, mapping.template_preorder_meta(item.name)):
+                        sync.push_item(item.name, client=client, attr_ids=attr_ids, site=site,
+                                       pos_fields_only=True)
+                        pushed += 1
                     continue
                 pushed += heal(item, wc, lambda wc, pid=pid: _reread(client, products, pid, wc))
             except JobTimeoutException:
