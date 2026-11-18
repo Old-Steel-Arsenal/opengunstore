@@ -88,7 +88,7 @@ KEEP: dict[str, str] = {
 	**dict.fromkeys(("osa_consignment", "osa_dropship", "osa_ai", "osa_ca_compliant", "osa_range"),
 		"first-party extension ids (their rename waits until after the launch)"),
 	**dict.fromkeys(("osa_restricted_states", "osa_serial", "osa_sold_price", "osa_sold_at", "osa_fulfillment_mode",
-		"osa_lead_days", "osa_map_price", "osa_map_mode"),
+		"osa_lead_days", "osa_map_price", "osa_map_mode", "osa_preorder", "osa_preorder_eta"),
 		"WooCommerce product meta keys (_osa_*): the storefront plugin's contract and live product data"),
 	**dict.fromkeys(("osa_ca_legal", "osa_compliant_service"),
 		"fields of the osa_ca_compliant extension, and the WooCommerce meta keys they push as"),

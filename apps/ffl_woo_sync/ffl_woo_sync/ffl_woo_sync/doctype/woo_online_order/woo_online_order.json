@@ -12,6 +12,7 @@
   "column_break_head",
   "dropship_status",
   "transferred_at",
+  "paid_at",
   "section_customer",
   "customer_name",
   "customer_phone",
@@ -120,6 +121,13 @@
    "fieldtype": "Datetime",
    "label": "Transferred At",
    "read_only": 1
+  },
+  {
+   "fieldname": "paid_at",
+   "fieldtype": "Datetime",
+   "label": "Paid At",
+   "read_only": 1,
+   "no_copy": 1
   },
   {
    "fieldname": "section_customer",
@@ -433,7 +441,7 @@
   }
  ],
  "links": [],
- "modified": "2026-11-14 12:00:00",
+ "modified": "2026-11-17 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Woo Sync",
  "name": "Woo Online Order",

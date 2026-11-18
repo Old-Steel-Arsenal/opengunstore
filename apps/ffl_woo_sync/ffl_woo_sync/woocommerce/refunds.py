@@ -706,6 +706,11 @@ def _amend_si_to_net(si_name: str, order, target: float) -> str:
 			pe_doc = frappe.get_doc("Payment Entry", pe.name)
 			pe_doc.flags.ignore_permissions = True
 			pe_doc.cancel()
+		# A pre-order's invoice is paid from Pre-order Deposits instead (an Applied
+		# journal entry against it): reversed the same way, and _ensure_paid below
+		# settles the amended invoice from what is held again.
+		from ffl_woo_sync.woocommerce.preorder import unsettle_invoice
+		unsettle_invoice(si)
 
 		# Cancelling the Receive PE(s) above changed this SI's outstanding_amount,
 		# bumping its `modified` timestamp in the DB. Reload before cancel or ERPNext

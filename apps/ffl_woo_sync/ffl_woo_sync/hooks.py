@@ -205,6 +205,21 @@ channel_commitments_changed = [
     "ffl_woo_sync.woocommerce.channel.channel_commitments_changed",
 ]
 
+# ffl_core's pre-orders reach the website's through two more inverted hooks: the
+# arrival allocator takes paid web pre-orders as a second source of demand (one
+# queue, oldest order first), and the Pre-order Deposits report adds their rows.
+#
+#     fn(item_code) -> [demand]  (with .doctype, .fill, .waiting)
+#     fn(company, as_of) -> [row]
+#
+# See ffl_core/preorder.py (DEMAND_SOURCES) and woocommerce/preorder.py.
+preorder_demand_sources = [
+    "ffl_woo_sync.woocommerce.preorder.demands",
+]
+preorder_deposit_rows = [
+    "ffl_woo_sync.woocommerce.preorder.deposit_rows",
+]
+
 # `map_meta_changed` is inverted too: ffl_integrations owns the per-brand MAP
 # modes and calls it when a brand's mode changes; this app re-pushes the retail
 # products whose `_osa_map_mode` that moves.
@@ -359,6 +374,9 @@ scheduler_events = {
             # Re-runs the idempotent entry points and logs
             # each hit. Not gated on auto_sync — it never touches the store.
             "ffl_woo_sync.woocommerce.order_audit.scheduled_web_revenue_backstop",
+            # Open web pre-orders re-synced (deposit + Woo status): a status write
+            # that failed once the goods were put by is retried here.
+            "ffl_woo_sync.woocommerce.preorder.scheduled_preorder_sync",
         ],
     },
 }

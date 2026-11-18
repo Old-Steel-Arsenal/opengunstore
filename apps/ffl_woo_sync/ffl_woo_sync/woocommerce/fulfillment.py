@@ -60,8 +60,9 @@ def _is_paid_woo_status(woo_status: object) -> bool:
 # book. A `fds` / `direct` unit shipped from the distributor's warehouse: it was
 # never acquired into our A&D record, so there is no disposition to make (H1).
 # `to_store` IS ours — it is received into stock first and then dispositioned
-# exactly like any other gun.
-_LOCALLY_DISPOSED_LANES: frozenset[str] = frozenset({"local", "to_store"})
+# exactly like any other gun. So is a `preorder` unit: the gun the arrival
+# allocator puts by for it is one of ours (preorder.py).
+_LOCALLY_DISPOSED_LANES: frozenset[str] = frozenset({"local", "to_store", "preorder"})
 
 
 def _locally_disposed_rows(serial_rows) -> list:
@@ -405,8 +406,13 @@ def list_pending_web_orders() -> list[dict]:
 		to_place = not failed and (any(d.get("status") == "Draft" for d in legs) or (
 			(o.get("dropship_status") or "") in _UNSOURCED_STATUSES
 			and any((ln.get("lane") or "") in _DISTRIBUTOR_LANES for ln in (doc.lines or []))))
+		# A pre-order still waiting for its goods (preorder.ready): accessories alone
+		# carry no serial row, and must not drop out of the queue while they wait.
+		from ffl_woo_sync.woocommerce import preorder
+
+		preorder_waiting = not preorder.ready(doc)
 		if not actionable_rows and not to_store_legs and not to_store_lane \
-				and not unresolved_antiques and not to_place and not failed:
+				and not unresolved_antiques and not to_place and not failed and not preorder_waiting:
 			reason = _cannot_prove_actionless(doc)
 			if not reason:
 				continue
@@ -564,6 +570,9 @@ def list_pending_web_orders() -> list[dict]:
 			"to_store": bool(to_store_legs) or to_store_lane,
 			"arrived": to_store_ready(to_store_legs),
 			"to_place": to_place,
+			# A pre-order waiting for its goods: Awaiting arrival, like the counter's.
+			"preorder": preorder.is_preorder_order(doc),
+			"awaiting_preorder": preorder_waiting,
 			"failed_distributor_orders": failed,
 			"distributor_orders": do_map.get(o.name, []),
 		})
@@ -687,6 +696,9 @@ def dispose_web_order(woo_online_order: str, cr_details=None, locations=None) ->
 			"{0} has not been paid on WooCommerce (status: {1}); an unpaid order "
 			"cannot be shipped."
 		).format(woo_online_order, order.woo_status or "—"))
+	# A pre-order ships whole, once everything on it has arrived and is put by.
+	from ffl_woo_sync.woocommerce.preorder import refuse_unless_ready
+	refuse_unless_ready(order)
 
 	local_rows = _locally_disposed_rows(order.serials)
 	# An antique carries a serial row for inventory reasons but owes NO bound-book

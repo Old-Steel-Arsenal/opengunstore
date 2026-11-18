@@ -849,7 +849,8 @@ def queue_stage(row: dict) -> str:
 	if legs.get("releasable") or row.get("to_place"):
 		return STAGE_TO_PLACE
 	if legs.get("awaiting_goods") or legs.get("awaiting_arrival") or legs.get("awaiting_dropship") \
-			or row.get("awaiting_serial") or (row.get("to_store") and not row.get("arrived")):
+			or row.get("awaiting_serial") or row.get("awaiting_preorder") \
+			or (row.get("to_store") and not row.get("arrived")):
 		return STAGE_WAITING
 	if row.get("ship_pushed"):
 		return STAGE_DISPOSING
