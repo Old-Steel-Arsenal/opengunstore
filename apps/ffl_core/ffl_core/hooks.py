@@ -283,7 +283,11 @@ doc_events = {
 	"Supplier": {
 		"validate": "ffl_core.atf_link.sync_party_atf_link",
 	},
+	"Material Request": {
+		"on_submit": "ffl_core.reorder.notify_managers",
+	},
 	"Item": {
+		"onload": "ffl_core.reorder.load_setup",
 		# Before CRM's own Item hooks read it: they skip this save (ffl_core.crm.item).
 		"before_insert": "ffl_core.crm.item.skip_crm_sync",
 		"before_save": ["ffl_core.firearm.auto_set_is_firearm", "ffl_core.crm.item.skip_crm_sync"],

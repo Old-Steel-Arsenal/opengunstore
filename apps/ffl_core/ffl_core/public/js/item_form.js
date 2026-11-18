@@ -22,6 +22,10 @@ frappe.ui.form.on('Item', {
 		}
 	},
 	refresh(frm) {
+		const reorder = frm.doc.__onload?.reorder_setup;
+		if (!frm.is_new() && reorder?.warehouses?.length) {
+			frm.add_custom_button(__('Reorder Settings'), () => openReorderSettings(frm, reorder));
+		}
 		// Fallback button — top-level (no group dropdown) so it's always one click
 		frm.add_custom_button(__('Scan UPC / RSR'), () => openScanDialog(frm));
 
@@ -78,6 +82,46 @@ frappe.ui.form.on('Item', {
 		window.gunstore.renderPhotoManager(frm, { batchRoute: !!frm.doc.has_serial_no });
 	},
 });
+
+function openReorderSettings(frm, setup) {
+	if (frm.is_dirty()) {
+		frappe.msgprint(__('Save your item changes before editing reorder settings.'));
+		return;
+	}
+	const rules = (frm.doc.reorder_levels || []).filter(row => row.material_request_type === 'Purchase');
+	const warehouse = setup.default_warehouse || (rules.length === 1 ? rules[0].warehouse : '');
+	const valuesFor = (name) => {
+		const rule = rules.find(row => row.warehouse === name);
+		return { level: rule?.warehouse_reorder_level ?? 0, quantity: rule?.warehouse_reorder_qty ?? 0 };
+	};
+	const initial = valuesFor(warehouse);
+	const dialog = new frappe.ui.Dialog({
+		title: __('Reorder Settings'),
+		fields: [
+			{ fieldname: 'warehouse', label: __('Warehouse'), fieldtype: 'Select',
+				options: ['', ...setup.warehouses], default: warehouse || '', reqd: 1,
+				onchange() {
+					dialog.set_values(valuesFor(this.get_value()));
+				} },
+			{ fieldname: 'level', label: __('Reorder Level'), fieldtype: 'Float',
+				default: initial.level, non_negative: 1, reqd: 1 },
+			{ fieldname: 'quantity', label: __('Reorder Quantity'), fieldtype: 'Float',
+				default: initial.quantity, non_negative: 1, reqd: 1,
+				description: __('In stock units. Enter 0 to remove the rule for this warehouse.') },
+		],
+		primary_action_label: __('Save'),
+		async primary_action(values) {
+			await frappe.call({
+				method: 'ffl_core.reorder.save_rule',
+				args: { item_code: frm.doc.name, modified: frm.doc.modified, ...values },
+				freeze: true,
+			});
+			dialog.hide();
+			await frm.reload_doc();
+		},
+	});
+	dialog.show();
+}
 
 
 // Make the gallery's `is_primary` checkbox behave like a radio: ticking one
