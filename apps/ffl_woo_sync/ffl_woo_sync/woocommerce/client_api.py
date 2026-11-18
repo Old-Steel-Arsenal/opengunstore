@@ -37,6 +37,14 @@ def _skipped_response(result: dict) -> dict:
 	}
 
 
+def _variation_outcome(result: dict | None) -> tuple[dict, list]:
+	"""A template push's variants that failed (``{item_code: error}``) and those whose
+	variation id 404s (dangling — for woo_audit_dangling_ids, not a failure)."""
+	errors = (result or {}).get("variation_errors") or {}
+	failed = {c: e.get("error") for c, e in errors.items() if e.get("status_code") != 404}
+	return failed, sorted(c for c, e in errors.items() if e.get("status_code") == 404)
+
+
 def _skip_message(reason: str) -> str:
 	"""Operator-facing text for a guard refusal.
 
@@ -184,6 +192,9 @@ def push_item_now(item_code: str, site: str = "retail") -> dict:
 	- **Non-firearm / uniform-price firearm**:
 	  single item-level push via :func:`ffl_woo_sync.woocommerce.sync.push_item`.
 	  Returns ``{"ok": True, "woo_product_id": "<id>", "raw": <WC response>}``.
+	  A template Item pushes its variable product and every variant; ``ok`` is
+	  False when a variation failed (``variation_errors``), and variants whose
+	  variation was deleted on the store are listed in ``dangling_variations``.
 
 	Args:
 	    item_code: The Item to push.
@@ -191,7 +202,8 @@ def push_item_now(item_code: str, site: str = "retail") -> dict:
 
 	Returns:
 	    Per-serial branch: {ok, pushed, errors, skipped, total};
-	    item-level branch: {ok, woo_product_id, raw}.
+	    item-level branch: {ok, woo_product_id, raw, variation_errors,
+	    dangling_variations}.
 
 	Raises:
 	    ValidationError: User-facing message on WC / config errors.
@@ -223,10 +235,13 @@ def push_item_now(item_code: str, site: str = "retail") -> dict:
 		frappe.throw(_("WooCommerce sync failed: {0}").format(str(exc)))
 	if result.get("skipped"):
 		return _skipped_response(result)
+	failed, dangling = _variation_outcome(result)
 	return {
-		"ok": True,
+		"ok": not failed,
 		"woo_product_id": str(result.get("id", "")),
 		"raw": result,
+		"variation_errors": failed,
+		"dangling_variations": dangling,
 	}
 
 
@@ -391,7 +406,7 @@ def reconcile_now(item_code: str, site: str = "retail") -> dict:
 
 	Returns:
 	    {ok, item_result, item_error, dangling, pushed_serials,
-	    serial_errors, skipped_serials, ...}.
+	    serial_errors, skipped_serials, variation_errors, dangling_variations}.
 	"""
 	frappe.only_for(STOCK_ROLES)
 	assert_store_site(site)
@@ -436,8 +451,11 @@ def reconcile_now(item_code: str, site: str = "retail") -> dict:
 	# "bring everything live" action, and a gun deliberately held back is an
 	# expected outcome rather than a failure. They must still be visible —
 	# silently folding them into success is the bug this branch removes.
-	all_ok = (item_error is None) and (not serial_errors)
+	variation_errors, dangling_variations = _variation_outcome(item_result)
+	all_ok = (item_error is None) and (not serial_errors) and (not variation_errors)
 	return {
+		"variation_errors": variation_errors,
+		"dangling_variations": dangling_variations,
 		"ok": all_ok,
 		"item_result": item_result,
 		"item_error": item_error,

@@ -22,7 +22,7 @@ raises the republish sentinel.
 
 **Returns:** {"ok": True, "raw": <WC response>}.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:281`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:296`</sub>
 
 ## `delist_serial_now`
 
@@ -39,7 +39,7 @@ Set the WooCommerce product for a Serial No to ``draft`` + stock 0.
 
 **Returns:** {"ok": True, "raw": <WC response>}.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:348`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:363`</sub>
 
 ## `pull_product_from_woo`
 
@@ -64,7 +64,7 @@ push the change straight back at WooCommerce.
 
 **Returns:** {"ok": True, "doctype": ..., "name": ..., "updated": {field: summary}, "images_imported": n, "image_errors": [...]} — plus "price_note" (optional) when the price was deliberately not written (uniform-priced parent). The Item branch reports the applied price as updated["selling_price"] (it lands via the canonical selling-price helper, not a bare standard_rate write). Refusals (unknown record, never pushed, missing write permission, product deleted on the store) raise a ValidationError with the reason.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:452`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:470`</sub>
 
 ## `push_all_serials`
 
@@ -90,7 +90,7 @@ HTTP round-trips.  Returns per-serial results and any errors encountered.
 
 **Returns:** {ok, pushed, errors, skipped, total}.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:234`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:249`</sub>
 
 ## `push_item_now`
 
@@ -113,17 +113,20 @@ future automation) behave correctly without any client-side detection:
 - **Non-firearm / uniform-price firearm**:
   single item-level push via :func:`ffl_woo_sync.woocommerce.sync.push_item`.
   Returns ``{"ok": True, "woo_product_id": "<id>", "raw": <WC response>}``.
+  A template Item pushes its variable product and every variant; ``ok`` is
+  False when a variation failed (``variation_errors``), and variants whose
+  variation was deleted on the store are listed in ``dangling_variations``.
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
 | `item_code` | string | yes | — | The Item to push. |
 | `site` | string | no | `'retail'` | "retail" (default; the only store). |
 
-**Returns:** Per-serial branch: {ok, pushed, errors, skipped, total}; item-level branch: {ok, woo_product_id, raw}.
+**Returns:** Per-serial branch: {ok, pushed, errors, skipped, total}; item-level branch: {ok, woo_product_id, raw, variation_errors, dangling_variations}.
 
 **Raises:** ValidationError: User-facing message on WC / config errors.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:171`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:179`</sub>
 
 ## `push_serial_now`
 
@@ -144,7 +147,7 @@ hide).
 
 **Returns:** {"ok": True, "woo_product_id": "<id>", "raw": <WC response>} — or a skipped response when the sync guard refuses.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:310`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:325`</sub>
 
 ## `reconcile_now`
 
@@ -171,9 +174,9 @@ to the scheduled reconcile, which is pos_fields_only and content-safe.
 | `item_code` | string | yes | — | The Item to reconcile. |
 | `site` | string | no | `'retail'` | "retail" (default; the only store). |
 
-**Returns:** {ok, item_result, item_error, dangling, pushed_serials, serial_errors, skipped_serials, ...}.
+**Returns:** {ok, item_result, item_error, dangling, pushed_serials, serial_errors, skipped_serials, variation_errors, dangling_variations}.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:373`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:388`</sub>
 
 ## `test_connection`
 
@@ -191,7 +194,7 @@ Probe the WooCommerce store via GET /products?per_page=1 (read auth only).
 
 **Raises:** ValidationError: Settings incomplete or the API call fails — a clean user-facing message in both cases.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:140`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:148`</sub>
 
 ## `web_events`
 
@@ -212,7 +215,7 @@ sends the events again later.
 
 **Returns:** {"accepted": [id, ...], "rejected": [{"id": ..., "reason": ...}, ...]}. ``reason`` is ``unknown_type``, ``invalid_email`` or ``invalid_data``; an event in neither list failed unexpectedly (an Error Log is written) and should be sent again.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:529`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:547`</sub>
 
 ## `web_inquiry`
 
@@ -244,4 +247,4 @@ CRM is not installed.
 
 **Returns:** {"filed": True, "doctype": "CRM Lead" | "CRM Deal", "name": ..., "created": bool}, or {"filed": False, "reason": ...} when CRM is not installed. Fields are length-capped and stored escaped.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:492`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:510`</sub>

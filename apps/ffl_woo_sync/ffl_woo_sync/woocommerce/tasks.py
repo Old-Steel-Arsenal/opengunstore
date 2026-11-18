@@ -1052,6 +1052,11 @@ def _run_reconcile(site: str = "retail") -> None:
     against the POS ground truth, and calls
     :func:`~ffl_woo_sync.woocommerce.sync.push_item` when they differ.
 
+    A template Item's variable product is only checked for being hidden (it has no
+    price or stock); **Pass 1b** reads each variable product's variations in one
+    call and runs the same comparison for its variant Items, pushing under the
+    parent. A template Pass 1 finds hidden is delisted and its variations skipped.
+
     **Pass 2 — per-serial products** (Active Serial Nos with a site product_id):
     Compares ``stock_quantity`` (always 0 or 1) against the serial's
     ``woo_reserved`` flag and pushes via
@@ -1093,80 +1098,142 @@ def _run_reconcile(site: str = "retail") -> None:
     # ── Pass 1: item-level products ──────────────────────────────────────────
     item_filters = listed_item_filters(site)
     item_fields = ["name", _f(site, "product_id"), "is_firearm", "item_group", "uniform_sell_price", "standard_rate",
+                   "has_variants", "variant_of",
                    "sale_price", "sale_from", "sale_to", *mapping.MAP_ITEM_FIELDS]
 
     # Per-serial firearms have no item-level WC product — handled in pass 2.
     items = [item for item in frappe.get_all("Item", filters=item_filters, fields=item_fields)
              if not (_is_firearm_row(item) and not item.uniform_sell_price)]
+    # A variant's product id is a VARIATION id, read under its parent (Pass 1b).
+    variant_rows = [item for item in items if item.get("variant_of")]
+    items = [item for item in items if not item.get("variant_of")]
     products = _read_products(client, [item[_f(site, "product_id")] for item in items])
+
+    def heal(item, wc, fresh) -> int:
+        """One Item's product (or variation) against POS: 1 when it pushed. ``fresh(wc)``
+        reads the product again before the sweep acts on it (:func:`_reread`)."""
+        # Price first, THEN human intent — the order is load-bearing.
+        # An unpriced product is drafted by the guard below, and if the
+        # hidden check ran first it would read OUR draft as a human delist
+        # on the next sweep, laundering a machine action into a human one.
+        price = mapping.web_price_for_item(item.name, item.standard_rate)
+        if price <= 0:
+            # push_item refuses and drafts the $0 product; it
+            # also clears `listed`, so this item leaves Pass 1 afterwards.
+            sync.push_item(item.name, client=client, attr_ids=attr_ids, site=site,
+                           pos_fields_only=True)
+            # Counted: `last_push_count` / `last_push_at` mean "we wrote to
+            # WooCommerce this sweep", and drafting a $0 product IS such a
+            # write. Leaving it uncounted reported "nothing happened" on a
+            # sweep that had just pulled products off the shop.
+            return 1
+        if sync.is_hidden_on_woo(wc):
+            wc = fresh(wc)
+            if wc is None:
+                return 0
+            if sync.is_hidden_on_woo(wc):
+                sync.mark_woo_delisted("Item", item.name, site=site)
+                return 0
+        # These comparators are the OTHER half of the POS-owned contract:
+        # sync._POS_OWNED_KEYS decides what a lean push may WRITE, the
+        # comparisons here decide when one FIRES — a new POS-owned field
+        # that should self-heal needs both (see the allowlist's comment).
+        wc_stock = int(wc.get("stock_quantity") or 0)
+        wc_price = (wc.get("regular_price") or "0").strip()
+        # A product on pre-order publishes its slots, not the empty shelf
+        # (mapping.preorder_stock) — the same pair every push writes.
+        pos_stock, preorder_meta = mapping.preorder_stock(
+            item.name, mapping.stock_for_item(item.name), always=True)
+        pos_price = f"{price:.2f}"
+        drifted = wc_stock != pos_stock or wc_price != pos_price
+        if _meta_drifted(wc, preorder_meta):
+            drifted = True
+        if _wc_sale_drifted(
+            wc, item.get("sale_price"), item.get("sale_from"), item.get("sale_to"),
+        ):
+            drifted = True
+        if _map_meta_drifted(wc, item):
+            drifted = True
+        if not drifted:
+            return 0
+        wc = fresh(wc)
+        if wc is None:
+            return 0
+        if sync.is_hidden_on_woo(wc):
+            sync.mark_woo_delisted("Item", item.name, site=site)
+            return 0
+        # pos_fields_only: reconcile heals stock/price drift — it must
+        # never rewrite wp-admin content (2026-08-12 overwrite incident).
+        sync.push_item(item.name, client=client, attr_ids=attr_ids, site=site,
+                       pos_fields_only=True)
+        return 1
+
     batches = _open_stock_batches([item.name for item in items])
     try:
         for item in items:
             try:
-                wc = _product(client, products, item[_f(site, "product_id")])
+                pid = item[_f(site, "product_id")]
+                wc = _product(client, products, pid)
                 if wc is None:
                     continue
-                # Price first, THEN human intent — the order is load-bearing.
-                # An unpriced product is drafted by the guard below, and if the
-                # hidden check ran first it would read OUR draft as a human delist
-                # on the next sweep, laundering a machine action into a human one.
-                price = mapping.web_price_for_item(item.name, item.standard_rate)
-                if price <= 0:
-                    # push_item refuses and drafts the $0 product; it
-                    # also clears `listed`, so this item leaves Pass 1 afterwards.
-                    sync.push_item(item.name, client=client, attr_ids=attr_ids, site=site,
-                                   pos_fields_only=True)
-                    # Counted: `last_push_count` / `last_push_at` mean "we wrote to
-                    # WooCommerce this sweep", and drafting a $0 product IS such a
-                    # write. Leaving it uncounted reported "nothing happened" on a
-                    # sweep that had just pulled products off the shop.
-                    pushed += 1
+                if item.has_variants:
+                    # A variable parent has no price or stock of its own (its
+                    # variations do — the pass below): whether it is still live, and
+                    # its pre-order meta, derived from those variations.
+                    if sync.is_hidden_on_woo(wc):
+                        wc = _reread(client, products, pid, wc)
+                        if wc is not None and sync.is_hidden_on_woo(wc):
+                            sync.mark_woo_delisted("Item", item.name, site=site)
+                            continue
+                    if wc is not None and _meta_drifted(wc, mapping.template_preorder_meta(item.name)):
+                        sync.push_item(item.name, client=client, attr_ids=attr_ids, site=site,
+                                       pos_fields_only=True)
+                        pushed += 1
                     continue
-                if sync.is_hidden_on_woo(wc):
-                    wc = _reread(client, products, item[_f(site, "product_id")], wc)
-                    if wc is None:
-                        continue
-                    if sync.is_hidden_on_woo(wc):
-                        sync.mark_woo_delisted("Item", item.name, site=site)
-                        continue
-                # These comparators are the OTHER half of the POS-owned contract:
-                # sync._POS_OWNED_KEYS decides what a lean push may WRITE, the
-                # comparisons here decide when one FIRES — a new POS-owned field
-                # that should self-heal needs both (see the allowlist's comment).
-                wc_stock = int(wc.get("stock_quantity") or 0)
-                wc_price = (wc.get("regular_price") or "0").strip()
-                # A product on pre-order publishes its slots, not the empty shelf
-                # (mapping.preorder_stock) — the same pair every push writes.
-                pos_stock, preorder_meta = mapping.preorder_stock(
-                    item.name, mapping.stock_for_item(item.name), always=True)
-                pos_price = f"{price:.2f}"
-                drifted = wc_stock != pos_stock or wc_price != pos_price
-                if _meta_drifted(wc, preorder_meta):
-                    drifted = True
-                if _wc_sale_drifted(
-                    wc, item.get("sale_price"), item.get("sale_from"), item.get("sale_to"),
-                ):
-                    drifted = True
-                if _map_meta_drifted(wc, item):
-                    drifted = True
-                if drifted:
-                    wc = _reread(client, products, item[_f(site, "product_id")], wc)
-                    if wc is None:
-                        continue
-                    if sync.is_hidden_on_woo(wc):
-                        sync.mark_woo_delisted("Item", item.name, site=site)
-                        continue
-                    # pos_fields_only: reconcile heals stock/price drift — it must
-                    # never rewrite wp-admin content (2026-08-12 overwrite incident).
-                    sync.push_item(item.name, client=client, attr_ids=attr_ids, site=site,
-                                   pos_fields_only=True)
-                    pushed += 1
+                pushed += heal(item, wc, lambda wc, pid=pid: _reread(client, products, pid, wc))
             except JobTimeoutException:
                 raise
             except Exception as exc:
                 errors.append(f"{item.name}: {str(exc)[:200]}")
     finally:
         _close_stock_batches(batches)
+
+    # ── Pass 1b: variations (variant Items) ──────────────────────────────────
+    # Read under their parent — one page per variable product — after Pass 1, so a
+    # parent Pass 1 just found hidden (its template now delisted) is skipped whole.
+    if variant_rows:
+        by_template: dict = {}
+        for row in variant_rows:
+            by_template.setdefault(row.variant_of, []).append(row)
+        parents = {t.name: t for t in frappe.get_all("Item", filters={
+            "name": ["in", list(by_template)]},
+            fields=["name", _f(site, "product_id"), _f(site, "listed"), _f(site, "delisted")])}
+        batches = _open_stock_batches([row.name for row in variant_rows])
+        try:
+            for template, rows in by_template.items():
+                t = parents.get(template) or {}
+                parent = t.get(_f(site, "product_id"))
+                if not parent or not t.get(_f(site, "listed")) or t.get(_f(site, "delisted")):
+                    continue
+                try:
+                    variations = client.list_variations(parent)
+                except JobTimeoutException:
+                    raise
+                except Exception as exc:
+                    errors.append(f"{template}: {str(exc)[:200]}")
+                    continue
+                for item in rows:
+                    try:
+                        vid = str(item[_f(site, "product_id")]).strip()
+                        wc = variations.pop(vid, None) or client.get_variation(parent, vid)
+                        pushed += heal(item, wc,
+                            lambda wc, vid=vid, parent=parent: client.get_variation(parent, vid))
+                    except JobTimeoutException:
+                        raise
+                    except Exception as exc:
+                        errors.append(f"{item.name}: {str(exc)[:200]}")
+        finally:
+            _close_stock_batches(batches)
 
     # ── Pass 2: per-serial products ──────────────────────────────────────────
     serial_fields = ["name", _f(site, "product_id"), "woo_reserved", "item_code",

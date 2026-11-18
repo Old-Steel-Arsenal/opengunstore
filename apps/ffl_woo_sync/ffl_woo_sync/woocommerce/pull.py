@@ -222,6 +222,10 @@ def pull_product_from_woo(sku: str, site: str = "retail") -> dict:
 
     if not frappe.db.exists(doctype, name):
         frappe.throw(_("{0} {1} does not exist in the POS.").format(_(doctype), name))
+    from ffl_woo_sync.woocommerce.mapping import variant_kind
+    if doctype == "Item" and variant_kind(name)[0]:
+        frappe.throw(_("{0} is part of a variable product on WooCommerce; pulling is for "
+            "simple products and per-serial guns.").format(name))
     if doctype == "Serial No":
         parent = frappe.db.get_value("Serial No", name, "item_code") or ""
         if parent != item_code:
