@@ -26649,7 +26649,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Put the products on the store(s) in their tree category: the products whose",
-        "description": "tree categories are not their node's term — e.g. filed under a parent before\ntheir category was created on the store, or every product on a store's first\nApply (linking a term moves nothing by itself). Categories outside the tree\n(Clearance, Open Box …) are kept. Per-serial guns count as products and are\ncounted apart (``by_doctype``).\n\nLimit: a product's full push (and the catalog feed's re-categorise) still\nwrites its tree category alone, dropping Clearance / Open Box — only this\ncatch-up keeps them.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/categories.py:671`",
+        "description": "tree categories are not their node's term — e.g. filed under a parent before\ntheir category was created on the store, or every product on a store's first\nApply (linking a term moves nothing by itself). Categories outside the tree\n(Clearance, Open Box …) are kept. Per-serial guns count as products and are\ncounted apart (``by_doctype``).\n\nLimit: a product's full push (and the catalog feed's re-categorise) still\nwrites its tree category alone, dropping Clearance / Open Box — only this\ncatch-up keeps them.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/categories.py:673`",
         "operationId": "ffl_woo_sync.woocommerce.categories.recategorize_store",
         "responses": {
           "200": {
@@ -27342,7 +27342,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Audit stored Woo product ids for ones whose WC product was deleted (404).",
-        "description": "Scans every connected store by default, and a store it cannot build a client\nfor is reported as skipped rather than aborting the run: letting the config\nerror out of here would 500 the request AND roll back any repairs already\nmade in the same transaction.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/dangling.py:126`",
+        "description": "Scans every connected store by default, and a store it cannot build a client\nfor is reported as skipped rather than aborting the run: letting the config\nerror out of here would 500 the request AND roll back any repairs already\nmade in the same transaction.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/dangling.py:136`",
         "operationId": "ffl_woo_sync.woocommerce.dangling.woo_audit_dangling_ids",
         "responses": {
           "200": {
@@ -27813,7 +27813,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Report web orders WooCommerce says shipped while POS still holds them open.",
-        "description": "A shipped firearm with no disposition is a missing A&D entry, and nothing\nsurfaced it before — the seven such orders on 2026-08-14 were found by hand.\n\nReports only; it never disposes anything. Which rifle went in the box is\nexactly what POS does not know in this state, and guessing it is the mistake\nthe whole serial-handling rework exists to stop.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\n**Permissions:** Counter roles (manual path; the scheduler runs as Administrator).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/tasks.py:1569`",
+        "description": "A shipped firearm with no disposition is a missing A&D entry, and nothing\nsurfaced it before — the seven such orders on 2026-08-14 were found by hand.\n\nReports only; it never disposes anything. Which rifle went in the box is\nexactly what POS does not know in this state, and guessing it is the mistake\nthe whole serial-handling rework exists to stop.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\n**Permissions:** Counter roles (manual path; the scheduler runs as Administrator).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/tasks.py:1630`",
         "operationId": "ffl_woo_sync.woocommerce.tasks.alert_shipped_undisposed_orders",
         "responses": {
           "200": {
@@ -27843,7 +27843,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Re-apply the serial WooCommerce still holds to rows stuck on a STALE",
-        "description": "``reservation_error``.\n\nA rejection is a snapshot of the moment it was written (\"that gun is held by\nWOO-ORD-x\"). The only thing that ever retried it was the next\n``order.updated`` webhook — so when the obstacle cleared (the other order\ncancelled, or swapped to a different gun) nothing re-ran, and a Woo order that\nhas gone ``completed`` sends no further webhook. The row then sat in the\nPending Order queue indefinitely, quoting a reason that had stopped being\ntrue, and staff had no way to clear it but to re-save the serial on Woo.\n(2026-08-07: WOO-ORD-01488 was refused C2322, which WOO-ORD-01491 released\neight minutes later; only an unrelated update two hours on unstuck it.)\n\nWhitelisted so staff can run it on demand rather than waiting out the cron —\nwhich also gives the aged-out orders below a manual way back in.\n\nBounded on every axis, because this is an unattended writer that calls an\nexternal store:\n\n* ``LIMIT`` per run, oldest first;\n* orders older than ``_RETRY_MAX_AGE_DAYS`` are reported **once** and then\n  left alone — a sweep that retries forever is how a permanent failure turns\n  into permanent noise (the lesson ``_fb_error_is_terminal`` encodes);\n* out-of-stock rejections are excluded outright: no dealer serial exists on\n  Woo to re-apply, so re-reading that order could never fix it;\n* per-site ``auto_sync_enabled`` gate, one Settings read per site.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (manual path; the scheduler runs as Administrator).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/tasks.py:1600`",
+        "description": "``reservation_error``.\n\nA rejection is a snapshot of the moment it was written (\"that gun is held by\nWOO-ORD-x\"). The only thing that ever retried it was the next\n``order.updated`` webhook — so when the obstacle cleared (the other order\ncancelled, or swapped to a different gun) nothing re-ran, and a Woo order that\nhas gone ``completed`` sends no further webhook. The row then sat in the\nPending Order queue indefinitely, quoting a reason that had stopped being\ntrue, and staff had no way to clear it but to re-save the serial on Woo.\n(2026-08-07: WOO-ORD-01488 was refused C2322, which WOO-ORD-01491 released\neight minutes later; only an unrelated update two hours on unstuck it.)\n\nWhitelisted so staff can run it on demand rather than waiting out the cron —\nwhich also gives the aged-out orders below a manual way back in.\n\nBounded on every axis, because this is an unattended writer that calls an\nexternal store:\n\n* ``LIMIT`` per run, oldest first;\n* orders older than ``_RETRY_MAX_AGE_DAYS`` are reported **once** and then\n  left alone — a sweep that retries forever is how a permanent failure turns\n  into permanent noise (the lesson ``_fb_error_is_terminal`` encodes);\n* out-of-stock rejections are excluded outright: no dealer serial exists on\n  Woo to re-apply, so re-reading that order could never fix it;\n* per-site ``auto_sync_enabled`` gate, one Settings read per site.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (manual path; the scheduler runs as Administrator).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/tasks.py:1661`",
         "operationId": "ffl_woo_sync.woocommerce.tasks.retry_stuck_serial_reservations",
         "responses": {
           "200": {
@@ -27863,6 +27863,123 @@
           },
           "default": {
             "$ref": "#/components/responses/FrappeError"
+          }
+        }
+      }
+    },
+    "/api/method/ffl_woo_sync.woocommerce.variants.adopt_variable_product": {
+      "post": {
+        "tags": [
+          "ffl_woo_sync"
+        ],
+        "summary": "Link a template to a variable product that already exists on the store, and",
+        "description": "each variant to the variation whose SKU is its item code.\n\nAfterwards, pushing the template updates that product and those variations;\na variant with no variation there gets a new one, and a variation with no\nvariant is left as it is (``woo_only``).\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/variants.py:116`",
+        "operationId": "ffl_woo_sync.woocommerce.variants.adopt_variable_product",
+        "responses": {
+          "200": {
+            "description": "{ok, dry_run, template, product, matched, pos_only, woo_only, replaced}: ``matched`` is {item_code: variation id}; ``replaced`` the product ids the Items held before.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "template": {
+                    "type": "string",
+                    "description": "The template Item."
+                  },
+                  "woo_product_id": {
+                    "description": "The variable product's id on the store."
+                  },
+                  "site": {
+                    "type": "string",
+                    "description": "\"retail\" (default; the only store).",
+                    "default": "retail"
+                  },
+                  "dry_run": {
+                    "description": "1 (default) only reads the store and reports; 0 writes the ids.",
+                    "default": 1
+                  }
+                },
+                "required": [
+                  "template",
+                  "woo_product_id"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_woo_sync.woocommerce.variants.make_variants": {
+      "post": {
+        "tags": [
+          "ffl_woo_sync"
+        ],
+        "summary": "Make existing Items variants of a template, keeping their item codes.",
+        "description": "Sets each Item's ``variant_of`` and its attribute values. Nothing is written\nwhen any Item fails a check (unknown Item, already another template's variant,\nmissing or unknown attribute value, two Items with the same values).\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/variants.py:62`",
+        "operationId": "ffl_woo_sync.woocommerce.variants.make_variants",
+        "responses": {
+          "200": {
+            "description": "{ok, dry_run, template, errors, variants}: ``variants`` is the item codes that are (or would be) variants of the template.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "template": {
+                    "type": "string",
+                    "description": "The template Item (Has Variants on, with its attributes)."
+                  },
+                  "variants": {
+                    "description": "``{item_code: {attribute: value}}`` (a dict or its JSON)."
+                  },
+                  "dry_run": {
+                    "description": "1 (default) only checks; 0 writes.",
+                    "default": 1
+                  }
+                },
+                "required": [
+                  "template",
+                  "variants"
+                ]
+              }
+            }
           }
         }
       }

@@ -28,7 +28,8 @@ from ffl_woo_sync.woocommerce.client import (
     WooCommerceError,
     assert_store_site,
 )
-from ffl_woo_sync.woocommerce.sync import _f
+from ffl_woo_sync.woocommerce import mapping
+from ffl_woo_sync.woocommerce.sync import _f, _item_target
 
 _MAX_BATCH = 200
 # The doctypes that carry a woo_product_id (fixtures/custom_field.json).
@@ -50,12 +51,16 @@ def _candidates(doctype: str, field: str) -> list:
     return frappe.get_all(doctype, filters={field: ["!=", ""]}, fields=["name", field])
 
 
-def _is_dangling(client, woo_id: str) -> bool:
-    """True iff the WC product for *woo_id* was deleted (404). A non-404 error is a
+def _is_dangling(client, woo_id: str, parent: str = "") -> bool:
+    """True iff the WC product for *woo_id* (with *parent*: that variable product's
+    variation) was deleted (404). A non-404 error is a
     real API failure and is re-raised — never silently classed as 'deleted' (which
     would clear a live listing under fix=True)."""
     try:
-        client.get_product(woo_id)
+        if parent:
+            client.get_variation(parent, woo_id)
+        else:
+            client.get_product(woo_id)
         return False
     except WooCommerceError as exc:
         if exc.status_code == 404:
@@ -111,8 +116,13 @@ def _audit_site(site: str, batch_size: int, fix: bool, dangling: list) -> int:
                 woo_id = str(row.get(field) or "").strip()
                 if not woo_id:
                     continue
+                parent = ""
+                if doctype == "Item":
+                    kind, _template, parent = _item_target(row["name"], site)
+                    if kind == mapping.VARIANT and not parent:
+                        continue  # nothing to ask under; the template's own id is audited
                 checked += 1
-                if _is_dangling(client, woo_id):
+                if _is_dangling(client, woo_id, parent):
                     dangling.append({
                         "doctype": doctype, "name": row["name"],
                         "field": field, "site": site, "woo_id": woo_id,

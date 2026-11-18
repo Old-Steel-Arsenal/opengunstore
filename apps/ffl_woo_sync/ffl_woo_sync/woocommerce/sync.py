@@ -2,7 +2,9 @@
 
 Public surface
 --------------
-* :func:`push_item`      — create or update an item-level WC product
+* :func:`push_item`      — create or update an item-level WC product; a template
+  Item is a variable product (with all its variations), a variant Item one
+  variation under it (``mapping.variant_kind``)
 * :func:`push_serial`    — create or update a per-serial WC product
 * :func:`push_all_serials` — push every Active Serial No for an item
 * :func:`push_stock`     — lightweight: update stock_quantity only
@@ -728,12 +730,40 @@ def effective_item_price(item_code: str) -> float:
     return mapping.web_price_for_item(item_code)
 
 
-def _force_draft(wc: WooCommerceClient, woo_id: str, *, _retries: int = 2) -> None:
+def _update(wc: WooCommerceClient, woo_id, payload: dict, parent: str = "") -> dict:
+    """PUT a product — or, with *parent*, the variation *woo_id* of that variable
+    product. Every Item-level write goes through here (or :func:`_create`), so a
+    variant's variation id is never sent to ``products/{id}``."""
+    if parent:
+        return wc.update_variation(parent, woo_id, payload)
+    return wc.update_product(woo_id, payload)
+
+
+def _create(wc: WooCommerceClient, payload: dict, parent: str = "") -> dict:
+    """POST a product — or, with *parent*, a variation of it (see :func:`_update`)."""
+    if parent:
+        return wc.create_variation(parent, payload)
+    return wc.create_product(payload)
+
+
+def _item_target(item_code: str, site: str) -> tuple[str, str, str]:
+    """``(kind, template, parent)`` for an Item's store write (``mapping.variant_kind``):
+    *parent* is the template's product id for a variant (``""`` while the template
+    has none), ``""`` for any other Item."""
+    kind, template = mapping.variant_kind(item_code)
+    parent = ""
+    if kind == mapping.VARIANT:
+        parent = str(frappe.db.get_value("Item", template, _f(site, "product_id")) or "")
+    return kind, template, parent
+
+
+def _force_draft(wc: WooCommerceClient, woo_id: str, *, _retries: int = 2,
+        parent: str = "") -> None:
     """Take a product off sale without deleting it — same shape as
     :func:`delist_serial`, so an un-sellable product always lands in one
     recognisable state."""
     _push_with_retry(
-        lambda: wc.update_product(woo_id, dict(OFF_SALE_PAYLOAD)),
+        lambda: _update(wc, woo_id, dict(OFF_SALE_PAYLOAD), parent),
         retries=_retries,
     )
 
@@ -746,6 +776,7 @@ def _refuse_unpriced(
     site: str,
     _retries: int,
     extra_writeback: dict | None = None,
+    parent: str = "",
 ) -> dict:
     """Refuse to publish an unpriced record, and stop the store selling it.
 
@@ -778,7 +809,7 @@ def _refuse_unpriced(
     frappe.db.set_value(doctype, name, writeback)
 
     if woo_id:
-        _force_draft(_client(client, site), woo_id, _retries=_retries)
+        _force_draft(_client(client, site), woo_id, _retries=_retries, parent=parent)
         # Reached only on success — now the past tense is true.
         frappe.db.set_value(
             doctype, name, _f(site, "sync_error"),
@@ -903,6 +934,15 @@ def push_item(
     - If the site's ``product_id`` field is blank → ``create_product`` (POST).
     - If set → ``update_product`` (PUT).
 
+    A template Item (``has_variants``) is a variable product: no price or stock of
+    its own, its variant attributes as variation attributes, and a full push then
+    pushes every enabled variant (:func:`_push_variations`). A variant Item is a
+    variation under the template's product (``update_variation`` /
+    ``create_variation``), its ``product_id`` the variation id; while the template
+    has no product a full push of the variant pushes the template, a machine one
+    is skipped (:data:`NO_PARENT`). A variant is also held back by its template's
+    ``delisted``.
+
     Write-back on success:
         ``{site}_product_id``, ``{site}_listed=1``, ``{site}_synced_at``,
         ``{site}_sync_error=""``
@@ -953,9 +993,22 @@ def push_item(
     if not item_code:
         raise ValueError("push_item() requires an item_code")
 
+    # A template is the variable product, a variant one of its variations
+    # (mapping.variant_kind). A variation lives under its parent, so a variant whose
+    # template is not on the store yet goes out with the template's full push (which
+    # creates the parent and every variation) — unless a machine asked: doc events
+    # never create products.
+    kind, template, parent = _item_target(item_code, site)
+    if kind == mapping.VARIANT and not parent:
+        if pos_fields_only:
+            return {"skipped": NO_PARENT, "item_code": item_code, "site": site}
+        return push_item(template, client=client, attr_ids=attr_ids, _retries=_retries,
+                         site=site, _relist=_relist)
+
     # Checked before the client is built, so a refusal costs no HTTP and no
-    # config read.
-    if not _relist and frappe.db.get_value("Item", item_code, _f(site, "delisted")):
+    # config read. A variant also stays off while its template is delisted.
+    if not _relist and (frappe.db.get_value("Item", item_code, _f(site, "delisted")) or (
+            kind == mapping.VARIANT and frappe.db.get_value("Item", template, _f(site, "delisted")))):
         return {"skipped": "delisted", "item_code": item_code, "site": site}
 
     # The price guard must NOT swallow the per-serial-firearm case.  Such an
@@ -971,10 +1024,12 @@ def push_item(
     ) or frappe._dict()
     is_per_serial_firearm = _is_firearm_row(meta) and not meta.get("uniform_sell_price")
 
-    if not is_per_serial_firearm and effective_item_price(item_code) <= 0:
+    # A template carries no price: its variations do (each one guarded here).
+    if (kind != mapping.TEMPLATE and not is_per_serial_firearm
+            and effective_item_price(item_code) <= 0):
         return _refuse_unpriced(
             "Item", item_code, client=client, site=site, _retries=_retries,
-            extra_writeback={_f(site, "listed"): 0},
+            extra_writeback={_f(site, "listed"): 0}, parent=parent,
         )
 
     wc = _client(client, site)
@@ -1009,31 +1064,36 @@ def push_item(
         # that is never going to exist.
         brand_id = (
             _brand_id_for_item(wc, item_code, site=site)
-            if listing and not is_per_serial_firearm and not lean
+            if listing and not is_per_serial_firearm and not lean and kind != mapping.VARIANT
             else None
         )
-        payload = mapping.item_to_product_payload(
-            item_code,
-            attr_ids=attr_ids,
-            site=site,
-            brand_id=brand_id,
-            shipping_class=shipping_class,
-            listing=listing,
-        )
+        if kind == mapping.VARIANT:
+            payload = mapping.variant_to_variation_payload(item_code, attr_ids=attr_ids, site=site)
+        else:
+            build = (mapping.template_to_product_payload if kind == mapping.TEMPLATE
+                     else mapping.item_to_product_payload)
+            payload = build(
+                item_code,
+                attr_ids=attr_ids,
+                site=site,
+                brand_id=brand_id,
+                shipping_class=shipping_class,
+                listing=listing,
+            )
         # Built full, filtered after: the ValueError the builder raises for a
         # per-serial firearm must keep flowing to callers either way, and the
         # payload derivations stay in one place (see _pos_owned_payload).
         if lean:
             payload = _pos_owned_payload(payload)
-        else:
+        elif kind != mapping.VARIANT:  # a variation has no categories of its own
             _apply_category(wc, payload, item_code, site)
         if woo_id:
             result = _without_dead_images(item_code, payload, lambda: _push_with_retry(
-                lambda: wc.update_product(woo_id, payload), retries=_retries
+                lambda: _update(wc, woo_id, payload, parent), retries=_retries
             ))
         else:
             result = _without_dead_images(item_code, payload, lambda: _push_with_retry(
-                lambda: wc.create_product(payload), retries=_retries
+                lambda: _create(wc, payload, parent), retries=_retries
             ))
             woo_id = str(result["id"])
         _verify_shipping_class(result, shipping_class, item_code)
@@ -1055,6 +1115,9 @@ def push_item(
         # commit makes durable is only bookkeeping that already matches the store.
         safe_commit()
         frappe.db.set_value("Item", item_code, writeback)
+        if kind == mapping.TEMPLATE and not lean:
+            result = dict(result, variations=_push_variations(
+                item_code, wc=wc, attr_ids=attr_ids, _retries=_retries, site=site))
         return result
     except WooCommerceError as exc:
         safe_commit()  # a fresh snapshot for the error write (see the write-back above)
@@ -1077,6 +1140,35 @@ def push_item(
         safe_commit()
         frappe.db.set_value("Item", item_code, _f(site, "sync_error"), str(exc))
         raise
+
+
+def _push_variations(template: str, *, wc: WooCommerceClient, attr_ids, _retries: int,
+        site: str) -> dict[str, str]:
+    """Full-push every enabled variant of *template* after its parent product:
+    ``{item_code: variation id | skip reason}``. Each variant is tried; failures are
+    raised together at the end (each variant's own ``sync_error`` says why).
+
+    Not ``_relist``: a variant delisted on its own stays off, as a hidden gun does
+    under ``push_all_serials`` — its own button relists it."""
+    out: dict[str, str] = {}
+    failed: list[str] = []
+    for code in mapping.template_variants(template):
+        try:
+            res = push_item(code, client=wc, attr_ids=attr_ids, _retries=_retries, site=site)
+            out[code] = res.get("skipped") or str(res.get("id") or "")
+        except Exception as exc:
+            out[code] = f"error: {str(exc)[:200]}"
+            failed.append(code)
+    if failed:
+        raise WooCommerceError(
+            f"{len(failed)} of {len(out)} variations failed ({', '.join(failed)}) — "
+            "see each variant Item's WooCommerce sync error.")
+    return out
+
+
+# A variant whose template has no product on the store yet: a machine (lean) push
+# does not create one — the template's full push creates the parent and its variations.
+NO_PARENT = "no_parent_product"
 
 
 def push_serial(
@@ -1340,6 +1432,11 @@ def push_stock(
     warning and returns ``{"skipped": "dangling_product_id", ...}`` instead of
     raising, so the caller doesn't record an ERROR.
     """
+    kind, _template, parent = _item_target(item_code, site)
+    if kind == mapping.TEMPLATE:  # the variable parent holds no stock; its variations do
+        return {"skipped": "template", "item_code": item_code}
+    if kind == mapping.VARIANT and not parent:
+        return {"skipped": NO_PARENT, "item_code": item_code}
     wc = _client(client, site)
     woo_id = frappe.db.get_value("Item", item_code, _f(site, "product_id")) or ""
     if not woo_id:
@@ -1351,7 +1448,7 @@ def push_stock(
     payload = mapping.stock_payload(item_code)
     try:
         result = _push_with_retry(
-            lambda: wc.update_product(woo_id, payload), retries=_retries
+            lambda: _update(wc, woo_id, payload, parent), retries=_retries
         )
     except WooCommerceError as exc:
         # A dangling product_id: the WC product behind this id was deleted on the
@@ -1447,6 +1544,12 @@ def push_stock_batch(
     updates: list[dict] = []
     for code in dict.fromkeys(c for c in item_codes if c):
         try:
+            # lazy: a variation is not in products/batch — one push_stock each (per
+            # variant, under its parent); group by parent into variations/batch if
+            # variable products ever carry hundreds of variants.
+            if mapping.variant_kind(code)[0]:
+                results[code] = push_stock(code, client=wc, _retries=_retries, site=site)
+                continue
             woo_id = frappe.db.get_value("Item", code, _f(site, "product_id")) or ""
             if not woo_id:
                 results[code] = {"skipped": "no_product_id", "item_code": code}
@@ -1525,8 +1628,13 @@ def delist_item(
         raise ValueError(
             f"Item {item_code!r} has no {_f(site, 'product_id')} — nothing to delist."
         )
+    kind, template, parent = _item_target(item_code, site)
+    if kind == mapping.VARIANT and not parent:
+        raise ValueError(
+            f"Item {item_code!r} is a variant of {template!r}, which has no "
+            f"{_f(site, 'product_id')} — nothing to delist.")
     result = _push_with_retry(
-        lambda: wc.update_product(woo_id, dict(OFF_SALE_PAYLOAD)),
+        lambda: _update(wc, woo_id, dict(OFF_SALE_PAYLOAD), parent),
         retries=_retries,
     )
     writeback = {

@@ -32,4 +32,4 @@ catch-up keeps them.
 
 **Permissions:** System Manager.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/categories.py:671`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/categories.py:673`</sub>

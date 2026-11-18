@@ -124,8 +124,9 @@ def on_store(site) -> list:
 	# item-level id on it is not on sale) — so does this.
 	out = [("Item", r.name, r.name, r[pid])
 		for r in frappe.get_all("Item", filters=item_filters,
-			fields=["name", pid, "is_firearm", "item_group", "uniform_sell_price"])
-		if not is_per_serial_priced(r)]
+			fields=["name", pid, "is_firearm", "item_group", "uniform_sell_price", "variant_of"])
+		# ...and a variant: its id is a variation, whose categories are its parent's.
+		if not is_per_serial_priced(r) and not r.variant_of]
 	serials = frappe.get_all("Serial No", filters=listed_serial_filters(site),
 		fields=["name", "item_code", pid])
 	out += [("Serial No", s.name, s.item_code, s[pid]) for s in serials]
@@ -469,11 +470,12 @@ def recategorize(item_code, ctx=None) -> list:
 	Writes the tree category alone, so a non-tree category (Clearance, Open Box)
 	on the product is dropped — as a full push does; only :func:`recategorize_site`
 	keeps them (one rule for all three is still to be decided)."""
+	from ffl_woo_sync.woocommerce import mapping
 	from ffl_woo_sync.woocommerce.sync import _f
 
 	slug = item_category(item_code)
-	if not slug:
-		return []
+	if not slug or mapping.variant_kind(item_code)[0] == mapping.VARIANT:
+		return []  # a variation has no categories: its parent (the template) carries them
 	ctx = {} if ctx is None else ctx
 	stores = ctx.get("woo_stores")
 	if stores is None:
