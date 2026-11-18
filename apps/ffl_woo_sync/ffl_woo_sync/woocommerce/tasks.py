@@ -747,6 +747,12 @@ def _map_meta_drifted(wc: dict, item) -> bool:
                for key, value in mapping.map_meta(item).items())
 
 
+def _meta_drifted(wc: dict, expected: dict) -> bool:
+    """The store's value of any of these meta keys differs from POS's (an absent key
+    reads as empty, so a product never given the key is not drift for an empty value)."""
+    return any((_wc_meta_value(wc, key) or "") != value for key, value in expected.items())
+
+
 def _wc_sale_drifted(wc: dict, sale_price, sale_from, sale_to) -> bool:
     """True when the store's sale trio differs from what POS would push.
 
@@ -1129,9 +1135,14 @@ def _run_reconcile(site: str = "retail") -> None:
                 # that should self-heal needs both (see the allowlist's comment).
                 wc_stock = int(wc.get("stock_quantity") or 0)
                 wc_price = (wc.get("regular_price") or "0").strip()
-                pos_stock = mapping.stock_for_item(item.name)
+                # A product on pre-order publishes its slots, not the empty shelf
+                # (mapping.preorder_stock) — the same pair every push writes.
+                pos_stock, preorder_meta = mapping.preorder_stock(
+                    item.name, mapping.stock_for_item(item.name), always=True)
                 pos_price = f"{price:.2f}"
                 drifted = wc_stock != pos_stock or wc_price != pos_price
+                if _meta_drifted(wc, preorder_meta):
+                    drifted = True
                 if _wc_sale_drifted(
                     wc, item.get("sale_price"), item.get("sale_from"), item.get("sale_to"),
                 ):

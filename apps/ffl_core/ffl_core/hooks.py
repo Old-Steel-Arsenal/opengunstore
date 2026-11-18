@@ -448,6 +448,9 @@ doc_events = {
 			# is billed only there (preorder.py).
 			"ffl_core.preorder.refuse_held_serials",
 			"ffl_core.preorder.refuse_billing_outside_handover",
+			# A gun a web or GunBroker order holds goes out on that order's own documents only
+			# (reservations.refuse_channel_reserved_serials; returns, merges and the channels' invoices pass).
+			"ffl_core.reservations.refuse_channel_reserved_serials",
 			"ffl_core.compliance.firearm.require_serial_for_firearm",
 			"ffl_core.compliance.firearm.require_4473_and_nics_for_firearm_sale",
 			"ffl_core.compliance.dealer_transfer.require_shippable_ffl_dealer",
@@ -575,6 +578,9 @@ doc_events = {
 			# Same as the invoices: a pre-order's gun and the pre-order itself go out on its pickup ticket (preorder.py).
 			"ffl_core.preorder.refuse_held_serials",
 			"ffl_core.preorder.refuse_billing_outside_handover",
+			# A gun a web or GunBroker order holds goes out on that order's own documents only
+			# (reservations.refuse_channel_reserved_serials; returns, merges and the channels' invoices pass).
+			"ffl_core.reservations.refuse_channel_reserved_serials",
 			"ffl_core.compliance.firearm.require_serial_for_firearm",
 			"ffl_core.compliance.dealer_transfer.require_shippable_ffl_dealer",
 			"ffl_core.compliance.interstate_tax.apply_interstate_tax",
@@ -660,6 +666,9 @@ doc_events = {
 			# is billed only there (preorder.py).
 			"ffl_core.preorder.refuse_held_serials",
 			"ffl_core.preorder.refuse_billing_outside_handover",
+			# A gun a web or GunBroker order holds goes out on that order's own documents only
+			# (reservations.refuse_channel_reserved_serials; returns, merges and the channels' invoices pass).
+			"ffl_core.reservations.refuse_channel_reserved_serials",
 			"ffl_core.compliance.firearm.require_serial_for_firearm",
 			# One gun per line — fires on EVERY validate (Draft too) so a qty>1 /
 			# multi-serial firearm line never persists to break the 4473 match
