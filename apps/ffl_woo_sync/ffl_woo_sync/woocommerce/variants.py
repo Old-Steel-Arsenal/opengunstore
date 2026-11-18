@@ -191,6 +191,9 @@ def adopt_variable_product(template: str, woo_product_id, site: str = "retail", 
 	}
 	if dry_run:
 		return out
+	if codes and not matched:
+		frappe.throw(_("No variation of WooCommerce product {0} has the item code of a variant of "
+			"{1} as its SKU: nothing to adopt.").format(woo_product_id, template))
 	links = {template: woo_product_id, **matched}
 	for code, woo_id in links.items():
 		frappe.db.set_value("Item", code, {

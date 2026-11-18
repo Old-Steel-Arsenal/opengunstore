@@ -482,3 +482,75 @@ class ReviewFixes(_Variable):
 		# A requested Item repeating a complete existing combination is still refused.
 		clash = variants.make_variants(self.template, {new: {self.fits: "SP5", self.sel: "SEF"}})
 		self.assertEqual(clash["errors"], [f"{new}: same attributes as {self.v[('SP5', 'SEF')]}"])
+
+
+class VariationPreorderValues(_Variable):
+	"""ffl-core reads a blank variation value as "ask the parent", and the parent says "1"
+	while any variation is on pre-order — so a variation's off / no-date is "0", never ""."""
+
+	def test_a_variation_never_carries_a_blank_preorder_value(self):
+		on, nodate, off = self.v[("SP5", "Navy")], self.v[("PTR", "SEF")], self.v[("SP5", "SEF")]
+		frappe.db.set_value("Item", on, {AVAILABLE_FIELD: 5, ETA_FIELD: "2026-12-31"})
+		frappe.db.set_value("Item", nodate, {AVAILABLE_FIELD: 2, ETA_FIELD: None})
+		self._push_all()
+		sent = {sku: _meta(p) for sku, p in self._variation_payloads().items()}
+		self.assertEqual((sent[on]["_osa_preorder"], sent[on]["_osa_preorder_eta"]), ("1", "2026-12-31"))
+		self.assertEqual((sent[nodate]["_osa_preorder"], sent[nodate]["_osa_preorder_eta"]), ("1", "0"))
+		self.assertEqual((sent[off]["_osa_preorder"], sent[off]["_osa_preorder_eta"]), ("0", "0"))
+		parent = _meta(self.client.create_product.call_args.args[0])
+		self.assertEqual(parent["_osa_preorder"], "1")  # the parent alone may say "1" for others
+
+	def test_a_variation_stock_push_says_off_explicitly(self):
+		code = self.v[("SP5", "Navy")]
+		frappe.db.set_value("Item", code, {AVAILABLE_FIELD: 1, ETA_FIELD: "2026-12-31"})
+		self._push_all()
+		frappe.db.set_value("Item", code, AVAILABLE_FIELD, 0)  # the last slot taken; ETA kept
+		self.client.reset_mock()
+		self.client.update_variation.side_effect = lambda parent, vid, payload: {"id": int(vid)}
+		sync.push_stock(code)
+		payload = self.client.update_variation.call_args.args[2]
+		self.assertEqual(_meta(payload), {"_osa_preorder": "0", "_osa_preorder_eta": "0"})
+
+	def test_reconcile_replaces_a_blank_left_on_a_variation(self):
+		self._push_all()
+		off = self.v[("SP5", "SEF")]
+		self.client.reset_mock()
+		self.client.get_attribute_ids.return_value = {}
+		variations = {}
+		for code in self.v.values():
+			payload = mapping.variant_to_variation_payload(code)
+			vid = self._pid(code)
+			variations[vid] = {"id": int(vid), "status": "publish", "stock_quantity": payload["stock_quantity"],
+				"regular_price": payload["regular_price"], "sale_price": "", "date_on_sale_from": None,
+				"date_on_sale_to": None, "meta_data": payload["meta_data"]}
+		# As the first release wrote it: blank.
+		variations[self._pid(off)]["meta_data"] = [m if m["key"] not in mapping.PREORDER_META_KEYS
+			else {"key": m["key"], "value": ""} for m in variations[self._pid(off)]["meta_data"]]
+		self.client.get_products.side_effect = lambda ids, **kw: {str(self.P): {
+			"id": self.P, "status": "publish", "meta_data": _parent_meta(self.template)}} if str(self.P) in map(str, ids) else {}
+		self.client.get_product.side_effect = lambda pid: {"id": int(pid), "status": "draft"}
+		self.client.list_variations.side_effect = lambda parent: {k: dict(v) for k, v in variations.items()} \
+			if str(parent) == str(self.P) else {}
+		self.client.get_variation.side_effect = lambda parent, vid: dict(variations[str(vid)])
+		self.client.update_variation.side_effect = lambda parent, vid, payload: {"id": int(vid)}
+		with patch("frappe.enqueue"):
+			tasks._run_reconcile("retail")
+		pushed = {c.args[1]: {k: v for k, v in _meta(c.args[2]).items() if k in mapping.PREORDER_META_KEYS}
+			for c in self.client.update_variation.call_args_list}
+		self.assertEqual(pushed, {self._pid(off): {"_osa_preorder": "0", "_osa_preorder_eta": "0"}})
+
+
+def _parent_meta(template):
+	return mapping._meta_data(mapping.template_preorder_meta(template))
+
+
+class AdoptGuard(_Variable):
+
+	def test_adopting_a_product_whose_variations_match_nothing_is_refused(self):
+		self.client.get_product.side_effect = None
+		self.client.get_product.return_value = {"id": 9, "type": "variable", "status": "publish"}
+		self.client.list_variations.return_value = {"91": {"id": 91, "sku": "SOMETHING-ELSE"}}
+		self.assertEqual(variants.adopt_variable_product(self.template, 9)["matched"], {})  # dry run reports
+		with self.assertRaisesRegex(frappe.ValidationError, "nothing to adopt"):
+			variants.adopt_variable_product(self.template, 9, dry_run=0)
+		self.assertFalse(self._pid(self.template))

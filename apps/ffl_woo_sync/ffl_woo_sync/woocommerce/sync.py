@@ -1469,7 +1469,7 @@ def push_stock(
         )
     # {stock_quantity}, plus the pre-order state for an Item pre-orders touch
     # (mapping.stock_payload).
-    payload = mapping.stock_payload(item_code)
+    payload = mapping.stock_payload(item_code, variation=kind == mapping.VARIANT)
     try:
         result = _push_with_retry(
             lambda: _update(wc, woo_id, payload, parent), retries=_retries
