@@ -1538,6 +1538,20 @@ def local_stock_for_item(item_code: str, *, item_row=None, free=None) -> int:
 PREORDER_META_KEYS = ("_osa_preorder", "_osa_preorder_eta")
 PREORDER_OFF = dict.fromkeys(PREORDER_META_KEYS, "")
 
+# A VARIATION never says "" for these: the storefront (ffl-core FulfillmentProfile::meta)
+# reads a blank variation value as "not set here" and takes the parent's — and the
+# variable parent says "1" while ANY of its variations is on pre-order
+# (template_preorder_meta). So a variation says off / no date with "0", which the reader
+# parses as not a pre-order / no arrival date, and never falls through to the parent.
+VARIATION_BLANK = "0"
+
+
+def variation_preorder_meta(meta: dict | None) -> dict | None:
+    """*meta* (pre-order keys) as a variation must carry it: blanks as :data:`VARIATION_BLANK`."""
+    if meta is None:
+        return None
+    return {k: (v if str(v or "").strip() else VARIATION_BLANK) for k, v in meta.items()}
+
 
 def preorder_item(item_code: str) -> frappe._dict | None:
     """The Item's pre-order count and ETA with the flags that decide whether the
@@ -1613,11 +1627,14 @@ def preorder_stock(item_code: str, qty: int, *, always: bool = False) -> tuple[i
     return qty, None
 
 
-def stock_payload(item_code: str) -> dict:
+def stock_payload(item_code: str, *, variation: bool = False) -> dict:
     """The stock-only update for an item-level product: ``{stock_quantity}``, plus
     ``manage_stock`` and the pre-order meta for an Item pre-orders touch
-    (:func:`preorder_stock`). Shared by ``sync.push_stock`` and ``sync.push_stock_batch``."""
+    (:func:`preorder_stock`). Shared by ``sync.push_stock`` and ``sync.push_stock_batch``.
+    ``variation``: the product is a variation (:func:`variation_preorder_meta`)."""
     qty, meta = preorder_stock(item_code, stock_for_item(item_code))
+    if variation:
+        meta = variation_preorder_meta(meta)
     payload = {"stock_quantity": qty}
     if meta is not None:
         payload["manage_stock"] = True
@@ -1903,6 +1920,165 @@ def item_to_product_payload(
     rows = [r for r in payload.get("meta_data") or [] if r.get("key") not in preorder_meta]
     payload["meta_data"] = rows + _meta_data(preorder_meta)
     return _with_extension_meta(_with_map_meta(payload, item), "Item", item_code)
+
+
+# ===========================================================================
+# Item templates and variants → a variable product and its variations
+# ===========================================================================
+#
+# A template Item (``has_variants=1``) is one WooCommerce *variable* product; each
+# variant Item (``variant_of`` = the template) is one *variation* of it, SKU = its
+# item code (the webhook maps an order line back by SKU, as for any item-level
+# product). The variant's ``{site}_product_id`` holds the VARIATION id; the parent
+# product id is the template's own ``{site}_product_id`` — never stored twice.
+# Variations are addressed under the parent (``client.*_variation``), never as
+# ``products/{id}``.
+
+TEMPLATE = "template"
+VARIANT = "variant"
+
+
+def variant_kind(item_code: str) -> tuple[str, str]:
+    """``(TEMPLATE, "")`` for a template Item, ``(VARIANT, template)`` for a variant,
+    ``("", "")`` for any other Item. Raw SQL, like :func:`preorder_item`: the
+    wholesale ``frappe.db.get_value`` mocks in this app's tests must not answer it."""
+    if not item_code:
+        return "", ""
+    rows = frappe.db.sql("SELECT has_variants, variant_of FROM `tabItem` WHERE name = %s",
+        (item_code,), as_dict=True)
+    row = rows[0] if rows else {}
+    if row.get("variant_of"):
+        return VARIANT, row["variant_of"]
+    if int(row.get("has_variants") or 0):
+        return TEMPLATE, ""
+    return "", ""
+
+
+def variable_items(item_codes) -> list[str]:
+    """Which of *item_codes* are templates or variants — one query for a batch."""
+    codes = [c for c in item_codes or [] if c]
+    if not codes:
+        return []
+    return frappe.db.sql_list("""SELECT name FROM `tabItem` WHERE name IN %(codes)s
+        AND (has_variants = 1 OR IFNULL(variant_of, '') != '')""", {"codes": tuple(codes)})
+
+
+def template_variants(template: str) -> list[str]:
+    """The template's enabled variant Items, in creation order."""
+    return frappe.get_all("Item", filters={"variant_of": template, "disabled": 0},
+        order_by="creation asc", pluck="name")
+
+
+def _variant_attribute_rows(item_codes: list[str]) -> list:
+    if not item_codes:
+        return []
+    return frappe.get_all("Item Variant Attribute",
+        filters={"parenttype": "Item", "parent": ["in", item_codes]},
+        fields=["parent", "attribute", "attribute_value"], order_by="idx asc")
+
+
+def _attribute_slug(name: str) -> str:
+    """The global taxonomy slug WooCommerce would give attribute *name* (``pa_fits``)."""
+    return "pa_" + re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
+
+
+def variation_attributes(template: str, attr_ids: dict[str, int] | None = None) -> list[dict]:
+    """The parent's variation attributes: one per template attribute, its options the
+    values the enabled variants actually use, in the Item Attribute's value order. A
+    global ``pa_*`` attribute of the same name is linked by id; otherwise the
+    attribute is the product's own (by name)."""
+    ids = attr_ids or {}
+    names = frappe.get_all("Item Variant Attribute",
+        filters={"parenttype": "Item", "parent": template},
+        order_by="idx asc", pluck="attribute")
+    used: dict[str, set] = {n: set() for n in names}
+    for row in _variant_attribute_rows(template_variants(template)):
+        if row.attribute in used and (row.attribute_value or "").strip():
+            used[row.attribute].add(row.attribute_value.strip())
+    out = []
+    for name in names:
+        order = frappe.get_all("Item Attribute Value", filters={"parent": name},
+            order_by="idx asc", pluck="attribute_value")
+        values = [v for v in order if v in used[name]] + sorted(used[name] - set(order))
+        if not values:
+            continue
+        out.append({"id": ids.get(_attribute_slug(name), 0), "name": name, "visible": True,
+            "variation": True, "options": values})
+    return out
+
+
+# A variable parent carries no price or stock of its own — WooCommerce derives the
+# price range and stock status from its variations.
+_PARENT_ONLY_DROP = ("regular_price", "sale_price", "date_on_sale_from", "date_on_sale_to",
+    "stock_quantity", "global_unique_id")
+
+# What a variation takes from a full item-level payload. Name, description,
+# categories, brands, attributes and the gallery belong to the parent.
+_VARIATION_KEYS = ("sku", "status", "regular_price", "sale_price", "date_on_sale_from",
+    "date_on_sale_to", "manage_stock", "stock_quantity", "meta_data", "global_unique_id",
+    "shipping_class")
+
+
+def template_preorder_meta(template: str) -> dict:
+    """The variable parent's pre-order meta, from its enabled variants: ``"1"`` while
+    any of them sells pre-order slots (:func:`preorder_stock`), with the earliest of
+    their ETAs; both ``""`` otherwise. Derived rather than left off the parent: the
+    product page, archive cards and ffl-core's parent fallback read the parent, and a
+    parent that once said "1" would otherwise say it for ever."""
+    etas = []
+    on = False
+    for code in template_variants(template):
+        _qty, meta = preorder_stock(code, stock_for_item(code))
+        if meta and meta.get("_osa_preorder") == "1":
+            on = True
+            if meta.get("_osa_preorder_eta"):
+                etas.append(meta["_osa_preorder_eta"])
+    return {"_osa_preorder": "1" if on else "", "_osa_preorder_eta": min(etas) if on and etas else ""}
+
+
+def template_to_product_payload(template: str, attr_ids: dict[str, int] | None = None,
+        site: str = "retail", brand_id: int | None = None, shipping_class: str | None = None,
+        listing: bool = False) -> dict:
+    """The variable product for a template Item: the item-level payload
+    (:func:`item_to_product_payload` — name, description, images, ``pa_*``
+    attributes, meta) without price or stock, plus the variation attributes."""
+    payload = item_to_product_payload(template, attr_ids=attr_ids, site=site,
+        brand_id=brand_id, shipping_class=shipping_class, listing=listing)
+    for key in _PARENT_ONLY_DROP:
+        payload.pop(key, None)
+    # The template's own slots mean nothing: its variants' pre-order state does.
+    payload["meta_data"] = [m for m in payload.get("meta_data") or []
+        if m.get("key") not in PREORDER_META_KEYS] + _meta_data(template_preorder_meta(template))
+    variation = variation_attributes(template, attr_ids)
+    taken = {a["name"] for a in variation}
+    payload.update(type="variable", manage_stock=False, attributes=[
+        a for a in payload.get("attributes") or [] if a.get("name") not in taken] + variation)
+    return payload
+
+
+def variant_to_variation_payload(item_code: str, attr_ids: dict[str, int] | None = None,
+        site: str = "retail") -> dict:
+    """The variation for a variant Item: price, sale, stock / pre-order slots, the
+    per-item meta (pre-order, MAP, extension, firearm flags) and its own image, from
+    the same item-level payload a simple product gets — plus the variant's
+    attribute values."""
+    full = item_to_product_payload(item_code, attr_ids=attr_ids, site=site)
+    payload = {k: full[k] for k in _VARIATION_KEYS if k in full}
+    meta = full.get("meta_data") or []
+    preorder = variation_preorder_meta({m["key"]: m["value"] for m in meta
+        if m.get("key") in PREORDER_META_KEYS})
+    payload["meta_data"] = [m for m in meta if m.get("key") not in PREORDER_META_KEYS] + _meta_data(preorder)
+    if full.get("images"):
+        payload["image"] = full["images"][0]
+    ids = attr_ids or {}
+    attributes = []
+    for row in _variant_attribute_rows([item_code]):
+        attr = {"name": row.attribute, "option": (row.attribute_value or "").strip()}
+        if ids.get(_attribute_slug(row.attribute)):
+            attr["id"] = ids[_attribute_slug(row.attribute)]
+        attributes.append(attr)
+    payload["attributes"] = attributes
+    return payload
 
 
 def serial_to_product_payload(

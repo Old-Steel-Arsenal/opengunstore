@@ -25,4 +25,4 @@ made in the same transaction.
 
 **Returns:** { "checked": <int>,                 # ids verified against WooCommerce "dangling": [{"doctype","name","field","site","woo_id"}, ...], "fixed": <int>,                   # ids nulled (0 unless fix) "skipped": [{"site","reason"}, ...],   # stores with no usable client "counts": {"by_doctype": {...}, "by_site": {...}}, }
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/dangling.py:126`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/dangling.py:137`</sub>

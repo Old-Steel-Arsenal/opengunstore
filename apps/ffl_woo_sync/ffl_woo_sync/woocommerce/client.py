@@ -418,6 +418,36 @@ class WooCommerceClient:
 		"""``GET /wc/v3/products/{woo_id}`` — fetch a product by ID."""
 		return self.get(f"products/{woo_id}")
 
+	# A variation is addressed under its parent product: ``products/{parent}/variations/{id}``.
+	# ``products/{id}`` and ``products?include=`` do not reliably answer a variation id.
+
+	def create_variation(self, parent: str | int, payload: dict) -> dict:
+		"""``POST /wc/v3/products/{parent}/variations``."""
+		return self.post(f"products/{parent}/variations", json=payload)
+
+	def update_variation(self, parent: str | int, woo_id: str | int, payload: dict) -> dict:
+		"""``PUT /wc/v3/products/{parent}/variations/{woo_id}``."""
+		return self.put(f"products/{parent}/variations/{woo_id}", json=payload)
+
+	def get_variation(self, parent: str | int, woo_id: str | int) -> dict:
+		"""``GET /wc/v3/products/{parent}/variations/{woo_id}``."""
+		return self.get(f"products/{parent}/variations/{woo_id}")
+
+	def list_variations(self, parent: str | int, *, per_page: int = 100) -> dict[str, dict]:
+		"""Every variation of *parent*, ``{str(id): variation}`` (all statuses, paged)."""
+		out: dict[str, dict] = {}
+		page = 1
+		while True:
+			rows = self.get(f"products/{parent}/variations",
+				params={"per_page": per_page, "page": page, "status": "any"})
+			rows = rows if isinstance(rows, list) else []
+			for row in rows:
+				if isinstance(row, dict) and row.get("id") is not None:
+					out[str(row["id"])] = row
+			if len(rows) < per_page:
+				return out
+			page += 1
+
 	def get_products(self, ids, *, status: str = "any", per_page: int = 100) -> dict[str, dict]:
 		"""``GET /wc/v3/products?include=…`` — many products in one request per
 		``per_page`` ids: ``{str(id): product}``, the same product objects

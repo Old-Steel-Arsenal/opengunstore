@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenGunstore API",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "description": "RPC API of the OpenGunstore custom apps (Frappe/ERPNext v16): ffl_core, ffl_integrations, ffl_woo_sync.\n\nAll endpoints are Frappe *whitelisted methods* invoked as `/api/method/<dotted.path>`. Unless an endpoint declares explicit HTTP verbs, it is documented here as POST (Frappe also accepts GET for read-only calls; always POST mutations). Arguments may be sent as JSON body, form data, or query string — JSON body is recommended.\n\nEvery operation carries an **Auth (derived from code)** line statically resolved from the role gate the function actually executes; the prose Permissions note adds semantics the machine can't infer.\n\nStandard CRUD on DocTypes is served by Frappe's REST layer (`/api/resource/<DocType>`) — see docs/api/frappe-rest.md; the custom DocTypes are modelled under components.schemas and listed in reference/doctypes.md."
   },
   "servers": [
@@ -26649,7 +26649,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Put the products on the store(s) in their tree category: the products whose",
-        "description": "tree categories are not their node's term — e.g. filed under a parent before\ntheir category was created on the store, or every product on a store's first\nApply (linking a term moves nothing by itself). Categories outside the tree\n(Clearance, Open Box …) are kept. Per-serial guns count as products and are\ncounted apart (``by_doctype``).\n\nLimit: a product's full push (and the catalog feed's re-categorise) still\nwrites its tree category alone, dropping Clearance / Open Box — only this\ncatch-up keeps them.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/categories.py:671`",
+        "description": "tree categories are not their node's term — e.g. filed under a parent before\ntheir category was created on the store, or every product on a store's first\nApply (linking a term moves nothing by itself). Categories outside the tree\n(Clearance, Open Box …) are kept. Per-serial guns count as products and are\ncounted apart (``by_doctype``).\n\nLimit: a product's full push (and the catalog feed's re-categorise) still\nwrites its tree category alone, dropping Clearance / Open Box — only this\ncatch-up keeps them.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/categories.py:673`",
         "operationId": "ffl_woo_sync.woocommerce.categories.recategorize_store",
         "responses": {
           "200": {
@@ -26705,7 +26705,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Set the WooCommerce product for an Item to ``draft`` + stock 0.",
-        "description": "The operator's deliberate delist — the only delist_item caller that\nraises the republish sentinel.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:281`",
+        "description": "The operator's deliberate delist — the only delist_item caller that\nraises the republish sentinel.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:296`",
         "operationId": "ffl_woo_sync.woocommerce.client_api.delist_item_now",
         "responses": {
           "200": {
@@ -26758,7 +26758,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Set the WooCommerce product for a Serial No to ``draft`` + stock 0.",
-        "description": "**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:348`",
+        "description": "**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:363`",
         "operationId": "ffl_woo_sync.woocommerce.client_api.delist_serial_now",
         "responses": {
           "200": {
@@ -26811,7 +26811,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Overwrite a POS record's listing content from its WooCommerce product.",
-        "description": "The reverse of push_item_now / push_serial_now, for the storefront plugin's product\npage's \"overwrite POS from WooCommerce\" button: pulls title, description,\nprice and gallery images from the live WC product and writes them onto\nthe Item (or, for an ``item_code::serial_no`` SKU, the Serial No).\nStock and attributes are never pulled — the POS stays their source of\ntruth. The save runs under the inbound loop guard, so doc_events does not\npush the change straight back at WooCommerce.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:452`",
+        "description": "The reverse of push_item_now / push_serial_now, for the storefront plugin's product\npage's \"overwrite POS from WooCommerce\" button: pulls title, description,\nprice and gallery images from the live WC product and writes them onto\nthe Item (or, for an ``item_code::serial_no`` SKU, the Serial No).\nStock and attributes are never pulled — the POS stays their source of\ntruth. The save runs under the inbound loop guard, so doc_events does not\npush the change straight back at WooCommerce.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:470`",
         "operationId": "ffl_woo_sync.woocommerce.client_api.pull_product_from_woo",
         "responses": {
           "200": {
@@ -26864,7 +26864,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Push (create or update) WC products for all Active Serial Nos of an Item.",
-        "description": "Uses a single pre-built client and pre-fetched attribute IDs to minimise\nHTTP round-trips.  Returns per-serial results and any errors encountered.\n\n.. note:: **Aggregating semantics** — every serial is attempted regardless\n   of earlier failures; errors are collected and returned rather than\n   re-raised.  This differs from\n   :func:`ffl_woo_sync.woocommerce.sync.push_all_serials` which is\n   fail-fast (re-raises the first per-serial exception immediately).\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:234`",
+        "description": "Uses a single pre-built client and pre-fetched attribute IDs to minimise\nHTTP round-trips.  Returns per-serial results and any errors encountered.\n\n.. note:: **Aggregating semantics** — every serial is attempted regardless\n   of earlier failures; errors are collected and returned rather than\n   re-raised.  This differs from\n   :func:`ffl_woo_sync.woocommerce.sync.push_all_serials` which is\n   fail-fast (re-raises the first per-serial exception immediately).\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:249`",
         "operationId": "ffl_woo_sync.woocommerce.client_api.push_all_serials",
         "responses": {
           "200": {
@@ -26917,11 +26917,11 @@
           "ffl_woo_sync"
         ],
         "summary": "Push (create or update) the WooCommerce product(s) for an Item.",
-        "description": "Routing is determined server-side so all callers (Item form button, MCP,\nfuture automation) behave correctly without any client-side detection:\n\n- **Per-serial firearm** (``is_firearm=1``, ``uniform_sell_price=0``):\n  pushes every Active Serial No via :func:`ffl_woo_sync.woocommerce.sync.push_serial`.\n  Returns ``{\"ok\": bool, \"pushed\": [...], \"errors\": [...], \"skipped\": [...],\n  \"total\": int}``.  This branch does **not** pass ``_relist``: a hidden gun\n  stays hidden and lands in ``skipped`` (an Item-level bulk\n  relist would also revive guns hidden one-by-one for holds or repairs).\n  The per-gun route is the Serial No form's own button.\n- **Non-firearm / uniform-price firearm**:\n  single item-level push via :func:`ffl_woo_sync.woocommerce.sync.push_item`.\n  Returns ``{\"ok\": True, \"woo_product_id\": \"<id>\", \"raw\": <WC response>}``.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:171`",
+        "description": "Routing is determined server-side so all callers (Item form button, MCP,\nfuture automation) behave correctly without any client-side detection:\n\n- **Per-serial firearm** (``is_firearm=1``, ``uniform_sell_price=0``):\n  pushes every Active Serial No via :func:`ffl_woo_sync.woocommerce.sync.push_serial`.\n  Returns ``{\"ok\": bool, \"pushed\": [...], \"errors\": [...], \"skipped\": [...],\n  \"total\": int}``.  This branch does **not** pass ``_relist``: a hidden gun\n  stays hidden and lands in ``skipped`` (an Item-level bulk\n  relist would also revive guns hidden one-by-one for holds or repairs).\n  The per-gun route is the Serial No form's own button.\n- **Non-firearm / uniform-price firearm**:\n  single item-level push via :func:`ffl_woo_sync.woocommerce.sync.push_item`.\n  Returns ``{\"ok\": True, \"woo_product_id\": \"<id>\", \"raw\": <WC response>}``.\n  A template Item pushes its variable product and every variant; ``ok`` is\n  False when a variation failed (``variation_errors``), and variants whose\n  variation was deleted on the store are listed in ``dangling_variations``.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:179`",
         "operationId": "ffl_woo_sync.woocommerce.client_api.push_item_now",
         "responses": {
           "200": {
-            "description": "Per-serial branch: {ok, pushed, errors, skipped, total}; item-level branch: {ok, woo_product_id, raw}.",
+            "description": "Per-serial branch: {ok, pushed, errors, skipped, total}; item-level branch: {ok, woo_product_id, raw, variation_errors, dangling_variations}.",
             "content": {
               "application/json": {
                 "schema": {
@@ -26970,7 +26970,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Push (create or update) the WooCommerce product for a single Serial No.",
-        "description": "An operator's explicit push is the clearest relist there is, so this\noverrides the hidden-serial guard (a human may always undo a human's\nhide).\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:310`",
+        "description": "An operator's explicit push is the clearest relist there is, so this\noverrides the hidden-serial guard (a human may always undo a human's\nhide).\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:325`",
         "operationId": "ffl_woo_sync.woocommerce.client_api.push_serial_now",
         "responses": {
           "200": {
@@ -27023,11 +27023,11 @@
           "ffl_woo_sync"
         ],
         "summary": "Push the item product + all Active serials in a single call.",
-        "description": "Uses a shared client and pre-fetched attribute IDs.  Returns combined\nresults: the item push result plus per-serial results and any errors.\n\nSuitable for \"initial listing\" of a per-serial firearm item where you want\nto bring everything live in one operation.\n\nFULL-PAYLOAD by design: as a deliberate,\nconfirmed bulk action it keeps the manual-push semantics — which means it\nWILL overwrite wp-admin content edits (title / description / images) with\nthe POS versions on every product it touches. Routine drift healing belongs\nto the scheduled reconcile, which is pos_fields_only and content-safe.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:373`",
+        "description": "Uses a shared client and pre-fetched attribute IDs.  Returns combined\nresults: the item push result plus per-serial results and any errors.\n\nSuitable for \"initial listing\" of a per-serial firearm item where you want\nto bring everything live in one operation.\n\nFULL-PAYLOAD by design: as a deliberate,\nconfirmed bulk action it keeps the manual-push semantics — which means it\nWILL overwrite wp-admin content edits (title / description / images) with\nthe POS versions on every product it touches. Routine drift healing belongs\nto the scheduled reconcile, which is pos_fields_only and content-safe.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:388`",
         "operationId": "ffl_woo_sync.woocommerce.client_api.reconcile_now",
         "responses": {
           "200": {
-            "description": "{ok, item_result, item_error, dangling, pushed_serials, serial_errors, skipped_serials, ...}.",
+            "description": "{ok, item_result, item_error, dangling, pushed_serials, serial_errors, skipped_serials, variation_errors, dangling_variations}.",
             "content": {
               "application/json": {
                 "schema": {
@@ -27076,7 +27076,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Probe the WooCommerce store via GET /products?per_page=1 (read auth only).",
-        "description": "**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:140`",
+        "description": "**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:148`",
         "operationId": "ffl_woo_sync.woocommerce.client_api.test_connection",
         "responses": {
           "200": {
@@ -27122,7 +27122,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Take the website's visitor events: a newsletter signup, a back-in-stock or model alert request.",
-        "description": "Each event is processed on its own; one that fails leaves nothing behind and does not stop the\nrest. A repeated event id is answered as accepted again and processed only once. Nothing is\nemailed. The whole call is refused while Marketing Settings › Enabled is off, and the website\nsends the events again later.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:529`",
+        "description": "Each event is processed on its own; one that fails leaves nothing behind and does not stop the\nrest. A repeated event id is answered as accepted again and processed only once. Nothing is\nemailed. The whole call is refused while Marketing Settings › Enabled is off, and the website\nsends the events again later.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:547`",
         "operationId": "ffl_woo_sync.woocommerce.client_api.web_events",
         "responses": {
           "200": {
@@ -27169,7 +27169,7 @@
           "ffl_woo_sync"
         ],
         "summary": "File a website form submission in CRM: a price request, a sell-your-gun form or a question.",
-        "description": "The email decides where it goes, as for incoming mail: a customer's open deal (one is opened when\nthey have none), else their existing lead, else a new lead. The text goes on it as a note, and the\ngun asked about as a product line. A sell-your-gun request always makes a deal of its own, its\nknown fields on the deal and its photos (links on the store's website) copied in later. Nothing is\nemailed to the customer. A repeat of the same ``event_id`` files nothing more. Does nothing when\nCRM is not installed.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:492`",
+        "description": "The email decides where it goes, as for incoming mail: a customer's open deal (one is opened when\nthey have none), else their existing lead, else a new lead. The text goes on it as a note, and the\ngun asked about as a product line. A sell-your-gun request always makes a deal of its own, its\nknown fields on the deal and its photos (links on the store's website) copied in later. Nothing is\nemailed to the customer. A repeat of the same ``event_id`` files nothing more. Does nothing when\nCRM is not installed.\n\n**Auth (derived from code):** Roles: Stock Manager / System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/client_api.py:510`",
         "operationId": "ffl_woo_sync.woocommerce.client_api.web_inquiry",
         "responses": {
           "200": {
@@ -27342,7 +27342,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Audit stored Woo product ids for ones whose WC product was deleted (404).",
-        "description": "Scans every connected store by default, and a store it cannot build a client\nfor is reported as skipped rather than aborting the run: letting the config\nerror out of here would 500 the request AND roll back any repairs already\nmade in the same transaction.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/dangling.py:126`",
+        "description": "Scans every connected store by default, and a store it cannot build a client\nfor is reported as skipped rather than aborting the run: letting the config\nerror out of here would 500 the request AND roll back any repairs already\nmade in the same transaction.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/dangling.py:137`",
         "operationId": "ffl_woo_sync.woocommerce.dangling.woo_audit_dangling_ids",
         "responses": {
           "200": {
@@ -27813,7 +27813,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Report web orders WooCommerce says shipped while POS still holds them open.",
-        "description": "A shipped firearm with no disposition is a missing A&D entry, and nothing\nsurfaced it before — the seven such orders on 2026-08-14 were found by hand.\n\nReports only; it never disposes anything. Which rifle went in the box is\nexactly what POS does not know in this state, and guessing it is the mistake\nthe whole serial-handling rework exists to stop.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\n**Permissions:** Counter roles (manual path; the scheduler runs as Administrator).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/tasks.py:1569`",
+        "description": "A shipped firearm with no disposition is a missing A&D entry, and nothing\nsurfaced it before — the seven such orders on 2026-08-14 were found by hand.\n\nReports only; it never disposes anything. Which rifle went in the box is\nexactly what POS does not know in this state, and guessing it is the mistake\nthe whole serial-handling rework exists to stop.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\n**Permissions:** Counter roles (manual path; the scheduler runs as Administrator).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/tasks.py:1638`",
         "operationId": "ffl_woo_sync.woocommerce.tasks.alert_shipped_undisposed_orders",
         "responses": {
           "200": {
@@ -27843,7 +27843,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Re-apply the serial WooCommerce still holds to rows stuck on a STALE",
-        "description": "``reservation_error``.\n\nA rejection is a snapshot of the moment it was written (\"that gun is held by\nWOO-ORD-x\"). The only thing that ever retried it was the next\n``order.updated`` webhook — so when the obstacle cleared (the other order\ncancelled, or swapped to a different gun) nothing re-ran, and a Woo order that\nhas gone ``completed`` sends no further webhook. The row then sat in the\nPending Order queue indefinitely, quoting a reason that had stopped being\ntrue, and staff had no way to clear it but to re-save the serial on Woo.\n(2026-08-07: WOO-ORD-01488 was refused C2322, which WOO-ORD-01491 released\neight minutes later; only an unrelated update two hours on unstuck it.)\n\nWhitelisted so staff can run it on demand rather than waiting out the cron —\nwhich also gives the aged-out orders below a manual way back in.\n\nBounded on every axis, because this is an unattended writer that calls an\nexternal store:\n\n* ``LIMIT`` per run, oldest first;\n* orders older than ``_RETRY_MAX_AGE_DAYS`` are reported **once** and then\n  left alone — a sweep that retries forever is how a permanent failure turns\n  into permanent noise (the lesson ``_fb_error_is_terminal`` encodes);\n* out-of-stock rejections are excluded outright: no dealer serial exists on\n  Woo to re-apply, so re-reading that order could never fix it;\n* per-site ``auto_sync_enabled`` gate, one Settings read per site.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (manual path; the scheduler runs as Administrator).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/tasks.py:1600`",
+        "description": "``reservation_error``.\n\nA rejection is a snapshot of the moment it was written (\"that gun is held by\nWOO-ORD-x\"). The only thing that ever retried it was the next\n``order.updated`` webhook — so when the obstacle cleared (the other order\ncancelled, or swapped to a different gun) nothing re-ran, and a Woo order that\nhas gone ``completed`` sends no further webhook. The row then sat in the\nPending Order queue indefinitely, quoting a reason that had stopped being\ntrue, and staff had no way to clear it but to re-save the serial on Woo.\n(2026-08-07: WOO-ORD-01488 was refused C2322, which WOO-ORD-01491 released\neight minutes later; only an unrelated update two hours on unstuck it.)\n\nWhitelisted so staff can run it on demand rather than waiting out the cron —\nwhich also gives the aged-out orders below a manual way back in.\n\nBounded on every axis, because this is an unattended writer that calls an\nexternal store:\n\n* ``LIMIT`` per run, oldest first;\n* orders older than ``_RETRY_MAX_AGE_DAYS`` are reported **once** and then\n  left alone — a sweep that retries forever is how a permanent failure turns\n  into permanent noise (the lesson ``_fb_error_is_terminal`` encodes);\n* out-of-stock rejections are excluded outright: no dealer serial exists on\n  Woo to re-apply, so re-reading that order could never fix it;\n* per-site ``auto_sync_enabled`` gate, one Settings read per site.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (manual path; the scheduler runs as Administrator).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/tasks.py:1669`",
         "operationId": "ffl_woo_sync.woocommerce.tasks.retry_stuck_serial_reservations",
         "responses": {
           "200": {
@@ -27863,6 +27863,123 @@
           },
           "default": {
             "$ref": "#/components/responses/FrappeError"
+          }
+        }
+      }
+    },
+    "/api/method/ffl_woo_sync.woocommerce.variants.adopt_variable_product": {
+      "post": {
+        "tags": [
+          "ffl_woo_sync"
+        ],
+        "summary": "Link a template to a variable product that already exists on the store, and",
+        "description": "each variant to the variation whose SKU is its item code.\n\nAfterwards, pushing the template updates that product and those variations;\na variant with no variation there gets a new one, and a variation with no\nvariant is left as it is (``woo_only``).\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/variants.py:145`",
+        "operationId": "ffl_woo_sync.woocommerce.variants.adopt_variable_product",
+        "responses": {
+          "200": {
+            "description": "{ok, dry_run, template, product, matched, pos_only, woo_only, replaced}: ``matched`` is {item_code: variation id}; ``replaced`` the product ids the Items held before.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "template": {
+                    "type": "string",
+                    "description": "The template Item."
+                  },
+                  "woo_product_id": {
+                    "description": "The variable product's id on the store."
+                  },
+                  "site": {
+                    "type": "string",
+                    "description": "\"retail\" (default; the only store).",
+                    "default": "retail"
+                  },
+                  "dry_run": {
+                    "description": "1 (default) only reads the store and reports; 0 writes the ids.",
+                    "default": 1
+                  }
+                },
+                "required": [
+                  "template",
+                  "woo_product_id"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_woo_sync.woocommerce.variants.make_variants": {
+      "post": {
+        "tags": [
+          "ffl_woo_sync"
+        ],
+        "summary": "Make existing Items variants of a template, keeping their item codes.",
+        "description": "Sets each Item's ``variant_of`` and its attribute values. Nothing is written\nwhen any Item fails a check (unknown Item, already another template's variant,\nmissing or unknown attribute value, the same values as another requested Item\nor an existing variant).\n\nAn Item that is listed as its own simple product loses that link\n(``{site}_product_id`` / ``listed`` cleared, returned in ``cleared``): as a\nvariant its id must be a variation of the template's product, so a stale\nsimple-product id would be sent as a variation id. The simple product itself\nis left on the store — draft or trash it there, or link the variant to its\nvariation with :func:`adopt_variable_product`.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/variants.py:62`",
+        "operationId": "ffl_woo_sync.woocommerce.variants.make_variants",
+        "responses": {
+          "200": {
+            "description": "{ok, dry_run, template, errors, variants, cleared}: ``variants`` is the item codes that are (or would be) variants of the template; ``cleared`` is {item_code: the simple product id it held} for Items that were not yet variants.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "template": {
+                    "type": "string",
+                    "description": "The template Item (Has Variants on, with its attributes)."
+                  },
+                  "variants": {
+                    "description": "``{item_code: {attribute: value}}`` (a dict or its JSON)."
+                  },
+                  "dry_run": {
+                    "description": "1 (default) only checks; 0 writes.",
+                    "default": 1
+                  }
+                },
+                "required": [
+                  "template",
+                  "variants"
+                ]
+              }
+            }
           }
         }
       }

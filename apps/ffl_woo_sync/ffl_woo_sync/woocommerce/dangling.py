@@ -47,15 +47,20 @@ def _candidates(doctype: str, field: str) -> list:
     ``["!=", ""]`` excludes both the empty string and NULL in SQL, so a never-listed
     record is skipped.
     """
-    return frappe.get_all(doctype, filters={field: ["!=", ""]}, fields=["name", field])
+    extra = ["variant_of"] if doctype == "Item" else []
+    return frappe.get_all(doctype, filters={field: ["!=", ""]}, fields=["name", field, *extra])
 
 
-def _is_dangling(client, woo_id: str) -> bool:
-    """True iff the WC product for *woo_id* was deleted (404). A non-404 error is a
+def _is_dangling(client, woo_id: str, parent: str = "") -> bool:
+    """True iff the WC product for *woo_id* (with *parent*: that variable product's
+    variation) was deleted (404). A non-404 error is a
     real API failure and is re-raised — never silently classed as 'deleted' (which
     would clear a live listing under fix=True)."""
     try:
-        client.get_product(woo_id)
+        if parent:
+            client.get_variation(parent, woo_id)
+        else:
+            client.get_product(woo_id)
         return False
     except WooCommerceError as exc:
         if exc.status_code == 404:
@@ -111,8 +116,14 @@ def _audit_site(site: str, batch_size: int, fix: bool, dangling: list) -> int:
                 woo_id = str(row.get(field) or "").strip()
                 if not woo_id:
                     continue
+                parent = ""
+                if row.get("variant_of"):
+                    parent = str(frappe.db.get_value(
+                        "Item", row["variant_of"], field) or "")
+                    if not parent:
+                        continue  # nothing to ask under; the template's own id is audited
                 checked += 1
-                if _is_dangling(client, woo_id):
+                if _is_dangling(client, woo_id, parent):
                     dangling.append({
                         "doctype": doctype, "name": row["name"],
                         "field": field, "site": site, "woo_id": woo_id,
