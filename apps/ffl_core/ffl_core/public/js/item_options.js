@@ -64,7 +64,22 @@
 		return errors;
 	}
 
-	const kernel = { SKU_RE, MAX_OPTIONS, fold, combinations, comboKey, defaultSku, rowErrors };
+	// The saved options from the server ({name, values, abbr}) laid onto the editor's option objects.
+	// The objects are kept (the editor's inputs hold them), and a value typed here and not saved yet
+	// stays at the end — a row saving itself must not drop a value added a moment before.
+	function mergeOptions(current, incoming) {
+		return incoming.map((o) => {
+			const cur = (current || []).find((c) => fold(c.name) === fold(o.name));
+			const pending = cur ? cur.values.filter((v) => v.isNew && !o.values.some((s) => fold(s) === fold(v.value))) : [];
+			const target = cur || {};
+			target.name = o.name;
+			target.fixed = true;
+			target.values = o.values.map((v) => ({ value: v, code: (o.abbr || {})[v] || '', isNew: false })).concat(pending);
+			return target;
+		});
+	}
+
+	const kernel = { SKU_RE, MAX_OPTIONS, fold, combinations, comboKey, defaultSku, rowErrors, mergeOptions };
 	if (typeof module !== 'undefined' && module.exports) module.exports = kernel;
 	if (typeof window !== 'undefined') {
 		window.ffl = window.ffl || {};
@@ -84,7 +99,7 @@ if (typeof frappe !== 'undefined' && frappe.ui && frappe.ui.form) (function () {
 	const num = (v) => (K.fold(v) === '' ? '' : Number(v));
 
 	const CSS = `
-.ffl-io { --io-gap: 8px; }
+.ffl-io { --io-gap: 8px; container-type: inline-size; }
 .ffl-io-toggle { display:flex; align-items:center; gap:8px; margin: 2px 0 12px; font-weight:500; }
 .ffl-io-toggle input { margin:0; }
 .ffl-io-option { display:grid; grid-template-columns: 180px 1fr 24px; gap: var(--io-gap); align-items:start; margin-bottom: var(--io-gap); }
@@ -119,6 +134,29 @@ if (typeof frappe !== 'undefined' && frappe.ui && frappe.ui.form) (function () {
 .ffl-io-variant a { font-weight:600; }
 .ffl-io-variant span { color: var(--text-muted); }
 @media (max-width: 767px) { .ffl-io-option { grid-template-columns: 1fr 24px; } .ffl-io-option .io-name-wrap { grid-column: 1 / -1; } }
+/* Too narrow for the table (a phone, a tablet beside the sidebar): one card per row. */
+@container (max-width: 680px) {
+	.ffl-io-grid, .ffl-io-grid thead, .ffl-io-grid tbody { display:block; width:100%; }
+	.ffl-io-grid tr { display:grid; grid-template-columns: 28px repeat(3, minmax(0, 1fr)); column-gap: 8px; row-gap: 6px;
+		align-items:end; padding: 10px 0; border-bottom: 1px solid var(--border-color); }
+	.ffl-io-grid td, .ffl-io-grid th, .ffl-io-grid thead tr.io-fill th { display:block; padding:0; border:0; }
+	.ffl-io-grid thead tr:first-child th:not(.io-chk):not(.io-count) { display:none; }
+	.ffl-io-grid thead tr:first-child .io-count { grid-column: 2 / -1; }
+	.ffl-io-grid tr.io-fill th:empty { display:none; }
+	.ffl-io-grid tr.io-fill .io-fill-price-th { grid-column: 2; }
+	.ffl-io-grid tr.io-fill .io-fill-slots-th { grid-column: 3 / -1; display:flex; flex-wrap:wrap; gap:6px; }
+	.ffl-io-grid tr.io-fill .io-fill-slots-th::before { flex-basis:100%; }
+	.ffl-io-grid td.io-chk { grid-row: 1; align-self:start; }
+	.ffl-io-grid td.io-label, .ffl-io-grid td.io-sku-td { grid-column: 2 / -1; }
+	.ffl-io-grid td.io-sku-td a { white-space: normal; overflow-wrap: anywhere; }
+	.ffl-io-grid td.io-price-td { grid-column: 2; }
+	.ffl-io-grid td.io-cost-td { grid-column: 3; }
+	.ffl-io-grid td.io-slots-td { grid-column: 4; }
+	.ffl-io-grid [data-label]::before { content: attr(data-label); display:block; font-size: var(--text-xs); color: var(--text-muted); margin-bottom: 2px; }
+	.ffl-io-grid input.io-n, .ffl-io-grid input.io-slots, .ffl-io-grid input.io-eta { width:100%; max-width:none; margin-left:0; }
+	.ffl-io-grid tr.io-fill .io-fill-slots-th input.io-slots { flex: 0 0 70px; width:70px; }
+	.ffl-io-grid tr.io-fill .io-fill-slots-th input.io-eta { flex: 1 1 120px; width:auto; }
+}
 `;
 
 	function ensureCss() {
@@ -311,8 +349,7 @@ if (typeof frappe !== 'undefined' && frappe.ui && frappe.ui.form) (function () {
 
 	function applyState(frm, data) {
 		const st = state(frm);
-		st.options = data.options.map((o) => ({ name: o.name, fixed: true,
-			values: o.values.map((v) => ({ value: v, code: o.abbr[v] || '', isNew: false })) }));
+		st.options = K.mergeOptions(st.options, data.options);
 		st.rows = {};
 		data.rows.forEach((r) => {
 			const values = data.options.map((o) => r.values[o.name] || '');
@@ -487,10 +524,10 @@ if (typeof frappe !== 'undefined' && frappe.ui && frappe.ui.form) (function () {
 			return `<tr data-key="${esc(r.key)}" class="${cls}">
 				<td class="io-chk"><input type="checkbox" class="io-include" ${r.include ? 'checked' : ''} aria-label="${label}"></td>
 				<td class="io-label">${label}</td>
-				<td>${sku}</td>
-				<td><input type="number" min="0" step="0.01" class="form-control io-n io-cell" data-f="price" value="${esc(r.price)}" aria-label="${__('Price')}"></td>
-				<td><input type="number" min="0" step="0.01" class="form-control io-n io-cell" data-f="cost" value="${esc(r.cost)}" aria-label="${__('Cost')}"></td>
-				${slots ? `<td><input type="number" min="0" step="1" class="form-control io-slots io-cell" data-f="preorder" value="${esc(r.preorder)}" aria-label="${__('Pre-order')}"></td>` : ''}
+				<td class="io-sku-td">${sku}</td>
+				<td class="io-price-td" data-label="${__('Price')}"><input type="number" min="0" step="0.01" class="form-control io-n io-cell" data-f="price" value="${esc(r.price)}" aria-label="${__('Price')}"></td>
+				<td class="io-cost-td" data-label="${__('Cost')}"><input type="number" min="0" step="0.01" class="form-control io-n io-cell" data-f="cost" value="${esc(r.cost)}" aria-label="${__('Cost')}"></td>
+				${slots ? `<td class="io-slots-td" data-label="${__('Pre-order')}"><input type="number" min="0" step="1" class="form-control io-slots io-cell" data-f="preorder" value="${esc(r.preorder)}" aria-label="${__('Pre-order')}"></td>` : ''}
 			</tr>`;
 		}).join('');
 		$grid.html(`<table class="ffl-io-grid">
@@ -499,9 +536,9 @@ if (typeof frappe !== 'undefined' && frappe.ui && frappe.ui.form) (function () {
 					<th class="io-count">${__('{0} variants', [on])}</th><th>${__('SKU')}</th><th>${__('Price')}</th><th>${__('Cost')}</th>
 					${slots ? `<th>${__('Pre-order')}</th>` : ''}</tr>
 				<tr class="io-fill"><th></th><th></th><th></th>
-					<th><input type="number" min="0" step="0.01" class="form-control io-n io-fill-price" value="${esc(st.fill.price)}" aria-label="${__('Price for all')}"></th>
+					<th class="io-fill-price-th" data-label="${__('Price')}"><input type="number" min="0" step="0.01" class="form-control io-n io-fill-price" value="${esc(st.fill.price)}" aria-label="${__('Price for all')}"></th>
 					<th></th>
-					${slots ? `<th><input type="number" min="0" step="1" class="form-control io-slots io-fill-slots" value="${esc(st.fill.preorder)}" aria-label="${__('Pre-order for all')}"><input type="date" class="form-control io-eta" value="${esc(st.fill.eta || '')}" aria-label="${__('Pre-order ETA')}"></th>` : ''}
+					${slots ? `<th class="io-fill-slots-th" data-label="${__('Pre-order')}"><input type="number" min="0" step="1" class="form-control io-slots io-fill-slots" value="${esc(st.fill.preorder)}" aria-label="${__('Pre-order for all')}"><input type="date" class="form-control io-eta" value="${esc(st.fill.eta || '')}" aria-label="${__('Pre-order ETA')}"></th>` : ''}
 				</tr>
 			</thead><tbody>${body}</tbody></table>`);
 		wireGrid(frm, $grid);

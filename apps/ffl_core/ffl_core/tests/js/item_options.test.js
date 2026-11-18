@@ -44,3 +44,25 @@ test('red cells: a missing or bad SKU, one used twice or already an item, no pri
 	assert.deepStrictEqual(errs.h, { sku: 'Already an item' });
 	assert.ok(!errs.f && !errs.g, 'unticked and existing rows are not checked here');
 });
+
+test('a row saving itself keeps the option objects and a value added but not saved', () => {
+	// The editor's inputs hold these objects: replacing them lost a value typed after an autosave.
+	const color = { name: 'Color', fixed: true, values: [
+		{ value: 'Black', code: 'BLACK', isNew: false }, { value: 'OD Green', code: 'OG', isNew: true }] };
+	const size = { name: 'Size', fixed: true, values: [{ value: 'S', code: 'S', isNew: false }] };
+	const merged = K.mergeOptions([color, size], [
+		{ name: 'color', values: ['Black', 'Tan'], abbr: { Black: 'BLACK', Tan: 'TAN' } },
+		{ name: 'Size', values: ['S'], abbr: { S: 'S' } },
+	]);
+	assert.strictEqual(merged[0], color);
+	assert.strictEqual(merged[1], size);
+	assert.deepStrictEqual(color.values.map((v) => [v.value, v.code, v.isNew]),
+		[['Black', 'BLACK', false], ['Tan', 'TAN', false], ['OD Green', 'OG', true]]);
+	assert.strictEqual(color.name, 'color');
+	// Once saved, the value comes back from the server and is no longer pending.
+	K.mergeOptions(merged, [{ name: 'Color', values: ['Black', 'OD Green'], abbr: { 'OD Green': 'OG' } }, { name: 'Size', values: ['S'] }]);
+	assert.deepStrictEqual(color.values.map((v) => [v.value, v.isNew]), [['Black', false], ['OD Green', false]]);
+	// First load: new objects.
+	assert.deepStrictEqual(K.mergeOptions([], [{ name: 'Size', values: ['L'], abbr: {} }]),
+		[{ name: 'Size', fixed: true, values: [{ value: 'L', code: '', isNew: false }] }]);
+});
