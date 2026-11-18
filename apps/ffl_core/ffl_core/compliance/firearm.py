@@ -303,6 +303,29 @@ def require_4473_and_nics_for_firearm_sale(doc, method: str | None = None) -> No
 	if getattr(doc, "doctype", None) == "POS Invoice":
 		_require_disposition_coverage(doc)
 
+	_require_no_transfer_refusal(doc)
+
+
+TRANSFER_REFUSAL_HOOK = "gunshop_firearm_transfer_refusal"
+
+
+def _require_no_transfer_refusal(doc) -> None:
+	"""Ask ``gunshop_firearm_transfer_refusal`` providers, last: only a sale that has already
+	cleared this gate's own 4473 + NICS checks reaches them. The first reason stops the submit
+	and is shown to staff as it is.
+
+	A provider that fails is logged and counts as no objection. What the law requires is
+	checked above and never depends on an extension; a provider adds a store's own second
+	look, and its bug must not close the counter."""
+	for hook in frappe.get_hooks(TRANSFER_REFUSAL_HOOK):
+		try:
+			reason = frappe.get_attr(hook)(doc)
+		except Exception:
+			frappe.log_error(title=f"{TRANSFER_REFUSAL_HOOK} provider failed: {hook}")
+			continue
+		if reason:
+			frappe.throw(str(reason), title=_("Firearm Transfer Stopped"))
+
 
 def _is_counter_pickup(doc) -> bool:
 	"""api/counter_pickup.is_pickup_order — imported late: that module imports

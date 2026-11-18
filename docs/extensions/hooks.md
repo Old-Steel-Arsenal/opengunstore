@@ -46,7 +46,7 @@ Boot: `frappe.boot.gunshop_extensions[id] = {enabled, version, title}` for every
 
 ### The stable surface
 
-Besides the hooks on this page, an extension may call: `ffl_core.extensions.*`, `ffl_core.roles.*`, `ffl_core.workspace_shortcuts.ensure_shortcut` / `remove_shortcut`, `ffl_core.setup.sidebar.mirror_gun_shop_sidebar`, `ffl_core.utils.single_flag`, `ffl_core.agreements.require_agreement`, `ffl_core.ffl_core.doctype.mcp_settings.mcp_settings.SURFACES` / `surface_enabled` (the POS's own MCP surfaces, `cpa` and `full`, and whether one is switched on; the website surface is never in `SURFACES`), the endpoints in the [API reference](../api/index.html), `ffl_integrations.distributor.base.DistributorProvider`, `ffl_integrations.distributor.freight.estimate_orders`, `ffl_integrations.payments.base` (`CardProcessor`, `CardResult`, `CardProcessorError`), and the `ffl_core.pricing` functions below. Everything else is internal.
+Besides the hooks on this page, an extension may call: `ffl_core.extensions.*`, `ffl_core.roles.*`, `ffl_core.workspace_shortcuts.ensure_shortcut` / `remove_shortcut`, `ffl_core.setup.sidebar.mirror_gun_shop_sidebar`, `ffl_core.utils.single_flag`, `ffl_core.agreements.require_agreement`, `ffl_core.signing_terminal.deliver_page` / `terminal_for_secret` / `active_terminals` (send a paired signing tablet to a page of your own, and check its device key there), `ffl_core.ffl_core.doctype.mcp_settings.mcp_settings.SURFACES` / `surface_enabled` (the POS's own MCP surfaces, `cpa` and `full`, and whether one is switched on; the website surface is never in `SURFACES`), the endpoints in the [API reference](../api/index.html), `ffl_integrations.distributor.base.DistributorProvider`, `ffl_integrations.distributor.freight.estimate_orders`, `ffl_integrations.payments.base` (`CardProcessor`, `CardResult`, `CardProcessorError`), and the `ffl_core.pricing` functions below. Everything else is internal.
 
 - `counter_list_price(item_code) -> float`: the Item-level list price the register charges today: the selling Item Price of the default price list, except a uniform-priced firearm model in stock, priced from its cheapest priced gun; 0.0 for a gun priced one by one.
 - `counter_price_for(item_code, serial_no=None) -> float`: a quote line's price: a gun priced one by one from that serial (refused unless it is an in-stock serial of the Item), or the cheapest one in stock without a serial; anything else `counter_list_price`.
@@ -76,6 +76,12 @@ Declare them in `hooks.py` like any Frappe hook. The value is a dotted path to a
 - **Signature:** `(sales_doc) -> [template, …]`
 - **Purpose:** Agreement Templates the customer of this POS / Sales Invoice must have signed before submit, on top of the Items' own. Checked in `before_submit`; never on a return, a POS consolidation invoice or a web / GunBroker sale. Switched-off templates are dropped. For a signature on your own record, call `ffl_core.agreements.require_agreement(customer, template)` in your own `validate` (raises `AgreementRequired`).
 - **On failure:** contributes nothing; the sale goes on.
+
+### `gunshop_firearm_transfer_refusal`
+
+- **Signature:** `(sales_doc) -> str | None`. Wrap it in `@extension_hook`.
+- **Purpose:** the reason this firearm sale must not be submitted yet, or `None`. Asked at submit of a POS / Sales Invoice with a regulated firearm, after the core's own gate has passed (4473 Completed, NICS Proceed, a committed disposition per serial); never for a draft, a sale to an FFL dealer, a shipment to a destination FFL or a consolidation invoice. The first reason stops the submit and is shown to staff as it is, so say what to do next.
+- **On failure:** logged; counts as no objection, so the sale goes on.
 
 ### `gunshop_pending_queue_exclusion_fields`
 
@@ -118,7 +124,7 @@ Declare them in `hooks.py` like any Frappe hook. The value is a dotted path to a
 
 ### `gunshop_sidebar_items`
 
-- **Value:** a list of `Sidebar Item` dicts (`type`, `label`, `link_type`, `link_to`, `icon`, `child`, `indent`, `collapsible`, `keep_closed`, …); normally a `Section Break` first and its links with `child: 1`.
+- **Value:** a list of `Sidebar Item` dicts (`type`, `label`, `link_type`, `link_to`, `icon`, `child`, `indent`, `collapsible`, `keep_closed`, …); normally a `Section Break` first and its links with `child: 1`. A `Section Break` whose label is a shipped section's (`Compliance`, `Inventory`, …) adds nothing: its links go to the end of that section.
 - **Purpose:** while effective, the core writes the rows into the Gun Shop sidebar's site layer (`Custom Sidebar`) before Settings, and removes them when off or uninstalled (rebuilt on toggle, install, uninstall and every migrate). Modules that mirror the Gun Shop sidebar get the same layer.
 - **On failure:** rows skipped; no section for the extension.
 

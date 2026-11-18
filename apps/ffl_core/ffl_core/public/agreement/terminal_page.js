@@ -55,6 +55,12 @@
 		call('terminal_poll', { secret: key.secret }).then(function (r) {
 			$('[data-offline]').hidden = true;
 			if (!r || !r.paired) { device.clear(); return pairScreen(); }
+			if (r.url) {
+				// A page of this site an extension sent the tablet to; it comes back here when done.
+				if (/^\/[A-Za-z0-9_\-\/]+(#[A-Za-z0-9_=&-]*)?$/.test(r.url) && r.url.indexOf('//') < 0) location.href = r.url;
+				else timer = setTimeout(poll, POLL_MS);
+				return;
+			}
 			if (r.token) {
 				location.href = '/agreement/sign#t=' + encodeURIComponent(r.token) + '&from=terminal';
 				return;

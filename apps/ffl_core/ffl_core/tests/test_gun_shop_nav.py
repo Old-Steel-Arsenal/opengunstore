@@ -260,6 +260,21 @@ class TestExtensionSections(ExtensionFixture):
 			self._flip(1)
 			self.assertEqual(_rendered()[-3:], ["Fake Things", "Fake Page", SETTINGS_LINK])
 
+	def test_links_under_a_shipped_sections_label_join_that_section(self):
+		rows = [{"type": "Section Break", "label": "Compliance"}, FAKE_ROWS[1]]
+		base = [r["label"] for r in gun_shop_items()]
+		at = base.index("Inventory")
+		with _fake_sidebar_hook(rows), _switches():
+			self.assertTrue(gs.sync_site_layer())
+			self.assertFalse(gs.sync_site_layer())
+			self.assertEqual(_rendered(), [*base[:at], "Fake Page", *base[at:]])
+			from ffl_core.api.store_overview import records
+			frappe.set_user("Administrator")
+			groups = {g["title"]: [i["label"] for i in g["items"]] for g in records()}
+			self.assertEqual(groups["Compliance"][-1], "Fake Page")
+			self._flip(0)
+			self.assertEqual(_rendered(), base)
+
 	def test_repeated_syncs_do_not_duplicate_the_section(self):
 		with _fake_sidebar_hook(FAKE_ROWS), _switches():
 			self.assertTrue(gs.sync_site_layer())

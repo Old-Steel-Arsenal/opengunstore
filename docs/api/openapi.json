@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenGunstore API",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "RPC API of the OpenGunstore custom apps (Frappe/ERPNext v16): ffl_core, ffl_integrations, ffl_woo_sync.\n\nAll endpoints are Frappe *whitelisted methods* invoked as `/api/method/<dotted.path>`. Unless an endpoint declares explicit HTTP verbs, it is documented here as POST (Frappe also accepts GET for read-only calls; always POST mutations). Arguments may be sent as JSON body, form data, or query string — JSON body is recommended.\n\nEvery operation carries an **Auth (derived from code)** line statically resolved from the role gate the function actually executes; the prose Permissions note adds semantics the machine can't infer.\n\nStandard CRUD on DocTypes is served by Frappe's REST layer (`/api/resource/<DocType>`) — see docs/api/frappe-rest.md; the custom DocTypes are modelled under components.schemas and listed in reference/doctypes.md."
   },
   "servers": [
@@ -15411,7 +15411,7 @@
           "ffl_core"
         ],
         "summary": "Everything the Gun Shop Overview page shows, one block per key.",
-        "description": "A block this user may not see is null (the page leaves it out); a block that failed is\n``{\"error\": text}`` and an Error Log, and the others still load. Counts and report rows are\nshared by every user for up to a minute.\n\n**Auth (derived from code):** Roles: System Manager / Sales User / Sales Manager / Stock User / Stock Manager / Accounts User\n\nSource: `apps/ffl_core/ffl_core/api/store_overview.py:432`",
+        "description": "A block this user may not see is null (the page leaves it out); a block that failed is\n``{\"error\": text}`` and an Error Log, and the others still load. Counts and report rows are\nshared by every user for up to a minute.\n\n**Auth (derived from code):** Roles: System Manager / Sales User / Sales Manager / Stock User / Stock Manager / Accounts User\n\nSource: `apps/ffl_core/ffl_core/api/store_overview.py:431`",
         "operationId": "ffl_core.api.store_overview.get_overview",
         "responses": {
           "200": {
@@ -18784,7 +18784,7 @@
           "ffl_core"
         ],
         "summary": "Active signing tablets, for the Request agreement dialog.",
-        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/signing_terminal.py:85`",
+        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/signing_terminal.py:103`",
         "operationId": "ffl_core.signing_terminal.list_terminals",
         "responses": {
           "200": {
@@ -18814,7 +18814,7 @@
           "webhooks"
         ],
         "summary": "The tablet trades a pairing code for its device key (Guest).",
-        "description": "The code works once. Any tablet paired to the same terminal before stops\nworking. 10 tries per 10 minutes per IP address; after 50 wrong codes from\nanywhere in 10 minutes, pairing pauses until the window passes.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/signing_terminal.py:117`",
+        "description": "The code works once. Any tablet paired to the same terminal before stops\nworking. 10 tries per 10 minutes per IP address; after 50 wrong codes from\nanywhere in 10 minutes, pairing pauses until the window passes.\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/signing_terminal.py:135`",
         "operationId": "ffl_core.signing_terminal.pair_terminal",
         "responses": {
           "200": {
@@ -18863,7 +18863,7 @@
           "ffl_core"
         ],
         "summary": "Manager starts pairing a tablet: a 6-digit code to type on it.",
-        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/signing_terminal.py:96`",
+        "description": "**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/signing_terminal.py:114`",
         "operationId": "ffl_core.signing_terminal.start_pairing",
         "responses": {
           "200": {
@@ -18911,11 +18911,11 @@
           "webhooks"
         ],
         "summary": "What the tablet should show now (Guest, every 2 seconds).",
-        "description": "Limited per tablet (2400 an hour) and per IP address (30000 an hour: a shop's\ntablets together, about 16 of them polling all hour).\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/signing_terminal.py:164`",
+        "description": "Limited per tablet (2400 an hour) and per IP address (30000 an hour: a shop's\ntablets together, about 16 of them polling all hour).\n\n**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\nSource: `apps/ffl_core/ffl_core/signing_terminal.py:182`",
         "operationId": "ffl_core.signing_terminal.terminal_poll",
         "responses": {
           "200": {
-            "description": "{\"paired\": false} for an unknown or switched-off tablet (the page goes back to pairing); {\"paired\": true, \"token\"} when the counter sent a link (handed out once); otherwise {\"paired\": true, \"idle\": true, \"terminal_name\", \"store_name\", \"form_4473_url\"} — form_4473_url is the store's FastBound customer 4473 page, or \"\" when the store has no electronic 4473.",
+            "description": "{\"paired\": false} for an unknown or switched-off tablet (the page goes back to pairing); {\"paired\": true, \"token\"} when the counter sent a link (handed out once); {\"paired\": true, \"url\"} when it sent the tablet to a page of this site (handed out once); otherwise {\"paired\": true, \"idle\": true, \"terminal_name\", \"store_name\", \"form_4473_url\"} — form_4473_url is the store's FastBound customer 4473 page, or \"\" when the store has no electronic 4473.",
             "content": {
               "application/json": {
                 "schema": {

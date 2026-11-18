@@ -20,6 +20,21 @@ from ffl_core.compliance.firearm import require_4473_and_nics_for_firearm_sale
 from ffl_core.firearm import is_antique_item, is_firearm_item, is_regulated_firearm_item
 
 
+def refuse(doc):
+	"""A gunshop_firearm_transfer_refusal provider with an objection."""
+	if getattr(refuse, "seen", None) is not None:
+		refuse.seen.append(doc)
+	return "The birth date differs between the 4473 and the ID."
+
+
+def no_objection(doc):
+	return None
+
+
+def broken(doc):
+	raise RuntimeError("provider bug")
+
+
 class CoveredSerialsForInvoice(FrappeTestCase):
 	"""The shared coverage predicate — single source of truth for the submit gate
 	(_require_disposition_coverage) AND the webhook's early mismatch alarm
@@ -180,6 +195,48 @@ class FourFiveSevenThreeAndNicsGating(FrappeTestCase):
 	def test_firearm_sale_passes_when_4473_completed_and_nics_proceed(self):
 		doc = self._make_doc(("FFL-TEST-GUN", "G1"), form_status="Completed", nics_status="Proceed")
 		require_4473_and_nics_for_firearm_sale(doc)  # must not raise
+
+	# --- gunshop_firearm_transfer_refusal: an extension's own reason to stop the sale -------
+
+	@staticmethod
+	def _providers(*paths):
+		real = frappe.get_hooks
+
+		def hooks(name=None, *a, **k):
+			return list(paths) if name == "gunshop_firearm_transfer_refusal" else real(name, *a, **k)
+		return patch("frappe.get_hooks", side_effect=hooks)
+
+	def test_an_extension_can_refuse_a_sale_that_cleared_4473_and_nics(self):
+		doc = self._make_doc(("FFL-TEST-GUN", "G1"), form_status="Completed", nics_status="Proceed")
+		with self._providers("ffl_core.tests.test_4473_nics_gating.refuse"), \
+				self.assertRaises(frappe.ValidationError) as ctx:
+			require_4473_and_nics_for_firearm_sale(doc)
+		self.assertIn("birth date differs", str(ctx.exception))
+
+	def test_an_extension_with_no_objection_lets_the_sale_through(self):
+		doc = self._make_doc(("FFL-TEST-GUN", "G1"), form_status="Completed", nics_status="Proceed")
+		with self._providers("ffl_core.tests.test_4473_nics_gating.no_objection"):
+			require_4473_and_nics_for_firearm_sale(doc)  # must not raise
+
+	def test_a_failing_extension_is_logged_and_does_not_stop_the_sale(self):
+		doc = self._make_doc(("FFL-TEST-GUN", "G1"), form_status="Completed", nics_status="Proceed")
+		with self._providers("ffl_core.tests.test_4473_nics_gating.broken"), patch("frappe.log_error") as log:
+			require_4473_and_nics_for_firearm_sale(doc)  # must not raise
+		self.assertIn("gunshop_firearm_transfer_refusal", log.call_args.kwargs["title"])
+
+	def test_an_extension_is_never_asked_before_4473_and_nics_have_cleared(self):
+		asked = []
+		refuse.seen = asked
+		try:
+			for kw in ({"form_status": "Pending", "nics_status": ""}, {"form_status": "Completed", "nics_status": "Delayed"}):
+				with self._providers("ffl_core.tests.test_4473_nics_gating.refuse"), self.assertRaises(frappe.ValidationError):
+					require_4473_and_nics_for_firearm_sale(self._make_doc(("FFL-TEST-GUN", "G1"), **kw))
+			with self._providers("ffl_core.tests.test_4473_nics_gating.refuse"):
+				require_4473_and_nics_for_firearm_sale(self._make_doc(("FFL-TEST-ACC", None)))      # no firearm
+				require_4473_and_nics_for_firearm_sale(self._make_doc(("FFL-TEST-GUN", "G1"), docstatus=0))  # a draft
+		finally:
+			refuse.seen = None
+		self.assertEqual(asked, [])
 
 	def test_ffl_dealer_transfer_skips_4473(self):
 		# Selling a firearm to another FFL dealer (is_ffl_dealer customer) is a
