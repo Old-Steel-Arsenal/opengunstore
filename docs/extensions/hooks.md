@@ -77,6 +77,12 @@ Declare them in `hooks.py` like any Frappe hook. The value is a dotted path to a
 - **Purpose:** Agreement Templates the customer of this POS / Sales Invoice must have signed before submit, on top of the Items' own. Checked in `before_submit`; never on a return, a POS consolidation invoice or a web / GunBroker sale. Switched-off templates are dropped. For a signature on your own record, call `ffl_core.agreements.require_agreement(customer, template)` in your own `validate` (raises `AgreementRequired`).
 - **On failure:** contributes nothing; the sale goes on.
 
+### `gunshop_firearm_transfer_refusal`
+
+- **Signature:** `(sales_doc) -> str | None`. Wrap it in `@extension_hook`.
+- **Purpose:** the reason this firearm sale must not be submitted yet, or `None`. Asked at submit of a POS / Sales Invoice with a regulated firearm, after the core's own gate has passed (4473 Completed, NICS Proceed, a committed disposition per serial); never for a draft, a sale to an FFL dealer, a shipment to a destination FFL or a consolidation invoice. The first reason stops the submit and is shown to staff as it is, so say what to do next.
+- **On failure:** logged; counts as no objection, so the sale goes on.
+
 ### `gunshop_pending_queue_exclusion_fields`
 
 - **Value:** a fieldname (string): a Sales Invoice Link custom field you own.
