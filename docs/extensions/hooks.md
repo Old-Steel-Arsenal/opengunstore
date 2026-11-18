@@ -124,7 +124,7 @@ Declare them in `hooks.py` like any Frappe hook. The value is a dotted path to a
 
 ### `gunshop_sidebar_items`
 
-- **Value:** a list of `Sidebar Item` dicts (`type`, `label`, `link_type`, `link_to`, `icon`, `child`, `indent`, `collapsible`, `keep_closed`, …); normally a `Section Break` first and its links with `child: 1`.
+- **Value:** a list of `Sidebar Item` dicts (`type`, `label`, `link_type`, `link_to`, `icon`, `child`, `indent`, `collapsible`, `keep_closed`, …); normally a `Section Break` first and its links with `child: 1`. A `Section Break` whose label is a shipped section's (`Compliance`, `Inventory`, …) adds nothing: its links go to the end of that section.
 - **Purpose:** while effective, the core writes the rows into the Gun Shop sidebar's site layer (`Custom Sidebar`) before Settings, and removes them when off or uninstalled (rebuilt on toggle, install, uninstall and every migrate). Modules that mirror the Gun Shop sidebar get the same layer.
 - **On failure:** rows skipped; no section for the extension.
 

@@ -15398,7 +15398,7 @@
           "ffl_core"
         ],
         "summary": "Everything the Gun Shop Overview page shows, one block per key.",
-        "description": "A block this user may not see is null (the page leaves it out); a block that failed is\n``{\"error\": text}`` and an Error Log, and the others still load. Counts and report rows are\nshared by every user for up to a minute.\n\n**Auth (derived from code):** Roles: System Manager / Sales User / Sales Manager / Stock User / Stock Manager / Accounts User\n\nSource: `apps/ffl_core/ffl_core/api/store_overview.py:432`",
+        "description": "A block this user may not see is null (the page leaves it out); a block that failed is\n``{\"error\": text}`` and an Error Log, and the others still load. Counts and report rows are\nshared by every user for up to a minute.\n\n**Auth (derived from code):** Roles: System Manager / Sales User / Sales Manager / Stock User / Stock Manager / Accounts User\n\nSource: `apps/ffl_core/ffl_core/api/store_overview.py:431`",
         "operationId": "ffl_core.api.store_overview.get_overview",
         "responses": {
           "200": {

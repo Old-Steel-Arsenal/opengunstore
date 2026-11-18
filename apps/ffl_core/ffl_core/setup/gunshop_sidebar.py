@@ -79,6 +79,25 @@ def extension_rows() -> list[dict]:
 	return rows
 
 
+def split_sections(rows: list[dict], sections: set[str]) -> tuple[list[dict], dict[str, list[dict]]]:
+	"""Extension rows apart: those that make sections of their own, and label -> the links of a
+	section whose label is one of ``sections`` (the links join that section, its header is dropped)."""
+	own: list[dict] = []
+	joined: dict[str, list[dict]] = {}
+	into = None
+	for row in rows:
+		if row.get("type") == "Section Break":
+			into = row.get("label") if row.get("label") in sections else None
+			if into is None:
+				own.append(row)
+		elif into is not None and row.get("child"):
+			joined.setdefault(into, []).append(row)
+		else:
+			into = None
+			own.append(row)
+	return own, joined
+
+
 def _hidden_flags(base: list[dict], off: set[str]) -> list[bool]:
 	"""One flag per base row: the link is off, or it is a section whose links are all off."""
 	flags = [r.get("link_to") in off for r in base]
@@ -135,16 +154,19 @@ def sync_site_layer() -> bool:
 	ext = extension_rows()
 	previous = _written()
 	shells = {module: base, **mirror_shells(base, module)}
-	changed = any([_sync_layer(mod, rows, off, ext, set(previous.get(mod, []))) for mod, rows in shells.items()])
+	own, joined = split_sections(ext, {r.get("label") for r in base if r.get("type") == "Section Break"})
+	changed = any([_sync_layer(mod, rows, off, own, joined, set(previous.get(mod, []))) for mod, rows in shells.items()])
 	written = {mod: [item_key(r) for r in ext] for mod in shells}
 	if written != previous:
 		frappe.defaults.set_global_default(WRITTEN_DEFAULT, json.dumps(written, sort_keys=True))
 	return changed
 
 
-def _sync_layer(module: str, base: list[dict], off: set[str], ext_rows: list[dict], written: set[str]) -> bool:
-	"""One module's site layer. ``base`` is the module's sidebar rows, ``written`` the extension row
-	keys the previous sync put in this layer."""
+def _sync_layer(module: str, base: list[dict], off: set[str], own: list[dict], joined: dict[str, list[dict]], written: set[str]) -> bool:
+	"""One module's site layer. ``base`` is the module's sidebar rows, ``own`` and ``joined`` the
+	extension rows (``split_sections`` against the Gun Shop's sections, so a mirror's own extra
+	section is not taken for a shipped one), ``written`` the extension row keys the previous sync
+	put in this layer."""
 	def ref(row: dict, hidden: bool) -> dict:
 		# A reference names the base row and states whether it is hidden; it carries no label or
 		# icon, so a later rename in the shipped JSON is not frozen out by this layer.
@@ -154,11 +176,15 @@ def _sync_layer(module: str, base: list[dict], off: set[str], ext_rows: list[dic
 	def added(row: dict) -> dict:
 		return shape_row({**row, "key": item_key(row), "hidden": 0, "added": 1})
 
+	def placed(rows: list[dict]) -> list[dict]:
+		# A mirror module also lists the extension's own rows (extra_items) after Settings: an extension
+		# row the base already holds is moved into the section, not added a second time.
+		return [ref(r, False) if item_key(r) in base_keys else added(r) for r in rows]
+
 	base_keys = {item_key(r) for r in base}
 	hidden = _hidden_flags(base, off)
-	# A mirror module also lists the extension's own rows (extra_items) after Settings: an extension
-	# row the base already holds is moved into the section, not added a second time.
-	ext = [ref(r, False) if item_key(r) in base_keys else added(r) for r in ext_rows]
+	ext_rows = [*own, *(r for rows in joined.values() for r in rows)]
+	ext = placed(own)
 	moved = {item_key(r) for r in ext_rows} & base_keys
 	ours = written | {item_key(r) for r in ext_rows}
 
@@ -170,15 +196,23 @@ def _sync_layer(module: str, base: list[dict], off: set[str], ext_rows: list[dic
 	# the extension is uninstalled. A reference to a row the base no longer has names nothing and goes.
 	foreign = [shape_row(r.as_dict()) for r in doc.sidebar_items if r.added and item_key(r) not in ours] if doc else []
 
-	if ext or foreign:
-		# Positions matter: name the whole sidebar in order, extension sections before Settings.
+	if ext or joined or foreign:
+		# Positions matter: name the whole sidebar in order, extension sections before Settings,
+		# links that join a shipped section at its end.
 		rows: list[dict] = []
+		pending: list[dict] = []
 		for row, h in zip(base, hidden):
+			if not row.get("child"):
+				rows += pending
+				pending = []
 			if item_key(row) in moved:
 				continue
 			if row.get("link_type") == "Workspace" and row.get("link_to") == SETTINGS_LINK:
 				rows += ext
+			if row.get("type") == "Section Break" and row.get("label") in joined:
+				pending, h = placed(joined[row["label"]]), False
 			rows.append(ref(row, h))
+		rows += pending
 		if not any(r.get("link_to") == SETTINGS_LINK for r in base):
 			rows += ext
 	else:

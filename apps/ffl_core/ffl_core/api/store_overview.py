@@ -372,26 +372,25 @@ ONLINE_LINKS = {link_to for _label, _type, link_to in ONLINE_RECORDS[1]}
 
 def records() -> list[dict]:
 	"""All records: the core groups, Online while a web channel is on, one group per extension that
-	is on (its ``gunshop_sidebar_items`` links, under its section's title), Setup last. Each link is
+	is on (its ``gunshop_sidebar_items`` links, under its section's title, or in the core group of that title), Setup last. Each link is
 	kept only if this user may open it, by the rule the sidebar uses (``is_item_allowed``), and an
 	integration that is switched off takes its link with it."""
 	from ffl_core.setup.gunshop_sidebar import extension_rows, integrations_off
 
 	off = integrations_off()
 	online = bool(ONLINE_LINKS - off)
-	groups = [*CORE_RECORDS]
+	groups = [(title, [*links]) for title, links in CORE_RECORDS]
 	if online:
-		groups.append(ONLINE_RECORDS)
-	title, links = None, []
+		groups.append((ONLINE_RECORDS[0], [*ONLINE_RECORDS[1]]))
+	links = None
 	for row in extension_rows():
 		if row.get("type") == "Section Break":
-			if title and links:
-				groups.append((title, links))
-			title, links = row.get("label"), []
-		elif row.get("type") == "Link" and row.get("link_type") in ROUTABLE and (row.get("link_to") or row.get("url")):
+			links = next((had for title, had in groups if title == row.get("label")), None)
+			if links is None:
+				links = []
+				groups.append((row.get("label"), links))
+		elif links is not None and row.get("type") == "Link" and row.get("link_type") in ROUTABLE and (row.get("link_to") or row.get("url")):
 			links.append((row.get("label") or row.get("link_to") or row["url"], row["link_type"], row.get("link_to") or row["url"]))
-	if title and links:
-		groups.append((title, links))
 	groups.append((SETUP_RECORDS[0], SETUP_RECORDS[1] + ([SHIPSTATION_RECORD] if online else [])))
 
 	ctx = DeskViews()
