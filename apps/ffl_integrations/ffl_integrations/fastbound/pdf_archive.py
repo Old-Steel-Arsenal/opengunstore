@@ -65,6 +65,9 @@ def store_4473_pdf(log_name: str, force: bool = False) -> str:
 		"content": pdf,
 	})
 	file_doc.flags.ignore_permissions = True
+	# FastBound's 4473 carries form scripts, which File refuses in an upload. This one is
+	# no upload: it comes from FastBound over the store's own key and is kept as signed.
+	file_doc.check_content = lambda: _require_pdf(pdf)
 	try:
 		file_doc.insert()  # File validates a .pdf's content: a truncated body fails here
 	except Exception as exc:  # noqa: BLE001 — counted like any failed fetch
@@ -86,6 +89,15 @@ def sweep_pending_4473_pdfs() -> None:
 		except Exception:  # noqa: BLE001 — e.g. the File insert; next run retries
 			frappe.log_error(title=f"4473 PDF copy failed for {name}", message=frappe.get_traceback())
 		commit()
+
+
+def _require_pdf(content: bytes) -> None:
+	"""Raise unless the bytes open as a PDF (a truncated body, an HTML error page)."""
+	import io
+
+	from pypdf import PdfReader
+
+	PdfReader(io.BytesIO(content))
 
 
 def _failed_attempt(log, exc: Exception, final: str = "Failed") -> str:

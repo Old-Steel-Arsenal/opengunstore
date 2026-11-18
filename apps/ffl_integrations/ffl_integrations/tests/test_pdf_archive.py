@@ -27,6 +27,16 @@ def _pdf() -> bytes:
 PDF = _pdf()  # once: a writer stamps a fresh document id per call
 
 
+def _pdf_with_script() -> bytes:
+	"""A PDF that opens with a script, as FastBound's fillable 4473 does."""
+	from pypdf import PdfWriter
+	writer, buf = PdfWriter(), io.BytesIO()
+	writer.add_blank_page(width=72, height=72)
+	writer.add_js("this.calculateNow();")
+	writer.write(buf)
+	return buf.getvalue()
+
+
 class Store4473Pdf(FrappeTestCase):
 	def setUp(self):
 		frappe.db.delete("Form 4473 Log", {"form4473_id": ("like", "ARCH-%")})
@@ -51,6 +61,16 @@ class Store4473Pdf(FrappeTestCase):
 			(1, "Form 4473 Log", self.log))
 		self.assertEqual(f.file_name, "4473-ACC-PSINV-A-1.pdf")
 		self.assertEqual(f.get_content(encodings=[]), PDF)
+
+	def test_a_4473_that_carries_form_scripts_is_stored_as_it_came(self):
+		from frappe.utils.pdf import pdf_contains_js
+		scripted = _pdf_with_script()
+		self.assertTrue(pdf_contains_js(scripted))      # what File refuses in an upload
+		client = MagicMock()
+		client.download_4473_pdf.return_value = scripted
+		self.assertEqual(self._store(client), "Stored")
+		f = frappe.get_doc("File", {"file_url": self._row().pdf_file})
+		self.assertEqual(f.get_content(encodings=[]), scripted)
 
 	def test_a_body_that_is_not_a_pdf_counts_as_a_failed_attempt(self):
 		client = MagicMock()
@@ -136,3 +156,17 @@ class Sweep4473Pdfs(FrappeTestCase):
 				patch.object(pdf_archive, "store_4473_pdf") as store:
 			pdf_archive.sweep_pending_4473_pdfs()
 		store.assert_not_called()
+
+
+class RetryRefusedAsUnsafe(FrappeTestCase):
+	def test_only_the_rows_file_refused_go_back_to_pending(self):
+		from ffl_integrations.patches import retry_4473_pdfs_refused_as_unsafe as patch_
+		frappe.db.delete("Form 4473 Log", {"form4473_id": ("like", "ARCH-%")})
+		refused = record_4473(form4473_id="ARCH-R", pos_invoices=["ACC-PSINV-A-7"])
+		gone = record_4473(form4473_id="ARCH-G", pos_invoices=["ACC-PSINV-A-8"])
+		frappe.db.set_value("Form 4473 Log", refused, {"pdf_status": "Failed", "pdf_attempts": 5,
+			"pdf_error": "This PDF cannot be uploaded as it contains unsafe content."})
+		frappe.db.set_value("Form 4473 Log", gone, {"pdf_status": "Failed", "pdf_attempts": 5, "pdf_error": "timeout"})
+		patch_.execute()
+		self.assertEqual(frappe.db.get_value("Form 4473 Log", refused, ["pdf_status", "pdf_attempts", "pdf_error"]), ("Pending", 0, ""))
+		self.assertEqual(frappe.db.get_value("Form 4473 Log", gone, "pdf_status"), "Failed")
