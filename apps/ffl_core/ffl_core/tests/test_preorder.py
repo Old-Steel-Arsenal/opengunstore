@@ -621,6 +621,15 @@ class California(_Base):
 			inv.save(ignore_permissions=True)
 
 
+def _race_profile() -> str:
+	"""An enabled POS Profile for the race tests, which commit their fixtures: the sessions in the
+	other threads see committed rows only, so the tests cannot count on a profile another module
+	happened to leave behind on this site."""
+	name = _profile(_Base.PROFILE, _default_template(_Base.TEMPLATE_TITLE, [(_account("_Test PO Sales Tax"), 8.25)]))
+	frappe.db.set_value("POS Profile", name, "disabled", 0)
+	return name
+
+
 class LastSlotRace(FrappeTestCase):
 	"""AC5: two counters take the last pre-order of an item at the same moment; one order is made.
 
@@ -632,6 +641,7 @@ class LastSlotRace(FrappeTestCase):
 		setup.ensure()
 		token = frappe.generate_hash(length=6).upper()
 		item = f"_T-PO-RACE-{token}"
+		_race_profile()
 		frappe.get_doc({"doctype": "Item", "item_code": item, "item_name": item, "item_group": "All Item Groups",
 			"stock_uom": "Nos", "is_stock_item": 1, AVAILABLE_FIELD: 1}).insert(ignore_permissions=True)
 		customers = [frappe.get_doc({"doctype": "Customer", "customer_name": f"_Test PO Race {token} {i}",
@@ -719,6 +729,7 @@ class PaymentLockRace(FrappeTestCase):
 		setup.ensure()
 		token = frappe.generate_hash(length=6).upper()
 		item = f"_T-PO-LOCK-{token}"
+		_race_profile()
 		frappe.get_doc({"doctype": "Item", "item_code": item, "item_name": item, "item_group": "All Item Groups",
 			"stock_uom": "Nos", "is_stock_item": 0, AVAILABLE_FIELD: 1}).insert(ignore_permissions=True)
 		customer = frappe.get_doc({"doctype": "Customer", "customer_name": f"_Test PO Lock {token}",
