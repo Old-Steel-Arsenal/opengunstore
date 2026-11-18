@@ -7,6 +7,7 @@ import contextlib
 import io
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -39,6 +40,19 @@ class ScanOutput(unittest.TestCase):
 		self.assertEqual(dict(scan.skipped), {"demo.tests.test_alpha": 1})
 		self.assertEqual(scan.total, (5, 1, 0))
 
+	def test_real_serial_excerpt(self):
+		"""What `bench run-tests --app` printed in a real `make test-serial` (colour stripped by the scan)."""
+		known = {"ffl_core.tests.test_serial_pricing", "ffl_core.tests.test_sales_report_marketplace"}
+		scan = rg.LogScan(known)
+		for line in ("ffl_core.tests.test_serial_pricing.SerialDealerPriceRule\n", "    \x1b[32m ✔ \x1b[0m test_per_serial_uses_serial_dealer_price\n",
+				"    ✔  test_uniform_uses_item_dealer_price\n", "    ✔  test_zero_or_none_is_unpriced\n", "\n",
+				"ffl_core.tests.test_serial_pricing.SerialPricing\n", "    ✔  test_unpriced_serial_is_none_and_sorts_last\n", "\n",
+				"ffl_core.tests.test_sales_report_marketplace.ChannelFeesAreNotCost\n", "    ✔  test_a_non_marketplace_sale_has_zero_fees_and_equal_profits\n",
+				"Ran 5 tests in 1.2s\n", "OK\n", "TOTAL ran=5 failures=0 errors=0\n"):
+			scan.feed(line)
+		self.assertEqual(dict(scan.executed), {"ffl_core.tests.test_serial_pricing": 4, "ffl_core.tests.test_sales_report_marketplace": 1})
+		self.assertEqual(scan.total, (5, 0, 0))
+
 	def test_nested_class_header_still_names_its_module(self):
 		self.assertEqual(rg.module_of("demo.tests.test_alpha.Outer.Inner", KNOWN), "demo.tests.test_alpha")
 		self.assertEqual(rg.module_of("elsewhere.helpers.Base", KNOWN), "elsewhere.helpers")
@@ -68,9 +82,14 @@ class Verdict(unittest.TestCase):
 		self.assertIn("demo.tests.test_beta", problems[0])
 		self.assertNotIn("test_alpha", problems[0])
 
-	def test_skipped_only_is_still_not_executed_and_says_so(self):
-		scan = self.scan({}, (1, 0, 0), skipped={"demo.tests.test_beta": 2})
-		self.assertIn("2 skipped", rg.judge(scan, {"demo.tests.test_beta": 2}, "origin/develop", 0)[0])
+	def test_all_skipped_is_no_error_but_the_summary_shows_it(self):
+		scan = self.scan({"demo.tests.test_alpha": 1}, (1, 0, 0), skipped={"demo.tests.test_beta": 2})
+		expected = {"demo.tests.test_beta": 2}
+		self.assertEqual(rg.judge(scan, expected, "origin/develop", 0), [])
+		self.assertIn("changed-test-files=1 (demo.tests.test_beta=0 (skipped 2))", rg.summary("PASS", "a" * 40, "p", scan, expected))
+
+	def test_no_result_line_at_all_is_still_an_error(self):
+		self.assertEqual(len(rg.judge(self.scan({}, (1, 0, 0)), {"demo.tests.test_beta": 2}, "origin/develop", 0)), 1)
 
 	def test_a_file_that_defines_no_tests_is_not_expected_to_run(self):
 		self.assertEqual(rg.judge(self.scan({"demo.tests.test_alpha": 1}, (1, 0, 0)), {"demo.tests.test_beta": 0}, "b", 0), [])
@@ -135,6 +154,16 @@ class RealGit(unittest.TestCase):
 			"apps/demo/demo/tests/test_beta.py", "apps/demo/demo/tests/test_gamma.py"])
 		found = rg.changed_test_modules(rg.changed_files(self.repo, "base"), rg.parallel_tests.discover(self.repo / "apps", ["demo"]))
 		self.assertEqual(found, {"demo.tests.test_alpha": 2, "demo.tests.test_beta": 1, "demo.tests.test_gamma": 1})
+
+	def test_an_untracked_nested_repo_is_a_dir_entry_not_a_crash(self):
+		nested = self.repo / "apps" / "ext_app"
+		nested.mkdir()
+		git(nested, "init", "-q")
+		(nested / "test_inside.py").write_text("def test_x(): pass\n")
+		self.assertEqual(rg.snapshot(self.repo)["files"], {"apps/ext_app/": "dir"})
+		self.assertEqual(rg.changed_files(self.repo, "base"), [])
+		shutil.rmtree(nested)
+		self.assertEqual(rg.snapshot(self.repo)["files"], {})
 
 	def test_a_missing_base_ref_says_how_to_get_it(self):
 		with self.assertRaisesRegex(rg.GuardError, "git fetch origin develop.*BASE_REF"):

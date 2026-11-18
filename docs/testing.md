@@ -17,7 +17,7 @@ Why: `IntegrationTestCase` (what `FrappeTestCase` resolves to in Frappe 16) roll
 Both targets run their test command through `scripts/ci/run_guard.py` (host side, around the `docker compose exec`), so a run that cannot be trusted exits non-zero by itself:
 
 - **Before the first test:** the guard writes a marker under `frappe-bench/logs/` and reads it back from `/workspace` inside the container. If it is not there, the stack mounts another tree (a worktree whose containers were built from somewhere else), and the run is refused.
-- **After the run:** it fails if HEAD or any file that differs from HEAD (edits, staged changes, new untracked files) is not what it was at the start, if no test ran, or if a test file added or modified against the merge-base with `BASE_REF` (default `origin/develop`; `make test BASE_REF=<ref>`) has no executed test.
+- **After the run:** it fails if HEAD or any file that differs from HEAD (edits, staged changes, new untracked files) is not what it was at the start, if no test ran, or if a test file added or modified against the merge-base with `BASE_REF` (default `origin/develop`; `make test BASE_REF=<ref>`) has no executed test (all its tests skipped is shown in the line, not failed).
 - **The last line is the evidence** to paste into a pull request: `run-guard: PASS head=<sha> project=<compose project> ran=<n> changed-test-files=<k> (<module>=<tests executed>, ...)`. Each failure says what to do about it; there is nothing to switch off.
 
 It counts tests from the runner's own output, so it does not cover JS tests, a new test method in a file that is already collected, or test files outside `apps/<app>/<app>/`. Do not edit or commit in a checkout while its tests run.

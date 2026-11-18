@@ -113,6 +113,8 @@ def snapshot(repo):
 	paths = _paths(git(repo, "diff", "HEAD", "--name-only", "-z")) | _paths(
 		git(repo, "ls-files", "--others", "--exclude-standard", "-z"))
 	files = {p: "deleted" for p in paths if not os.path.lexists(os.path.join(repo, p))}
+	# an untracked nested git repo is listed as "apps/<name>/"; hash-object cannot read it, but its coming or going still counts
+	files.update({p: "dir" for p in paths - set(files) if os.path.isdir(os.path.join(repo, p))})
 	present = sorted(paths - set(files))
 	if present:
 		hashes = git(repo, "hash-object", "--stdin-paths", stdin="\n".join(present) + "\n").split()
@@ -127,8 +129,9 @@ def changed_files(repo, base_ref):
 	except GuardError as err:
 		raise GuardError(f"cannot work out which test files changed: {err} Fetch it (git fetch origin develop) "
 			f"or name another base: make test BASE_REF=<ref>.")
-	return sorted(_paths(git(repo, "diff", "--name-only", "--diff-filter=AMR", "-z", base)) | _paths(
-		git(repo, "ls-files", "--others", "--exclude-standard", "-z")))
+	paths = _paths(git(repo, "diff", "--name-only", "--diff-filter=AMR", "-z", base)) | _paths(
+		git(repo, "ls-files", "--others", "--exclude-standard", "-z"))
+	return sorted(p for p in paths if not p.endswith("/"))  # a nested repo is no test file
 
 
 def changed_test_modules(paths, discovered):
@@ -173,20 +176,19 @@ def judge(scan, expected, base_ref, code):
 	if scan.total[0] == 0:
 		problems.append("no test ran (TOTAL ran=0), yet Frappe exits 0 when it collects nothing. Check that the "
 			"site has allow_tests and the three apps installed (make dev-site-create, make dev-install-our-apps).")
-	silent = sorted(m for m, n in expected.items() if n and not scan.executed[m])
+	# all-skipped is not an error (skips depend on the extensions and sandbox); the summary shows it
+	silent = sorted(m for m, n in expected.items() if n and not scan.executed[m] and not scan.skipped[m])
 	if silent:
-		skipped = [f"{m} ({scan.skipped[m]} skipped)" for m in silent if scan.skipped[m]]
 		problems.append(f"changed test file(s) not executed: {_named(silent)}. They differ from {base_ref} yet the "
-			"run executed none of their tests" + (f"; skipped: {_named(skipped)}" if skipped else "") +
-			". Likely not collected (a name not starting with test_, an import error, a skip) or the stack runs "
-			"another tree. Run that module alone (make dev-shell, then bench --site dev.localhost run-tests "
-			"--module <module>) and read what it prints.")
+			"run printed no result for any of their tests. Likely not collected (a name not starting with test_, an "
+			"import error) or the stack runs another tree. Run that module alone (make dev-shell, then bench --site "
+			"dev.localhost run-tests --module <module>) and read what it prints.")
 	return problems
 
 
 def summary(verdict, head, project, scan, expected):
 	ran = scan.total[0] if scan.total else "?"
-	listed = [f"{m}={scan.executed[m]}" for m in sorted(expected)]
+	listed = [f"{m}={scan.executed[m]}" + (f" (skipped {scan.skipped[m]})" if scan.skipped[m] else "") for m in sorted(expected)]
 	more = f", +{len(listed) - MAX_NAMED} more" if len(listed) > MAX_NAMED else ""
 	changed = f"{len(listed)} ({', '.join(listed[:MAX_NAMED])}{more})" if listed else "0"
 	return f"run-guard: {verdict} head={head[:9]} project={project} ran={ran} changed-test-files={changed}"
