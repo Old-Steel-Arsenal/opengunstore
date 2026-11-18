@@ -74,6 +74,24 @@ def deliver(terminal: str, token: str) -> None:
 	frappe.cache.set_value(_delivery_key(terminal), token, expires_in_sec=DELIVERY_MINUTES * 60)
 
 
+_PAGE_RE = re.compile(r"^/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*(?:#[A-Za-z0-9_=&-]*)?$")
+_PAGE_PREFIX = "page:"
+
+
+def deliver_page(terminal: str, path: str) -> None:
+	"""Send *terminal* to a page of this site instead of an agreement: an extension's own
+	screen for something done on the tablet (replaces whatever is waiting, like ``deliver``).
+
+	*path* is a plain path on this site, optionally with a ``#fragment`` the page reads
+	(``/my-extension/capture#t=…``): no host, no query string, nothing a browser could take
+	for another site. The page is opened by a tablet with no session; what it may do is the
+	page's own business, usually a one-time token in the fragment checked together with the
+	tablet's device key (:func:`terminal_for_secret`)."""
+	if not isinstance(path, str) or not _PAGE_RE.match(path):
+		frappe.throw(_("Only a page of this site can be sent to a tablet."))
+	frappe.cache.set_value(_delivery_key(terminal), _PAGE_PREFIX + path, expires_in_sec=DELIVERY_MINUTES * 60)
+
+
 def active_terminals() -> list[dict]:
 	"""Tablets the counter can send to: [{"name", "pos_profile", "paired"}]."""
 	return [{"name": r.name, "pos_profile": r.pos_profile, "paired": bool(r.device_secret_hash)}
@@ -173,7 +191,8 @@ def terminal_poll(secret: str) -> dict:
 	Returns:
 	    {"paired": false} for an unknown or switched-off tablet (the page goes back
 	    to pairing); {"paired": true, "token"} when the counter sent a link (handed
-	    out once); otherwise {"paired": true, "idle": true, "terminal_name",
+	    out once); {"paired": true, "url"} when it sent the tablet to a page of this
+	    site (handed out once); otherwise {"paired": true, "idle": true, "terminal_name",
 	    "store_name", "form_4473_url"} — form_4473_url is the store's FastBound
 	    customer 4473 page, or "" when the store has no electronic 4473.
 	"""
@@ -187,6 +206,8 @@ def terminal_poll(secret: str) -> dict:
 	token = frappe.cache.get_value(key)
 	if token:
 		frappe.cache.delete_value(key)
+		if token.startswith(_PAGE_PREFIX):
+			return {"paired": True, "url": token[len(_PAGE_PREFIX):]}
 		return {"paired": True, "token": token}
 	return {"paired": True, "idle": True, "terminal_name": terminal,
 		"store_name": company_brand(frappe.defaults.get_global_default("company")).get("name") or "",
