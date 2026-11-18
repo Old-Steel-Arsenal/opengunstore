@@ -4,7 +4,7 @@
 // source, searches, and sorts each section oldest-first. No DOM / Frappe.
 const test = require('node:test');
 const assert = require('node:assert');
-const { PD_STAGE_ORDER, pdExtPrimary, pdMatchesFilter, pdMatchesQuery, pdSections, pdLocationFields, pdCollectLocations, pdEscape } =
+const { PD_STAGE_ORDER, PD_PRIMARY, pdPreorderGunAction, pdExtPrimary, pdMatchesFilter, pdMatchesQuery, pdSections, pdLocationFields, pdCollectLocations, pdEscape, pdDraftLegs, pdCanPlace } =
 	require('../../ffl_core/page/pending_dispositions/pending_dispositions.js');
 
 const rows = [
@@ -122,4 +122,56 @@ test("an extension's card button is the next action only in the sections it name
 	assert.strictEqual(pdExtPrimary(action, { stage: 'to_place' }), true);
 	assert.strictEqual(pdExtPrimary(action, { stage: 'ready_ship' }), false);
 	assert.strictEqual(pdExtPrimary({ id: 'y' }, { stage: 'to_place' }), false);
+});
+
+test('Place order: a web row in To place with a Draft distributor order gets the button', () => {
+	const web = { source: 'woo', stage: 'to_place', woo_online_order: 'WOO-1',
+		distributor_orders: [{ name: 'DO-1', status: 'Draft' }, { name: 'DO-2', status: 'Queued' },
+			{ name: 'DO-3', status: 'Draft' }] };
+	assert.strictEqual(pdCanPlace(web), true);
+	assert.deepStrictEqual(pdDraftLegs(web).map((d) => d.name), ['DO-1', 'DO-3']);
+	// Nothing in Draft (an unsourced line only), another section, or no orders at all: no button.
+	assert.strictEqual(pdCanPlace({ ...web, distributor_orders: [{ name: 'DO-2', status: 'Queued' }] }), false);
+	assert.strictEqual(pdCanPlace({ ...web, stage: 'blocked' }), false);
+	assert.strictEqual(pdCanPlace({ source: 'woo', stage: 'to_place' }), false);
+});
+
+test('Place order: a counter row follows the server verdict; GunBroker never gets it', () => {
+	const legs = { releasable: true, distributor_orders: [{ name: 'DO-9', status: 'Draft' }] };
+	assert.strictEqual(pdCanPlace({ source: 'sales_invoice', stage: 'to_place', legs }), true);
+	assert.strictEqual(pdCanPlace({ stage: 'blocked', legs }), true);
+	assert.deepStrictEqual(pdDraftLegs({ source: 'sales_invoice', legs }).map((d) => d.name), ['DO-9']);
+	assert.strictEqual(pdCanPlace({ source: 'sales_invoice', legs: { ...legs, releasable: false } }), false);
+	assert.strictEqual(pdCanPlace({ source: 'gunbroker', stage: 'to_place', legs,
+		distributor_orders: legs.distributor_orders }), false);
+});
+
+test('a pre-order is a counter order: the counter chip keeps it, its order and items are searchable, it never offers Place order', () => {
+	const pre = { source: 'preorder', stage: 'waiting', age_days: 40, customer_name: 'Fay', sales_order: 'SAL-ORD-9',
+		items: [{ item_code: 'G19', item_name: 'Glock 19 Gen 6', qty: 1 }] };
+	assert.strictEqual(pdMatchesFilter(pre, 'counter'), true);
+	assert.strictEqual(pdMatchesFilter(pre, 'woo'), false);
+	assert.strictEqual(pdMatchesQuery(pre, 'sal-ord-9'), true);
+	assert.strictEqual(pdMatchesQuery(pre, 'gen 6'), true);
+	assert.strictEqual(pdCanPlace(pre), false);
+	assert.deepStrictEqual(pdSections([pre], 'all', '').map((s) => s.stage), ['waiting']);
+});
+
+test('an arrived pre-order is ready for pickup, found by its gun, and Open pickup is the next step', () => {
+	const pre = { source: 'preorder', stage: 'ready_pickup', age_days: 3, customer_name: 'Fay', sales_order: 'SAL-ORD-10',
+		items: [{ item_code: 'G19', item_name: 'Glock 19 Gen 6', qty: 1, serial: 'ABC123', kind: 'serial' }] };
+	assert.deepStrictEqual(pdSections([pre], 'all', '').map((s) => s.stage), ['ready_pickup']);
+	assert.strictEqual(pdMatchesQuery(pre, 'abc123'), true);
+	assert.ok(PD_PRIMARY.ready_pickup.split(',').map((x) => x.trim()).includes('.btn-preorder-pickup'));
+	assert.ok(PD_PRIMARY.blocked.includes('.btn-preorder-refund'), 'money left after pickup is paid back');
+});
+
+test('a pre-order gun line without a gun can be given one by hand; with one, changed', () => {
+	const gun = (serial) => ({ item_code: 'G19', qty: 1, kind: 'serial', serial });
+	assert.strictEqual(pdPreorderGunAction({ items: [gun(null)] }), 'assign');
+	assert.strictEqual(pdPreorderGunAction({ items: [gun('A1'), gun(null)] }), 'assign');
+	assert.strictEqual(pdPreorderGunAction({ items: [gun('A1')] }), 'change');
+	assert.strictEqual(pdPreorderGunAction({ items: [{ item_code: 'OPTIC', qty: 1, kind: 'qty' }] }), null);
+	assert.strictEqual(pdPreorderGunAction({ items: [gun(null)], cancelled: true }), null);
+	assert.strictEqual(pdPreorderGunAction({ items: [gun('A1')], handed_over: true }), null);
 });

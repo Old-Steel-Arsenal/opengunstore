@@ -462,6 +462,40 @@ class Money(_Base):
 		frappe.delete_doc("POS Invoice", inv, ignore_permissions=True)
 		self.assertEqual(gunsmith.deposit_held(job.name), 0)
 
+	def test_a_returned_part_on_the_deposit_ticket_does_not_hide_the_deposit(self):
+		"""$50 towards the job rung with a $20 part; the part comes back (a draft return, then submitted).
+		The deposit is still refundable from that ticket: only a return of the deposit line itself counts."""
+		from erpnext.accounts.doctype.pos_invoice.pos_invoice import make_sales_return
+
+		job = _job(self.cust)
+		first = _pay(_payment(job, 50, {"item_code": "_Test GW Part", "qty": 1, "rate": 20}))
+		part = make_sales_return(first.name)
+		part.items = [r for r in part.items if r.item_code == "_Test GW Part"]
+		part.flags.ignore_permissions = True
+		part.set_missing_values()
+		part.calculate_taxes_and_totals()
+		for p in part.payments:
+			p.amount = p.base_amount = 0
+		part.payments[0].amount = part.payments[0].base_amount = flt(part.rounded_total) or flt(part.grand_total)
+		part.paid_amount = part.base_paid_amount = part.payments[0].amount
+		part.insert()
+		gunsmith.cancel_work_order(job.name, "Parts unavailable")
+		refund = None
+		for submitted in (False, True):
+			with self.subTest(part_return_submitted=submitted):
+				if submitted:
+					frappe.delete_doc("POS Invoice", refund, ignore_permissions=True)
+					part.reload()
+					part.flags.ignore_permissions = True
+					part.submit()
+				out = gunsmith.refund_deposit(job.name)
+				refund = out["pos_invoice"]
+				self.assertEqual(out["amount"], 50)
+				self.assertEqual([(r.item_code, flt(r.amount)) for r in frappe.get_doc("POS Invoice", refund).items],
+					[(DEPOSIT_ITEM, -50)])
+		_pay(refund)
+		self.assertEqual(gunsmith.deposit_held(job.name), 0)
+
 	def test_a_refund_goes_back_payment_by_payment(self):
 		"""$100 then $50 held on a cancelled job: the first return pays back the $50 (newest), the
 		next the $100 — a return never exceeds the payment it goes against."""

@@ -396,17 +396,27 @@ def _build_invoice(order, company: str):
 
 def _ensure_paid(si, order, posting_date=None) -> None:
 	from ffl_core.api.manual_order import _book_payment_entry
+	from ffl_woo_sync.woocommerce import preorder
 
 	si.reload()
+	# A pre-order's money has sat in Pre-order Deposits since it was paid: it pays the
+	# invoice from there (no second Woo Clearing collection), and anything held beyond
+	# the invoice — a refund the amend just netted out — goes back to Woo Clearing.
+	pre = preorder.is_preorder_order(order)
+	if pre:
+		preorder.sync_deposit(order)
+		preorder.settle_invoice(si, order)
+		si.reload()
 	outstanding = flt(si.outstanding_amount)
-	if outstanding <= 0:
-		return
-	mode = _ensure_mode_of_payment(si.company)
-	# posting_date: pin the collection to the SI's date (an amend-to-net re-collect
-	# keeps a cross-month refund in the sale's month). None → get_payment_entry's
-	# default (today), the fresh-invoice behaviour.
-	_book_payment_entry(si, mode, outstanding, f"Woo #{order.woo_order_id}",
-		posting_date=posting_date)
+	if outstanding > 0:
+		mode = _ensure_mode_of_payment(si.company)
+		# posting_date: pin the collection to the SI's date (an amend-to-net re-collect
+		# keeps a cross-month refund in the sale's month). None → get_payment_entry's
+		# default (today), the fresh-invoice behaviour.
+		_book_payment_entry(si, mode, outstanding, f"Woo #{order.woo_order_id}",
+			posting_date=posting_date)
+	if pre:
+		preorder.sync_deposit(order)
 
 
 # ------------------------------------------------------------------ entry API

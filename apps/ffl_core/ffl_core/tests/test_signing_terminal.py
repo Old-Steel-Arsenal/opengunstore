@@ -107,6 +107,24 @@ class Pairing(FrappeTestCase):
 			for fn in (signing_terminal.pair_terminal, signing_terminal.terminal_poll):
 				frappe.is_whitelisted(fn)
 
+	def test_a_page_sent_to_the_tablet_is_handed_out_once(self):
+		secret = _pair(self.term)
+		signing_terminal.deliver_page(self.term.name, "/some-extension/capture#t=abc_DEF-123")
+		self.assertEqual(_poll(secret), {"paired": True, "url": "/some-extension/capture#t=abc_DEF-123"})
+		self.assertIn("idle", _poll(secret))
+
+	def test_only_a_plain_path_on_this_site_can_be_sent_to_the_tablet(self):
+		for bad in ("https://evil.example/x", "//evil.example/x", "javascript:alert(1)", "/a b", "/x?next=//evil.example",
+				"capture", "/x#t=<script>", "", None):
+			with self.assertRaises(frappe.ValidationError, msg=repr(bad)):
+				signing_terminal.deliver_page(self.term.name, bad)
+
+	def test_a_page_and_an_agreement_share_the_one_waiting_slot(self):
+		secret = _pair(self.term)
+		signing_terminal.deliver_page(self.term.name, "/some-extension/capture")
+		signing_terminal.deliver(self.term.name, "tok-agreement")           # the newest wins, as between two agreements
+		self.assertEqual(_poll(secret), {"paired": True, "token": "tok-agreement"})
+
 	def test_idle_poll_says_nothing_about_customers(self):
 		out = _poll(_pair(self.term))
 		self.assertEqual(set(out), {"paired", "idle", "terminal_name", "store_name", "form_4473_url"})

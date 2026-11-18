@@ -58,6 +58,7 @@ from ffl_core.reservations import (
 )
 from ffl_core.warehouses import custody_warehouse_names
 
+from ffl_woo_sync.woocommerce import preorder
 from ffl_woo_sync.woocommerce.cr_transfer import _clear_cr_verification
 
 from ffl_woo_sync.woocommerce.client import resolve_site, store_entry
@@ -1445,6 +1446,12 @@ def _process_lines(order_doc, line_items: list) -> list[str]:
 		# REGULATED gun and to whose FFL, which an antique has no part in.
 		source = sources[item_code]
 		lane = source["lane"]
+		# Nothing of it on our shelf and pre-orders open on the Item: the storefront
+		# sold it on pre-order (preorder.is_preorder_line). Decided under the Item
+		# locks above, from the same count the storefront was given.
+		if (lane == LANE_LOCAL and not serial_from_sku
+				and preorder.is_preorder_line(item_code, spent_units[item_code])):
+			lane = preorder.LANE
 
 		order_doc.append("lines", {
 			"item_code": item_code,
@@ -1461,7 +1468,7 @@ def _process_lines(order_doc, line_items: list) -> list[str]:
 			"source_sku": source["sku"],
 		})
 
-		if lane != LANE_LOCAL:
+		if lane not in (LANE_LOCAL, preorder.LANE):
 			has_dropship = True
 
 		# ...but the serial ROW is an INVENTORY device, not an ATF one. It carries
@@ -1508,6 +1515,10 @@ def _process_lines(order_doc, line_items: list) -> list[str]:
 			# lane; RSR's serial is recorded on it later (Distributor Order line →
 			# confirmed_serial) purely as a record — it never becomes a local
 			# Serial No, a disposition, or a stock movement.
+			#
+			# A pre-ordered unit has nothing on our shelf to hold either: it claims a
+			# unit and names none, with no no-stock error — the arrival allocator
+			# (ffl_core.preorder) puts its gun by when one comes in.
 			if lane != LANE_LOCAL:
 				order_doc.append("serials", row)
 				continue
@@ -1693,6 +1704,10 @@ def _process_lines(order_doc, line_items: list) -> list[str]:
 	if has_dropship:
 		order_doc.dropship_status = "Pending Route"
 
+	# Pre-order lines take their quantities from the Items' pre-order counts, under
+	# the Item locks this function already holds.
+	preorder.take_order_slots(order_doc)
+
 	return to_reserve
 
 
@@ -1836,6 +1851,9 @@ def _handle_order_created(body: dict) -> None:
 
 	if auto_cleared:
 		_book_revenue_after_auto_clear(order)
+
+	# A pre-order: its payment into Pre-order Deposits and its Woo status, after commit.
+	preorder.after_order_saved(order, body)
 
 
 # ---------------------------------------------------------------------------
@@ -2498,6 +2516,9 @@ def _auto_clear_non_firearm_if_completed(order_doc) -> bool:
 		return False
 	if (order_doc.woo_status or "").strip().lower() != "completed":
 		return False
+	# A pre-order whose goods are not all here has not shipped, whatever Woo says.
+	if not preorder.ready(order_doc):
+		return False
 	# Antique units are the one kind of serial row that owes no bound-book exit: a
 	# pre-1899 receiver is not a GCA firearm, so there is no disposition to book and
 	# no FFL to ship to. Every other row — local, to_store, drop-ship — still has to
@@ -2575,10 +2596,14 @@ def _reopen_if_revived(order, body: dict) -> bool:
 		if (sr.get("fulfillment") or LANE_LOCAL) == LANE_LOCAL]
 	# Per-Item mutex first, always, before any Serial No lock (see
 	# _lock_item_reservations).
-	for item_code in sorted({(sr.get("item_code") or "").strip() for sr in local_rows} - {""}):
+	for item_code in sorted(({(sr.get("item_code") or "").strip() for sr in local_rows}
+			| {(l.item_code or "").strip() for l in preorder.preorder_lines(order)}) - {""}):
 		_lock_item_reservations(item_code)
 
 	order.order_status = "Pending Fulfillment"
+	# A revived pre-order takes its slots again (the cancel gave them back); too few
+	# left is recorded on the line, as at checkout.
+	preorder.take_order_slots(order)
 	for sr in local_rows:
 		item_code = (sr.get("item_code") or "").strip()
 		for field in ("confirmed_serial", "stock_hold_serial"):
@@ -2713,6 +2738,9 @@ def _handle_order_updated(body: dict) -> None:
 	if auto_cleared:
 		_book_revenue_after_auto_clear(order)
 
+	# A pre-order: paid, refunded or revived — its deposit and Woo status follow.
+	preorder.after_order_saved(order, body)
+
 
 # ---------------------------------------------------------------------------
 # order cancel / delete / refund handler (release soft-reserve)
@@ -2784,6 +2812,11 @@ def _handle_order_cancelled(body: dict) -> None:
 		return  # nothing recorded for this order — ack, no-op
 	order_name = order["name"]
 	order_site = order.get("site") or "retail"
+
+	# A pre-order gives its slots back and lets go of what was put by for it (its
+	# guns are released with the others below), its Items locked before anything
+	# else is written. Its money goes back by the queued pre-order sync.
+	preorder.on_order_cancelled(order_name)
 
 	# D1: a terminal WC status (cancelled / trash / fully refunded) landing on an
 	# order whose sale was already booked must never be silent. Alert loudly —

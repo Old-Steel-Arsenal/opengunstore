@@ -28,7 +28,7 @@ honours ignore_invoice for the order being edited.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3903`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3915`</sub>
 
 ## `cancel_order`
 
@@ -60,7 +60,7 @@ disposition are refused.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3127`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3139`</sub>
 
 ## `check_serials_available`
 
@@ -83,7 +83,7 @@ stock, so a gun may have sold in the meantime).
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3766`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3778`</sub>
 
 ## `create_order`
 
@@ -127,7 +127,7 @@ Also the consumed-draft cleanup create_order calls after success.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3882`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3894`</sub>
 
 ## `dispose_order`
 
@@ -156,7 +156,7 @@ sold copies then belong to this invoice.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:1634`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:1646`</sub>
 
 ## `find_serial_for_order`
 
@@ -182,7 +182,7 @@ dropdown uses, so both entry paths always quote identically.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3734`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3746`</sub>
 
 ## `fulfill_from_stock`
 
@@ -214,7 +214,7 @@ unit of the item, or for an accessory the shelf cannot cover.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:2433`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:2445`</sub>
 
 ## `get_customer_tax_status`
 
@@ -235,7 +235,7 @@ exemption.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:5105`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:5117`</sub>
 
 ## `get_order_draft`
 
@@ -253,7 +253,7 @@ Load one Create Order Draft for resume.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3863`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3875`</sub>
 
 ## `get_order_for_edit`
 
@@ -276,7 +276,7 @@ standing flag, so an edit can never silently re-toggle the exemption.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:2660`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:2672`</sub>
 
 ## `item_tax_rates`
 
@@ -304,7 +304,7 @@ server, no tax on or inside its shipping.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:5054`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:5066`</sub>
 
 ## `list_order_drafts`
 
@@ -318,7 +318,7 @@ Shared draft list, newest first — shown in the page's Drafts dialog.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3846`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3858`</sub>
 
 ## `list_pending_dispositions`
 
@@ -344,7 +344,7 @@ appears (already disposed) until its shipment is pushed.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:962`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:963`</sub>
 
 ## `mark_shipped_manually`
 
@@ -378,7 +378,7 @@ this path really moves the non-firearm goods.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:1967`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:1979`</sub>
 
 ## `order_agreements`
 
@@ -396,7 +396,7 @@ the Pending Order card's Agreements strip.
 
 **Returns:** {"email": where a link goes, "rows": [{template, serial_no, item_code, state (signed / expiring / expired / pending / missing), signed, token_expires, link_open, sent_by}]}.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:1721`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:1733`</sub>
 
 ## `order_line_costs`
 
@@ -422,7 +422,7 @@ without a serial, has no cost to show.
 
 **Returns:** One unit cost per line, in input order — a float, or None when it is not known (never 0).
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3929`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3941`</sub>
 
 ## `pending_orders_digest`
 
@@ -443,7 +443,7 @@ elsewhere).
 
 **Permissions:** Inventory roles (the scheduler runs as Administrator, whom the gate exempts).
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:907`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:908`</sub>
 
 ## `quick_create_individual`
 
@@ -463,7 +463,7 @@ The Contact carries the receipt email.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:4055`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:4067`</sub>
 
 ## `quote_config`
 
@@ -486,7 +486,7 @@ shipping address.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:5013`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:5025`</sub>
 
 ## `record_payment`
 
@@ -513,7 +513,7 @@ account, and returns the updated balance.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:1454`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:1455`</sub>
 
 ## `release_order_legs`
 
@@ -521,14 +521,15 @@ account, and returns the updated balance.
 
 **Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager
 
-Release the Draft distributor legs of a counter order.
+Release the Draft distributor legs of a counter or web order.
 
 P1 — one-click release: confirms every Draft
-Distributor Order sourced from this invoice. The payment rule is the
+Distributor Order sourced from the order. The payment rule is the
 leg's (ffl_integrations.distributor.api.placement_payment_block, applied
-by confirm_order): a drop-ship leg needs the invoice settled, a
-ship-to-store leg may go out on a deposit or unpaid — a leg the rule
-refuses lands in ``failed`` with its reason and stays Draft. Each leg is
+by confirm_order): a counter drop-ship leg needs the invoice settled, a
+ship-to-store leg may go out on a deposit or unpaid, and a web order's
+legs need the Woo order still paid — a leg the rule refuses lands in
+``failed`` with its reason and stays Draft. Each leg is
 savepoint-isolated (a failing leg rolls back only its own half-writes,
 never the siblings or the caller's transaction); confirm/place are
 idempotent, so a failed leg can be retried. Local/firearm legs keep
@@ -536,13 +537,14 @@ their own queue buttons.
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
-| `sales_invoice` | string | yes | — | Counter-order Sales Invoice name. |
+| `sales_invoice` | string \| null | no | `None` | Counter-order Sales Invoice name. |
+| `woo_online_order` | string \| null | no | `None` | Woo Online Order name, instead of sales_invoice. |
 
 **Returns:** {"released": [DO names], "failed": [{name, error}]}.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:1542`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:1543`</sub>
 
 ## `rename_customer`
 
@@ -567,7 +569,7 @@ primary Contact is NOT renamed (out of scope).
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:4108`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:4120`</sub>
 
 ## `resend_order_agreement`
 
@@ -586,7 +588,7 @@ Email a counter order's buyer a fresh signing link (the old one stops working).
 
 **Returns:** {"email", "token_expires"}.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:1739`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:1751`</sub>
 
 ## `resource_line`
 
@@ -613,7 +615,7 @@ and quotes the web reference.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:2288`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:2300`</sub>
 
 ## `save_cr_ffl`
 
@@ -643,7 +645,7 @@ all read it the way they read any other.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:4004`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:4016`</sub>
 
 ## `save_order_draft`
 
@@ -669,7 +671,7 @@ re-validated on resume.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3803`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3815`</sub>
 
 ## `set_customer_tax_exempt`
 
@@ -693,7 +695,7 @@ and reused.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:5129`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:5141`</sub>
 
 ## `update_order`
 
@@ -739,7 +741,7 @@ item to an order already placed buys just that item.
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3296`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3308`</sub>
 
 ## `verify_ffl`
 
@@ -759,4 +761,4 @@ Delegates to the eZ Check integration (online verify + address).
 
 **Permissions:** Sales User / Sales Manager / Stock Manager / System Manager.
 
-<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3983`</sub>
+<sub>`apps/ffl_core/ffl_core/api/manual_order.py:3995`</sub>

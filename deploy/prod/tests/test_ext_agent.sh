@@ -20,6 +20,19 @@ cat > "$T/up.sh" <<'SH'
 #!/usr/bin/env bash
 # fake up.sh: logs calls, serves files from $FAKE_BENCH
 echo "$*" >> "$FAKE_LOG"
+fails() { case " ${2:-} " in *" $1 "*) return 0 ;; esac; return 1; }   # fails <service> <$FAKE_…_FAILS>
+case "$*" in
+	"exec -T backend test -x /usr/local/bin/ext-reload.sh") [ -n "${FAKE_HOT:-}" ]; exit ;;           # the image can reload in place
+	"exec -T "*" rm -f /home/frappe/frappe-bench/.ext-replay.done") rm -f "$FAKE_BENCH/.ext-replay.done"; exit 0 ;;
+	"exec -T "*" test -f /home/frappe/frappe-bench/.ext-replay.done") test -f "$FAKE_BENCH/.ext-replay.done"; exit ;;
+	"exec -T "*" /usr/local/bin/ext-replay.sh")
+		if fails "$3" "${FAKE_REPLAY_FAILS:-}"; then echo "ext-replay: ERROR: ${FAKE_BOOM:-replay boom}"; exit 1; fi
+		touch "$FAKE_BENCH/.ext-replay.done"; echo "ext-replay: done"; exit 0 ;;
+	"exec -T backend /usr/local/bin/ext-reload.sh")
+		[ -z "${FAKE_RELOAD_FAILS:-}" ] || { echo "ext-reload: ERROR: reload did not finish in 90 s"; exit 1; }
+		echo "ext-reload: reloaded: 2 new worker(s) (1 s)"; exit 0 ;;
+	"exec -T frontend nginx -s reload") [ -z "${FAKE_NGINX_FAILS:-}" ]; exit ;;
+esac
 case "$1 $2 $3 $4" in
 	"ps --services --status running") printf '%s\n' ${FAKE_RUNNING:-} ;;
 	"exec -T backend cat")      cat "${5/#\/home\/frappe\/frappe-bench/$FAKE_BENCH}" ;;
@@ -83,7 +96,7 @@ case "$1" in
 			for a in "$@"; do case "$a" in label=*) [[ "$labels" == *" ${a#label=} "* ]] || match=0 ;; esac; done
 			[ "$match" = 0 ] || echo "${c%% *}"
 		done ;;
-	exec) [ "$2" = 3f2a9c ] || exit 1; shift 2; "$1" "${2/#\/home\/frappe\/frappe-bench/$FAKE_BENCH}" ;;
+	exec) [ "$2" = 3f2a9c ] || exit 1; shift 2; args=(); for a in "$@"; do args+=("${a//\/home\/frappe\/frappe-bench/$FAKE_BENCH}"); done; "${args[@]}" ;;
 esac
 SH
 chmod +x "$T/up.sh" "$T/docker"
@@ -101,13 +114,13 @@ step "no request → nothing happens, and the idle probe never touches the compo
 rc=0; out="$(run_agent)" || rc=$?
 [ "$rc" = 0 ] && [ -z "$out" ] && ok "silent exit 0" || bad "rc=$rc out=$out"
 [ ! -s "$FAKE_LOG" ] && ok "no up.sh call at all" || bad "compose wrapper called while idle: $(cat "$FAKE_LOG")"
-grep -q '^ps ' "$FAKE_DOCKER_LOG" && grep -q '^exec 3f2a9c cat /home/frappe/frappe-bench/sites/.ext-request.json' "$FAKE_DOCKER_LOG" && ok "docker ps + docker exec" || bad "docker calls: $(cat "$FAKE_DOCKER_LOG")"
+grep -q '^ps ' "$FAKE_DOCKER_LOG" && grep -q '^exec 3f2a9c sh -c .* /home/frappe/frappe-bench/sites/.ext-request.json 0$' "$FAKE_DOCKER_LOG" && ok "docker ps + one docker exec (IDLE_WAIT 0: looks once)" || bad "docker calls: $(cat "$FAKE_DOCKER_LOG")"
 
 step "the probe takes the service's backend, never a one-off 'up.sh run backend' container of the project (listed first)"
 request install
 rc=0; out="$(run_agent)" || rc=$?
 grep -q -- '--filter label=com.docker.compose.oneoff=False' "$FAKE_DOCKER_LOG" && ok "docker ps filters oneoff=False" || bad "ps call: $(grep '^ps' "$FAKE_DOCKER_LOG")"
-[ "$rc" = 0 ] && grep -q '^exec 3f2a9c cat' "$FAKE_DOCKER_LOG" && ! grep -q '^exec 9e0ff1' "$FAKE_DOCKER_LOG" && grep -q '^restart backend' "$FAKE_LOG" && ok "request read from the service container and acted on" || bad "rc=$rc docker: $(cat "$FAKE_DOCKER_LOG")"
+[ "$rc" = 0 ] && grep -q '^exec 3f2a9c sh' "$FAKE_DOCKER_LOG" && ! grep -q '^exec 9e0ff1' "$FAKE_DOCKER_LOG" && grep -q '^restart backend' "$FAKE_LOG" && ok "request read from the service container and acted on" || bad "rc=$rc docker: $(cat "$FAKE_DOCKER_LOG")"
 
 step "no backend container of this project (stack down, or COMPOSE_PROJECT_NAME elsewhere) → exit 0 quietly"
 request install
@@ -116,12 +129,17 @@ rc=0; out="$(FAKE_PROJECT=gunstore-demo run_agent)" || rc=$?
 rc=0; out="$(FAKE_PROJECT=gunstore-demo COMPOSE_PROJECT_NAME=gunstore-demo run_agent)" || rc=$?
 [ "$rc" = 0 ] && grep -q '^restart backend' "$FAKE_LOG" && ok "COMPOSE_PROJECT_NAME selects the stack, as up.sh does" || bad "rc=$rc calls: $(cat "$FAKE_LOG")"
 
-step "a valid install request → workers restart, backend last, replay awaited, finish_install run, request gone"
+step "a valid install request (an image without ext-reload.sh: the restart path) → workers restart, backend last, replay awaited, frontend replayed + nginx reloaded (never restarted), finish_install run, request gone"
 request install; rm -f "$T/bench/.ext-replay.done"
 rc=0; out="$(run_agent)" || rc=$?
 [ "$rc" = 0 ] && ok "exit 0" || bad "rc=$rc: $out"
-[ "$(grep -c '^restart' "$FAKE_LOG" || true)" = 3 ] && ok "three restart batches (workers, backend, frontend)" || bad "restart calls: $(grep restart "$FAKE_LOG")"
-[ "$(sed -n '/^restart/p' "$FAKE_LOG" | tr '\n' '|')" = "restart websocket queue-short queue-long scheduler|restart backend|restart frontend|" ] && ok "workers → backend → frontend" || bad "order: $(grep restart "$FAKE_LOG")"
+[ "$(sed -n '/^restart/p' "$FAKE_LOG" | tr '\n' '|')" = "restart websocket queue-short queue-long scheduler|restart backend|" ] && ok "two restart batches: workers → backend; no frontend restart" || bad "order: $(grep restart "$FAKE_LOG")"
+fr="$(line_of '^exec -T frontend /usr/local/bin/ext-replay.sh')"; ng="$(line_of '^exec -T frontend nginx -s reload')"; be="$(line_of '^restart backend')"; fi_="$(line_of 'sideload.finish_install')"
+[ -n "$fr" ] && [ -n "$ng" ] && [ "$be" -lt "$fr" ] && [ "$fr" -lt "$ng" ] && [ "$ng" -lt "$fi_" ] && ok "backend restart → frontend replay → nginx reload → finish_install" || bad "sequence: $(cat "$FAKE_LOG")"
+for svc in websocket queue-short queue-long scheduler backend; do
+	rm_="$(line_of "^exec -T $svc rm -f /home/frappe/frappe-bench/.ext-replay.done")"; wt="$(line_of "^exec -T $svc test -f /home/frappe/frappe-bench/.ext-replay.done")"; rs="$(line_of "^restart.* $svc\b\|^restart $svc")"
+	[ -n "$rm_" ] && [ -n "$wt" ] && [ "$rm_" -lt "$rs" ] && [ "$wt" -lt "$fi_" ] && ok "$svc: marker removed before its restart, awaited before finish_install" || bad "$svc marker: rm=$rm_ restart=$rs wait=$wt"
+done
 grep -q 'bench --site pos.example.com execute ffl_core.extensions.sideload.finish_install --args \["acme_layaway"\]$' "$FAKE_LOG" && ok "finish_install for the app, on the requested site" || bad "no finish_install: $(cat "$FAKE_LOG")"
 [ "$(cat "$T/bench/finish_install.args")" = '["acme_layaway"]' ] && ok "frappe's eval sees one argument, the id" || bad "args: $(cat "$T/bench/finish_install.args")"
 [ ! -f "$T/bench/sites/.ext-request.json" ] && [ -f "$T/bench/sites/.ext-request.done" ] && ok "request consumed, done written" || bad "markers wrong"
@@ -156,7 +174,7 @@ step "install: a restart fails → done says which, request consumed, nothing ru
 request install
 out="$(FAKE_RESTART_FAILS=backend run_agent 2>&1)" && bad "should exit non-zero" || ok "exit non-zero"
 grep -q 'restart of backend failed' "$T/bench/sites/.ext-request.done" && [ ! -f "$T/bench/sites/.ext-request.json" ] && ok "done names the restart, request removed" || bad "done: $(cat "$T/bench/sites/.ext-request.done")"
-{ grep -q 'execute\|restart frontend' "$FAKE_LOG" && bad "carried on after the failed restart: $(cat "$FAKE_LOG")"; } || ok "no frontend restart, no finish_install"
+{ grep -q 'execute\|frontend' "$FAKE_LOG" && bad "carried on after the failed restart: $(cat "$FAKE_LOG")"; } || ok "nothing in frontend, no finish_install"
 
 step "finish_install fails → done says so (finish_install itself writes it in real life; here the shim exits 1)"
 request install
@@ -174,8 +192,8 @@ step "upgrade → same restarts, replay awaited, then begin_upgrade → migrate 
 request upgrade; rm -f "$T/bench/.ext-replay.done"
 rc=0; out="$(run_agent 2>&1)" || rc=$?
 [ "$rc" = 0 ] && ok "exit 0" || bad "rc=$rc: $out"
-[ "$(sed -n '/^restart/p' "$FAKE_LOG" | tr '\n' '|')" = "restart websocket queue-short queue-long scheduler|restart backend|restart frontend|" ] && ok "restart order as install" || bad "order: $(grep restart "$FAKE_LOG")"
-fe="$(line_of '^restart frontend')"; wait_line="$(line_of 'test -f /home/frappe/frappe-bench/.ext-replay.done')"; be="$(line_of 'sideload.begin_upgrade')"; mg="$(line_of 'bench --site pos.example.com migrate')"; fu="$(line_of 'sideload.finish_upgrade')"
+[ "$(sed -n '/^restart/p' "$FAKE_LOG" | tr '\n' '|')" = "restart websocket queue-short queue-long scheduler|restart backend|" ] && ok "restart order as install" || bad "order: $(grep restart "$FAKE_LOG")"
+fe="$(line_of '^exec -T frontend nginx -s reload')"; wait_line="$(line_of 'test -f /home/frappe/frappe-bench/.ext-replay.done')"; be="$(line_of 'sideload.begin_upgrade')"; mg="$(line_of 'bench --site pos.example.com migrate')"; fu="$(line_of 'sideload.finish_upgrade')"
 [ -n "$wait_line" ] && [ -n "$fe" ] && [ -n "$be" ] && [ -n "$mg" ] && [ -n "$fu" ] && [ "$wait_line" -lt "$be" ] && [ "$fe" -lt "$be" ] && [ "$be" -lt "$mg" ] && [ "$mg" -lt "$fu" ] && ok "replay marker → begin_upgrade → migrate → finish_upgrade" || bad "sequence: $(cat "$FAKE_LOG")"
 [ "$(cat "$T/bench/begin_upgrade.args")" = '["acme_layaway"]' ] && ok "begin_upgrade gets the id" || bad "begin args: $(cat "$T/bench/begin_upgrade.args" 2>/dev/null)"
 [ "$(cat "$T/bench/finish_upgrade.args")" = '["acme_layaway", 1, ""]' ] && ok "finish_upgrade gets (id, 1, \"\") after frappe's eval" || bad "finish args: $(cat "$T/bench/finish_upgrade.args" 2>/dev/null)"
@@ -274,6 +292,76 @@ step "…while a finish_upgrade that leaves this app's own request behind is not
 request upgrade
 out="$(FAKE_KEEP_REQUEST=1 FAKE_RESTART_FAILS=backend run_agent 2>&1)" && bad "should exit non-zero" || ok "exit non-zero"
 [ ! -f "$T/bench/sites/.ext-request.json" ] && grep -q 'restart of backend failed (finish_upgrade could not record it on the site either)' "$T/bench/sites/.ext-request.done" && ok "request removed, done says finish_upgrade did not record it" || bad "request: $(cat "$T/bench/sites/.ext-request.json" 2>/dev/null || echo removed) done: $(cat "$T/bench/sites/.ext-request.done")"
+
+# --- the in-place path: an image with ext-reload.sh (FAKE_HOT) ------------------------------------
+step "hot install → workers restarted (websocket left alone), backend replayed + reloaded in place (never restarted), frontend replayed, no nginx reload, then finish_install"
+request install
+rc=0; out="$(FAKE_HOT=1 run_agent 2>&1)" || rc=$?
+[ "$rc" = 0 ] && ok "exit 0" || bad "rc=$rc: $out"
+[ "$(sed -n '/^restart/p' "$FAKE_LOG" | tr '\n' '|')" = "restart queue-short queue-long scheduler|" ] && ok "only the workers restart: no backend, websocket or frontend restart" || bad "restarts: $(grep restart "$FAKE_LOG")"
+rp="$(line_of '^exec -T backend /usr/local/bin/ext-replay.sh')"; rl="$(line_of '^exec -T backend /usr/local/bin/ext-reload.sh')"; fr="$(line_of '^exec -T frontend /usr/local/bin/ext-replay.sh')"; fi_="$(line_of 'sideload.finish_install')"; ws="$(line_of '^restart queue')"
+[ -n "$rp" ] && [ -n "$rl" ] && [ -n "$fr" ] && [ -n "$fi_" ] && [ "$ws" -lt "$rp" ] && [ "$rp" -lt "$rl" ] && [ "$rl" -lt "$fr" ] && [ "$fr" -lt "$fi_" ] && ok "workers restart → backend replay → reload → frontend replay → finish_install" || bad "sequence: $(cat "$FAKE_LOG")"
+{ grep -q 'nginx -s reload' "$FAKE_LOG" && bad "nginx reloaded though nothing it proxies to restarted"; } || ok "no nginx reload"
+for svc in queue-short queue-long scheduler; do
+	wt="$(line_of "^exec -T $svc test -f /home/frappe/frappe-bench/.ext-replay.done")"
+	[ -n "$wt" ] && [ "$wt" -lt "$fi_" ] && ok "$svc's replay awaited before install_app" || bad "$svc wait: $wt"
+done
+echo "$out" | grep -q 'reloading backend in place' && echo "$out" | grep -q 'ext-reload: reloaded' && ok "the log says which path ran" || bad "log: $out"
+
+step "hot upgrade → reload before begin_upgrade → migrate → finish_upgrade(id, 1, \"\")"
+request upgrade
+rc=0; out="$(FAKE_HOT=1 run_agent 2>&1)" || rc=$?
+[ "$rc" = 0 ] && ok "exit 0" || bad "rc=$rc: $out"
+rl="$(line_of '^exec -T backend /usr/local/bin/ext-reload.sh')"; be="$(line_of 'sideload.begin_upgrade')"; mg="$(line_of 'bench --site pos.example.com migrate')"
+[ -n "$rl" ] && [ -n "$be" ] && [ "$rl" -lt "$be" ] && [ "$be" -lt "$mg" ] && ok "reload → begin_upgrade → migrate" || bad "sequence: $(cat "$FAKE_LOG")"
+args_are finish_upgrade 'a == ["acme_layaway", 1, ""]' && [ ! -f "$T/bench/sites/.ext-request.json" ] && ok "finished, request consumed" || bad "finish args: $(cat "$T/bench/finish_upgrade.args" 2>/dev/null)"
+grep -q '^restart backend' "$FAKE_LOG" && bad "backend restarted" || ok "backend not restarted"
+
+step "hot: the reload fails → falls back to restarting backend (marker re-armed, awaited) and reloading nginx, and still finishes"
+request upgrade
+rc=0; out="$(FAKE_HOT=1 FAKE_RELOAD_FAILS=1 run_agent 2>&1)" || rc=$?
+[ "$rc" = 0 ] && ok "exit 0" || bad "rc=$rc: $out"
+rl="$(line_of '^exec -T backend /usr/local/bin/ext-reload.sh')"; rb="$(line_of '^restart backend')"; rm_="$(line_of '^exec -T backend rm -f')"; ng="$(line_of 'nginx -s reload')"; be="$(line_of 'sideload.begin_upgrade')"
+[ -n "$rb" ] && [ "$rl" -lt "$rm_" ] && [ "$rm_" -lt "$rb" ] && [ "$rb" -lt "$ng" ] && [ "$ng" -lt "$be" ] && ok "reload → marker removed → restart backend → nginx reload → begin_upgrade" || bad "sequence: $(cat "$FAKE_LOG")"
+echo "$out" | grep -q 'in-place reload failed (ext-reload: ERROR: reload did not finish in 90 s) — restarting backend instead' && ok "the fallback is logged with the reason" || bad "log: $out"
+
+step "hot: the replay in backend fails → finish_upgrade(id, 0, why); no reload, no migrate, exit 1"
+request upgrade
+out="$(FAKE_HOT=1 FAKE_REPLAY_FAILS=backend FAKE_BOOM='bench build reported errors' run_agent 2>&1)" && bad "should exit non-zero" || ok "exit non-zero"
+args_are finish_upgrade 'a[:2] == ["acme_layaway", 0] and a[2].startswith("the extension replay in backend failed: ext-replay: ERROR: bench build reported errors")' && ok "finish_upgrade(id, 0, the replay error)" || bad "finish args: $(cat "$T/bench/finish_upgrade.args" 2>/dev/null)"
+{ grep -q '^exec -T backend /usr/local/bin/ext-reload.sh\|migrate\|begin_upgrade' "$FAKE_LOG" && bad "carried on: $(cat "$FAKE_LOG")"; } || ok "no reload, no begin_upgrade, no migrate"
+
+step "hot: the replay in frontend fails → an install is not run, done says why, exit 1"
+request install
+out="$(FAKE_HOT=1 FAKE_REPLAY_FAILS=frontend run_agent 2>&1)" && bad "should exit non-zero" || ok "exit non-zero"
+grep -q 'the extension replay in frontend failed' "$T/bench/sites/.ext-request.done" && [ ! -f "$T/bench/sites/.ext-request.json" ] && ok "done names it, request removed" || bad "done: $(cat "$T/bench/sites/.ext-request.done")"
+grep -q finish_install "$FAKE_LOG" && bad "installed anyway" || ok "no finish_install"
+
+step "hot: an extension with realtime/handlers.js (now or in its previous tree) → websocket restarted too, then nginx reloaded; backend still reloaded in place"
+for where in "acme_layaway" ".previous/acme_layaway"; do
+	mkdir -p "$T/bench/apps-ext/$where/realtime"; touch "$T/bench/apps-ext/$where/realtime/handlers.js"
+	request upgrade
+	rc=0; out="$(FAKE_HOT=1 run_agent 2>&1)" || rc=$?
+	[ "$rc" = 0 ] && [ "$(sed -n '/^restart/p' "$FAKE_LOG" | tr '\n' '|')" = "restart websocket queue-short queue-long scheduler|" ] && ok "$where: websocket joins the worker restart, backend not restarted" || bad "$where rc=$rc restarts: $(grep restart "$FAKE_LOG")"
+	ng="$(line_of 'nginx -s reload')"; be="$(line_of 'sideload.begin_upgrade')"
+	[ -n "$ng" ] && [ "$ng" -lt "$be" ] && ok "$where: nginx reloaded (websocket may have a new IP) before begin_upgrade" || bad "$where sequence: $(cat "$FAKE_LOG")"
+	rm -rf "$T/bench/apps-ext"
+done
+
+step "HOT_RELOAD=0 → the restart path even on an image that can reload"
+request upgrade
+rc=0; out="$(FAKE_HOT=1 HOT_RELOAD=0 run_agent 2>&1)" || rc=$?
+[ "$rc" = 0 ] && grep -q '^restart backend' "$FAKE_LOG" && ! grep -q 'ext-reload.sh' "$FAKE_LOG" && ok "backend restarted, no reload" || bad "rc=$rc calls: $(cat "$FAKE_LOG")"
+
+step "IDLE_WAIT: a request written while the probe waits is acted on in the same run (one docker exec)"
+rm -f "$T/bench/sites/.ext-request.json"
+( sleep 1; request install ) &
+rc=0; out="$(IDLE_WAIT=4 FAKE_HOT=1 run_agent 2>&1)" || rc=$?
+wait
+[ "$rc" = 0 ] && grep -q 'sideload.finish_install' "$FAKE_LOG" && ok "picked up within the wait, installed" || bad "rc=$rc calls: $(cat "$FAKE_LOG")"
+[ "$(grep -c '^exec 3f2a9c' "$FAKE_DOCKER_LOG")" = 1 ] && ok "one docker exec for the whole wait" || bad "docker: $(cat "$FAKE_DOCKER_LOG")"
+t0=$SECONDS; rc=0; out="$(IDLE_WAIT=2 run_agent 2>&1)" || rc=$?
+[ "$rc" = 0 ] && [ -z "$out" ] && [ $((SECONDS - t0)) -ge 2 ] && [ ! -s "$FAKE_LOG" ] && ok "no request: waits IDLE_WAIT seconds, exits 0 quietly, compose wrapper untouched" || bad "rc=$rc out=$out t=$((SECONDS - t0))"
 
 echo; echo "ext-agent: $pass passed, $fail failed"
 [ "$fail" = 0 ]

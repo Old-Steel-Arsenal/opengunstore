@@ -57,6 +57,8 @@ from ffl_core.reservations import (
     other_channel_reservation,
     uniform_free_serials,
 )
+from ffl_core.setup.preorder import AVAILABLE_FIELD as PREORDER_AVAILABLE_FIELD
+from ffl_core.setup.preorder import ETA_FIELD as PREORDER_ETA_FIELD
 from ffl_core.utils import set_file_privacy
 
 # All item_group values that classify an item as ammunition.
@@ -1310,10 +1312,15 @@ def pending_web_line_qty(item_code: str) -> int:
     # has_column: during a deploy the new code can run before migrate adds it.
     lane_filter = ("AND COALESCE(l.lane, '') NOT IN ('direct', 'fds')"
                    if frappe.db.has_column("Woo Online Order Line", "lane") else "")
+    # A pre-order line holds only what has arrived and been put by for it
+    # (``preorder_reserved``): until then it is waiting for goods, not holding any of ours —
+    # and the arrival allocator, not this count, decides which order the next unit goes to.
+    units = ("CASE WHEN l.lane = 'preorder' THEN COALESCE(l.preorder_reserved, 0) ELSE l.qty END"
+             if frappe.db.has_column("Woo Online Order Line", "preorder_reserved") else "l.qty")
 
     open_lines = frappe.db.sql(
         f"""
-        SELECT COALESCE(SUM(l.qty), 0) FROM `tabWoo Online Order Line` l
+        SELECT COALESCE(SUM({units}), 0) FROM `tabWoo Online Order Line` l
         INNER JOIN `tabWoo Online Order` o ON o.name = l.parent
         WHERE l.parenttype = 'Woo Online Order'
           AND l.parentfield = 'lines'
@@ -1517,6 +1524,105 @@ def local_stock_for_item(item_code: str, *, item_row=None, free=None) -> int:
             f"reporting 0 to WooCommerce."
         )
     return max(0, total - committed)
+
+
+# ---------------------------------------------------------------------------
+# Pre-order listing (counter rules: ffl_core.preorder; web orders: .preorder)
+# ---------------------------------------------------------------------------
+# With nothing of an Item on our own shelf and pre-order slots left on it
+# (``Item.ffl_preorder_available``), the storefront sells the slots: stock_quantity is
+# the slots left, ``_osa_preorder`` "1" and ``_osa_preorder_eta`` the expected date
+# (YYYY-MM-DD, or ""). Not WooCommerce's backorders. Anything else carries both keys
+# empty — "" is how a product that was on pre-order stops being one (WooCommerce meta
+# is only ever added or overwritten).
+PREORDER_META_KEYS = ("_osa_preorder", "_osa_preorder_eta")
+PREORDER_OFF = dict.fromkeys(PREORDER_META_KEYS, "")
+
+
+def preorder_item(item_code: str) -> frappe._dict | None:
+    """The Item's pre-order count and ETA with the flags that decide whether the
+    storefront may take a pre-order for it; None on a site without the pre-order fields
+    or for no such Item. Raw SQL, like :func:`unassigned_web_claims`: the wholesale
+    ``frappe.db.get_value`` mocks in this app's tests must not answer it."""
+    if not item_code or not frappe.db.has_column("Item", PREORDER_AVAILABLE_FIELD):
+        return None
+    rows = frappe.db.sql(
+        f"""SELECT name, `{PREORDER_AVAILABLE_FIELD}` AS slots, `{PREORDER_ETA_FIELD}` AS eta,
+            has_serial_no, is_firearm, item_group, uniform_sell_price, is_antique
+        FROM `tabItem` WHERE name = %s""", (item_code,), as_dict=True)
+    return rows[0] if rows else None
+
+
+def preorder_open(item_code: str, row) -> bool:
+    """Whether the storefront takes pre-orders for *item_code* once none is on our
+    shelf: slots left, an item-level product of the store's own — not a gun priced
+    serial by serial (no item-level product), not a serial-numbered non-gun (a web order
+    holds a unit by serial only for a gun), not an antique (the web order queue reads an
+    antique unit with no serial as one waiting on WooCommerce for it, a blocked row), not
+    one a distributor ships (:func:`dropship_source`; an unreadable answer counts as one: no
+    pre-order on a guess)."""
+    from frappe.utils import cint
+
+    if not row or cint(row.get("slots")) <= 0 or is_per_serial_priced(row) or cint(row.get("is_antique")):
+        return False
+    if cint(row.get("has_serial_no")) and not _is_firearm_row(row):
+        return False
+    try:
+        return dropship_source(item_code, lead=False) is None
+    except Exception:
+        frappe.log_error(title=f"Pre-order listing: drop-ship source unreadable ({item_code})",
+            message=frappe.get_traceback())
+        return False
+
+
+def _preorder_waiting(item_code: str) -> bool:
+    """An open pre-order of *item_code* on either channel (counter or web)."""
+    from ffl_core.preorder import has_open_preorders
+
+    if has_open_preorders(item_code):
+        return True
+    if not frappe.db.has_column("Woo Online Order Line", "preorder_slots"):
+        return False
+    return bool(frappe.db.sql(
+        """SELECT 1 FROM `tabWoo Online Order Line` l
+        INNER JOIN `tabWoo Online Order` o ON o.name = l.parent
+        WHERE l.parenttype = 'Woo Online Order' AND l.item_code = %s AND l.lane = 'preorder'
+          AND o.order_status = 'Pending Fulfillment' LIMIT 1""", (item_code,)))
+
+
+def preorder_stock(item_code: str, qty: int, *, always: bool = False) -> tuple[int, dict | None]:
+    """What the storefront is given for an item-level product whose own sellable
+    quantity is *qty* (:func:`stock_for_item`): ``(stock_quantity, pre-order meta)``.
+
+    Nothing to sell and pre-orders open (:func:`preorder_open`) → the slots left and the
+    pre-order meta. Otherwise *qty* and :data:`PREORDER_OFF` — or, unless *always*, no meta
+    at all (None) for an Item pre-orders have never touched (no slots, no ETA, no open
+    pre-order on either channel): a stock-only push for such an Item stays
+    ``{stock_quantity}`` alone. A full push asks *always*, so every listing carries the keys
+    and a product leaving pre-order is told so."""
+    from frappe.utils import cint, getdate
+
+    row = preorder_item(item_code)
+    if row is None:
+        return qty, (dict(PREORDER_OFF) if always else None)
+    if int(qty or 0) <= 0 and preorder_open(item_code, row):
+        return cint(row.slots), {"_osa_preorder": "1",
+            "_osa_preorder_eta": str(getdate(row.eta)) if row.eta else ""}
+    if always or cint(row.slots) > 0 or row.eta or _preorder_waiting(item_code):
+        return qty, dict(PREORDER_OFF)
+    return qty, None
+
+
+def stock_payload(item_code: str) -> dict:
+    """The stock-only update for an item-level product: ``{stock_quantity}``, plus
+    ``manage_stock`` and the pre-order meta for an Item pre-orders touch
+    (:func:`preorder_stock`). Shared by ``sync.push_stock`` and ``sync.push_stock_batch``."""
+    qty, meta = preorder_stock(item_code, stock_for_item(item_code))
+    payload = {"stock_quantity": qty}
+    if meta is not None:
+        payload["manage_stock"] = True
+        payload["meta_data"] = _meta_data(meta)
+    return payload
 
 
 def store_stock_for_item(item_code: str) -> dict | None:
@@ -1766,6 +1872,7 @@ def item_to_product_payload(
         )
 
     qty = stock_for_item(item_code)  # safe: raises already handled above
+    qty, preorder_meta = preorder_stock(item_code, qty, always=True)
     gallery, image = _publicize_listing_images(item, doctype="Item")
     image_srcs = _resolve_image_list(gallery, image)
 
@@ -1793,6 +1900,8 @@ def item_to_product_payload(
         # The store ships it (automatic sourcing sells its own stock): the drop-ship
         # shipping class comes off, and the store's own shipping applies.
         payload["shipping_class"] = ""
+    rows = [r for r in payload.get("meta_data") or [] if r.get("key") not in preorder_meta]
+    payload["meta_data"] = rows + _meta_data(preorder_meta)
     return _with_extension_meta(_with_map_meta(payload, item), "Item", item_code)
 
 

@@ -1,11 +1,14 @@
 [Unit]
-Description=POS extension agent (finishes sideloads: restart + install-app; docs/self-hosting.md#extensions)
+Description=POS extension agent (finishes sideloads: in-place reload + install-app; docs/self-hosting.md#extensions)
 # A user unit cannot depend on the system docker.service; up.sh fails fast if docker is down
-# and the timer simply tries again 20 s later.
+# and the timer simply tries again a second later.
 
 [Service]
 Type=oneshot
 # The checkout the CD rsyncs deploy/prod into (auto_deploy.sh runs from there too).
 WorkingDirectory=%h/gunstore-pos
 Environment=UP=%h/gunstore-pos/deploy/prod/up.sh
+# Each run waits up to 50 s for a request, checking once a second inside the backend container
+# (one docker exec per run), so a staged extension is picked up within about a second.
+Environment=IDLE_WAIT=50
 ExecStart=%h/gunstore-pos/deploy/prod/ext-agent.sh

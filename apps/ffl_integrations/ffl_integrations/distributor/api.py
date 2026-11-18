@@ -1052,13 +1052,27 @@ def leg_needs_full_payment(order_type: str | None) -> bool:
 
 
 def placement_payment_block(do) -> str | None:
-	"""The counter paid-gate, as the throwable message or None: a Sales-Invoice-
-	sourced Distributor Order that needs full payment (leg_needs_full_payment)
-	may only leave Draft once its invoice is settled, so a deposit drop-ship order
-	sits in the queue until the balance is recorded (Pending Order → Record
-	Payment). A web (Woo) order has its own paid gate at route time, so this is a
-	no-op for it."""
-	if do.get("source_doctype") != "Sales Invoice" or not do.get("source_name"):
+	"""The paid-gate in front of placement, as the throwable message or None.
+
+	Counter: a Sales-Invoice-sourced Distributor Order that needs full payment
+	(leg_needs_full_payment) may only leave Draft once its invoice is settled, so
+	a deposit drop-ship order sits in the queue until the balance is recorded
+	(Pending Order → Record Payment).
+
+	Web: the order was paid when it was routed, but it can be refunded or
+	cancelled in WooCommerce while its Draft order waits — and the distributor
+	has no cancel API. Every leg of a web order is placed only while the Woo order
+	is still in a paid status (router.is_paid_woo_status), whatever the leg type."""
+	source = do.get("source_doctype")
+	if source == "Woo Online Order" and do.get("source_name"):
+		from ffl_integrations.distributor import router as _router
+		woo_status = frappe.db.get_value("Woo Online Order", do.get("source_name"), "woo_status")
+		if _router.is_paid_woo_status(woo_status):
+			return None
+		return frappe._(
+			"Web order {0} is not paid on WooCommerce ({1}) — it cannot be placed "
+			"with the distributor.").format(do.get("source_name"), woo_status or frappe._("not found"))
+	if source != "Sales Invoice" or not do.get("source_name"):
 		return None
 	if not leg_needs_full_payment(do.get("order_type")):
 		return None
@@ -1078,6 +1092,7 @@ def confirm_order(do_name: str) -> dict:
 	Human confirmation (the v1 queue gate); the placement worker is
 	idempotent. A counter-sourced drop-ship DO must be fully paid first
 	(placement_payment_block); a ship-to-store leg may be placed on a deposit.
+	A web order's DO is refused once the Woo order is no longer paid.
 
 	Args:
 	    do_name: Distributor Order name.

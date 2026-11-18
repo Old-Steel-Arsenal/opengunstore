@@ -112,7 +112,8 @@ def counter_holds(item_code: str) -> dict:
 	webhook request and quietly pushing the storefront count too high.
 
 	Holds come from an open counter order: a submitted Sales Invoice with a
-	destination FFL whose serial is not yet disposed (Create Order), a Draft POS
+	destination FFL whose serial is not yet disposed (Create Order), a gun put by
+	for an open pre-order (kind ``preorder``, ffl_core/preorder.py), a Draft POS
 	Invoice firearm line (parked POS sale), a gun held for a CRM deal (kind
 	``crm_deal``, crm/holds.py), or a Draft Consignment Out line
 	("create only — dispose later"). One registry, so a hold added here is
@@ -168,6 +169,13 @@ def counter_holds(item_code: str) -> dict:
 				"tooltip": _("On Sales Invoice {0}").format(name),
 				"url": f"/app/sales-invoice/{name}",
 			}
+	# A gun put by for a counter pre-order (ffl_core.preorder): the customer's from arrival until
+	# the hand-over ticket submits. Ahead of the draft register holds: the hand-over ticket carrying
+	# it is that same order's.
+	from ffl_core.preorder import counter_hold_rows as preorder_hold_rows
+
+	for serial, hold in preorder_hold_rows(item_code).items():
+		out.setdefault(serial, hold)
 	for serial, pos in _draft_pos_serials(item_code):
 		out.setdefault(serial, {
 			"source": "pos", "ref": pos, "kind": "pos",
@@ -467,6 +475,53 @@ def channel_reserved_serials(item_code: str) -> dict[str, dict]:
 	return out
 
 
+def _from_channel_invoice(doc) -> bool:
+	"""A Delivery Note made from a channel's own invoice (the web order's stock leg)."""
+	from ffl_core.compliance.channel_invoice import CHANNEL_INVOICE_FIELDS
+
+	if doc.doctype != "Delivery Note":
+		return False
+	invoices = {r.get("against_sales_invoice") for r in doc.get("items") or []} - {None, ""}
+	fields = [f for f in CHANNEL_INVOICE_FIELDS if frappe.db.has_column("Sales Invoice", f)]
+	return bool(invoices and fields) and all(
+		any(frappe.db.get_value("Sales Invoice", name, fields) or ()) for name in invoices)
+
+
+def refuse_channel_reserved_serials(doc, method=None) -> None:
+	"""POS Invoice / Sales Invoice / Delivery Note validate: a gun a sales channel holds (a web order,
+	a GunBroker order, an auction with bids) is not sold on any other document. The counter's
+	scan-to-add already refuses it (:func:`serial_shelf_state`); this is the same answer for a ticket
+	built any other way. Returns, merges and the channels' own invoices pass — the web pickup ticket,
+	the web / GunBroker revenue invoice and the Delivery Note made from one; a channel's shipment
+	leaves on its disposition's Material Issue, which this never sees. No manager override: the
+	order is paid for, and :func:`channel_hold_reason` says how to let the gun go."""
+	from frappe.utils import escape_html
+
+	from ffl_core.compliance.channel_invoice import is_channel_mirrored_invoice
+	from ffl_core.serials import serials_for_lines
+
+	if doc.get("is_return") or doc.get("is_consolidated") or is_channel_mirrored_invoice(doc):
+		return
+	if frappe.flags.in_import or frappe.flags.in_patch or frappe.flags.in_migrate:
+		return
+	rows = doc.get("items") or []
+	selling: dict[str, list[str]] = {}
+	for row, serials in zip(rows, serials_for_lines(rows)):
+		if row.get("item_code") and serials:
+			selling.setdefault(row.item_code, []).extend(serials)
+	if not selling or _from_channel_invoice(doc):
+		return
+	# lazy: a hold committed between this read and the sale's commit is not seen (the gate takes no
+	# lock; the web placer skips a gun on an open ticket, a GunBroker sale cannot be refused anyway).
+	# Upgrade path: lock_item_reservations(item_code) here.
+	for item_code in sorted(selling):
+		held = channel_reserved_serials(item_code)
+		for serial in selling[item_code]:
+			if serial in held:
+				frappe.throw(escape_html(channel_hold_reason(serial, held[serial])),
+					title=_("Reserved by another order"))
+
+
 def shelf_state_columns() -> list[str]:
 	"""The Serial No columns :func:`serial_shelf_state` reads, as a SELECT list.
 
@@ -668,7 +723,7 @@ CHANNEL_COMMITMENTS_CHANGED_HOOK = "channel_commitments_changed"
 _CHANNEL_LABELS = {CHANNEL_WOO: "web", CHANNEL_GUNBROKER: "GunBroker"}
 
 
-def uniform_free_serials(item_code: str, *, ignore_hold_ref: str | None = None) -> list[str]:
+def uniform_free_serials(item_code: str, *, ignore_hold_ref=None) -> list[str]:
 	"""In-stock guns of a uniform-price firearm Item that NOTHING is holding —
 	the free pool before any channel's committed units come off it — oldest
 	first.
@@ -703,16 +758,18 @@ def uniform_free_serials(item_code: str, *, ignore_hold_ref: str | None = None) 
 	Args:
 	    item_code: The uniform-price firearm Item.
 	    ignore_hold_ref: A counter document (``POS Invoice`` / ``Sales Invoice``
-	        name) whose own hold must NOT count against the pool — the invoice
-	        being submitted, or edited, holds its own gun, and that gun is the one
-	        being sold, not a competitor for it.
+	        name), or several, whose own hold must NOT count against the pool — the
+	        invoice being submitted, or edited, holds its own gun, and that gun is the
+	        one being sold, not a competitor for it (a pre-order's hand-over ticket
+	        also names its pre-order).
 
 	Returns:
 	    The serial numbers, oldest first.
 	"""
 	held = counter_holds(item_code)
 	if ignore_hold_ref:
-		held = {s: h for s, h in held.items() if h.get("ref") != ignore_hold_ref}
+		refs = {ignore_hold_ref} if isinstance(ignore_hold_ref, str) else set(ignore_hold_ref)
+		held = {s: h for s, h in held.items() if h.get("ref") not in refs}
 	channel_held = channel_reserved_serials(item_code)
 	filters = {"item_code": item_code, "status": "Active",
 		"consigned_out": 0, "is_transfer_gun": 0}
@@ -783,7 +840,7 @@ def uniform_sellable_units(item_code: str) -> int:
 
 
 def channel_claim_block_reason(item_code: str, *, selling: int = 1,
-		ignore_hold_ref: str | None = None) -> str | None:
+		ignore_hold_ref=None) -> str | None:
 	"""Why this Item's last free unit(s) may not be sold over the counter — or None.
 
 	A uniform-price order on ANY channel owes a unit and reserves no `Serial No`

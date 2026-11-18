@@ -41,7 +41,6 @@ from frappe import _
 from frappe.model.meta import get_field_precision
 from frappe.utils import flt
 
-from ffl_core.setup.gunsmith import DEPOSIT_ITEM
 from ffl_core.setup.locked_lines import LOCKED_RATE_FIELD
 from ffl_core.setup.trade_in_credit import TRADE_IN_CREDIT_ITEM
 
@@ -68,13 +67,14 @@ def rate_precision(doctype: str) -> int:
 def expected_rate(doc, row) -> float | None:
 	"""The amount `row` is locked to, or None when the row is not a locked line
 	(or its source is unreadable — the submit gate decides then)."""
-	from ffl_core import gunsmith
+	from ffl_core import deposits
 	from ffl_core.compliance import trade_in_credit
 
 	if getattr(row, "item_code", None) == TRADE_IN_CREDIT_ITEM:
 		return trade_in_credit.expected_credit_rate(doc, row)
-	if getattr(row, "item_code", None) == DEPOSIT_ITEM:
-		return gunsmith.expected_deposit_rate(doc, row)
+	kind = deposits.kind_of(getattr(row, "item_code", None))
+	if kind:
+		return deposits.expected_rate(kind, doc, row)
 	return None
 
 
@@ -135,7 +135,7 @@ def refuse_header_discount(doc) -> None:
 	codes = locked_items()
 	if any(getattr(r, "item_code", None) in codes for r in (getattr(doc, "items", None) or [])):
 		frappe.throw(_(
-			"This sale has a trade-in credit or gunsmith deposit line, so it can't take an "
+			"This sale has a trade-in credit, gunsmith deposit or pre-order payment line, so it can't take an "
 			"invoice discount — typed, from a coupon or from a transaction pricing rule (it would "
 			"shrink the credit). Remove it and put the discount on the item line instead; a pricing "
 			"rule or coupon must exclude this sale's items."), title=_("Discount the item, not the invoice"))
@@ -170,10 +170,12 @@ def pin_locked_lines(doc, method: str | None = None) -> bool:
 			if credit_account and getattr(row, "income_account", None) != credit_account:
 				_set(row, "income_account", credit_account)
 				changed = True
-		elif getattr(row, "item_code", None) == DEPOSIT_ITEM:
-			# Held for the customer, never revenue: Customer Deposits, whatever the profile's Sales account.
-			from ffl_core.setup.customer_deposits import deposit_account
-			account = deposit_account(getattr(doc, "company", None) or "")
+		else:
+			# A deposit is held for the customer, never revenue: its kind's liability account (Customer
+			# Deposits, Pre-order Deposits), whatever the profile's Sales account.
+			from ffl_core import deposits
+			kind = deposits.kind_of(getattr(row, "item_code", None))
+			account = kind and deposits.account(kind, getattr(doc, "company", None) or "")
 			if account and getattr(row, "income_account", None) != account:
 				_set(row, "income_account", account)
 				changed = True

@@ -27,7 +27,7 @@ that the house has already agreed and skips the alert.
 
 **Permissions:** Distributor order/console roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1111`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1126`</sub>
 
 ## `catalog_by_upc`
 
@@ -83,6 +83,7 @@ Confirm a Draft Distributor Order: Draft → Queued + enqueue placement.
 Human confirmation (the v1 queue gate); the placement worker is
 idempotent. A counter-sourced drop-ship DO must be fully paid first
 (placement_payment_block); a ship-to-store leg may be placed on a deposit.
+A web order's DO is refused once the Woo order is no longer paid.
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
@@ -92,7 +93,7 @@ idempotent. A counter-sourced drop-ship DO must be fully paid first
 
 **Permissions:** Distributor order/console roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1075`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1089`</sub>
 
 ## `create_orders`
 
@@ -221,7 +222,7 @@ order type in one list (the Distributor Orders page's tracking tab).
 
 **Returns:** [{name, distributor, order_type, account, account_number, status, hold_status, web_ref, total_cost, placed_at, next_poll_at, receive_status, source_doctype, source_name, creation, last_poll_at, invoiced_freight, error}] — plus ``lines`` when asked.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1175`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1190`</sub>
 
 ## `quote`
 
@@ -351,4 +352,4 @@ The DO state machine still enforces transition legality.
 
 **Permissions:** Distributor order roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1152`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/api.py:1167`</sub>

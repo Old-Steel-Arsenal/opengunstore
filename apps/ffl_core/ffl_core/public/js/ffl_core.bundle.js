@@ -4617,7 +4617,7 @@ frappe.provide('frappe.ui.form');
 		// second full-width action competing with Complete Order.
 		const $row = $(`
 			<div class="ffl-4473-row" style="
-				display:flex; gap:8px; margin:8px 12px; align-items:stretch;
+				display:flex; gap:8px; margin:0 0 10px; align-items:stretch;
 			">
 				<div class="ffl-4473-btn" style="
 					flex:1 1 auto; padding:14px 16px; min-height:56px;
@@ -4640,6 +4640,12 @@ frappe.provide('frappe.ui.form');
 		const $submit = host.find('.submit-order-btn').first();
 		if ($submit.length) $submit.before($row);
 		else host.append($row);
+		// The row is one more block in ERPNext's payment column, which is exactly as tall as its
+		// card. The methods / numpad area above would not give way (a flex item's min-height is
+		// its content), so the row pushed Complete Order out through the bottom of the card. Let
+		// that area shrink instead. No side margins on the row: it lines up with the totals above
+		// and Complete Order below.
+		host.find('.payment-split-container').css({ 'min-height': 0, flex: '1 1 0' });
 
 		// The refresh button asks FastBound what it knows. In Paper 4473 Mode there
 		// is nothing on the other end, so drop it rather than offer a control that

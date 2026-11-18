@@ -577,7 +577,7 @@ class Exclusions(_Base):
 
 		trade_in_credit.ensure()
 		locked = [c for c in locked_items() if frappe.db.exists("Item", c)]
-		self.assertEqual(len(locked), 2, "the trade-in credit and deposit items exist")
+		self.assertEqual(locked, list(locked_items()), "the trade-in credit and every deposit item exist")
 		for code in locked + [plan.item]:
 			res = mb.price_line(doc, frappe._dict(item_code=code, qty=1, uom="Nos", stock_uom="Nos",
 				conversion_factor=1), self.cust)

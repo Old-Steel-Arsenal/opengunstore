@@ -113,6 +113,8 @@ def _refuse_unless_ready(order) -> None:
 			"{0} carries a WooCommerce refund. Ringing it at the counter would "
 			"collect the gross. Settle the refund first."
 		).format(order.name), title=_("Refunded Order"))
+	from ffl_woo_sync.woocommerce.preorder import refuse_unless_ready
+	refuse_unless_ready(order)
 	legs = _to_store_receive_map([order.name]).get(order.name)
 	if legs and not to_store_ready(legs):
 		frappe.throw(_(
@@ -472,6 +474,10 @@ def close_web_order_on_pos_submit(doc, method: str | None = None) -> None:
 		return  # already retired (a cancel, or a re-submit after amend)
 	mark_transferred(link)
 	_release_reserved_serials(link)
+	# A pre-order's money sat in Pre-order Deposits; the ticket took it into Woo
+	# Clearing again, so it leaves Pre-order Deposits on the same day.
+	from ffl_woo_sync.woocommerce.preorder import release_for_pickup
+	release_for_pickup(doc)
 
 
 def reopen_web_order_on_pos_cancel(doc, method: str | None = None) -> None:
@@ -491,3 +497,5 @@ def reopen_web_order_on_pos_cancel(doc, method: str | None = None) -> None:
 	if frappe.db.get_value("Woo Online Order", link, "order_status") != _TRANSFERRED:
 		return
 	unmark_transferred(link, status=_PENDING)
+	from ffl_woo_sync.woocommerce.preorder import restore_on_pickup_cancel
+	restore_on_pickup_cancel(doc)

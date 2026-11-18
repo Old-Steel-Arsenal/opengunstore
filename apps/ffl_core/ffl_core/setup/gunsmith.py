@@ -26,7 +26,7 @@ from __future__ import annotations
 import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
-from ffl_core.setup.customer_deposits import deposit_account
+from ffl_core.setup.customer_deposits import DEPOSIT_ACCOUNT_TITLE, deposit_account
 from ffl_core.setup.tax import SERVICE_GROUP
 from ffl_core.utils import commit
 
@@ -101,36 +101,37 @@ def _ensure_item(code: str, name: str, description: str) -> int:
 	return 1
 
 
-def _ensure_deposit_defaults() -> int:
-	"""Per company: income account = Customer Deposits, and the 0% template on the item itself.
-	Rows written directly (setup/item_defaults), never through Item.save."""
+def _ensure_deposit_defaults(item: str = DEPOSIT_ITEM, account_title: str = DEPOSIT_ACCOUNT_TITLE) -> int:
+	"""Per company: income account = the liability *account_title* (Customer Deposits), and the 0%
+	template on the item itself. Rows written directly (setup/item_defaults), never through Item.save.
+	Shared with setup/preorder for its own deposit item and account."""
 	from ffl_core.setup import customer_deposits
 	from ffl_core.setup.item_defaults import set_item_default_accounts
 	from ffl_core.setup.tax import _exempt_templates_by_company
 
-	if not frappe.db.exists("Item", DEPOSIT_ITEM):
+	if not frappe.db.exists("Item", item):
 		return 0
 
 	def accounts(company):
-		account = deposit_account(company)
+		account = deposit_account(company, account_title)
 		if not account:
-			customer_deposits._ensure_account(company)
-			account = deposit_account(company)
+			customer_deposits._ensure_account(company, account_title)
+			account = deposit_account(company, account_title)
 		return account and {"income_account": account}
 
-	changed = set_item_default_accounts(DEPOSIT_ITEM, accounts)
-	have = set(frappe.get_all("Item Tax", filters={"parent": DEPOSIT_ITEM, "parenttype": "Item"},
+	changed = set_item_default_accounts(item, accounts)
+	have = set(frappe.get_all("Item Tax", filters={"parent": item, "parenttype": "Item"},
 		pluck="item_tax_template"))
 	idx = len(have)
 	for template in _exempt_templates_by_company().values():
 		if template in have:
 			continue
 		idx += 1
-		frappe.get_doc({"doctype": "Item Tax", "name": frappe.generate_hash(length=10), "parent": DEPOSIT_ITEM,
+		frappe.get_doc({"doctype": "Item Tax", "name": frappe.generate_hash(length=10), "parent": item,
 			"parenttype": "Item", "parentfield": "taxes", "idx": idx, "item_tax_template": template}).db_insert()
 		changed += 1
 	if changed:
-		frappe.clear_document_cache("Item", DEPOSIT_ITEM)
+		frappe.clear_document_cache("Item", item)
 	return changed
 
 

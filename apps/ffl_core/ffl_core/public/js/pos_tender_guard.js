@@ -351,9 +351,10 @@
 	}
 
 	// The locked line items (mirror of setup/locked_lines.locked_items():
-	// setup/trade_in_credit TRADE_IN_CREDIT_ITEM, setup/gunsmith DEPOSIT_ITEM). Their
-	// lines come from their own flow only — the Trade-in dialog, a work order.
-	var LOCKED_ITEMS = ['TRADE-IN-CREDIT', 'GUNSMITH-DEPOSIT'];
+	// setup/trade_in_credit TRADE_IN_CREDIT_ITEM, setup/gunsmith DEPOSIT_ITEM,
+	// setup/preorder PREORDER_ITEM). Their lines come from their own flow only — the
+	// Trade-in dialog, a work order, a pre-order.
+	var LOCKED_ITEMS = ['TRADE-IN-CREDIT', 'GUNSMITH-DEPOSIT', 'PREORDER-DEPOSIT'];
 
 	// Is this cart item / row a locked line? By its code (a tile tap carries no
 	// lock yet) or by the lock it carries.

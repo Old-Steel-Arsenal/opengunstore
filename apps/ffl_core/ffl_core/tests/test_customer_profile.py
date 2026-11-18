@@ -153,6 +153,69 @@ class ProfileSetup(FrappeTestCase):
 		self.assertEqual(names[start:start + len(ours)], ours)
 
 
+class RetiredStatuses(FrappeTestCase):
+	"""Inactive and Prospect → Active (never Disabled); the old status stays on the timeline."""
+
+	def _retired(self, status: str, reason: str | None):
+		doc = _customer()
+		frappe.db.sql("update `tabCustomer` set customer_status=%s, status_reason=%s where name=%s",
+			(status, reason, doc.name))
+		return doc.name, frappe.db.get_value("Customer", doc.name, "modified")
+
+	def _comments(self, name: str) -> str:
+		return " ".join(frappe.get_all("Comment", filters={"reference_doctype": "Customer",
+			"reference_name": name, "comment_type": "Comment"}, pluck="content"))
+
+	def test_ensure_moves_each_retired_status_and_keeps_its_reason(self):
+		inactive, inactive_mod = self._retired("Inactive", "Moved to <b>Ohio</b>")
+		prospect, _mod = self._retired("Prospect", None)
+
+		self.assertEqual(profile_setup.ensure(), {"ok": 1})
+		row = frappe.db.get_value("Customer", inactive,
+			["customer_status", "status_reason", "disabled", "modified"], as_dict=True)
+		self.assertEqual((row.customer_status, row.status_reason, row.disabled), ("Active", None, 0))
+		self.assertEqual(row.modified, inactive_mod)
+		self.assertIn("Inactive", self._comments(inactive))
+		self.assertIn("Moved to &lt;b&gt;Ohio&lt;/b&gt;", self._comments(inactive))
+		row = frappe.db.get_value("Customer", prospect, ["customer_status", "disabled"], as_dict=True)
+		self.assertEqual((row.customer_status, row.disabled), ("Active", 0))
+		self.assertIn("Prospect", self._comments(prospect))
+
+		profile_setup.ensure()
+		self.assertEqual(self._comments(inactive).count("retired"), 1)
+
+
+class IdleErpnextControls(FrappeTestCase):
+	"""ERPNext Settings-tab controls a one-company store never uses show only once set."""
+
+	_FILTERS = {"doc_type": "Customer", "property": "depends_on"}
+
+	def _setters(self) -> dict:
+		return dict(frappe.get_all("Property Setter", filters={**self._FILTERS,
+			"field_name": ("in", list(profile_setup.IDLE_CONTROLS))},
+			fields=["field_name", "value"], as_list=True))
+
+	def test_each_present_control_shows_only_while_set_and_disabled_stays(self):
+		profile_setup.ensure()
+		meta = frappe.get_meta("Customer")
+		present = {f: s for f, s in profile_setup.IDLE_CONTROLS.items() if meta.has_field(f)}
+		self.assertIn("is_frozen", present)
+		self.assertEqual(self._setters(), {f: f"eval:doc.{s}" for f, s in present.items()})
+		for field in present:
+			self.assertEqual(meta.get_field(field).depends_on, f"eval:doc.{present[field]}")
+		self.assertFalse(meta.get_field("disabled").depends_on)
+
+	def test_a_stores_own_setter_is_left_alone(self):
+		profile_setup.ensure()
+		name = frappe.db.get_value("Property Setter", {**self._FILTERS, "field_name": "is_frozen"})
+		original = frappe.db.get_value("Property Setter", name, "value")
+		self.addCleanup(frappe.db.set_value, "Property Setter", name, "value", original)
+		frappe.db.set_value("Property Setter", name, "value", "eval:1")
+		profile_setup.ensure()
+		self.assertEqual(frappe.db.count("Property Setter", {**self._FILTERS, "field_name": "is_frozen"}), 1)
+		self.assertEqual(frappe.db.get_value("Property Setter", name, "value"), "eval:1")
+
+
 class DefaultCustomerType(FrappeTestCase):
 	"""A new customer is an Individual unless a path says otherwise."""
 
@@ -174,7 +237,7 @@ class DefaultCustomerType(FrappeTestCase):
 
 
 class StatusRules(FrappeTestCase):
-	"""Banned needs a reason; the other statuses do not."""
+	"""Active or Banned; Banned needs a reason."""
 
 	def test_banned_without_a_reason_is_refused(self):
 		doc = _customer()
@@ -193,9 +256,12 @@ class StatusRules(FrappeTestCase):
 		doc.save()
 		self.assertEqual(frappe.db.get_value("Customer", doc.name, "customer_status"), "Banned")
 
-	def test_inactive_needs_no_reason(self):
-		doc = _customer(customer_status="Inactive")
-		self.assertEqual(doc.customer_status, "Inactive")
+	def test_only_active_and_banned_are_offered(self):
+		self.assertEqual(frappe.get_meta("Customer").get_field("customer_status").options.split("\n"),
+			["Active", "Banned"])
+		for retired in profile_setup.RETIRED:
+			with self.subTest(status=retired), self.assertRaises(frappe.ValidationError):
+				_customer(customer_status=retired)
 
 	def test_a_blank_status_is_saved_as_active(self):
 		doc = _customer()

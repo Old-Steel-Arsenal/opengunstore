@@ -849,7 +849,8 @@ def queue_stage(row: dict) -> str:
 	if legs.get("releasable") or row.get("to_place"):
 		return STAGE_TO_PLACE
 	if legs.get("awaiting_goods") or legs.get("awaiting_arrival") or legs.get("awaiting_dropship") \
-			or row.get("awaiting_serial") or (row.get("to_store") and not row.get("arrived")):
+			or row.get("awaiting_serial") or row.get("awaiting_preorder") \
+			or (row.get("to_store") and not row.get("arrived")):
 		return STAGE_WAITING
 	if row.get("ship_pushed"):
 		return STAGE_DISPOSING
@@ -1539,15 +1540,17 @@ def record_payment(sales_invoice: str, mode_of_payment: str, amount=None,
 
 
 @frappe.whitelist()
-def release_order_legs(sales_invoice: str) -> dict:
-	"""Release the Draft distributor legs of a counter order.
+def release_order_legs(sales_invoice: str | None = None,
+		woo_online_order: str | None = None) -> dict:
+	"""Release the Draft distributor legs of a counter or web order.
 
 	P1 — one-click release: confirms every Draft
-	Distributor Order sourced from this invoice. The payment rule is the
+	Distributor Order sourced from the order. The payment rule is the
 	leg's (ffl_integrations.distributor.api.placement_payment_block, applied
-	by confirm_order): a drop-ship leg needs the invoice settled, a
-	ship-to-store leg may go out on a deposit or unpaid — a leg the rule
-	refuses lands in ``failed`` with its reason and stays Draft. Each leg is
+	by confirm_order): a counter drop-ship leg needs the invoice settled, a
+	ship-to-store leg may go out on a deposit or unpaid, and a web order's
+	legs need the Woo order still paid — a leg the rule refuses lands in
+	``failed`` with its reason and stays Draft. Each leg is
 	savepoint-isolated (a failing leg rolls back only its own half-writes,
 	never the siblings or the caller's transaction); confirm/place are
 	idempotent, so a failed leg can be retried. Local/firearm legs keep
@@ -1555,6 +1558,7 @@ def release_order_legs(sales_invoice: str) -> dict:
 
 	Args:
 	    sales_invoice: Counter-order Sales Invoice name.
+	    woo_online_order: Woo Online Order name, instead of sales_invoice.
 
 	Returns:
 	    {"released": [DO names], "failed": [{name, error}]}.
@@ -1565,13 +1569,21 @@ def release_order_legs(sales_invoice: str) -> dict:
 	frappe.only_for(_ROLES)
 	from ffl_integrations.distributor import api as dist_api
 
-	si = frappe.get_doc("Sales Invoice", sales_invoice)
-	if not _is_counter_order(si):
-		frappe.throw(_("{0} is not a counter order.").format(sales_invoice))
+	if bool(sales_invoice) == bool(woo_online_order):
+		frappe.throw(_("Name either a counter order or a web order."))
+	if woo_online_order:
+		if not frappe.db.exists("Woo Online Order", woo_online_order):
+			frappe.throw(_("Web order {0} not found.").format(woo_online_order))
+		source = ("Woo Online Order", woo_online_order)
+	else:
+		si = frappe.get_doc("Sales Invoice", sales_invoice)
+		if not _is_counter_order(si):
+			frappe.throw(_("{0} is not a counter order.").format(sales_invoice))
+		source = ("Sales Invoice", sales_invoice)
 	released, failed = [], []
 	draft_dos = frappe.get_all("Distributor Order",
-		filters={"source_doctype": "Sales Invoice",
-			"source_name": sales_invoice, "status": "Draft"},
+		filters={"source_doctype": source[0],
+			"source_name": source[1], "status": "Draft"},
 		pluck="name")
 	for idx, do_name in enumerate(draft_dos):
 		savepoint = f"release_leg_{idx}"

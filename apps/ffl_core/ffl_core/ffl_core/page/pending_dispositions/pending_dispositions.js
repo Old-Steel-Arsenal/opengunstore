@@ -162,11 +162,11 @@ const PD_STAGE_ORDER = ['blocked', 'to_place', 'waiting', 'ready_ship', 'ready_p
 // Which button is THE next action in each section; every other button on the
 // card drops to secondary styling.
 const PD_PRIMARY = {
-	blocked: '.btn-fulfill-stock, .btn-resource, .btn-pay, .btn-gb-paid',
+	blocked: '.btn-fulfill-stock, .btn-resource, .btn-pay, .btn-gb-paid, .btn-preorder-refund',
 	to_place: '.btn-release',
-	waiting: '',
+	waiting: '.btn-preorder-pay',
 	ready_ship: '.btn-ship, .btn-mark-shipped, .btn-dispose, .btn-gb-invoice',
-	ready_pickup: '.btn-pickup, .btn-mark-shipped, .btn-dispose',
+	ready_pickup: '.btn-pickup, .btn-preorder-pickup, .btn-mark-shipped, .btn-dispose',
 	disposing: '.btn-dispose',
 };
 
@@ -180,13 +180,15 @@ function pdMatchesFilter(row, filter) {
 	if (!filter || filter === 'all') return true;
 	if (filter === 'woo') return row.source === 'woo';
 	if (filter === 'gunbroker') return row.source === 'gunbroker';
-	return !row.source || row.source === 'sales_invoice';
+	// A pre-order (ffl_core.preorder) is a counter order too.
+	return !row.source || row.source === 'sales_invoice' || row.source === 'preorder';
 }
 
 function pdMatchesQuery(row, query) {
 	const q = String(query || '').trim().toLowerCase();
 	if (!q) return true;
-	const hay = [row.customer_name, row.customer, row.sales_invoice, row.woo_order_id, row.gb_order_id,
+	const hay = [row.customer_name, row.customer, row.sales_invoice, row.sales_order, row.woo_order_id, row.gb_order_id,
+		...(row.source === 'preorder' ? (row.items || []).flatMap((i) => (i ? [i.item_name || i.item_code, i.serial] : [])) : []),
 		...(row.pending_serials || []).map((p) => p && p.serial),
 		...(row.disposed_serials || []).map((p) => (p && p.serial) || p),
 		// The DO and the house's web reference are what a distributor quotes on the phone.
@@ -194,6 +196,15 @@ function pdMatchesQuery(row, query) {
 			.flatMap((d) => [d && d.name, d && d.web_ref])]
 		.filter(Boolean).join(' ').toLowerCase();
 	return hay.includes(q);
+}
+
+// A pre-order's gun button: 'change' once a gun is put by on every gun line, 'assign' while a gun line
+// has none (a gun on the shelf can be put by for it by hand), null with no gun line or once closed.
+function pdPreorderGunAction(row) {
+	if (!row || row.cancelled || row.handed_over) return null;
+	const guns = (row.items || []).filter((i) => i && i.kind === 'serial');
+	if (!guns.length) return null;
+	return guns.every((i) => i.serial) ? 'change' : 'assign';
 }
 
 function pdSections(rows, filter, query) {
@@ -205,6 +216,20 @@ function pdSections(rows, filter, query) {
 		rows: kept.filter((r) => (PD_STAGE_ORDER.includes(r.stage) ? r.stage : 'ready_ship') === stage)
 			.sort((a, b) => (b.age_days || 0) - (a.age_days || 0)),
 	})).filter((s) => s.rows.length);
+}
+
+// Place order: the Draft distributor orders it confirms. A counter row carries
+// them under `legs` (and the server's `releasable` verdict); a web row carries
+// them on the row and offers the button only while it sits in To place.
+function pdDraftLegs(row) {
+	const dos = (row && KIND[row.source] === 'woo') ? row.distributor_orders : ((row && row.legs) || {}).distributor_orders;
+	return (dos || []).filter((d) => d && d.status === 'Draft');
+}
+
+function pdCanPlace(row) {
+	if (!row) return false;
+	if (row.source === 'woo') return row.stage === 'to_place' && pdDraftLegs(row).length > 0;
+	return !KIND[row.source] && !!(row.legs && row.legs.releasable);
 }
 
 if (typeof frappe !== 'undefined') {
@@ -409,11 +434,13 @@ class PendingDispositionsApp {
 			.then((r) => (r && r.message) || []).catch(() => []);
 		const gb = frappe.call({ method: 'ffl_integrations.gunbroker.fulfillment.list_pending_gb_orders' })
 			.then((r) => (r && r.message) || []).catch(() => []);
-		Promise.all([si, web, gb]).then(([siRows, webRows, gbRows]) => {
+		const pre = frappe.call({ method: 'ffl_core.preorder.list_preorders' })
+			.then((r) => (r && r.message) || []).catch(() => []);
+		Promise.all([si, web, gb, pre]).then(([siRows, webRows, gbRows, preRows]) => {
 			// SI rows carry a date, channel rows a datetime — compare on the date
 			// part so same-day rows from the three sources order consistently.
 			const day = (r) => String(r.posting_date || '').slice(0, 10);
-			const rows = siRows.concat(webRows, gbRows)
+			const rows = siRows.concat(webRows, gbRows, preRows)
 				.sort((a, b) => day(a).localeCompare(day(b)));
 			this.rows = rows;
 			this._render(rows);
@@ -456,7 +483,7 @@ class PendingDispositionsApp {
 		}
 		const titles = {
 			blocked: __('Needs attention'), to_place: __('To place with distributor'),
-			waiting: __('Waiting on distributor'), ready_ship: __('Ready to ship'),
+			waiting: __('Awaiting arrival'), ready_ship: __('Ready to ship'),
 			ready_pickup: __('Ready for pickup'), disposing: __('Shipped — dispose'),
 		};
 		sections.forEach((sec) => {
@@ -482,6 +509,7 @@ class PendingDispositionsApp {
 	}
 
 	_renderCard(row, $list) {
+		if (row.source === 'preorder') return this._renderPreorderCard(row, $list);
 		{
 			// Three sources, one card. What each one may DO is a table rather
 			// than a chain of negated conditions, because the negations were
@@ -554,8 +582,10 @@ class PendingDispositionsApp {
 			const openUnits = can.assignSerial ? pdOpenUnits(row.assign_units) : 0;
 			// GunBroker: nothing disposes before Record Payment (the server's
 			// _require_ready_to_dispose refuses it, same stage as shipDisabled below).
+			// A web pre-order ships whole, once all of it has arrived (the server refuses earlier).
+			const awaitingPreorder = !isCounter && !!row.awaiting_preorder;
 			const disposeDisabled = row.ffl_expired || blockShipUnpaid || awaiting || openUnits > 0
-				|| (isGb && row.channel_stage === 'awaiting_payment');
+				|| awaitingPreorder || (isGb && row.channel_stage === 'awaiting_payment');
 			// A pickup with a gun on it is NOT "hand it over and Mark Picked Up":
 			// the server refuses Mark Picked Up for exactly those rows, and the
 			// gun leaves on its 4473 ticket. Its hint is the server's pickup_block
@@ -570,6 +600,7 @@ class PendingDispositionsApp {
 			const waitLanes = row.awaiting_serial_lanes || [];
 			const serialFromDistributor = awaiting && waitLanes.length > 0 && !waitLanes.includes('local');
 			const disposeHint = row.ffl_expired ? __('Verify the FFL first.')
+				: awaitingPreorder ? __('Pre-order — waiting for the goods to arrive.')
 				: (serialFromDistributor ? ((row.arrived && waitLanes.includes('to_store'))
 					? __('Arrived — assign the received serial on the WooCommerce order.')
 					: __('Serial comes with the distributor order when it arrives.'))
@@ -598,7 +629,7 @@ class PendingDispositionsApp {
 			const canShip = can.ship && row.shipstation_enabled && !row.ship_pushed && !noAddress
 				&& !needsGbInvoice;
 			// GunBroker: nothing ships before Record Payment.
-			const shipDisabled = row.ffl_expired || blockShipUnpaid || awaitingGoods
+			const shipDisabled = row.ffl_expired || blockShipUnpaid || awaitingGoods || awaitingPreorder
 				|| openUnits > 0 || serialErrors.length > 0
 				|| (isGb && row.channel_stage === 'awaiting_payment');
 			// Mark Shipped / Picked Up renders off the server-computed gate
@@ -738,7 +769,7 @@ class PendingDispositionsApp {
 			});
 			const legsStrip = legPills.length
 				? `<div class="serials" style="margin-top:4px">${legPills.join('')}</div>` : '';
-			const canRelease = !!(legs && legs.releasable);
+			const canRelease = pdCanPlace(row);
 			const extActions = this._extActions(row);
 			// Reference link: a Sales Invoice or the Woo Online Order.
 			const ref = isWeb
@@ -1082,6 +1113,165 @@ class PendingDispositionsApp {
 		}
 	}
 
+	// A pre-order (ffl_core.preorder): its money is taken, taken off at pickup and paid back at the
+	// register, so each action opens a draft ticket there.
+	_renderPreorderCard(row, $list) {
+		const esc = frappe.utils.escape_html;
+		const payBadge = row.cancelled ? `<span class="badge warn">${__('Cancelled')}</span>`
+			: row.handed_over ? `<span class="badge ok">${__('Picked up')}</span>`
+			: row.paid ? `<span class="badge ok">${__('Paid')}</span>`
+			: (row.held > 0.005 ? `<span class="badge amber">${__('Partly paid')}</span>`
+				: `<span class="badge amber">${__('Unpaid')}</span>`);
+		const items = (row.items || []).map((i) =>
+			`<span class="pill">${esc(String(i.qty))} × ${esc(i.item_name || i.item_code)}${i.serial ? ` · ${esc(i.serial)}` : ''}</span>`).join('');
+		const drafts = row.drafts || {};
+		const refunds = drafts.refunds || [];
+		// A gun line takes a free gun of the same model by hand: a first one, or another for the one put by.
+		const gunAction = pdPreorderGunAction(row);
+		const open = (inv, label) => `<button class="btn btn-default btn-sm btn-preorder-open" data-inv="${esc(inv)}">${label}</button>`;
+		let actions;
+		if (row.cancelled || row.handed_over) {
+			actions = refunds.length ? open(refunds[0], __('Open refund at register'))
+				: `<button class="btn btn-default btn-sm btn-preorder-refund">${__('Refund')}</button>`;
+		} else {
+			actions = (drafts.payment ? open(drafts.payment, __('Open payment at register'))
+				: drafts.pickup ? open(drafts.pickup, __('Open pickup at register'))
+				: row.ready ? `<button class="btn btn-default btn-sm btn-preorder-pickup">${__('Open pickup')}</button>`
+				: (row.paid ? '' : `<button class="btn btn-default btn-sm btn-preorder-pay">${__('Take payment')}</button>`))
+				+ (gunAction && !drafts.pickup ? `<button class="btn btn-default btn-sm btn-preorder-gun">${
+					gunAction === 'change' ? __('Change gun') : __('Assign gun')}</button>` : '')
+				+ `<button class="btn btn-default btn-sm btn-preorder-cancel" style="color:var(--red-600); border-color:var(--red-400)">${__('Cancel & refund')}</button>`;
+		}
+		const $card = $(`
+			<div class="card">
+				<div>
+					<div class="who">${esc(row.customer_name || row.customer)} <span class="badge ind">${__('Pre-order')}</span> ${payBadge}</div>
+					<div class="meta">
+						<a href="/app/sales-order/${encodeURIComponent(row.sales_order)}">${esc(row.sales_order)}</a>
+						· ${frappe.datetime.str_to_user(row.posting_date)}
+						<span>· ${__('{0}d', [row.age_days || 0])}</span>
+						${row.eta && !row.ready ? `· ${__('ETA')} ${frappe.datetime.str_to_user(row.eta)}` : ''}
+					</div>
+					<div class="meta">${__('Paid')} ${format_currency(row.held || 0)} / ${format_currency(row.grand_total || 0)}</div>
+					<div class="serials">${items}</div>
+				</div>
+				<div class="actions">
+					${actions}
+					${row.blocked_reason ? `<div class="meta">${esc(row.blocked_reason)}</div>` : ''}
+				</div>
+			</div>`).appendTo($list);
+		row._$card = $card;
+		$card.find('.btn-preorder-pay').on('click', () => this._preorderPay(row));
+		$card.find('.btn-preorder-open').on('click', (e) => this._toRegister($(e.currentTarget).data('inv')));
+		$card.find('.btn-preorder-pickup').on('click', () => this._preorderPickup(row));
+		$card.find('.btn-preorder-gun').on('click', () => this._preorderGun(row));
+		$card.find('.btn-preorder-cancel').on('click', () => this._preorderCancel(row));
+		$card.find('.btn-preorder-refund').on('click', () => this._preorderRefund(row));
+		this._markPrimary($card, row);
+		// An open ticket is the next step wherever the card sits.
+		if (drafts.payment || drafts.pickup || refunds.length) {
+			$card.find('.btn').removeClass('btn-primary').addClass('btn-default');
+			$card.find('.btn-preorder-open').first().removeClass('btn-default').addClass('btn-primary');
+		}
+	}
+
+	_preorderPickup(row) {
+		frappe.call({ method: 'ffl_core.preorder.open_pickup', args: { sales_order: row.sales_order }, freeze: true })
+			.then((r) => r && r.message && this._toRegister(r.message.pos_invoice));
+	}
+
+	// One Select per gun line: the gun put by, or another free one of the same model.
+	_preorderGun(row) {
+		frappe.call({ method: 'ffl_core.preorder.serial_choices', args: { sales_order: row.sales_order } }).then((r) => {
+			const lines = (r && r.message && r.message.lines) || [];
+			if (!lines.some((l) => (l.choices || []).length)) {
+				frappe.msgprint(__('No gun of this model is free on the shelf.'));
+				return;
+			}
+			const fields = lines.map((l, i) => ({
+				fieldname: `line_${i}`, fieldtype: 'Select', label: l.item_name || l.item_code,
+				options: [''].concat(l.choices || []).join('\n'), default: l.serial || '',
+			}));
+			const d = new frappe.ui.Dialog({
+				title: __('Gun · {0}', [row.sales_order]),
+				fields,
+				primary_action_label: __('Save'),
+				primary_action: (v) => {
+					const changes = lines.map((l, i) => ({ row: l.row, serial: v[`line_${i}`] }))
+						.filter((c, i) => c.serial && c.serial !== lines[i].serial);
+					const next = () => {
+						const c = changes.shift();
+						if (!c) { d.hide(); this._load(); return; }
+						frappe.call({ method: 'ffl_core.preorder.assign_serial', freeze: true,
+							args: { sales_order: row.sales_order, row: c.row, serial: c.serial } }).then(next);
+					};
+					next();
+				},
+			});
+			d.show();
+		});
+	}
+
+	_toRegister(posInvoice) {
+		frappe.route_options = { ffl_pos_invoice: posInvoice };
+		frappe.set_route('point-of-sale');
+	}
+
+	// One dialog: the amount the customer pays now, or the whole balance in one press.
+	_preorderPay(row) {
+		const open = (amount) => frappe.call({
+			method: 'ffl_core.preorder.open_payment',
+			args: { sales_order: row.sales_order, amount },
+			freeze: true,
+		}).then((r) => {
+			d.hide();
+			const m = r && r.message;
+			if (!m) return;
+			// A payment already open at another amount: say so, then open that one.
+			if (m.notice) frappe.show_alert({ message: m.notice, indicator: 'orange' }, 10);
+			this._toRegister(m.pos_invoice);
+		});
+		const d = new frappe.ui.Dialog({
+			title: __('Take payment · {0}', [row.sales_order]),
+			fields: [{ fieldname: 'amount', fieldtype: 'Currency', label: __('Amount'), reqd: 1 }],
+			primary_action_label: __('Take payment'),
+			primary_action: (v) => open(v.amount),
+			secondary_action_label: __('Pay in full ({0})', [format_currency(row.outstanding_amount)]),
+			secondary_action: () => open(row.outstanding_amount),
+		});
+		d.show();
+	}
+
+	_preorderCancel(row) {
+		const d = new frappe.ui.Dialog({
+			title: __('Cancel & refund · {0}', [row.sales_order]),
+			fields: [{ fieldname: 'reason', fieldtype: 'Small Text', label: __('Reason'), reqd: 1 }],
+			primary_action_label: row.held > 0.005
+				? __('Cancel and refund {0}', [format_currency(row.held)]) : __('Cancel pre-order'),
+			primary_action: (v) => frappe.call({
+				method: 'ffl_core.preorder.cancel_preorder',
+				args: { sales_order: row.sales_order, reason: v.reason },
+				freeze: true,
+			}).then((r) => {
+				d.hide();
+				const refunds = (r && r.message && r.message.refunds) || [];
+				if (refunds.length) this._toRegister(refunds[0].pos_invoice);
+				else this._load();
+			}),
+		});
+		d.get_primary_btn().removeClass('btn-primary').addClass('btn-danger');
+		d.show();
+	}
+
+	_preorderRefund(row) {
+		frappe.call({ method: 'ffl_core.preorder.refund_preorder', args: { sales_order: row.sales_order }, freeze: true })
+			.then((r) => {
+				const refunds = (r && r.message && r.message.refunds) || [];
+				if (refunds.length) this._toRegister(refunds[0].pos_invoice);
+				else this._load();
+			});
+	}
+
 	// What this row's source may DO (CAPABILITIES keyed off row.source), in
 	// one place so the card and the dialogs read the same table.
 	_can(row) {
@@ -1117,8 +1307,7 @@ class PendingDispositionsApp {
 	}
 
 	_releaseLegs(row) {
-		const n = ((row.legs || {}).distributor_orders || [])
-			.filter((d) => d.status === 'Draft').length;
+		const n = pdDraftLegs(row).length;
 		const owed = flt(row.outstanding_amount) > 0
 			? ' ' + __('This order still owes {0} — the goods come to the store and the balance is collected at pickup.', [format_currency(row.outstanding_amount)])
 			: '';
@@ -1130,7 +1319,7 @@ class PendingDispositionsApp {
 	_doReleaseLegs(row) {
 		frappe.call({
 			method: 'ffl_core.api.manual_order.release_order_legs',
-			args: { sales_invoice: row.sales_invoice },
+			args: row.source === 'woo' ? { woo_online_order: row.woo_online_order } : { sales_invoice: row.sales_invoice },
 			freeze: true, freeze_message: __('Placing the distributor order(s)…'),
 			callback: (r) => {
 				const m = r.message || {};
@@ -1933,6 +2122,6 @@ class PendingDispositionsApp {
 // Node unit tests import the pure kernel (no DOM / Frappe). Harmless in the
 // browser, where `module` is undefined.
 if (typeof module !== 'undefined' && module.exports) {
-	module.exports = { PD_STAGE_ORDER, PD_PRIMARY, pdExtPrimary, pdMatchesFilter, pdMatchesQuery, pdSections,
+	module.exports = { PD_STAGE_ORDER, PD_PRIMARY, pdPreorderGunAction, pdExtPrimary, pdMatchesFilter, pdMatchesQuery, pdSections, pdDraftLegs, pdCanPlace,
 		pdLocationFields, pdCollectLocations, pdEscape, pdAgreementKind, pdAgreementNames };
 }

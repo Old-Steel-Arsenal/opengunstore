@@ -66,6 +66,10 @@ _ITEM_WOO_FIELDS = (
 	"condition_grade",
 	"caliber",
 	"is_used",
+	# Pre-order slots and ETA (mapping.preorder_stock): staff opening or closing
+	# pre-orders on the Item change the stock and the Pre-order meta the store shows.
+	"ffl_preorder_available",
+	"ffl_preorder_eta",
 )
 
 # Item fields behind the retail-only MAP meta (mapping.map_meta): the MAP, the

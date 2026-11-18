@@ -107,3 +107,68 @@ class QueueLegsTest(MixedOrderFixtures):
 		result2 = manual_order.release_order_legs(si_name)
 		self.assertEqual(len(result2["released"]), 1)
 		self.assertEqual(result2["failed"], [])
+
+
+class WebReleaseTest(MixedOrderFixtures):
+	"""Place order on a web card: ``release_order_legs(woo_online_order=...)``
+	confirms that web order's Draft distributor orders through the same gate as
+	the counter, and nobody else's."""
+
+	def _web_draft(self, woo_status="processing"):
+		"""A web order and one Draft distributor order sourced from it — the
+		counter's own Draft order copied and re-pointed, so the lines and ship
+		context are real. Returns (woo order name, web DO name, counter DO name)."""
+		out = self._mixed_counter()
+		counter_do = frappe.get_all("Distributor Order", filters={
+			"source_doctype": "Sales Invoice", "source_name": out["sales_invoice"]},
+			pluck="name")[0]
+		order = frappe.get_doc({"doctype": "Woo Online Order",
+			"woo_order_id": f"WREL-{frappe.generate_hash(length=8)}",
+			"order_status": "Pending Fulfillment", "site": "retail",
+			"customer_name": "Web Buyer", "order_total": 80, "woo_status": woo_status})
+		order.flags.ignore_permissions = True
+		order.insert()
+		do = frappe.copy_doc(frappe.get_doc("Distributor Order", counter_do))
+		do.source_doctype, do.source_name = "Woo Online Order", order.name
+		do.insert(ignore_permissions=True)
+		return order.name, do.name, counter_do
+
+	def _status(self, do_name):
+		return frappe.db.get_value("Distributor Order", do_name, "status")
+
+	def test_paid_web_order_draft_is_queued_and_others_untouched(self):
+		other_order, other_do, _ = self._web_draft()
+		order, web_do, counter_do = self._web_draft()
+		result = manual_order.release_order_legs(woo_online_order=order)
+		self.assertEqual(result, {"released": [web_do], "failed": []})
+		self.assertEqual(self._status(web_do), "Queued")
+		# Another web order's Draft and the counter order's Draft stay where they were.
+		self.assertEqual(self._status(other_do), "Draft")
+		self.assertEqual(self._status(counter_do), "Draft")
+
+	def test_refunded_web_order_is_not_placed(self):
+		for woo_status in ("refunded", "cancelled", "on-hold"):
+			with self.subTest(woo_status=woo_status):
+				order, web_do, _ = self._web_draft(woo_status)
+				result = manual_order.release_order_legs(woo_online_order=order)
+				self.assertEqual(result["released"], [])
+				self.assertEqual([f["name"] for f in result["failed"]], [web_do])
+				self.assertIn("not paid on WooCommerce", result["failed"][0]["error"])
+				self.assertEqual(self._status(web_do), "Draft")
+
+	def test_counter_path_still_releases_only_its_own_legs(self):
+		order, web_do, counter_do = self._web_draft()
+		si_name = frappe.db.get_value("Distributor Order", counter_do, "source_name")
+		result = manual_order.release_order_legs(si_name)
+		self.assertEqual(result, {"released": [counter_do], "failed": []})
+		self.assertEqual(self._status(web_do), "Draft")
+
+	def test_exactly_one_order_must_be_named(self):
+		order, _, counter_do = self._web_draft()
+		si_name = frappe.db.get_value("Distributor Order", counter_do, "source_name")
+		with self.assertRaises(frappe.ValidationError):
+			manual_order.release_order_legs()
+		with self.assertRaises(frappe.ValidationError):
+			manual_order.release_order_legs(si_name, woo_online_order=order)
+		with self.assertRaises(frappe.ValidationError):
+			manual_order.release_order_legs(woo_online_order="WOO-DOES-NOT-EXIST")
