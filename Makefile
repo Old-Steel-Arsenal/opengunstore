@@ -164,9 +164,15 @@ TEST_PREFLIGHT = \
 	bench --site $(SITE_NAME) execute ffl_core.setup.test_bootstrap.run
 
 WORKERS ?= 6
+BASE_REF ?= origin/develop
+
+# Wraps a test run (scripts/ci/run_guard.py): fails it when HEAD or the tree moved mid-run, the stack does not mount this
+# checkout, no test ran, or a test file changed against BASE_REF was not executed; ends with one evidence line.
+RUN_GUARD = python3 scripts/ci/run_guard.py --project $(PROJECT) --container $(CONTAINER_PREFIX)-frappe --base $(BASE_REF) \
+	--apps "ffl_core ffl_integrations ffl_woo_sync" --probe '$(COMPOSE) exec -T frappe cat /workspace/frappe-bench/logs/.run-guard' --
 
 test: test-js ## All tests: JS unit tests, then the three apps split across WORKERS sites at once (default 6; make test WORKERS=n)
-	$(COMPOSE) exec -T frappe bash -lc '\
+	$(RUN_GUARD) $(COMPOSE) exec -T frappe bash -lc '\
 		set -o pipefail; \
 		cd /workspace/frappe-bench && \
 		$(TEST_PREFLIGHT) && \
@@ -181,7 +187,7 @@ test-js: ## JS unit tests (no site needed; the same command CI runs)
 	$(COMPOSE) exec -T frappe bash -lc 'cd /workspace && node --test "apps/ffl_core/ffl_core/tests/js/*.test.js"'
 
 test-serial: ## Same as test, one app after another on one site (slower; for tracing one failure in order)
-	$(COMPOSE) exec -T frappe bash -lc '\
+	$(RUN_GUARD) $(COMPOSE) exec -T frappe bash -lc '\
 		set -o pipefail; \
 		cd /workspace/frappe-bench && \
 		$(TEST_PREFLIGHT) && \
