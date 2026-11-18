@@ -205,8 +205,11 @@ def _free_gun(serial: str, item_code: str, holds: dict, excluded: set) -> bool:
 def local_stock(item_code: str, company: str) -> float:
 	"""Units of *item_code* the counter could sell now: a serial-numbered item's free guns on our own
 	shelves (``storage.on_our_shelf``, nothing holding them), anything else's shelf quantity less what
-	is put by for pre-orders."""
-	from ffl_core.reservations import counter_holds
+	is put by for pre-orders and what the other channels have sold and not shipped (a website order,
+	its pre-order units included: ``reservations.committed_units``, as :func:`allocate_item` takes
+	them off). A channel that cannot answer raises out of here: the callers are gates, and a
+	count that left a channel out would offer units that are not there."""
+	from ffl_core.reservations import committed_units, counter_holds
 	from ffl_core.storage import excluded_warehouses
 
 	kind = line_kind(item_code)
@@ -216,7 +219,8 @@ def local_stock(item_code: str, company: str) -> float:
 			pluck="name") if _free_gun(s, item_code, holds, excluded)))
 	if kind == NONE:
 		return 0.0
-	return max(0.0, shelf_qty(item_code, company) - reserved_qty(item_code))
+	others = sum(committed_units(item_code, exclude=CHANNEL).values())
+	return max(0.0, shelf_qty(item_code, company) - reserved_qty(item_code) - others)
 
 
 def take_slots(wanted: dict[str, int]) -> None:

@@ -18144,7 +18144,7 @@
           "ffl_core"
         ],
         "summary": "Put another gun of the same item by for one line of an open pre-order (the one it had goes",
-        "description": "back on the shelf), or a first one when none has arrived for it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:659`",
+        "description": "back on the shelf), or a first one when none has arrived for it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:663`",
         "operationId": "ffl_core.preorder.assign_serial",
         "responses": {
           "200": {
@@ -18202,7 +18202,7 @@
           "ffl_core"
         ],
         "summary": "Cancel a pre-order and pay back everything held for it: the order is cancelled, its",
-        "description": "quantities go back on the items, and each payment gets a draft return for its full amount, the\nway it was paid. The register checks the returns out.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:811`",
+        "description": "quantities go back on the items, and each payment gets a draft return for its full amount, the\nway it was paid. The register checks the returns out.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:815`",
         "operationId": "ffl_core.preorder.cancel_preorder",
         "responses": {
           "200": {
@@ -18255,7 +18255,7 @@
           "ffl_core"
         ],
         "summary": "Take a pre-order at the counter: a submitted Sales Order marked as one, its quantities taken",
-        "description": "from the items' pre-order counts. No invoice and no money yet — payments go through\n:func:`open_payment`. The customer collects here.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:311`",
+        "description": "from the items' pre-order counts. No invoice and no money yet — payments go through\n:func:`open_payment`. The customer collects here.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:315`",
         "operationId": "ffl_core.preorder.create_preorder",
         "responses": {
           "200": {
@@ -18302,7 +18302,7 @@
           "ffl_core"
         ],
         "summary": "Pre-orders for the Pending Order page: open ones waiting for their goods (stage ``waiting``) or",
-        "description": "with everything here (``ready_pickup``), and cancelled or handed-over ones still holding money to\npay back (``blocked``).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:883`",
+        "description": "with everything here (``ready_pickup``), and cancelled or handed-over ones still holding money to\npay back (``blocked``).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:887`",
         "operationId": "ffl_core.preorder.list_preorders",
         "responses": {
           "200": {
@@ -18350,7 +18350,7 @@
           "ffl_core"
         ],
         "summary": "A payment towards a pre-order, as a draft register invoice the register checks out (any",
-        "description": "tender). One open payment draft per order: a second call returns the one already open.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:408`",
+        "description": "tender). One open payment draft per order: a second call returns the one already open.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:412`",
         "operationId": "ffl_core.preorder.open_payment",
         "responses": {
           "200": {
@@ -18403,7 +18403,7 @@
           "ffl_core"
         ],
         "summary": "Hand an arrived pre-order over: the draft register ticket with its goods at the order's",
-        "description": "prices, taxed as any sale today, and what is held coming off them (:func:`fit_release`). The\nregister takes the rest and the gun's 4473; the ticket's submit hands the order over.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:705`",
+        "description": "prices, taxed as any sale today, and what is held coming off them (:func:`fit_release`). The\nregister takes the rest and the gun's 4473; the ticket's submit hands the order over.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:709`",
         "operationId": "ffl_core.preorder.open_pickup",
         "responses": {
           "200": {
@@ -18451,7 +18451,7 @@
           "ffl_core"
         ],
         "summary": "Whether Create Order may offer *item_code* as a pre-order line: pre-order slots left and none",
-        "description": "on our shelves.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:284`",
+        "description": "on our shelves.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:288`",
         "operationId": "ffl_core.preorder.preorder_options",
         "responses": {
           "200": {
@@ -18506,7 +18506,7 @@
           "ffl_core"
         ],
         "summary": "The draft returns paying back what a pre-order still holds once it is cancelled, or handed over",
-        "description": "for less than was paid — the open ones, or new ones for every payment not returned yet.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:843`",
+        "description": "for less than was paid — the open ones, or new ones for every payment not returned yet.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:847`",
         "operationId": "ffl_core.preorder.refund_preorder",
         "responses": {
           "200": {
@@ -18554,7 +18554,7 @@
           "ffl_core"
         ],
         "summary": "The guns a pre-order's lines could have: for each serial-numbered line, the one put by for it",
-        "description": "and every other of the same item on our shelf that nothing holds.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:629`",
+        "description": "and every other of the same item on our shelf that nothing holds.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/preorder.py:633`",
         "operationId": "ffl_core.preorder.serial_choices",
         "responses": {
           "200": {

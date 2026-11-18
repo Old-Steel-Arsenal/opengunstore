@@ -464,6 +464,37 @@ class ShipAndCancel(_Web):
 		self.assertEqual(getdate(kinds[1][1]), getdate(nowdate()), "refunded on the day it is booked")
 		self.assertEqual(mapping.stock_for_item(self.web_gun), 1, "the gun is ordinary stock again")
 
+	def test_counted_goods_put_by_for_the_website_are_off_the_counters_stock_too(self):
+		"""Three arrive: two put by for a website order, one for a counter pre-order. Nothing is
+		sellable, so the counter may still open a pre-order; a cancelled web order gives its two back."""
+		self._slots(self.acc, 5)
+		body = self._body([(self.acc, 2, 2000, 0)])
+		web = self._send(body)
+		counter.create_preorder({"customer": self.cust, "items": [{"item_code": self.acc, "qty": 1, "rate": 50}]})
+		self._arrive(self.acc, qty=3)
+		self.assertEqual(flt(self._row(web).lines[0].preorder_reserved), 2)
+		self.assertEqual(counter.reserved_qty(self.acc), 1)
+		self.assertEqual(counter.local_stock(self.acc, COMPANY), 0, "3 on the shelf less 1 (counter) and 2 (website)")
+		options = counter.preorder_options(self.acc)
+		self.assertEqual((options["in_stock"], options["can_preorder"]), (0, True))
+		self._send({**body, "status": "cancelled"})
+		self.assertEqual(counter.local_stock(self.acc, COMPANY), 2, "the website's two are free again")
+
+	def test_a_shipped_web_pre_order_leaves_the_counters_stock_where_it_was(self):
+		"""Shipping moves the two units from the website's put-by to the stock ledger: no unit is
+		counted twice and none comes back."""
+		self._slots(self.acc, 5)
+		body = self._body([(self.acc, 2, 2000, 0)])
+		order = self._send(body)
+		counter.create_preorder({"customer": self.cust, "items": [{"item_code": self.acc, "qty": 1, "rate": 50}]})
+		self._arrive(self.acc, qty=3)
+		self._sync(order)
+		self.assertEqual(counter.local_stock(self.acc, COMPANY), 0)
+		self._send({**body, "status": "completed"})
+		with patch("frappe.enqueue"):
+			self.assertEqual(revenue.create_sales_invoice_for_web_order(order)["status"], "created")
+		self.assertEqual(counter.local_stock(self.acc, COMPANY), 0)
+
 	def test_an_in_store_pickup_ticket_releases_what_is_held_and_its_cancel_holds_it_again(self):
 		"""The pickup ticket takes the WooCommerce tender into Woo Clearing again; what the order holds
 		moves out of Pre-order Deposits on the ticket's date, and back if the ticket is cancelled."""
