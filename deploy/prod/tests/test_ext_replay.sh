@@ -533,6 +533,7 @@ into_volume "$TMP/v1/ext_hello" "" ""
 mkdir -p "$TMP/probe"
 cat > "$TMP/probe/probe.py" <<'PY'
 import importlib
+import os
 try:
 	import ext_hello          # the master imports the extension at preload: the worst case for a fork
 except ImportError:
@@ -540,7 +541,10 @@ except ImportError:
 
 
 def app(environ, start_response):
-	out = []
+	# /worker also names the worker that answered. post_fork drops the master's ext_hello from
+	# every fork, so a worker runs the tree that was on the volume at ITS first request, and the
+	# kernel picks which worker accepts: one answer says nothing about the other worker.
+	out = [f"pid={os.getpid()}"] if environ.get("PATH_INFO") == "/worker" else []
 	for name in ("ext_hello", "ext_hello_dep"):
 		try:
 			out.append(f"{name}={importlib.import_module(name).__version__}")
@@ -558,18 +562,39 @@ docker run -d --name "$GC" $PLATFORM "${mounts[@]}" "$IMAGE" \
 	$BENCH/env/bin/gunicorn --config=/etc/gunicorn.conf.py --chdir=/tmp/probe --bind=127.0.0.1:8000 --workers=2 --threads=2 --worker-class=gthread --preload probe:app >/dev/null
 trap 'docker rm -f "$GC" >/dev/null 2>&1 || true; docker volume rm -f "$VOL" >/dev/null 2>&1 || true; rm -rf "$TMP"' EXIT
 get() { docker exec "$GC" curl -s --max-time 5 http://127.0.0.1:8000/ || true; }
+# workers_say : what EVERY worker of the master answers, one line per distinct answer. Requests
+# go out until each child of PID 1 has answered (which worker accepts is not ours to choose);
+# a worker that never did is reported, so it cannot pass for agreement.
+workers_say() {
+	docker exec -i "$GC" bash -s <<'SH' || true
+want="$(for p in /proc/[0-9]*; do [ "$(awk '{print $4}' "$p/stat" 2>/dev/null)" = 1 ] && echo "pid=${p#/proc/}"; done | sort)"
+seen=""
+for _ in $(seq 1 500); do
+	r="$(curl -s --max-time 5 http://127.0.0.1:8000/worker)" || true
+	[ -z "$r" ] || seen="$(printf '%s\n%s\n' "$seen" "$r" | sed '/^$/d' | sort -u)"
+	[ "$(cut -d' ' -f1 <<<"$seen" | sort -u)" = "$want" ] && break
+done
+cut -d' ' -f2- <<<"$seen" | sort -u
+[ "$(cut -d' ' -f1 <<<"$seen" | sort -u)" = "$want" ] || echo "NOT EVERY WORKER ANSWERED: workers $(echo $want), answered $(cut -d' ' -f1 <<<"$seen" | sort -u | xargs)"
+SH
+}
 for _ in $(seq 1 60); do [ -n "$(get)" ] && break; sleep 2; done
-[ "$(get)" = "ext_hello=0.1.0 ext_hello_dep=missing" ] && ok "started: 0.1.0, no deps" || bad "start: $(get) $(docker logs --tail 20 "$GC" 2>&1)"
+# Every worker, not one: a worker that has not served a request yet has not imported ext_hello,
+# and would import whatever is on the volume later — 0.2.0, without its wheel — before the reload.
+out="$(workers_say)"
+[ "$out" = "ext_hello=0.1.0 ext_hello_dep=missing" ] && ok "started: 0.1.0, no deps, in every worker" || bad "start: $out $(docker logs --tail 20 "$GC" 2>&1)"
 docker run --rm $PLATFORM -v "$VOL:$BENCH/apps-ext" --entrypoint bash "$IMAGE" -c "rm -rf $BENCH/apps-ext/ext_hello"
 into_volume "$TMP/up/ext_hello" "" ""
 manifest '"ext_hello": {"version": "0.2.0"}' > "$TMP/extensions.json"            # in place: the bind mount follows the inode
 docker exec "$GC" ext-replay.sh >/dev/null 2>&1 && ok "ext-replay.sh in the running container" || bad "replay failed: $(docker exec "$GC" ext-replay.sh 2>&1 | tail -3)"
-[ "$(get)" = "ext_hello=0.1.0 ext_hello_dep=missing" ] && ok "replay alone changes nothing the workers run (why the reload is needed)" || bad "before reload: $(get)"
+out="$(workers_say)"
+[ "$out" = "ext_hello=0.1.0 ext_hello_dep=missing" ] && ok "replay alone changes nothing the workers run (why the reload is needed)" || bad "before reload: $out"
 docker exec -d "$GC" sh -c 'n=0; f=0; while [ $n -lt 60 ]; do curl -s -f --max-time 5 -o /dev/null http://127.0.0.1:8000/ || f=$((f+1)); n=$((n+1)); sleep 0.1; done; echo "$n $f" > /tmp/load.out'
 sleep 1
 out="$(docker exec "$GC" ext-reload.sh 2>&1; echo "RELOAD_EXIT=$?")"
 grep -qx 'RELOAD_EXIT=0' <<<"$out" && ok "ext-reload.sh: $(grep reloaded <<<"$out")" || bad "reload: $out"
-[ "$(get)" = "ext_hello=0.2.0 ext_hello_dep=1.0.0" ] && ok "after the reload: 0.2.0 and its wheel, in a worker forked from the 0.1.0 master" || bad "after reload: $(get)"
+after="$(workers_say)"
+[ "$after" = "ext_hello=0.2.0 ext_hello_dep=1.0.0" ] && ok "after the reload: 0.2.0 and its wheel, in every worker forked from the 0.1.0 master" || bad "after reload: $after"
 for _ in $(seq 1 30); do docker exec "$GC" test -f /tmp/load.out && break; sleep 1; done
 load="$(docker exec "$GC" cat /tmp/load.out 2>/dev/null || echo '? ?')"
 [ "${load#* }" = 0 ] && ok "requests during the reload: ${load% *} sent, none failed" || bad "requests during the reload (sent failed): $load"
