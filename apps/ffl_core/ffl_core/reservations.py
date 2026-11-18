@@ -475,6 +475,53 @@ def channel_reserved_serials(item_code: str) -> dict[str, dict]:
 	return out
 
 
+def _from_channel_invoice(doc) -> bool:
+	"""A Delivery Note made from a channel's own invoice (the web order's stock leg)."""
+	from ffl_core.compliance.channel_invoice import CHANNEL_INVOICE_FIELDS
+
+	if doc.doctype != "Delivery Note":
+		return False
+	invoices = {r.get("against_sales_invoice") for r in doc.get("items") or []} - {None, ""}
+	fields = [f for f in CHANNEL_INVOICE_FIELDS if frappe.db.has_column("Sales Invoice", f)]
+	return bool(invoices and fields) and all(
+		any(frappe.db.get_value("Sales Invoice", name, fields) or ()) for name in invoices)
+
+
+def refuse_channel_reserved_serials(doc, method=None) -> None:
+	"""POS Invoice / Sales Invoice / Delivery Note validate: a gun a sales channel holds (a web order,
+	a GunBroker order, an auction with bids) is not sold on any other document. The counter's
+	scan-to-add already refuses it (:func:`serial_shelf_state`); this is the same answer for a ticket
+	built any other way. Returns, merges and the channels' own invoices pass — the web pickup ticket,
+	the web / GunBroker revenue invoice and the Delivery Note made from one; a channel's shipment
+	leaves on its disposition's Material Issue, which this never sees. No manager override: the
+	order is paid for, and :func:`channel_hold_reason` says how to let the gun go."""
+	from frappe.utils import escape_html
+
+	from ffl_core.compliance.channel_invoice import is_channel_mirrored_invoice
+	from ffl_core.serials import serials_for_lines
+
+	if doc.get("is_return") or doc.get("is_consolidated") or is_channel_mirrored_invoice(doc):
+		return
+	if frappe.flags.in_import or frappe.flags.in_patch or frappe.flags.in_migrate:
+		return
+	rows = doc.get("items") or []
+	selling: dict[str, list[str]] = {}
+	for row, serials in zip(rows, serials_for_lines(rows)):
+		if row.get("item_code") and serials:
+			selling.setdefault(row.item_code, []).extend(serials)
+	if not selling or _from_channel_invoice(doc):
+		return
+	# lazy: a hold committed between this read and the sale's commit is not seen (the gate takes no
+	# lock; the web placer skips a gun on an open ticket, a GunBroker sale cannot be refused anyway).
+	# Upgrade path: lock_item_reservations(item_code) here.
+	for item_code in sorted(selling):
+		held = channel_reserved_serials(item_code)
+		for serial in selling[item_code]:
+			if serial in held:
+				frappe.throw(escape_html(channel_hold_reason(serial, held[serial])),
+					title=_("Reserved by another order"))
+
+
 def shelf_state_columns() -> list[str]:
 	"""The Serial No columns :func:`serial_shelf_state` reads, as a SELECT list.
 
