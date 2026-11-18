@@ -115,27 +115,28 @@ if (typeof frappe !== 'undefined' && frappe.ui && frappe.ui.form) (function () {
 .ffl-io-chips input.io-value { border:0; background:transparent; box-shadow:none; height: 26px; padding: 0 2px; width:100%; }
 .ffl-io-remove { cursor:pointer; color: var(--text-muted); padding-top: 6px; text-align:center; }
 .ffl-io-add { margin: 2px 0 14px; }
-.ffl-io-grid { width:100%; border-collapse:separate; border-spacing:0; font-size: var(--text-sm); }
+.ffl-io-grid { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0; font-size: var(--text-sm); }
+.ffl-io-grid col.io-c-chk { width: 34px; } .ffl-io-grid col.io-c-n { width: 104px; } .ffl-io-grid col.io-c-slots { width: 150px; }
 .ffl-io-grid th { font-weight:500; color: var(--text-muted); text-align:left; padding: 4px 6px; white-space:nowrap; }
 .ffl-io-grid thead tr.io-fill th { padding-top:0; padding-bottom: 8px; border-bottom: 1px solid var(--border-color); }
 .ffl-io-grid td { padding: 3px 6px; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
-.ffl-io-grid td.io-chk, .ffl-io-grid th.io-chk { width: 28px; }
 .ffl-io-grid input.form-control { height: 28px; padding: 2px 8px; }
-.ffl-io-grid input.io-n { width: 92px; text-align:right; }
-.ffl-io-grid input.io-slots { width: 70px; display:inline-block; text-align:right; }
-.ffl-io-grid input.io-eta { max-width: 150px; display:inline-block; margin-left:6px; }
+.ffl-io-grid input.io-n { width: 100%; text-align:right; }
+.ffl-io-grid input.io-slots { width: 72px; text-align:right; }
+.ffl-io-grid input.io-eta { width: 100%; margin-top: 4px; }
 .ffl-io-grid tr.io-off td:not(.io-chk) { opacity: .45; }
 .ffl-io-grid tr.io-new td.io-label { font-style: italic; }
 .ffl-io-grid .io-bad { border: 1px solid var(--red-500) !important; background: var(--red-50, #fff5f5); }
 .ffl-io-grid .io-saved { box-shadow: 0 0 0 2px var(--green-200, #bbf7d0); transition: box-shadow .6s; }
 .ffl-io-grid .io-count { color: var(--text-color); }
-.ffl-io-grid td a { white-space: nowrap; }
+.ffl-io-grid td a { overflow-wrap: anywhere; }
 .ffl-io-variant { display:flex; gap:12px; align-items:baseline; padding: 10px var(--padding-md, 15px) 6px; font-size: var(--text-md); }
 .ffl-io-variant a { font-weight:600; }
 .ffl-io-variant span { color: var(--text-muted); }
 @media (max-width: 767px) { .ffl-io-option { grid-template-columns: 1fr 24px; } .ffl-io-option .io-name-wrap { grid-column: 1 / -1; } }
-/* Too narrow for the table (a phone, a tablet beside the sidebar): one card per row. */
-@container (max-width: 680px) {
+/* Too narrow for the table (a phone; a tablet with the form's side column): one card per row.
+   The table needs about 560px (fixed columns 34 + 104 + 104 + 150, the rest for name and SKU). */
+@container (max-width: 600px) {
 	.ffl-io-grid, .ffl-io-grid thead, .ffl-io-grid tbody { display:block; width:100%; }
 	.ffl-io-grid tr { display:grid; grid-template-columns: 28px repeat(3, minmax(0, 1fr)); column-gap: 8px; row-gap: 6px;
 		align-items:end; padding: 10px 0; border-bottom: 1px solid var(--border-color); }
@@ -155,7 +156,8 @@ if (typeof frappe !== 'undefined' && frappe.ui && frappe.ui.form) (function () {
 	.ffl-io-grid [data-label]::before { content: attr(data-label); display:block; font-size: var(--text-xs); color: var(--text-muted); margin-bottom: 2px; }
 	.ffl-io-grid input.io-n, .ffl-io-grid input.io-slots, .ffl-io-grid input.io-eta { width:100%; max-width:none; margin-left:0; }
 	.ffl-io-grid tr.io-fill .io-fill-slots-th input.io-slots { flex: 0 0 70px; width:70px; }
-	.ffl-io-grid tr.io-fill .io-fill-slots-th input.io-eta { flex: 1 1 120px; width:auto; }
+	.ffl-io-grid tr.io-fill .io-fill-slots-th input.io-eta { flex: 1 1 120px; width:auto; margin-top:0; }
+	.ffl-io-grid colgroup { display:none; }
 }
 `;
 
@@ -531,6 +533,7 @@ if (typeof frappe !== 'undefined' && frappe.ui && frappe.ui.form) (function () {
 			</tr>`;
 		}).join('');
 		$grid.html(`<table class="ffl-io-grid">
+			<colgroup><col class="io-c-chk"><col><col><col class="io-c-n"><col class="io-c-n">${slots ? '<col class="io-c-slots">' : ''}</colgroup>
 			<thead>
 				<tr><th class="io-chk"><input type="checkbox" class="io-all" ${on === rows.length ? 'checked' : ''} aria-label="${__('All')}"></th>
 					<th class="io-count">${__('{0} variants', [on])}</th><th>${__('SKU')}</th><th>${__('Price')}</th><th>${__('Cost')}</th>
