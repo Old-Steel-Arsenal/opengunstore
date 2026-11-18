@@ -18,44 +18,50 @@ import json
 import frappe
 from frappe import _
 
+from ffl_core import item_options
 from ffl_woo_sync.woocommerce import mapping
 from ffl_woo_sync.woocommerce.client import WooCommerceClient, assert_store_site
 from ffl_woo_sync.woocommerce.sync import _f
 
 
 def _template_attributes(template: str) -> list[str]:
-	if not frappe.db.exists("Item", template):
-		frappe.throw(_("Item {0} does not exist.").format(template))
-	if not frappe.db.get_value("Item", template, "has_variants"):
-		frappe.throw(_("Item {0} is not a template (Has Variants is off).").format(template))
-	names = frappe.get_all("Item Variant Attribute",
-		filters={"parenttype": "Item", "parent": template}, order_by="idx asc", pluck="attribute")
-	if not names:
-		frappe.throw(_("Template {0} has no variant attributes.").format(template))
-	return names
+	return item_options.template_options(template)
 
 
-def _check_variant(code: str, values, template: str, names: list[str]) -> list[str]:
-	"""Why *code* cannot become a variant of *template* with *values* (empty: it can)."""
-	row = frappe.db.get_value("Item", code, ["has_variants", "variant_of"], as_dict=True)
-	if not row:
-		return [f"{code}: no such Item"]
-	errors = []
-	if row.has_variants:
-		errors.append(f"{code}: is a template itself")
-	if row.variant_of and row.variant_of != template:
-		errors.append(f"{code}: already a variant of {row.variant_of}")
-	if not isinstance(values, dict) or set(values) != set(names):
-		return errors + [f"{code}: needs exactly these attributes: {', '.join(names)}"]
-	for name in names:
-		value = str(values[name] or "").strip()
-		numeric = frappe.db.get_value("Item Attribute", name, "numeric_values")
-		if not value:
-			errors.append(f"{code}: {name} is blank")
-		elif not numeric and not frappe.db.exists("Item Attribute Value",
-				{"parent": name, "attribute_value": value}):
-			errors.append(f"{code}: {value!r} is not a value of Item Attribute {name}")
-	return errors
+def simple_listings(template: str, item_codes) -> dict[str, str]:
+	"""{item_code: its simple product id} for Items of *item_codes* that hold a retail product id
+	and are not yet variants of *template* — the ids grouping clears."""
+	pid = _f("retail", "product_id")
+	cleared = {}
+	for code in item_codes:
+		row = frappe.db.get_value("Item", code, [pid, "variant_of"], as_dict=True) or {}
+		if row.get(pid) and row.get("variant_of") != template:
+			cleared[code] = str(row[pid])
+	return cleared
+
+
+def _clear(item_codes) -> None:
+	for code in item_codes:
+		frappe.db.set_value("Item", code, {_f("retail", "product_id"): None, _f("retail", "listed"): 0})
+
+
+def before_grouping(template: str, item_codes: list[str]) -> None:
+	"""``ffl_item_options_grouping``: Items about to become variants of *template* lose their
+	simple product's id (see :func:`make_variants`)."""
+	_clear(simple_listings(template, item_codes))
+
+
+def variants_added(template: str, item_codes: list[str]) -> None:
+	"""``ffl_item_options_added``: new variants of a template already on the store get their
+	variations (``tasks.push_new_variations_task``). A template not on the store: nothing — its
+	first push creates them all."""
+	row = frappe.db.get_value("Item", template, [_f("retail", "product_id"), _f("retail", "delisted")],
+		as_dict=True) or {}
+	if not row.get(_f("retail", "product_id")) or row.get(_f("retail", "delisted")):
+		return
+	frappe.enqueue("ffl_woo_sync.woocommerce.tasks.push_new_variations_task", queue="long",
+		enqueue_after_commit=True, job_id=f"woo-new-variations::{template}", deduplicate=True,
+		template=template)
 
 
 @frappe.whitelist()
@@ -91,53 +97,14 @@ def make_variants(template: str, variants, dry_run=1) -> dict:
 	dry_run = frappe.utils.cint(dry_run)
 	names = _template_attributes(template)
 	variants = variants or {}
-	errors = []
-
-	def combo(values) -> tuple:
-		return tuple(str((values or {}).get(n) or "").strip() for n in names)
-
-	# Existing variants only as something a requested Item may not repeat — their
-	# own gaps or clashes are not this call's to judge.
-	seen: dict[tuple, str] = {}
-	for code in mapping.template_variants(template):
-		if code in variants:
-			continue
-		key = combo({r.attribute: r.attribute_value for r in frappe.get_all(
-			"Item Variant Attribute", filters={"parenttype": "Item", "parent": code},
-			fields=["attribute", "attribute_value"])})
-		if all(key):
-			seen.setdefault(key, code)
-	for code, values in variants.items():
-		errors += _check_variant(code, values, template, names)
-		key = combo(values)
-		if key in seen:
-			errors.append(f"{code}: same attributes as {seen[key]}")
-		seen.setdefault(key, code)
-	pid, listed = _f("retail", "product_id"), _f("retail", "listed")
-	cleared = {}
-	for code in variants:
-		row = frappe.db.get_value("Item", code, [pid, "variant_of"], as_dict=True) or {}
-		if row.get(pid) and row.get("variant_of") != template:
-			cleared[code] = str(row[pid])
+	errors = item_options.grouping_errors(template, variants, names)
+	cleared = simple_listings(template, variants)
 	out = {"ok": not errors, "dry_run": bool(dry_run), "template": template,
 		"errors": errors, "variants": sorted(variants), "cleared": cleared}
 	if errors or dry_run:
 		return out
-	for code, values in variants.items():
-		frappe.db.delete("Item Variant Attribute", {"parenttype": "Item", "parent": code})
-		for idx, name in enumerate(names, start=1):
-			frappe.get_doc({
-				"doctype": "Item Variant Attribute", "parenttype": "Item", "parentfield": "attributes",
-				"parent": code, "idx": idx, "attribute": name,
-				"attribute_value": str(values[name]).strip(), "variant_of": template,
-			}).db_insert()
-		update = {"variant_of": template, "has_variants": 0}
-		if code in cleared:
-			update.update({pid: None, listed: 0})
-		frappe.db.set_value("Item", code, update)
-		frappe.get_doc("Item", code).add_comment("Comment",
-			_("Made a variant of {0} ({1}).").format(template,
-				", ".join(f"{n}: {values[n]}" for n in names)))
+	_clear(cleared)
+	item_options.attach_variants(template, variants, names)
 	return out
 
 

@@ -297,6 +297,8 @@ doc_events = {
 			"ffl_core.firearm.block_antique_on_booked_item",
 			# Refuse a sale price WooCommerce would silently drop (>= regular).
 			"ffl_core.firearm.validate_item_sale_price",
+			# A template's save never copies its fields onto its variants (item_options.py).
+			"ffl_core.item_options.keep_variants_own",
 		],
 		# Keep the POS-facing Item Price honest: create-if-missing from
 		# standard_rate; uniform-priced firearms hard-sync (card = picker price).
@@ -900,7 +902,9 @@ doctype_js = {
     # ffl_dealer_atf_form.js: the FFL dealer helpers both forms share; it goes first.
     "Supplier": ["public/js/ffl_dealer_atf_form.js", "public/js/supplier_form.js"],
     "Customer": ["public/js/ffl_dealer_atf_form.js", "public/js/customer_form.js"],
-    "Item": "public/js/item_form.js",
+    # item_options.js: "Comes in options" — the options editor, the combinations grid and the
+    # saved item's panel (item_options.py); its pure kernel is Node-tested.
+    "Item": ["public/js/item_options.js", "public/js/item_form.js"],
     "Serial No": "public/js/serial_no.js",
     "Purchase Receipt": "public/js/purchase_receipt.js",
     "POS Invoice": "public/js/pos_invoice.js",
