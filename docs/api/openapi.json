@@ -18730,6 +18730,74 @@
         }
       }
     },
+    "/api/method/ffl_core.reorder.save_rule": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Save or remove a purchase reorder rule for an item and warehouse.",
+        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/reorder.py:49`",
+        "operationId": "ffl_core.reorder.save_rule",
+        "responses": {
+          "200": {
+            "description": "None.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "item_code": {
+                    "type": "string",
+                    "description": "Saved item to configure."
+                  },
+                  "warehouse": {
+                    "type": "string",
+                    "description": "Receiving warehouse."
+                  },
+                  "level": {
+                    "type": "number",
+                    "description": "Nonnegative projected stock threshold, in stock units."
+                  },
+                  "quantity": {
+                    "type": "number",
+                    "description": "Reorder quantity in stock units, or zero to remove the rule."
+                  },
+                  "modified": {
+                    "type": "string",
+                    "description": "Item modification timestamp from the form."
+                  }
+                },
+                "required": [
+                  "item_code",
+                  "warehouse",
+                  "level",
+                  "quantity",
+                  "modified"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.reservations.reserved_counter_serials": {
       "post": {
         "tags": [

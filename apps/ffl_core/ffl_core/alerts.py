@@ -123,7 +123,8 @@ def alert_once(reference_type: str, reference_name: str, *, title: str, message:
 	return True
 
 
-def notify_staff(doctype: str, name: str, subject: str, roles, match: dict | None = None) -> None:
+def notify_staff(doctype: str, name: str, subject: str, roles, match: dict | None = None,
+	*, require_read: bool = False) -> None:
 	"""Put ``subject`` in the desk bell (Notification Log) of every enabled user
 	holding one of ``roles``, linked to the document.
 
@@ -141,12 +142,14 @@ def notify_staff(doctype: str, name: str, subject: str, roles, match: dict | Non
 	try:
 		frappe.enqueue("ffl_core.alerts.ring_staff", now=frappe.in_test,
 			enqueue_after_commit=not frappe.in_test,
-			doctype=doctype, name=name, subject=subject, roles=list(roles), match=match or {})
+			doctype=doctype, name=name, subject=subject, roles=list(roles), match=match or {},
+			require_read=require_read)
 	except Exception:
 		_log(f"Staff notification failed: {doctype} {name}", frappe.get_traceback())
 
 
-def ring_staff(doctype: str, name: str, subject: str, roles: list[str], match: dict | None = None) -> None:
+def ring_staff(doctype: str, name: str, subject: str, roles: list[str], match: dict | None = None,
+	require_read: bool = False) -> None:
 	"""The job behind :func:`notify_staff`."""
 	from frappe.desk.doctype.notification_log.notification_log import make_notification_logs
 	from frappe.utils import escape_html
@@ -156,6 +159,12 @@ def ring_staff(doctype: str, name: str, subject: str, roles: list[str], match: d
 	if not frappe.db.exists(doctype, {"name": name, **(match or {})}):
 		return
 	users = alert_assignees(roles)
+	if require_read and users:
+		from frappe.permissions import has_permission
+
+		doc = frappe.get_doc(doctype, name)
+		users = [user for user in users if has_permission(
+			doctype, "read", doc=doc, user=user, print_logs=False)]
 	if not users:
 		return
 	make_notification_logs(frappe._dict({
