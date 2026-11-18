@@ -1538,6 +1538,20 @@ def local_stock_for_item(item_code: str, *, item_row=None, free=None) -> int:
 PREORDER_META_KEYS = ("_osa_preorder", "_osa_preorder_eta")
 PREORDER_OFF = dict.fromkeys(PREORDER_META_KEYS, "")
 
+# A VARIATION never says "" for these: the storefront (ffl-core FulfillmentProfile::meta)
+# reads a blank variation value as "not set here" and takes the parent's — and the
+# variable parent says "1" while ANY of its variations is on pre-order
+# (template_preorder_meta). So a variation says off / no date with "0", which the reader
+# parses as not a pre-order / no arrival date, and never falls through to the parent.
+VARIATION_BLANK = "0"
+
+
+def variation_preorder_meta(meta: dict | None) -> dict | None:
+    """*meta* (pre-order keys) as a variation must carry it: blanks as :data:`VARIATION_BLANK`."""
+    if meta is None:
+        return None
+    return {k: (v if str(v or "").strip() else VARIATION_BLANK) for k, v in meta.items()}
+
 
 def preorder_item(item_code: str) -> frappe._dict | None:
     """The Item's pre-order count and ETA with the flags that decide whether the
@@ -1613,11 +1627,14 @@ def preorder_stock(item_code: str, qty: int, *, always: bool = False) -> tuple[i
     return qty, None
 
 
-def stock_payload(item_code: str) -> dict:
+def stock_payload(item_code: str, *, variation: bool = False) -> dict:
     """The stock-only update for an item-level product: ``{stock_quantity}``, plus
     ``manage_stock`` and the pre-order meta for an Item pre-orders touch
-    (:func:`preorder_stock`). Shared by ``sync.push_stock`` and ``sync.push_stock_batch``."""
+    (:func:`preorder_stock`). Shared by ``sync.push_stock`` and ``sync.push_stock_batch``.
+    ``variation``: the product is a variation (:func:`variation_preorder_meta`)."""
     qty, meta = preorder_stock(item_code, stock_for_item(item_code))
+    if variation:
+        meta = variation_preorder_meta(meta)
     payload = {"stock_quantity": qty}
     if meta is not None:
         payload["manage_stock"] = True
@@ -2047,6 +2064,10 @@ def variant_to_variation_payload(item_code: str, attr_ids: dict[str, int] | None
     attribute values."""
     full = item_to_product_payload(item_code, attr_ids=attr_ids, site=site)
     payload = {k: full[k] for k in _VARIATION_KEYS if k in full}
+    meta = full.get("meta_data") or []
+    preorder = variation_preorder_meta({m["key"]: m["value"] for m in meta
+        if m.get("key") in PREORDER_META_KEYS})
+    payload["meta_data"] = [m for m in meta if m.get("key") not in PREORDER_META_KEYS] + _meta_data(preorder)
     if full.get("images"):
         payload["image"] = full["images"][0]
     ids = attr_ids or {}

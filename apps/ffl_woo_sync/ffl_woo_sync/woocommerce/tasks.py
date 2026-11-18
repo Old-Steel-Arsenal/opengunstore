@@ -1144,6 +1144,8 @@ def _run_reconcile(site: str = "retail") -> None:
         # (mapping.preorder_stock) — the same pair every push writes.
         pos_stock, preorder_meta = mapping.preorder_stock(
             item.name, mapping.stock_for_item(item.name), always=True)
+        if item.get("variant_of"):  # what a variation carries (mapping.variation_preorder_meta)
+            preorder_meta = mapping.variation_preorder_meta(preorder_meta)
         pos_price = f"{price:.2f}"
         drifted = wc_stock != pos_stock or wc_price != pos_price
         if _meta_drifted(wc, preorder_meta):
