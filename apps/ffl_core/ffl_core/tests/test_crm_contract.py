@@ -71,6 +71,19 @@ class TestCRMContract(CRMTestCase):
 		self.assertTrue({"create_lead_from_incoming_email", "ffl_auto_lead"} <= _fields("Email Account"))
 		self.assertTrue({"dt", "view", "script", "enabled"} <= _fields("CRM Form Script"))
 
+	def test_lead_conversion_copies_the_memory_fields(self):
+		# The summary and the watermark reach the deal by CRM's own same-name field mapping (crm.memory).
+		from crm.fcrm.doctype.crm_lead.crm_lead import get_deal_fieldname
+
+		from ffl_core.crm import memory
+
+		lead, deal = frappe.get_meta("CRM Lead"), frappe.get_meta("CRM Deal")
+		for field in (memory.SUMMARY, memory.SEEN):
+			self.assertEqual(get_deal_fieldname(lead.get_field(field), deal), field)
+		self.assertIn("lead", _fields("CRM Deal"))
+		self.assertTrue({"converted", "status"} <= _fields("CRM Lead"))
+		self.assertIn("type", _fields("CRM Lead Status"))
+
 	def test_deal_fields_the_pos_link_reads_and_writes(self):
 		self.assertTrue({"erpnext_customer", "deal_value", "net_total", "status", "closed_date", "status_change_log",
 			"contacts", "deal_owner", "email", "mobile_no", "phone", "first_name", "last_name", "lead_name",

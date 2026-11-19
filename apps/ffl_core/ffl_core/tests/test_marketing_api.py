@@ -242,7 +242,8 @@ class TestWiring(MarketingTestCase):
 		self.assertIn("ffl_core.marketing.customers.customer_saved", events["Customer"]["on_update"])
 		self.assertIn("ffl_core.customer_profile.refuse_delete_with_family", events["Customer"]["on_trash"])
 		self.assertIn("ffl_core.marketing.customers.customer_trashed", events["Customer"]["on_trash"])
-		self.assertEqual(events["Customer"]["after_rename"], ["ffl_core.marketing.customers.customer_renamed"])
+		self.assertIn("ffl_core.marketing.customers.customer_renamed", events["Customer"]["after_rename"])
+		self.assertIn("ffl_core.crm.memory.customer_renamed", events["Customer"]["after_rename"])
 
 	def test_the_sidebar_link_follows_the_module_switch(self):
 		from ffl_core.setup import gunshop_sidebar

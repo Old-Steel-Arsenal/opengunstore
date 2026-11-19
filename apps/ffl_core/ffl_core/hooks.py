@@ -257,7 +257,10 @@ doc_events = {
 	# Dealer parties: keep license fields synced from the linked ATF FFL
 	# Record (and backfill the link from a bare matching ffl_number).
 	# A primary Contact's email / mobile edited on the Contact reach its customers' form fields.
-	"Contact": {"on_update": ["ffl_core.customer_contact.contact_changed", "ffl_core.marketing.customers.contact_saved"]},
+	"Contact": {"on_update": ["ffl_core.customer_contact.contact_changed", "ffl_core.marketing.customers.contact_saved"],
+		# Two contacts merged leave one customer memory; a deleted one leaves it (ffl_core.crm.memory).
+		"after_rename": "ffl_core.crm.memory.contact_renamed",
+		"on_trash": "ffl_core.crm.memory.contact_trashed"},
 	"Customer": {
 		# Individual name parts ↔ Customer Name (customer_name.py): compose
 		# before autoname takes the docname, and again on every save.
@@ -276,9 +279,12 @@ doc_events = {
 		# contact's customer link follows (marketing/customers.py).
 		"on_update": ["ffl_core.customer_profile.privatize_id_attachments", "ffl_core.marketing.customers.customer_saved"],
 		# A head of family with members cannot be deleted; a marketing contact's link to it is cleared.
-		"on_trash": ["ffl_core.customer_profile.refuse_delete_with_family", "ffl_core.marketing.customers.customer_trashed"],
-		# A merge or rename: marketing contacts are linked again (marketing/customers.py).
-		"after_rename": "ffl_core.marketing.customers.customer_renamed",
+		# Its customer memory loses the key (ffl_core.crm.memory).
+		"on_trash": ["ffl_core.customer_profile.refuse_delete_with_family", "ffl_core.marketing.customers.customer_trashed",
+			"ffl_core.crm.memory.customer_trashed"],
+		# A merge or rename: marketing contacts are linked again (marketing/customers.py); a merge leaves one
+		# customer memory (ffl_core.crm.memory).
+		"after_rename": ["ffl_core.marketing.customers.customer_renamed", "ffl_core.crm.memory.customer_renamed"],
 	},
 	"Supplier": {
 		"validate": "ffl_core.atf_link.sync_party_atf_link",
@@ -319,7 +325,9 @@ doc_events = {
 	# moved to Other mail, its assignments come off My tasks (ffl_core.crm.assignments; on_change also
 	# follows CRM's db_set conversion).
 	"CRM Lead": {"validate": "ffl_core.crm.mail.other_mail_on_validate",
-		"on_change": "ffl_core.crm.assignments.lead_changed"},
+		"on_change": "ffl_core.crm.assignments.lead_changed",
+		# Its customer memory loses the key (ffl_core.crm.memory).
+		"on_trash": "ffl_core.crm.memory.lead_trashed"},
 	"CRM Deal": {
 		# The quote's lines priced; the value pinned to the deal's invoices (ffl_core.crm.orders).
 		# A deal with no title gets the person's name (ffl_core.crm.deals).
@@ -327,10 +335,12 @@ doc_events = {
 			"ffl_core.crm.deals.name_deal"],
 		# A deal converted from a lead the team shares stays shared (ffl_core.crm.mail); a deal whose
 		# email is one customer's is linked to it once it commits (ffl_core.crm.customer).
-		"after_insert": ["ffl_core.crm.mail.share_converted_deal", "ffl_core.crm.customer.deal_inserted"],
+		# A deal converted from a lead takes the lead's customer memory (ffl_core.crm.memory).
+		"after_insert": ["ffl_core.crm.mail.share_converted_deal", "ffl_core.crm.customer.deal_inserted",
+			"ffl_core.crm.memory.deal_inserted"],
 		# A gun held for the deal (crm/holds.py): Won / Lost, a gun off its lines, deleted or renamed
-		# ends or follows its holds.
-		"on_update": "ffl_core.crm.holds.on_deal_update",
+		# ends or follows its holds. Won marks the customer memory for an update (ffl_core.crm.memory).
+		"on_update": ["ffl_core.crm.holds.on_deal_update", "ffl_core.crm.memory.deal_updated"],
 		# Won / Lost closes the deal's assignments, reopened back to an open status reopens them
 		# (ffl_core.crm.assignments).
 		"on_change": "ffl_core.crm.assignments.deal_changed",
@@ -1236,6 +1246,8 @@ scheduler_events = {
 		# (crm/holds.py). The counter already reads expiry as it happens.
 		"*/5 * * * *": [
 			"ffl_core.crm.holds.sweep",
+			# Customer memory: records quiet for three minutes since their last customer message (crm/memory.py).
+			"ffl_core.crm.memory.sweep",
 		],
 	},
 	"hourly": [
