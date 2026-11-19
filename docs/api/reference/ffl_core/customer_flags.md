@@ -59,7 +59,7 @@ customer, then the buyer's GunBroker id (field, then alias), then email.
 
 **Returns:** {"woo": [names], "gb": [names], "customers": [names]} — only the Banned ones.
 
-<sub>`apps/ffl_core/ffl_core/customer_flags.py:536`</sub>
+<sub>`apps/ffl_core/ffl_core/customer_flags.py:556`</sub>
 
 ## `find_customers_by_id_number`
 
@@ -100,7 +100,7 @@ pick; a number match is the person.
 
 **Returns:** [{"name", "customer_name", "customer_status", "address": primary address on one line, "by_id": matched on the ID number}], at most 5.
 
-<sub>`apps/ffl_core/ffl_core/customer_flags.py:425`</sub>
+<sub>`apps/ffl_core/ffl_core/customer_flags.py:445`</sub>
 
 ## `find_possible_duplicates`
 
@@ -121,7 +121,7 @@ Matches the customer's email (or an email merged into it), mobile number
 
 **Returns:** [{"name", "customer_name", "customer_status", "matched": ["email" | "phone" | "id_number"]}], at most 5.
 
-<sub>`apps/ffl_core/ffl_core/customer_flags.py:481`</sub>
+<sub>`apps/ffl_core/ffl_core/customer_flags.py:501`</sub>
 
 ## `get_customer_flags`
 
