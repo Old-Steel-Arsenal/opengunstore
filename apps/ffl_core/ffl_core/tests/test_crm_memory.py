@@ -124,6 +124,8 @@ class MemoryCase(CRMTestCase):
 		_settings(blocked_sender_domains="spam.test", own_domains="store.test",
 			team_addresses=[{"address": TEAM, "address_type": "Group"}], primary_team_address="")
 		frappe.db.delete("Error Log", {"method": ["like", "%memory%"]})
+		# No mail-screening extension, whatever this site has installed: mail from someone new is filed at once.
+		self.enterContext(hooks(mail.SCREEN_HOOK, []))
 
 	def tearDown(self):
 		super().tearDown()
