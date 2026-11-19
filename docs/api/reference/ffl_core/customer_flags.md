@@ -8,7 +8,7 @@ Source: `apps/ffl_core/ffl_core/customer_flags.py` · 7 endpoint(s)
 
 `POST /api/method/ffl_core.customer_flags.apply_id_scan`
 
-**Auth (derived from code):** Requires write permission on Customer (Frappe DocType permission check) (the gate is not the first statement — some code executes before this check).
+**Auth (derived from code):** Requires write permission on Customer (Frappe DocType permission check).
 
 Bring an existing customer's ID documents and address up to the ID just scanned.
 

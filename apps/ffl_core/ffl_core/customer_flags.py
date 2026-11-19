@@ -301,8 +301,8 @@ def apply_id_scan(customer: str, scan: dict | str, force: bool | int | str = Fal
 	    "Gender", "Address"; empty when the record already matched), or {"changed": [],
 	    "mismatch": {"on_id": str, "customer": str}} when the names differ and nothing was written.
 	"""
-	scan = frappe.parse_json(scan) or {}
 	frappe.has_permission("Customer", "write", doc=customer, throw=True)
+	scan = frappe.parse_json(scan) or {}
 	if not customer_id_numbers_enabled():
 		return {"changed": []}
 	doc = frappe.get_doc("Customer", customer)
