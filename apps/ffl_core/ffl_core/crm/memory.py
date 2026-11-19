@@ -20,14 +20,22 @@ watermark, blanks what must not leave (``crm.sensitive``), asks the providers, a
 under one lock. A due that moved while it ran is left for the next round, so no mail is lost.
 
 Rows staff wrote or changed are locked: the provider may neither change nor remove them.
+
+On the page: the Lead and Deal side panels' Memory card (:func:`card`), each customer row linking the
+message it came from (:func:`source`), and Edit / Update / Clear memory (:func:`save`, :func:`update_now`,
+:func:`clear`); the endpoints in ``api.crm`` check the caller's rights on the record. A draft reply is told
+the memory too (:func:`kept_rows`, :func:`draft_context`).
 """
 from __future__ import annotations
 
 import copy
+import json
 from datetime import timedelta
 
 import frappe
-from frappe.utils import add_to_date, cint, flt, get_datetime, getdate, now_datetime, nowdate
+from frappe import _
+from frappe.core.utils import html_to_plain_text
+from frappe.utils import add_to_date, cint, escape_html, flt, fmt_money, get_datetime, getdate, now_datetime, nowdate
 from frappe.utils.synchronization import filelock
 
 from ffl_core.crm import TITLE, installed, sensitive
@@ -69,6 +77,15 @@ TEXT_LIMIT, KEYWORDS_LIMIT, SUMMARY_LIMIT = 160, 80, 300
 # lock per person, once many runs wait on it.
 LOCK = "ffl_crm_memory"
 _SAVEPOINT = "ffl_crm_memory"
+# The Lead and Deal pages' Memory card (crm.setup puts the field on both, the section in their side panels).
+CARD_FIELD = "ffl_memory_card"
+SECTION = "ffl_memory_section"
+LABELS = {"want": "Wants", "budget": "Budget", "state": "State", "trade_in": "Trade-in", "preference": "Prefers",
+	"question": "Open"}
+LINES = ("want", "trade_in", "preference", "question")   # Edit memory: one row a line
+COMMUNICATION = "Communication"
+SOURCE_TEXT = 2000
+UPDATE_FAILED = "Couldn't update memory."
 
 
 def _log():
@@ -119,9 +136,49 @@ def _ask(ctx: dict) -> dict | None:
 	return None
 
 
-def refresh_layout() -> None:
-	"""Called by a provider when its ready answer changes. The Memory section of the Lead and Deal side
-	panels follows it; nothing is placed yet (the card comes with the page)."""
+def refresh_layout() -> bool:
+	"""Called by a provider when its ready answer changes, and at every migrate. The Memory section of the
+	Lead and Deal side panels is there while a provider has memory on or any memory or summary is kept (a
+	store that switched it off still sees and edits what it has), and gone otherwise. The section's field is
+	hidden until the page script finds the record has a card to show. Returns whether a layout changed."""
+	frappe.local.flags.pop(WANTED_FLAG, None)   # the provider's answer just changed
+	if not table_ready():
+		return False
+	on = memory_wanted() or _any_kept()
+	changed = False
+	for doctype in DOCTYPES:
+		changed = _place_section(f"{doctype}-Side Panel", on) or changed
+	return changed
+
+
+def _any_kept() -> bool:
+	return bool(frappe.db.exists(f"{MEMORY} Item", {"parenttype": MEMORY})
+		or any(frappe.db.has_column(dt, SUMMARY) and frappe.db.exists(dt, {SUMMARY: ["is", "set"]}) for dt in DOCTYPES))
+
+
+def _place_section(layout_name: str, on: bool) -> bool:
+	"""The Memory section in one side panel, below the contacts and the POS's own cards (crm.setup)."""
+	from ffl_core.crm.setup import CARD_SECTION, SELL_SECTION
+
+	if not frappe.db.exists("CRM Fields Layout", layout_name):
+		return False
+	layout = frappe.get_doc("CRM Fields Layout", layout_name)
+	sections = json.loads(layout.layout or "[]")
+	present = any(s.get("name") == SECTION for s in sections)
+	if on == present:
+		return False
+	if on:
+		above = ("contacts_section", CARD_SECTION, SELL_SECTION)
+		at = 0
+		while at < len(sections) and sections[at].get("name") in above:
+			at += 1
+		sections.insert(at, {"name": SECTION, "label": "Memory", "opened": True,
+			"columns": [{"name": "ffl_memory_column", "fields": [CARD_FIELD]}]})
+	else:
+		sections = [s for s in sections if s.get("name") != SECTION]
+	layout.layout = json.dumps(sections)
+	layout.save(ignore_permissions=True)   # the CRM page layout, written by migrate or the provider's settings
+	return True
 
 
 # ── marking due ──
@@ -445,9 +502,7 @@ def batch_for(doc, memory=None, trigger: str | None = None, everything: bool = F
 		entries.append({"ref": ref, "kind": "mail" if m.kind == "in" else "inquiry", "at": str(m.at),
 			"subject": _clip(m.subject, SUBJECT_LIMIT), "body": _clip(_body(m), NEW_BODY)})
 	rows = []
-	kept = [r for r in ((memory.get("items") if memory else None) or [])
-		if not any(sensitive.has_sensitive(v) or sensitive.has_price_or_stock(v) for v in (r.text, r.keywords))]
-	for i, row in enumerate(kept, 1):
+	for i, row in enumerate(_sendable(memory), 1):
 		ref = f"M{i}"
 		batch.rows[ref] = row.name
 		rows.append({"ref": ref, "kind": row.kind, "text": row.text or "", "keywords": row.keywords or "",
@@ -464,6 +519,12 @@ def batch_for(doc, memory=None, trigger: str | None = None, everything: bool = F
 		"bought": bought,
 	}
 	return batch
+
+
+def _sendable(memory) -> list:
+	"""The rows a provider may see: a locked row that breaks a rule written since it was kept is not."""
+	return [r for r in ((memory.get("items") if memory else None) or [])
+		if not any(sensitive.has_sensitive(v) or sensitive.has_price_or_stock(v) for v in (r.text, r.keywords))]
 
 
 # ── one memory per person ──
@@ -766,6 +827,236 @@ def apply(doc, memory, batch: Batch, answer: dict) -> dict:
 		elif frappe.db.has_column(doc.doctype, SUMMARY):
 			frappe.db.set_value(doc.doctype, doc.name, SUMMARY, summary, update_modified=False)
 	return counts
+
+
+# ── the card, staff edits and the draft (api.crm.memory_*, crm.reply_draft) ──
+# The caller's rights on the lead or deal are checked by the endpoint (crm.reply_draft.record); the memory
+# itself has no DocPerm for Sales Users and is read and written here without one.
+
+_MUTED = "color:#6b7280"
+
+
+def _said_on(day) -> str:
+	day = getdate(day)
+	text = f"{day:%b} {day.day}"
+	return text if day.year == getdate().year else f"{text}, {day.year}"
+
+
+def _source_record(row) -> tuple[str, str] | None:
+	"""The lead or deal the message a row came from is on, or None (no source, or it is gone)."""
+	if not row.source_name:
+		return None
+	if row.source_doctype == COMMUNICATION:
+		ref = frappe.db.get_value(COMMUNICATION, row.source_name, ["reference_doctype", "reference_name"])
+	elif row.source_doctype == NOTE:
+		ref = frappe.db.get_value(NOTE, row.source_name, ["reference_doctype", "reference_docname"])
+	else:
+		return None
+	if not ref or ref[0] not in DOCTYPES or not ref[1] or not frappe.db.exists(ref[0], ref[1]):
+		return None
+	return ref
+
+
+def _readable(row) -> bool:
+	"""Whether the caller may open the message *row* came from: they may read the record it is on (a
+	deal's lead may be one they were not shared)."""
+	ref = _source_record(row)
+	return bool(ref) and bool(frappe.has_permission(ref[0], "read", doc=ref[1]))
+
+
+def _said_html(doc, row) -> str:
+	"""`` · said Nov 12`` after a row the customer said, a link to that message when the caller may read it."""
+	if row.said != "Customer" or not row.noted_on:
+		return ""
+	label = escape_html(_("said {0}").format(_said_on(row.noted_on)))
+	if not _readable(row):
+		return f' · <span style="white-space:nowrap">{label}</span>'
+	data = " ".join(f'data-ffl-memory-{k}="{escape_html(v)}"' for k, v in (("source", row.name),
+		("doctype", doc.doctype), ("name", doc.name)))
+	return f' · <a href="#" {data} style="color:inherit;text-decoration:underline;white-space:nowrap">{label}</a>'
+
+
+def card_html(doc, summary: str, rows: list) -> str:
+	"""The Memory card: the record's summary, then one line per row under its kind's label. Every value
+	escaped (CRM renders it as HTML)."""
+	parts = []
+	if summary:
+		parts.append(f'<div style="margin-bottom:8px">{escape_html(summary)}</div>')
+	lines = []
+	for kind, label in LABELS.items():
+		for i, row in enumerate(r for r in rows if r.kind == kind):
+			text = fmt_money(row.amount, currency=frappe.db.get_default("currency")) if kind == "budget" else row.text
+			head = escape_html(_(label)) if i == 0 else ""
+			lines.append(f'<div style="{_MUTED}">{head}</div><div>{escape_html(text or "")}{_said_html(doc, row)}</div>')
+	if lines:
+		parts.append('<div style="display:grid;grid-template-columns:auto 1fr;column-gap:12px;row-gap:4px">'
+			+ "".join(lines) + "</div>")
+	if not parts:
+		parts.append(f'<div style="{_MUTED}">{escape_html(_("Nothing yet."))}</div>')
+	return "".join(parts)
+
+
+def card(doc) -> dict:
+	"""What the Lead or Deal page shows: ``{"html", "shown", "ready", "can_edit", "has_content", "values"}``.
+	*shown*: memory is on, or this record already has a memory or a summary (switched off, what is kept can
+	still be read, edited and cleared). *values*: what Edit memory starts from."""
+	ready = table_ready() and memory_wanted()
+	found = memory_for(doc) if table_ready() else None
+	rows = list(found.items) if found else []
+	summary = doc.get(SUMMARY) or ""
+	content = bool(rows or summary)
+	budget = next((r for r in rows if r.kind == "budget"), None)
+	state = next((r for r in rows if r.kind == "state"), None)
+	values = {kind: "\n".join(r.text or "" for r in rows if r.kind == kind) for kind in LINES}
+	values.update(budget=(flt(budget.amount) or None) if budget else None, state=state.text if state else "",
+		auto_update=cint(found.auto_update) if found else 1)
+	return {"html": card_html(doc, summary, rows), "shown": bool(ready or content), "ready": bool(ready),
+		"can_edit": bool(frappe.has_permission(doc.doctype, "write", doc=doc.name)), "has_content": content,
+		"values": values}
+
+
+def source(doc, row_name: str) -> dict:
+	"""The message a row of *doc*'s memory came from: ``{"subject", "at", "text"}`` (plain text, 2000
+	characters at most). Refused for a row that is not this memory's, and for a message on a record the
+	caller may not read."""
+	found = memory_for(doc) if table_ready() else None
+	row = found and next((r for r in found.items if r.name == row_name), None)
+	ref = row and _source_record(row)
+	if not ref:
+		frappe.throw(_("That message is no longer on file."), frappe.DoesNotExistError)
+	frappe.has_permission(ref[0], "read", doc=ref[1], throw=True)
+	if row.source_doctype == COMMUNICATION:
+		m = frappe.db.get_value(COMMUNICATION, row.source_name, ["subject", "content", "communication_date"], as_dict=True)
+		subject, html, at = m.subject, m.content, m.communication_date
+	else:
+		m = frappe.db.get_value(NOTE, row.source_name, ["title", "content", "creation"], as_dict=True)
+		subject, html, at = m.title, m.content, m.creation
+	return {"subject": subject or "", "at": frappe.utils.format_datetime(at) if at else "",
+		"text": html_to_plain_text(html or "").strip()[:SOURCE_TEXT]}
+
+
+def _staff_rows(values: dict) -> list[tuple]:
+	"""Edit memory's fields as (kind, text, keywords, amount), in the card's order; a bad value refused."""
+	from ffl_core.compliance.interstate_tax import normalize_us_state
+
+	rows = []
+	for kind in LABELS:
+		if kind == "budget":
+			amount = flt(values.get("budget"))
+			if amount:
+				if not 0 < amount <= sensitive.MAX_AMOUNT:
+					frappe.throw(_("Enter a budget above 0."), title=_("Not saved"))
+				rows.append(("budget", "", "", amount))
+		elif kind == "state":
+			raw = " ".join(str(values.get("state") or "").split())
+			if raw:
+				code = normalize_us_state(raw)
+				if not code:
+					frappe.throw(_("Enter a US state."), title=_("Not saved"))
+				rows.append(("state", code, "", None))
+		else:
+			seen = []
+			for line in str(values.get(kind) or "").splitlines():
+				text = " ".join(line.split())[:TEXT_LIMIT]
+				if text and _norm(text) not in seen:
+					seen.append(_norm(text))
+					rows.append((kind, text, text[:KEYWORDS_LIMIT] if kind == "want" else "", None))
+			if len(seen) > LIMITS[kind]:
+				frappe.throw(_("At most {0} lines in {1}.").format(LIMITS[kind], _(LABELS[kind])), title=_("Not saved"))
+	return rows
+
+
+def _same(row, kind: str, text: str, amount) -> bool:
+	if row.kind != kind:
+		return False
+	if kind == "budget":
+		return flt(row.amount) == flt(amount)
+	return _norm(row.text) == _norm(text)
+
+
+def save(doc, values) -> dict:
+	"""Edit memory: a line kept as it was keeps its row (who said it, its source, its lock); a new or
+	changed line is staff's (locked: the provider may not change or remove it); a line taken out goes.
+	Refused with ID numbers, eligibility details, prices or stock in any row. Returns the new card."""
+	values = frappe.parse_json(values) if isinstance(values, str) else values
+	if not isinstance(values, dict):
+		frappe.throw(_("Nothing to save."), title=_("Not saved"))
+	wanted = _staff_rows(values)
+	auto = cint(values["auto_update"]) if values.get("auto_update") is not None else None
+	with filelock(LOCK, timeout=10):
+		memory = memory_for(doc, write=True, create=bool(wanted) or auto == 0)
+		if memory:
+			left = list(memory.items)
+			ordered = []
+			for kind, text, keywords, amount in wanted:
+				same = next((r for r in left if _same(r, kind, text, amount)), None)
+				if same:
+					left.remove(same)
+					ordered.append(same)
+				else:
+					ordered.append({"kind": kind, "text": text, "keywords": keywords, "amount": amount, "said": "Staff",
+						"source_doctype": None, "source_name": None, "noted_on": nowdate(), "locked": 1})
+			memory.set("items", [])
+			for i, row in enumerate(ordered, 1):
+				memory.append("items", row).idx = i
+			if auto is not None:
+				memory.auto_update = auto
+			memory.flags.ignore_permissions = True
+			memory.save()   # validate refuses a row with ID numbers, eligibility details, prices or stock
+	return card(frappe.get_doc(doc.doctype, doc.name))
+
+
+def clear(doc) -> dict:
+	"""Clear memory: every row and this record's summary go. The watermark stays (old mail is not read
+	again) and so does Update with AI. Returns the new card."""
+	with filelock(LOCK, timeout=10):
+		memory = memory_for(doc, write=True, create=False)
+		if memory and memory.items:
+			memory.set("items", [])
+			memory.flags.ignore_permissions = True
+			memory.save()
+		if frappe.db.has_column(doc.doctype, SUMMARY):
+			frappe.db.set_value(doc.doctype, doc.name, SUMMARY, None, update_modified=False)
+	return card(frappe.get_doc(doc.doctype, doc.name))
+
+
+_NOT_UPDATED = {
+	"off": "Customer memory is off.",
+	"paused": "Update with AI is off for this customer.",
+	"nothing": "Nothing from the customer to read yet.",
+	"discarded": "The memory changed while it was updating. Try again.",
+}
+
+
+def update_now(doc) -> dict:
+	"""Update memory: read the record's latest customer messages now, without waiting for the sweep. A
+	provider's refusal is raised as it was given. Returns the new card."""
+	if not (table_ready() and memory_wanted()):
+		frappe.throw(_(_NOT_UPDATED["off"]), title=_("Not updated"))
+	try:
+		outcome = run(doc.doctype, doc.name, manual=True)
+	except frappe.ValidationError:
+		raise
+	except Exception:
+		frappe.throw(_(UPDATE_FAILED), title=_("Not updated"))   # run logged it
+	if outcome["outcome"] == "no_answer":
+		frappe.throw(outcome.get("refused") or _(UPDATE_FAILED), title=_("Not updated"))
+	if outcome["outcome"] in _NOT_UPDATED:
+		frappe.throw(_(_NOT_UPDATED[outcome["outcome"]]), title=_("Not updated"))
+	return card(frappe.get_doc(doc.doctype, doc.name))
+
+
+def kept_rows(doc) -> list:
+	"""The rows of *doc*'s person's memory a provider may see (none while the table is not there yet)."""
+	return _sendable(memory_for(doc)) if table_ready() else []
+
+
+def draft_context(doc, rows: list) -> dict:
+	"""``memory`` of a draft reply's context: the record's summary and *rows*, through
+	``crm.sensitive.redact`` as a memory update's messages are, without sources, keywords or locks."""
+	return {"summary": sensitive.redact(doc.get(SUMMARY) or ""),
+		"items": [{"kind": r.kind, "text": sensitive.redact(r.text or ""), "amount": flt(r.amount) or None,
+			"said": (r.said or "Customer").lower(), "on": str(r.noted_on) if r.noted_on else None} for r in rows]}
 
 
 # ── the backfill ──
