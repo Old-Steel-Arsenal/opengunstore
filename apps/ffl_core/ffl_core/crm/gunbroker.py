@@ -6,7 +6,13 @@ in the body between ``BEGIN MESSAGE FROM USER`` and ``END MESSAGE FROM USER`` ma
 vary), and GunBroker's own lines follow: ``Item Number`` (the listing, also on an order question)
 and, for a listing made from the POS, ``SKU``. In the HTML-to-text variant a label and its value are
 separated by `` | ``. Only the lines after the last end marker are read: the member's own words are
-not trusted to name a gun.
+not trusted to name a gun. A conversation's later mail may carry a MsgId of its own (a member asking
+again from the listing): it goes where that member's open conversation is (``crm.mail``).
+
+GunBroker's own notices (a listing sold, an auction won, an FFL transfer) come from GunBroker with
+the other party in Reply-To, and Frappe files a received mail under its Reply-To address: the mail
+reads as that person writing. :func:`notice` tells them apart by subject, or by GunBroker's name over
+an address that is not GunBroker's. "won" names a seller the store bought from: :data:`SELLER_CATEGORY`.
 """
 from __future__ import annotations
 
@@ -23,6 +29,35 @@ _MSGID = re.compile(r"MsgId:\s*([\w-]{4,64})")
 _END = re.compile(r"-+\s*END MESSAGE FROM USER\s*-+", re.I)
 _LISTING = re.compile(r"Item Number[ \t:|]*(\d+)", re.I)
 _SKU = re.compile(r"\bSKU[ \t:|]*([^\n|]+)", re.I)
+DOMAIN = "gunbroker.com"
+SELLER_CATEGORY = "Vendor"   # the mail category of a seller the store won an item from
+# Matched at the start of the subject: "Re: ..." is a person answering one.
+# lazy: GunBroker's subjects as they read in 2026; upgrade path: a subject list in Lead Mail Settings.
+_NOTICES = (
+	("sold", re.compile(r"Congratulations! Your item has sold\b", re.I)),   # Reply-To: the buyer
+	("won", re.compile(r"Congratulations! You won this item\b", re.I)),     # Reply-To: the seller
+	("transfer", re.compile(r"(?:New Inbound FFL Transfer|FFL Transfer Documents Ready|FFL Transfer Complete)\b", re.I)),
+)
+WON_LIKE = "Congratulations!%won this item%"
+
+
+def msgid(subject: str | None) -> str | None:
+	found = _MSGID.search(subject or "")
+	return found.group(1) if found else None
+
+
+def notice(email: str, sender_name: str | None, subject: str | None) -> str | None:
+	"""What GunBroker notice this received mail is ("sold", "won", "transfer", or "notice" when only
+	GunBroker's name tells), or None for a person's mail. GunBroker's own address is never one here:
+	its mail goes by the category rules, and its member questions by :func:`conversation`."""
+	domain = email.rsplit("@", 1)[-1].lower()
+	subject = " ".join((subject or "").split())
+	if domain == DOMAIN or domain.endswith("." + DOMAIN) or _MSGID.search(subject):
+		return None
+	for kind, pattern in _NOTICES:
+		if pattern.match(subject):
+			return kind
+	return "notice" if (sender_name or "").strip().lower().startswith("gunbroker") else None
 
 
 def conversation(email: str, subject: str | None, content: str | None) -> dict | None:

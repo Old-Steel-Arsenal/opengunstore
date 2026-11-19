@@ -35,7 +35,16 @@ GunBroker questions: team mail from GunBroker's member-to-member address with a 
 one conversation per MsgId (``crm.gunbroker``) when its listing is a gun of this store: a lead named after
 the member with source GunBroker and that gun, every later mail of it on that lead (on its deal once
 converted). The rule comes before the category rules, so these are not other mail; mail from that address
-without a MsgId, or about a listing that is not ours (the store buys there too), is.
+without a MsgId, or about a listing that is not ours (the store buys there too), is. A member asking again
+(a new MsgId) while a conversation of theirs is open goes on that one (:func:`_member_place`).
+
+GunBroker notices (a listing sold, an item won, an FFL transfer: ``gunbroker.notice``) carry the other
+party in Reply-To, which Frappe files them under. Team mail of that kind is kept under no one, with an
+Info Comment; direct mail of that kind is skipped. That person's own mail is then judged as anyone's;
+a seller the store won from (a "won" notice) is Vendor other mail. An Other mail lead that only such
+notices made, before they were told apart, does not keep its sender's later mail as other mail
+(:func:`_notice_made`): it is filed again as that mail is judged. :func:`repair_gunbroker_mail` (by hand)
+files the ones already holding such mail, and merges a member's repeat conversation leads.
 
 Other mail: team mail that is not a customer inquiry is kept, not dropped. Each sender has one CRM Lead
 with the status ``Other mail`` and a category (``ffl_mail_category``: a category rule's, else what made
@@ -124,7 +133,7 @@ from frappe.utils.synchronization import filelock
 
 from ffl_core.crm import TITLE, gunbroker, installed, team
 from ffl_core.crm.deal import add_product_row
-from ffl_core.crm.deals import DEAL, _split_name, open_deal_for
+from ffl_core.crm.deals import DEAL, _split_name, is_closed, open_deal_for
 from ffl_core.utils import commit
 
 SETTINGS = team.SETTINGS
@@ -142,6 +151,9 @@ SCREEN_HOOK = "gunshop_crm_mail_screen"
 SCREEN_BODY_LIMIT = 4000
 NOT_A_CUSTOMER = "Not a customer inquiry"   # the Info Comment on a mail the screening judged
 OTHER_MAIL = "Other mail"                     # the CRM Lead Status of a sender who is not a customer
+GB_NOTICE = "GunBroker notice"                # the Info Comment on a GunBroker notice kept under no one
+GB_MEMBER = "GunBroker member"                # a GunBroker conversation's lead when the member has no name
+REFILED = "Filed again: its earlier mail was only GunBroker notices with this address in Reply-To."
 CATEGORY = "CRM Mail Category"
 CATEGORY_FIELD = "ffl_mail_category"
 SPAM = "spam"                                 # the provider's category: such mail from the spam folder is dropped
@@ -357,8 +369,11 @@ def decide(doc) -> tuple | None:
 	gb = row and gunbroker.conversation(email, doc.get("subject"), _body_of(doc))
 	# Ours when the conversation has its lead, or the listing is a gun of this store: the store also
 	# buys on GunBroker, and a seller's answer to its own question is other mail.
-	if gb and (frappe.db.exists(LEAD, {gunbroker.MSGID_FIELD: gb["msgid"]}) or (gunbroker.gun(gb) or (None,))[0]):
+	if gb and (_gunbroker_place(gb["msgid"]) or (gunbroker.gun(gb) or (None,))[0]):
 		return ("gunbroker", gb, row)
+	notice = gunbroker.notice(email, doc.get("sender_full_name"), doc.get("subject"))
+	if notice:
+		return ("notice", notice, row) if row else (SKIP, "GunBroker notice")
 	contact = _customer_contact(email)
 	if contact:
 		return ("deal", contact, None if row else _mailbox_user(account), row)
@@ -368,10 +383,64 @@ def decide(doc) -> tuple | None:
 			return ("other", category, row)
 	elif _unwanted_category(email):
 		return (SKIP, "blocked sender")
-	lead = frappe.db.get_value(LEAD, {"email": email}, "name")
+	lead = _sender_lead(email)
+	if not lead and row and _gunbroker_seller(email):
+		return ("other", gunbroker.SELLER_CATEGORY, row)
 	if lead or row:
 		return ("lead", lead, row)
 	return (SKIP, "direct mail from someone new")
+
+
+def _sender_lead(email: str, but: str | None = None) -> str | None:
+	"""The sender's CRM Lead, unless GunBroker notices made it (:func:`_notice_made`): its sender is then
+	judged as someone new."""
+	lead = frappe.db.get_value(LEAD, {"email": email}, "name")
+	return None if lead and _notice_made(lead, but) else lead
+
+
+def _notice_made(lead: str, but: str | None = None) -> bool:
+	"""An Other mail lead all of whose received mail (the mail *but* left out) is GunBroker notices:
+	made before notices were told apart (:func:`gunbroker.notice`), when the notice filed its Reply-To
+	address as other mail and every later mail of that person went there, unseen."""
+	if frappe.db.get_value(LEAD, lead, "status") != OTHER_MAIL:
+		return False
+	mails = frappe.get_all("Communication", filters={"reference_doctype": LEAD, "reference_name": lead,
+		"sent_or_received": "Received", "communication_type": "Communication", "name": ["!=", but or ""]},
+		fields=["sender", "sender_full_name", "subject"])
+	return bool(mails) and all(gunbroker.notice(_address(m.sender), m.sender_full_name, m.subject) for m in mails)
+
+
+def _address(sender: str | None) -> str:
+	return (parse_addr(sender or "")[1] or "").strip().lower()
+
+
+def _gunbroker_seller(email: str) -> bool:
+	"""A seller the store won an item from on GunBroker: a "won" notice came with them in Reply-To.
+	lazy: Communication.sender has no index, so this reads the mail of the sender with no index; only
+	team mail from someone new asks; upgrade path: an index on sender."""
+	return any(gunbroker.notice(email, m.sender_full_name, m.subject) == "won" for m in frappe.get_all(
+		"Communication", filters={"sender": email, "sent_or_received": "Received", "subject": ["like", gunbroker.WON_LIKE]},
+		fields=["sender_full_name", "subject"], limit=20))
+
+
+def _open_lead_status() -> str:
+	"""The status a new lead gets (``CRMLead.validate_status``)."""
+	return "New" if frappe.db.exists("CRM Lead Status", "New") \
+		else frappe.get_all("CRM Lead Status", filters={"type": "Open"}, pluck="name", order_by="position asc")[0]
+
+
+def _refile(lead: str, category: str | None, why: str) -> str:
+	"""A lead GunBroker notices made, filed as its sender's own mail says: other mail of *category*, or
+	(None) an ordinary lead, which shares it with the team (:func:`other_mail_on_validate`)."""
+	doc = frappe.get_doc(LEAD, lead)
+	if category:
+		doc.status = OTHER_MAIL
+		doc.set(CATEGORY_FIELD, _ensure_category(category))
+	else:
+		doc.status = _open_lead_status()
+	doc.save(ignore_permissions=True)   # the mail rules file the system's own record, as on insert
+	doc.add_comment("Info", why)
+	return lead
 
 
 def _new_lead(email: str, full_name: str | None, category: str | None = None, source: str = "Email",
@@ -430,11 +499,21 @@ def route(doc, decision=None, screened: bool = False) -> tuple[str, str] | None:
 	waits for :func:`screen_new_sender` when a screening provider is installed, unless *screened*."""
 	if decision is None:
 		decision = decide(doc)
-	if not decision or decision[0] not in ("keep", "deal", "lead", "other", "gunbroker"):
+	if not decision or decision[0] not in ("keep", "deal", "lead", "other", "gunbroker", "notice"):
+		return None
+	if decision[0] == "notice":
+		# Kept where the mail log shows it, under no one: its Reply-To is the other party, not its writer.
+		if not frappe.db.exists("Comment", {"reference_doctype": "Communication", "reference_name": doc.name,
+				"comment_type": "Info", "content": ["like", GB_NOTICE + "%"]}):
+			doc.add_comment("Info", f"{GB_NOTICE} ({decision[1]}): not filed under {_sender(doc)}, the other party in its Reply-To.")
 		return None
 	if decision[0] == "keep":
 		target = (doc.reference_doctype, doc.reference_name)
 		row = decision[1]
+		if target[0] == LEAD and _notice_made(target[1], but=doc.name) \
+				and not gunbroker.notice(_sender(doc), doc.get("sender_full_name"), doc.get("subject")):
+			# An answer in a thread staff started on such a lead: a real correspondent.
+			_refile(target[1], gunbroker.SELLER_CATEGORY if _gunbroker_seller(_sender(doc)) else None, REFILED)
 	elif decision[0] == "deal":
 		target = ("CRM Deal", open_deal_for(decision[1], owner=decision[2]))
 		row = decision[3]
@@ -448,8 +527,11 @@ def route(doc, decision=None, screened: bool = False) -> tuple[str, str] | None:
 		email = email.strip().lower()
 		row = decision[2]
 		# A sender who already has a lead keeps it, and its status: staff may have made it a real one.
-		target = (LEAD, frappe.db.get_value(LEAD, {"email": email}, "name")
-			or _new_lead(email, doc.get("sender_full_name") or name, decision[1]))
+		# One GunBroker notices made takes the category this mail has.
+		lead = frappe.db.get_value(LEAD, {"email": email}, "name")
+		if lead and _notice_made(lead, but=doc.name):
+			_refile(lead, decision[1], REFILED)
+		target = (LEAD, lead or _new_lead(email, doc.get("sender_full_name") or name, decision[1]))
 		_link(doc, *target)
 	else:
 		lead, row = decision[1], decision[2]
@@ -457,7 +539,11 @@ def route(doc, decision=None, screened: bool = False) -> tuple[str, str] | None:
 			if row and not screened and _queue_screening(doc):
 				return None
 			name, email = parse_addr(doc.get("sender") or "")
-			lead = _new_lead(email.strip().lower(), doc.get("sender_full_name") or name)
+			email = email.strip().lower()
+			lead = frappe.db.get_value(LEAD, {"email": email}, "name")   # one GunBroker notices made
+			if lead and _notice_made(lead, but=doc.name):
+				_refile(lead, None, REFILED)
+			lead = lead or _new_lead(email, doc.get("sender_full_name") or name)
 		target = (LEAD, lead)
 		_link(doc, *target)
 	if row:
@@ -491,19 +577,155 @@ def _gunbroker_target(doc, facts: dict) -> tuple[str, str]:
 	once converted); a new conversation gets a lead named after the member, with the gun they asked
 	about. The lead has no email address: the member's real one is hidden, and the sender is
 	GunBroker's relay, which must not be where a lead's own mail or the lookups by email land.
+	A member who asks again (a new MsgId) while their conversation is open (:func:`_member_place`) goes
+	there, with the gun of the new question.
 	lazy: two mails of one new conversation pulled in the same second make two leads; upgrade path:
 	``GET_LOCK`` on the MsgId."""
-	found = frappe.db.get_value(LEAD, {gunbroker.MSGID_FIELD: facts["msgid"]}, ["name", "converted"], as_dict=True)
+	found = _gunbroker_place(facts["msgid"])
 	if found:
-		deal = found.converted and frappe.db.get_value(DEAL, {"lead": found.name}, "name")
-		return (DEAL, deal) if deal else (LEAD, found.name)
-	name = (doc.get("sender_full_name") or parse_addr(doc.get("sender") or "")[0] or "").strip()
-	lead = _new_lead("", name if name and "@" not in name else "GunBroker member", source="GunBroker",
-		**{gunbroker.MSGID_FIELD: facts["msgid"]})
+		return found
+	name = " ".join((doc.get("sender_full_name") or parse_addr(doc.get("sender") or "")[0] or "").split())
+	name = name if name and "@" not in name else GB_MEMBER
+	target = _member_place(name) or (LEAD, _new_lead("", name, source="GunBroker", **{gunbroker.MSGID_FIELD: facts["msgid"]}))
 	found = gunbroker.gun(facts)
 	if found and found[0]:
-		add_product_row(LEAD, lead, *found)
-	return LEAD, lead
+		add_product_row(*target, *found)
+	return target
+
+
+def _lead_or_its_deal(lead: str) -> tuple[str, str]:
+	deal = frappe.db.get_value(LEAD, lead, "converted") and frappe.db.get_value(DEAL, {"lead": lead}, "name")
+	return (DEAL, deal) if deal else (LEAD, lead)
+
+
+def _gunbroker_place(msgid: str) -> tuple[str, str] | None:
+	"""Where a GunBroker conversation is: the lead it made (its deal once converted), or the record
+	an earlier mail of it went on (a member's later question joined to their open conversation).
+	lazy: the second lookup reads the GunBroker address's mail by subject, with no index on sender;
+	upgrade path: a child table of MsgIds on the lead."""
+	lead = frappe.db.get_value(LEAD, {gunbroker.MSGID_FIELD: msgid}, "name")
+	if lead:
+		return _lead_or_its_deal(lead)
+	for comm in frappe.get_all("Communication", filters={"sender": gunbroker.SENDER, "sent_or_received": "Received",
+			"subject": ["like", f"%{msgid}%"], "reference_doctype": ["in", list(OWNER_FIELD)], "reference_name": ["is", "set"]},
+			fields=["subject", "reference_doctype", "reference_name"], order_by="creation desc"):
+		if gunbroker.msgid(comm.subject) == msgid:
+			return _lead_or_its_deal(comm.reference_name) if comm.reference_doctype == LEAD \
+				else (comm.reference_doctype, comm.reference_name)
+	return None
+
+
+def _member_place(member: str) -> tuple[str, str] | None:
+	"""The member's newest open GunBroker conversation: a lead it made that is not closed, or the deal
+	that lead became while the deal is open. None for the stand-in name, which is no one's."""
+	if member == GB_MEMBER:
+		return None
+	closed = frappe.get_all("CRM Lead Status", filters={"type": ["in", ["Won", "Lost"]]}, pluck="name")
+	for lead in frappe.get_all(LEAD, filters={"lead_name": member, gunbroker.MSGID_FIELD: ["is", "set"]},
+			fields=["name", "status", "converted"], order_by="creation desc"):
+		if lead.converted:
+			deal = frappe.db.get_value(DEAL, {"lead": lead.name}, ["name", "status"], as_dict=True)
+			if deal and not is_closed(deal.status):
+				return DEAL, deal.name
+		elif lead.status not in (*closed, OTHER_MAIL):
+			return LEAD, lead.name
+	return None
+
+
+def repair_gunbroker_mail(dry_run=1) -> dict:
+	"""By hand only (``bench --site <site> execute ffl_core.crm.mail.repair_gunbroker_mail``, then again
+	with ``--kwargs "{'dry_run': 0}"``): the mail filed before GunBroker notices and repeat questions
+	were told apart. Nothing is written unless *dry_run* is 0.
+
+	* ``pinned``: Other mail leads GunBroker notices made that a person's mail went on since. A seller the
+	  store won from becomes Vendor other mail; anyone else is judged as someone new is: the screening
+	  providers on their newest mail (not asked in a dry run), an ordinary lead unless they say "not a
+	  customer". The notices stay on the lead.
+	* ``duplicates``: one member's open GunBroker conversation leads, merged into the oldest (mail, guns,
+	  comments, assignments; ``frappe.rename_doc`` merge).
+
+	A record that fails is rolled back, logged and reported; the rest go on."""
+	apply = dry_run in (0, "0")
+	report = {"dry_run": not apply, "pinned": [], "duplicates": [], "failed": []}
+	for lead in frappe.get_all(LEAD, filters={"status": OTHER_MAIL, "email": ["is", "set"]},
+			fields=["name", "email", CATEGORY_FIELD], order_by="creation asc"):
+		mails = frappe.get_all("Communication", filters={"reference_doctype": LEAD, "reference_name": lead.name,
+			"sent_or_received": "Received", "communication_type": "Communication"},
+			fields=["name", "sender", "sender_full_name", "subject"], order_by="communication_date desc")
+		notices = [m for m in mails if gunbroker.notice(_address(m.sender), m.sender_full_name, m.subject)]
+		people = [m for m in mails if m not in notices]
+		if not notices or not people or frappe.db.exists("Comment", {"reference_doctype": LEAD,
+				"reference_name": lead.name, "comment_type": "Info", "content": REFILED}):
+			continue   # nothing pinned, or filed again already (here, or by a mail since)
+		seller = _gunbroker_seller(lead.email)
+		entry = {"lead": lead.name, "email": lead.email, "category": lead.get(CATEGORY_FIELD), "notices": len(notices),
+			"mails": len(people), "action": gunbroker.SELLER_CATEGORY if seller else "screen"}
+		report["pinned"].append(entry)
+		if apply:
+			_repair(report, entry, partial(_repair_pinned, lead.name, seller, people[0].name, entry))
+	closed = frappe.get_all("CRM Lead Status", filters={"type": ["in", ["Won", "Lost"]]}, pluck="name")
+	members: dict[str, list] = {}
+	for lead in frappe.get_all(LEAD, filters={gunbroker.MSGID_FIELD: ["is", "set"], "converted": 0,
+			"status": ["not in", [*closed, OTHER_MAIL]]}, fields=["name", "lead_name"], order_by="creation asc"):
+		member = " ".join((lead.lead_name or "").split())
+		if member and member != GB_MEMBER:
+			members.setdefault(member.lower(), []).append(lead.name)
+	for names in members.values():
+		if len(names) < 2:
+			continue
+		entry = {"member": frappe.db.get_value(LEAD, names[0], "lead_name"), "keep": names[0], "merge": names[1:]}
+		report["duplicates"].append(entry)
+		if apply:
+			for dup in names[1:]:
+				_repair(report, {"lead": dup}, partial(_merge_gunbroker_lead, dup, names[0]))
+	return report
+
+
+def _repair(report: dict, entry: dict, fix) -> None:
+	frappe.db.savepoint("ffl_crm_gb_repair")
+	try:
+		fix()
+	except Exception:
+		frappe.db.rollback(save_point="ffl_crm_gb_repair")
+		frappe.log_error(title=f"[{TITLE}] GunBroker mail repair failed: {entry}", message=frappe.get_traceback())
+		report["failed"].append(entry)
+
+
+def _repair_pinned(lead: str, seller: bool, newest: str, entry: dict) -> None:
+	if seller:
+		_refile(lead, gunbroker.SELLER_CATEGORY, REFILED)
+		entry["result"] = gunbroker.SELLER_CATEGORY
+		return
+	doc = frappe.get_doc("Communication", newest)
+	row = _team_row(doc, doc.email_account)[0] if doc.email_account else None
+	answer = _ask_providers(_mail_for_providers(doc, row.address if row else "")) if frappe.get_hooks(SCREEN_HOOK) else None
+	if answer and not answer["customer"]:
+		doc.add_comment("Info", _judged(answer))
+		entry["result"] = _answer_category(answer)
+	else:
+		entry["result"] = "lead"
+	_refile(lead, None if entry["result"] == "lead" else entry["result"], REFILED)
+
+
+def _merge_gunbroker_lead(dup: str, keep: str) -> None:
+	"""*dup*'s guns onto *keep*, then *dup* merged into it; *keep* takes *dup*'s owner when it has none."""
+	from frappe.model.rename_doc import rename_doc
+
+	from ffl_core.crm.deal import SERIAL_FIELD
+	from ffl_core.crm.item import PRODUCT
+
+	for row in frappe.get_doc(LEAD, dup).get("products") or []:
+		item = frappe.db.get_value(PRODUCT, row.product_code, "erpnext_item_code")
+		if item:
+			add_product_row(LEAD, keep, item, row.get(SERIAL_FIELD))
+	owner = frappe.db.get_value(LEAD, dup, "lead_owner")
+	if owner and not frappe.db.get_value(LEAD, keep, "lead_owner"):
+		frappe.db.set_value(LEAD, keep, "lead_owner", owner)
+	# One shared ToDo per user is enough (share_with_team).
+	have = set(frappe.get_all("ToDo", filters={"reference_type": LEAD, "reference_name": keep}, pluck="allocated_to"))
+	frappe.db.delete("ToDo", {"reference_type": LEAD, "reference_name": dup, "description": SHARED_NOTE,
+		"allocated_to": ["in", list(have) or [""]]})
+	rename_doc(doctype=LEAD, old=dup, new=keep, merge=True, ignore_permissions=True, show_alert=False, rebuild_search=False)
 
 
 def _is_other_mail(doctype: str, name: str) -> bool:
@@ -653,7 +875,7 @@ def on_incoming(doc, method=None):
 	if decision and decision[0] in ("lead", "other") and not answer.get("known"):
 		row = decision[-1]
 		if answer.get("customer"):
-			decision = ("lead", frappe.db.get_value(LEAD, {"email": _sender(doc)}, "name"), row)
+			decision = ("lead", _sender_lead(_sender(doc), but=doc.name), row)
 		else:
 			doc.add_comment("Info", _judged(answer))
 			decision = ("other", _sender_category(_sender(doc)) or _answer_category(answer), row)

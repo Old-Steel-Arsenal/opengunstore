@@ -125,7 +125,7 @@ Team mail that is not a customer inquiry, the **Category rules** and the **Spam 
 Two kinds of inquiry reach CRM on their own:
 
 - **Website inquiries.** Price requests and questions from the website go on the customer's open deal, else on a lead, with the gun on it. A [sell-your-gun form](../orders/buy-from-a-sell-request.md) is a deal of its own. This needs the website plugin.
-- **GunBroker buyer questions.** A buyer's question about one of the store's listings becomes its own lead, with the gun on it. Later messages in the same conversation go to the same lead.
+- **GunBroker buyer questions.** A buyer's question about one of the store's listings becomes a lead, with the gun on it. Later messages in the same conversation go to the same lead, and so does a new question from the same buyer while that lead or its deal is open.
 
 Nothing is emailed to the customer either way.
 
