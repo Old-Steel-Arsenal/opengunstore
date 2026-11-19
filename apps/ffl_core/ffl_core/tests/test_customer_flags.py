@@ -296,6 +296,110 @@ class IdLookupAndDuplicates(SettingsSandbox, FrappeTestCase):
 		self.assertEqual(customer_flags.find_possible_duplicates(email="", phone="12", id_number=""), [])
 
 
+class ApplyIdScan(SettingsSandbox, FrappeTestCase):
+	"""A scanned ID brings the customer it belongs to up to date; never the wrong customer."""
+
+	def setUp(self):
+		self.set_single(*_SWITCH, 1)
+		self.doc = _customer(_uniq("Scan"), customer_type="Individual", ffl_first_name="Alex", ffl_last_name="Sample")
+		self.scan = {"first": "Alex", "last": "Sample", "idNumber": "12345678", "expiry": "2031-12-31",
+			"dob": "1975-01-15", "gender": "Male", "address1": "100 Sample St", "address2": "", "city": "Springfield",
+			"state": "TX", "zip": "70001"}
+
+	def _apply(self, **scan):
+		return customer_flags.apply_id_scan(self.doc.name, {**self.scan, **scan})
+
+	def _stored(self):
+		doc = frappe.get_doc("Customer", self.doc.name)
+		return doc, sorted((r.id_type, r.id_number, str(r.expiry_date or "")) for r in doc.customer_ids)
+
+	def test_first_scan_adds_the_id_and_fills_birth_date_gender_and_address(self):
+		self.assertEqual(self._apply()["changed"], ["Driver License", "Date of Birth", "Gender", "Address"])
+		doc, ids = self._stored()
+		self.assertEqual(ids, [("Driver License", "12345678", "2031-12-31")])
+		self.assertEqual((str(doc.date_of_birth), doc.gender), ("1975-01-15", "Male"))
+		address = frappe.db.get_value("Address", doc.customer_primary_address,
+			["address_line1", "city", "state", "pincode", "is_primary_address"])
+		self.assertEqual(address, ("100 Sample St", "Springfield", "TX", "70001", 1))
+		# The same card again writes nothing.
+		self.assertEqual(self._apply()["changed"], [])
+
+	def test_a_renewed_licence_replaces_the_number_and_expiry_in_place(self):
+		self._apply()
+		self.assertEqual(self._apply(idNumber="87654321", expiry="2035-01-01")["changed"], ["Driver License"])
+		self.assertEqual(self._stored()[1], [("Driver License", "87654321", "2035-01-01")])
+		# A number written differently is the same number: only a newer expiry is taken.
+		self.assertEqual(self._apply(idNumber="8765-4321", expiry="2035-01-01")["changed"], [])
+		self.assertEqual(self._apply(idNumber="87654321", expiry="")["changed"], [])
+		self.assertEqual(self._stored()[1], [("Driver License", "87654321", "2035-01-01")])
+
+	def test_a_licence_to_carry_makes_its_own_row_and_leaves_the_driver_licence_expiry(self):
+		self._apply()
+		got = self._apply(expiry="", carryNumber="01234567", carryExpiry="2030-04-29")
+		self.assertEqual(got["changed"], ["CCW"])
+		self.assertEqual(self._stored()[1],
+			[("CCW", "01234567", "2030-04-29"), ("Driver License", "12345678", "2031-12-31")])
+
+	def test_birth_date_and_gender_on_file_are_never_overwritten(self):
+		self._apply()
+		self.assertEqual(self._apply(dob="1980-02-02", gender="Female")["changed"], [])
+		doc, _ids = self._stored()
+		self.assertEqual((str(doc.date_of_birth), doc.gender), ("1975-01-15", "Male"))
+
+	def test_a_move_changes_the_own_address_in_place_and_notes_the_old_one(self):
+		self._apply()
+		first = frappe.db.get_value("Customer", self.doc.name, "customer_primary_address")
+		self.assertEqual(self._apply(address1="9 Elm Rd", city="Shelbyville", zip="70002-1234")["changed"], ["Address"])
+		doc, _ids = self._stored()
+		self.assertEqual(doc.customer_primary_address, first)
+		self.assertEqual(frappe.db.get_value("Address", first, ["address_line1", "city", "pincode"]),
+			("9 Elm Rd", "Shelbyville", "70002-1234"))
+		notes = " ".join(frappe.get_all("Comment", filters={"reference_doctype": "Customer",
+			"reference_name": doc.name, "comment_type": "Comment"}, pluck="content"))
+		self.assertIn("100 Sample St", notes)
+		self.assertIn("9 Elm Rd", notes)
+		# Same street and ZIP written another way is not a move.
+		self.assertEqual(self._apply(address1="9 ELM RD.", city="Shelbyville", zip="70002")["changed"], [])
+
+	def test_a_shared_address_is_left_alone_and_a_new_primary_is_made(self):
+		self._apply()
+		shared = frappe.db.get_value("Customer", self.doc.name, "customer_primary_address")
+		other = _customer(_uniq("Housemate"))
+		address = frappe.get_doc("Address", shared)
+		address.append("links", {"link_doctype": "Customer", "link_name": other.name})
+		address.save(ignore_permissions=True)
+		self.assertEqual(self._apply(address1="9 Elm Rd", city="Shelbyville", zip="70002")["changed"], ["Address"])
+		doc, _ids = self._stored()
+		self.assertNotEqual(doc.customer_primary_address, shared)
+		self.assertEqual(frappe.db.get_value("Address", shared, "address_line1"), "100 Sample St")
+		self.assertEqual(frappe.db.get_value("Address", doc.customer_primary_address, "address_line1"), "9 Elm Rd")
+
+	def test_another_name_on_the_id_writes_nothing_until_forced(self):
+		got = self._apply(first="Jordan", last="Other")
+		self.assertEqual(got, {"changed": [], "mismatch": {"on_id": "Jordan Other", "customer": self.doc.customer_name}})
+		self.assertEqual(self._stored()[1], [])
+		forced = customer_flags.apply_id_scan(self.doc.name, {**self.scan, "first": "Jordan", "last": "Other"}, force=1)
+		self.assertIn("Driver License", forced["changed"])
+		# The name itself is never changed by a scan.
+		self.assertEqual(frappe.db.get_value("Customer", self.doc.name, "ffl_last_name"), "Sample")
+
+	def test_nothing_is_written_with_the_switch_off_or_for_a_company(self):
+		self.set_single(*_SWITCH, 0)
+		self.assertEqual(self._apply(), {"changed": []})
+		self.assertEqual(self._stored()[1], [])
+		self.assertFalse(frappe.db.get_value("Customer", self.doc.name, "customer_primary_address"))
+		self.set_single(*_SWITCH, 1)
+		company = _customer(_uniq("Scan Co"), customer_type="Company")
+		self.assertEqual(customer_flags.apply_id_scan(company.name, self.scan), {"changed": []})
+
+	def test_it_needs_write_permission_on_the_customer(self):
+		user = _user("scan-no-role@example.com")
+		self.addCleanup(frappe.set_user, "Administrator")
+		frappe.set_user(user)
+		with self.assertRaises(frappe.PermissionError):
+			self._apply()
+
+
 class PendingOrderBadge(FrappeTestCase):
 
 	def test_counter_rows_by_customer(self):

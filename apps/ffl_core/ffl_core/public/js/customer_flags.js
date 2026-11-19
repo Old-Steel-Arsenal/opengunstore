@@ -332,12 +332,44 @@
 		}, function () { /* the panel still shows the contact fields */ });
 	}
 
-	// Promise<customer name | null>.
-	function scanForCustomer() {
-		return new Promise(function (resolve) {
-			var result = null, timer = null, picking = false, restoreScanner = function () {};
+	// Bring the customer's stored IDs and address up to the scanned ID (apply_id_scan).
+	// A name on the ID that is not the customer's is asked about first. Resolves either way.
+	function applyScan(customer, parsed, force) {
+		return frappe.call({ method: METHOD + 'apply_id_scan', args: { customer: customer, scan: parsed, force: force ? 1 : 0 } })
+			.then(function (r) {
+				var m = r.message || {};
+				if (m.mismatch) {
+					return new Promise(function (resolve) {
+						frappe.confirm(__('The ID says {0}. This customer is {1}. Update this customer from the ID?',
+							[api.escText(m.mismatch.on_id), api.escText(m.mismatch.customer)]),
+							function () { resolve(applyScan(customer, parsed, true)); }, function () { resolve(); });
+					});
+				}
+				if ((m.changed || []).length) {
+					delete cache[customer];
+					frappe.show_alert({ indicator: 'green', message: __('Updated from the ID: {0}',
+						[m.changed.map(function (x) { return __(x); }).join(', ')]) });
+				}
+			});
+	}
+
+	// Promise<customer name | null>: the customer the scanned ID belongs to (`known`: the one
+	// already picked), their record brought up to that ID.
+	function scanForCustomer(known) {
+		return scanDialog(known).then(function (r) {
+			if (!r) return null;
+			var name = function () { return r.name; };
+			return applyScan(r.name, r.parsed).then(name, name);
+		});
+	}
+
+	// Promise<{name, parsed} | null>.
+	function scanDialog(known) {
+		return new Promise(function (settle) {
+			var result = null, scanned = null, timer = null, picking = false, restoreScanner = function () {};
+			var resolve = function (name) { settle(name ? { name: name, parsed: scanned } : null); };
 			var d = new frappe.ui.Dialog({
-				title: __('Find customer by ID'),
+				title: known ? __('Scan ID') : __('Find customer by ID'),
 				fields: [{ fieldtype: 'Small Text', fieldname: 'scan', label: __('Scan the barcode on the back of the licence') }],
 			});
 			var lookup = function (raw) {
@@ -345,7 +377,9 @@
 				// A licence to carry holds two numbers (aamva.js): either one finds its holder.
 				var numbers = parsed ? [parsed.idNumber, parsed.carryNumber].filter(Boolean) : [];
 				if (!numbers.length) return;
+				scanned = parsed;
 				d.set_value('scan', '');
+				if (known) { result = known; d.hide(); return; }
 				var find = function (i) {
 					return frappe.call({ method: METHOD + 'find_customers_by_id_number', args: { id_number: numbers[i] } })
 						.then(function (r) {
@@ -415,13 +449,24 @@
 				var paint = function () {
 					var html = c && cache[c] ? api.stripHtml(cache[c], __) : '';
 					var $details = cart.$customer_section.find('.customer-details').first();
-					cart.$customer_section.find('.ffl-customer-flags, .ffl-agreements-btn').remove();
+					cart.$customer_section.find('.ffl-customer-flags, .ffl-agreements-btn, .ffl-scan-update').remove();
 					if (html) $details.append(html);
 					// Agreements for this customer and cart (agreement_actions.js).
 					if (c && window.ffl && ffl.agreements && ffl.agreements.forSale) {
 						$('<button class="btn btn-xs btn-default ffl-agreements-btn" style="margin-top:4px">' + __('Agreements') + '</button>')
 							.appendTo($details)
 							.on('click', function (e) { e.stopPropagation(); ffl.agreements.forSale(cart.events.get_frm()); });
+					}
+					// A renewed or replaced ID: scan it onto the customer already picked.
+					if (c && idsOn()) {
+						$('<button class="btn btn-xs btn-default ffl-scan-update" style="margin-top:4px">' + __('Scan ID') + '</button>')
+							.appendTo($details)
+							.on('click', function (e) {
+								e.stopPropagation();
+								scanForCustomer(c).then(function () {
+									if (cart.customer_info && cart.customer_info.customer === c) cart.update_customer_section();
+								});
+							});
 					}
 				};
 				paint();
@@ -512,7 +557,7 @@
 	else wire();
 
 	Object.assign(api, {
-		check: check, guardControl: guardControl, warn: warn, fetch: fetchFlags,
+		check: check, guardControl: guardControl, warn: warn, fetch: fetchFlags, applyScan: applyScan,
 		strip: function (flags) { return api.stripHtml(flags, __); },
 		confirmNotDuplicate: confirmNotDuplicate, scanForCustomer: scanForCustomer, patchCart: patchCart,
 	});
