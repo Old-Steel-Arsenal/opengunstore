@@ -392,14 +392,15 @@ def _apply_scanned_address(doc, on_id: dict) -> bool:
 			return _make_primary(doc, row.name, current, fields)
 	values = {"address_line1": on_id["address1"], "address_line2": on_id["address2"] or None,
 		"city": on_id["city"], "state": on_id["state"] or None, "pincode": on_id["zip"] or None}
-	shared = bool(primary) and frappe.db.count("Dynamic Link", {"parenttype": "Address", "parent": primary}) > 1
-	if primary and not shared:
+	if primary and not _is_shared(primary):
 		address = frappe.get_doc("Address", primary)
 		address.update(values)
 	else:
 		address = frappe.new_doc("Address")
+		# Not flagged here: Address.validate would unflag the old primary even when it is shared;
+		# _make_primary sets the flag.
 		address.update({**values, "address_title": doc.customer_name, "address_type": "Billing",
-			"country": "United States", "is_primary_address": 1})
+			"country": "United States"})
 		address.append("links", {"link_doctype": "Customer", "link_name": doc.name})
 	# The caller's write permission on the Customer is the gate (checked in apply_id_scan).
 	address.flags.ignore_permissions = True
@@ -407,10 +408,29 @@ def _apply_scanned_address(doc, on_id: dict) -> bool:
 	return _make_primary(doc, address.name, current, fields)
 
 
+def _is_shared(address: str) -> bool:
+	"""True when the Address is linked to anything besides one party."""
+	return frappe.db.count("Dynamic Link", {"parenttype": "Address", "parent": address}) > 1
+
+
 def _make_primary(doc, address: str, was: dict | None, fields: list[str]) -> bool:
-	"""Point the customer at *address* and note on the timeline what the address was."""
+	"""Point the customer at *address*, make it their one flagged address and note on the
+	timeline what the address was.
+
+	``is_primary_address`` sits on the Address, so it is primary for everyone linked to it.
+	The customer's other flagged addresses are unflagged only when nobody else uses them; a
+	shared one keeps its flag because it may still be another customer's primary. (Writes
+	the flag with ``db.set_value``: ``Address.validate`` would unflag one of the customer's
+	flagged addresses, shared or not.)
+	"""
 	from frappe.contacts.doctype.address.address import render_address
 
+	for other in frappe.get_all("Address", pluck="name", filters=[
+			["Dynamic Link", "link_doctype", "=", "Customer"], ["Dynamic Link", "link_name", "=", doc.name],
+			["is_primary_address", "=", 1], ["name", "!=", address]]):
+		if not _is_shared(other):
+			frappe.db.set_value("Address", other, "is_primary_address", 0)
+	frappe.db.set_value("Address", address, "is_primary_address", 1)
 	if address != doc.get("customer_primary_address"):
 		doc.db_set({"customer_primary_address": address,
 			"primary_address": render_address(address, check_permissions=False)})

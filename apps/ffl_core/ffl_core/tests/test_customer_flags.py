@@ -401,6 +401,40 @@ class ApplyIdScan(SettingsSandbox, FrappeTestCase):
 		self.assertEqual(frappe.db.count("Dynamic Link", {"parenttype": "Address", "link_doctype": "Customer",
 			"link_name": self.doc.name}), 1)
 
+	def _primaries(self, customer: str | None = None) -> list[str]:
+		"""Names of the addresses flagged primary that are linked to the customer."""
+		return frappe.get_all("Address", pluck="name", filters=[["Dynamic Link", "link_doctype", "=", "Customer"],
+			["Dynamic Link", "link_name", "=", customer or self.doc.name], ["is_primary_address", "=", 1]])
+
+	def _linked_address(self, customer: str, line1: str, zip_code: str, **extra) -> str:
+		address = frappe.get_doc({"doctype": "Address", "address_title": "Web order", "address_type": "Billing",
+			"address_line1": line1, "city": "Springfield", "state": "TX", "pincode": zip_code,
+			"country": "United States", "links": [{"link_doctype": "Customer", "link_name": customer}], **extra})
+		address.insert(ignore_permissions=True)
+		return address.name
+
+	def test_an_address_already_theirs_takes_over_the_primary_flag_from_their_old_one(self):
+		self._apply()
+		old = frappe.db.get_value("Customer", self.doc.name, "customer_primary_address")
+		elm = self._linked_address(self.doc.name, "9 Elm Rd", "70002")
+		self.assertEqual(self._primaries(), [old])
+		self.assertEqual(self._apply(address1="9 Elm Rd", zip="70002")["changed"], ["Address"])
+		self.assertEqual(frappe.db.get_value("Customer", self.doc.name, "customer_primary_address"), elm)
+		self.assertEqual(self._primaries(), [elm])
+
+	def test_a_new_primary_leaves_the_old_shared_address_flag_to_the_others_who_use_it(self):
+		self._apply()
+		shared = frappe.db.get_value("Customer", self.doc.name, "customer_primary_address")
+		housemate = _customer(_uniq("Housemate"))
+		address = frappe.get_doc("Address", shared)
+		address.append("links", {"link_doctype": "Customer", "link_name": housemate.name})
+		address.save(ignore_permissions=True)
+		self._apply(address1="9 Elm Rd", city="Shelbyville", zip="70002")
+		new = frappe.db.get_value("Customer", self.doc.name, "customer_primary_address")
+		self.assertNotEqual(new, shared)
+		self.assertEqual(self._primaries(housemate.name), [shared])
+		self.assertIn(new, self._primaries())
+
 	def test_an_id_whose_zip_did_not_read_leaves_the_address_alone(self):
 		self._apply()
 		self.assertEqual(self._apply(zip="")["changed"], [])

@@ -166,6 +166,16 @@ test('Texas License to Carry: DAQ is the carry number, ZTB the driver licence â€
 	assert.ok(!/1234567|1975|2030/.test(JSON.stringify(parse(LTC))));
 });
 
+test('Texas License to Carry: ZTB loses its state prefix with or without the space, and only before a number', () => {
+	const holder = (ztb) => parse(LTC.replace('ZTZTBTX 12345678\n', 'ZTZTB' + ztb + '\n'), { ids: true }).idNumber;
+	assert.strictEqual(holder('TX 12345678'), '12345678');
+	assert.strictEqual(holder('TX12345678'), '12345678');
+	assert.strictEqual(holder('12345678'), '12345678');
+	// Glued wire shape, no space.
+	const glued = LTC.replace('ZTZTBTX 12345678', 'ZTZTBTX12345678').replace(/[\n\r\x1e]/g, '');
+	assert.strictEqual(parse(glued, { ids: true }).idNumber, '12345678');
+});
+
 test('Texas License to Carry without a readable ZTB: the carry number is never the driver licence', () => {
 	const p = parse(LTC.replace('ZTZTBTX 12345678\n', 'ZT'), { ids: true });
 	assert.strictEqual(p.idNumber, '');

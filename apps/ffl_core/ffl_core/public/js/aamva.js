@@ -17,7 +17,7 @@
 //
 // A Texas License to Carry is an ID subfile whose Texas subfile says so
 // (ZTC "TXLTC"). Its DAQ and DBA are the carry licence's own number and expiry;
-// the holder's driver licence travels in ZTB, state first ("TX 12345678"). With
+// the holder's driver licence travels in ZTB, state first ("TX 12345678" or "TX12345678"). With
 // {ids: true} such a card returns idNumber = the driver licence, expiry = ''
 // (the card does not carry it), and carryNumber / carryExpiry for the licence
 // to carry — so the carry number is never taken for a driver licence.
@@ -237,7 +237,7 @@
 			if (clean(e.cardType).toUpperCase() === TEXAS_LTC) {
 				out.carryNumber = out.idNumber;
 				out.carryExpiry = out.expiry;
-				out.idNumber = idNumber(clean(e.holderId).replace(/^[A-Za-z]{2}\s+/, ''));
+				out.idNumber = idNumber(clean(e.holderId).replace(/^[A-Za-z]{2}\s*(?=\d)/, ''));
 				out.expiry = '';
 			}
 		}
