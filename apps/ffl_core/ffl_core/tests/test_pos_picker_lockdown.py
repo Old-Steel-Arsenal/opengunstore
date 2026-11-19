@@ -357,6 +357,76 @@ class CurrentInvoiceSelfExemption(PickerLockdownFixtures):
 		self.assertIn(serial, excluded,
 			"an SI-won double-hold stays excluded even on this invoice's own line")
 
+	# --- a web order's pickup ticket and the gun that order reserved ----
+
+	def _web_reserved(self, serial: str, order: str) -> str:
+		"""Exactly what a paid web order writes on the gun it claims."""
+		if not (frappe.db.has_column("Serial No", "woo_reserved")
+				and frappe.db.has_column("POS Invoice", "woo_online_order")):
+			self.skipTest("the web channel's custom fields are not migrated on this bench")
+		self._receive(serial)
+		frappe.db.set_value("Serial No", serial,
+			{"woo_reserved": 1, "woo_order": order}, update_modified=False)
+		return serial
+
+	def _pickup_ticket(self, serial: str, order: str) -> str:
+		"""A Draft POS Invoice that is `order`'s in-store pickup. The link is
+		written after the save: the ticket is real, the web order need not be."""
+		inv = self._draft_pos(serial)
+		frappe.db.set_value("POS Invoice", inv, "woo_online_order", order,
+			update_modified=False)
+		return inv
+
+	def test_a_pickup_ticket_is_offered_the_gun_its_own_web_order_reserved(self):
+		from ffl_core.firearm import available_serials_for_items, available_serials_with_prices
+		order = "WOO-ORD-LOCK-PICKUP-1"
+		serial = "POS-LOCK-PICKUP-1"
+		self._receive(serial)
+		inv = self._pickup_ticket(serial, order)
+		self._web_reserved(serial, order)
+		# Any other ticket: the web order owns it.
+		self.assertNotIn(serial, available_serials_for_items([ITEM]).get(ITEM, []))
+		# Its own pickup ticket: this IS that order's sale.
+		self.assertIn(serial,
+			available_serials_for_items([ITEM], current_invoice=inv).get(ITEM, []))
+		self.assertIn(serial, [r["serial"] for r in
+			available_serials_with_prices([ITEM], current_invoice=inv).get(ITEM, [])])
+
+	def test_a_pickup_ticket_is_not_offered_another_web_orders_gun(self):
+		from ffl_core.firearm import available_serials_for_items
+		mine = "POS-LOCK-PICKUP-MINE"
+		theirs = "POS-LOCK-PICKUP-THEIRS"
+		self._receive(mine)
+		inv = self._pickup_ticket(mine, "WOO-ORD-LOCK-PICKUP-2")
+		self._web_reserved(mine, "WOO-ORD-LOCK-PICKUP-2")
+		self._web_reserved(theirs, "WOO-ORD-LOCK-PICKUP-3")
+		got = available_serials_for_items([ITEM], current_invoice=inv).get(ITEM, [])
+		self.assertIn(mine, got)
+		self.assertNotIn(theirs, got, "another web order's gun stays excluded")
+
+	def test_a_counter_ticket_is_not_offered_a_web_reserved_gun_on_its_own_line(self):
+		"""An ordinary counter ticket naming a web-reserved gun is the double sale
+		the channel rule exists for: being on the line is not a claim to it."""
+		from ffl_core.firearm import available_serials_for_items
+		serial = "POS-LOCK-PICKUP-COUNTER"
+		self._receive(serial)
+		inv = self._draft_pos(serial)  # no woo_online_order
+		self._web_reserved(serial, "WOO-ORD-LOCK-PICKUP-4")
+		self.assertNotIn(serial,
+			available_serials_for_items([ITEM], current_invoice=inv).get(ITEM, []))
+
+	def test_a_submitted_pickup_ticket_grants_no_exemption(self):
+		"""Only a live Draft lifts its order's reservation, as for a POS hold."""
+		from ffl_core.firearm import _pos_picker_excluded_serials
+		order = "WOO-ORD-LOCK-PICKUP-5"
+		serial = "POS-LOCK-PICKUP-SUBMITTED"
+		self._receive(serial)
+		inv = self._pickup_ticket(serial, order)
+		self._web_reserved(serial, order)
+		self.assertNotIn(serial, _pos_picker_excluded_serials([ITEM], current_invoice=inv))
+		frappe.db.set_value("POS Invoice", inv, "docstatus", 1, update_modified=False)
+		self.assertIn(serial, _pos_picker_excluded_serials([ITEM], current_invoice=inv))
+
 
 class CoerceItemCodes(FrappeTestCase):
 	"""F(c): _coerce_item_codes list / JSON-string / bare-string branches."""
