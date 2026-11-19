@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenGunstore API",
-    "version": "1.3.0",
+    "version": "1.2.0",
     "description": "RPC API of the OpenGunstore custom apps (Frappe/ERPNext v16): ffl_core, ffl_integrations, ffl_woo_sync.\n\nAll endpoints are Frappe *whitelisted methods* invoked as `/api/method/<dotted.path>`. Unless an endpoint declares explicit HTTP verbs, it is documented here as POST (Frappe also accepts GET for read-only calls; always POST mutations). Arguments may be sent as JSON body, form data, or query string — JSON body is recommended.\n\nEvery operation carries an **Auth (derived from code)** line statically resolved from the role gate the function actually executes; the prose Permissions note adds semantics the machine can't infer.\n\nStandard CRUD on DocTypes is served by Frappe's REST layer (`/api/resource/<DocType>`) — see docs/api/frappe-rest.md; the custom DocTypes are modelled under components.schemas and listed in reference/doctypes.md."
   },
   "servers": [
@@ -9038,12 +9038,12 @@
         "tags": [
           "ffl_core"
         ],
-        "summary": "Clear memory: every row of the customer's memory and this record's summary go.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:638`",
+        "summary": "Clear memory: every row of the customer's memory you can see goes, and the summary of each of their",
+        "description": "leads and deals you may change. On a lead that became a deal, the deal's rights apply.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:638`",
         "operationId": "ffl_core.api.crm.memory_clear",
         "responses": {
           "200": {
-            "description": "dict: The new card, as memory_card returns it.",
+            "description": "dict: The new card, as memory_card returns it, with \"summaries_cleared\" and \"summaries_kept\" (the person's other leads and deals you may not change keep theirs).",
             "content": {
               "application/json": {
                 "schema": {
@@ -9207,7 +9207,7 @@
           "ffl_core"
         ],
         "summary": "Update memory: have the extension read the record's latest customer messages now.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:655`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:657`",
         "operationId": "ffl_core.api.crm.memory_update_now",
         "responses": {
           "200": {

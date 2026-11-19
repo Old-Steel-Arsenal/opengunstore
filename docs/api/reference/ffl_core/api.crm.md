@@ -275,14 +275,16 @@ The Memory card of a Lead or Deal page: what the customer told the store, and th
 
 **Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager
 
-Clear memory: every row of the customer's memory and this record's summary go.
+Clear memory: every row of the customer's memory you can see goes, and the summary of each of their
+
+leads and deals you may change. On a lead that became a deal, the deal's rights apply.
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
 | `doctype` | string | yes | — | "CRM Lead" or "CRM Deal". |
 | `name` | string | yes | — | The record's name. |
 
-**Returns:** dict: The new card, as memory_card returns it.
+**Returns:** dict: The new card, as memory_card returns it, with "summaries_cleared" and "summaries_kept" (the person's other leads and deals you may not change keep theirs).
 
 <sub>`apps/ffl_core/ffl_core/api/crm.py:638`</sub>
 
@@ -339,7 +341,7 @@ Update memory: have the extension read the record's latest customer messages now
 
 **Returns:** dict: The new card, as memory_card returns it. Refused while memory is off, with the extension's own reason (for example a spending limit), or when nothing could be updated.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:655`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:657`</sub>
 
 ## `open_deal`
 

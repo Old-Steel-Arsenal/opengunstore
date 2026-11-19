@@ -49,6 +49,9 @@ QUOTE_MATCH = 200       # how much of it (letters and digits) must start the mai
 LATEST_LIMIT = 4000
 THREAD_COUNT, THREAD_EACH, THREAD_TOTAL = 5, 1500, 8000
 FACT_LIMIT, UNIT_LIMIT = 12, 5
+# lazy: the memory's wants put at most 36 matches in budget order (each priced one by one); upgrade path: a
+# batch price read if a store's matches ever run that long.
+BUDGET_CANDIDATES = 3 * FACT_LIMIT
 STORE_NAME_LIMIT, FIRST_NAME_LIMIT = 140, 40
 
 NO_MAIL = "No mail from the customer to reply to."
@@ -418,7 +421,8 @@ def gather_facts(doc, remembered: list | None = None) -> Facts:
 	stock = in_stock_items()
 	for code in matching_items(found, stock):
 		facts.add(code)
-	codes = matching_items(asked, stock) if asked else []
+	# Enough candidates to fill the facts, priced only when ordered by the budget.
+	codes = matching_items(asked, stock)[:BUDGET_CANDIDATES] if asked else []
 	budget = next((flt(r.amount) for r in remembered or [] if r.kind == "budget" and flt(r.amount) > 0), 0)
 	for code in by_budget(codes, budget) if budget else codes:
 		facts.add(code)

@@ -142,9 +142,8 @@ class TestPermissions(CardCase):
 		_share(deal, CLERK)
 		frappe.set_user(CLERK)
 		card = api.memory_card("CRM Deal", deal.name)
-		self.assertIn("Garand", card["html"])
-		self.assertNotIn("data-ffl-memory-source", card["html"], "no link to a mail the clerk may not read")
-		with self.assertRaises(frappe.PermissionError):
+		self.assertNotIn("Garand", card["html"], "a row from a mail the clerk may not read is not shown")
+		with self.assertRaises((frappe.DoesNotExistError, frappe.PermissionError)):
 			api.memory_source("CRM Deal", deal.name, row)
 
 
@@ -338,3 +337,146 @@ class TestDraft(CardCase):
 			api.memory_save("CRM Lead", lead.name, _values(preference="Spanish"))
 		self.assertEqual([i["text"] for i in self._draft(lead)["memory"]["items"]], ["Spanish"])
 
+
+
+# ── review round 1 ──
+
+def _person_deal(contact: str, owner: str):
+	"""A deal about *contact*, owned by *owner*."""
+	deal = _deal(contact)
+	frappe.db.set_value("CRM Deal", deal.name, "deal_owner", owner, update_modified=False)
+	return frappe.get_doc("CRM Deal", deal.name)
+
+
+def _converted(lead, deal) -> None:
+	frappe.db.set_value("CRM Lead", lead.name, "converted", 1, update_modified=False)
+	frappe.db.set_value("CRM Deal", deal.name, "lead", lead.name, update_modified=False)
+
+
+class TestConvertedLead(CardCase):
+	def test_a_converted_lead_is_checked_on_its_deal(self):
+		lead = _lead(lead_owner=CLERK)
+		deal = _owned_deal(OWNER)   # not the clerk's, not shared
+		_converted(lead, deal)
+		_msg(deal, "Garand?", minutes_ago=30)
+		with remembering({"add": []}):
+			frappe.set_user(CLERK)
+			for call in (lambda: api.memory_card("CRM Lead", lead.name),
+					lambda: api.memory_save("CRM Lead", lead.name, _values(want="Garand")),
+					lambda: api.memory_clear("CRM Lead", lead.name),
+					lambda: api.memory_update_now("CRM Lead", lead.name)):
+				with self.assertRaises(frappe.PermissionError):
+					call()
+			frappe.set_user("Administrator")
+			_share(deal, CLERK)   # read only
+			frappe.set_user(CLERK)
+			self.assertFalse(api.memory_card("CRM Lead", lead.name)["can_edit"])
+			with self.assertRaises(frappe.PermissionError):
+				api.memory_save("CRM Lead", lead.name, _values(want="Garand"))
+		frappe.set_user("Administrator")
+		self.assertEqual(_rows(deal), [])
+		self.assertFalse(ASKED)
+
+	def test_a_converted_lead_shows_its_deals_summary(self):
+		lead = _lead()
+		deal = _owned_deal("Administrator")
+		_converted(lead, deal)
+		_set(lead, **{memory.SUMMARY: "Old lead summary."})
+		_set(deal, **{memory.SUMMARY: "Deal summary."})
+		with remembering():
+			html = api.memory_card("CRM Lead", lead.name)["html"]
+		self.assertIn("Deal summary.", html)
+		self.assertNotIn("Old lead summary.", html)
+
+
+class TestHiddenSources(CardCase):
+	"""One person, two deals: the clerk's own, and another employee's they may not read."""
+
+	def _setup(self):
+		contact = rd._contact(f"{frappe.generate_hash(length=8)}@buyer.test")
+		mine = _person_deal(contact, CLERK)
+		theirs = _person_deal(contact, OWNER)
+		_msg(theirs, "Private: looking for a Garand", minutes_ago=30)
+		with remembering({"add": [{"kind": "want", "text": "Private Garand", "keywords": "Garand", "source": "E1"}]}):
+			self.assertEqual(memory.run("CRM Deal", theirs.name, manual=True)["outcome"], "updated")
+		_staff_memory(mine, {"kind": "preference", "text": "Text after 5 pm", "locked": 1})
+		return mine, theirs
+
+	def test_rows_from_a_record_the_caller_cannot_read_are_not_shown_or_sent(self):
+		mine, _theirs = self._setup()
+		rd._mail(mine, "<p>Any news?</p>")
+		frappe.set_user(CLERK)
+		with remembering():
+			card = api.memory_card("CRM Deal", mine.name)
+		self.assertNotIn("Private Garand", card["html"])
+		self.assertIn("Text after 5 pm", card["html"])
+		self.assertEqual(card["values"]["want"], "")
+		with rd.drafting():
+			api.draft_reply("CRM Deal", mine.name)
+		self.assertEqual([i["text"] for i in rd.ASKED[0]["memory"]["items"]], ["Text after 5 pm"])
+
+	def test_a_save_keeps_the_rows_the_caller_cannot_see(self):
+		mine, _theirs = self._setup()
+		frappe.set_user(CLERK)
+		with remembering():
+			card = api.memory_card("CRM Deal", mine.name)
+			api.memory_save("CRM Deal", mine.name, json.dumps({**card["values"], "want": "SKS"}))
+		frappe.set_user("Administrator")
+		self.assertEqual(sorted(r[1] for r in _rows(mine)), ["Private Garand", "SKS", "Text after 5 pm"])
+
+	def test_clear_clears_the_summaries_the_caller_may_change(self):
+		mine, theirs = self._setup()
+		shared = _person_deal(frappe.db.get_value("CRM Contacts", {"parent": mine.name}, "contact"), OWNER)
+		_share(shared, CLERK, write=1)
+		for doc in (mine, theirs, shared):
+			_set(doc, **{memory.SUMMARY: f"Summary of {doc.name}"})
+		frappe.set_user(CLERK)
+		card = api.memory_clear("CRM Deal", mine.name)
+		frappe.set_user("Administrator")
+		self.assertEqual((card["summaries_cleared"], card["summaries_kept"]), (2, 1))
+		self.assertFalse(frappe.db.get_value("CRM Deal", mine.name, memory.SUMMARY))
+		self.assertFalse(frappe.db.get_value("CRM Deal", shared.name, memory.SUMMARY))
+		self.assertTrue(frappe.db.get_value("CRM Deal", theirs.name, memory.SUMMARY))
+		self.assertEqual([r[1] for r in _rows(mine)], ["Private Garand"], "a row the clerk cannot see stays")
+
+
+class TestMigrateLayout(CardCase):
+	def _without_section(self, doctype):
+		name = f"{doctype}-Side Panel"
+		sections = [s for s in json.loads(frappe.db.get_value("CRM Fields Layout", name, "layout") or "[]")
+			if s.get("name") != memory.SECTION]
+		frappe.db.set_value("CRM Fields Layout", name, "layout", json.dumps(sections))
+
+	def _has_section(self, doctype):
+		layout = frappe.db.get_value("CRM Fields Layout", f"{doctype}-Side Panel", "layout") or ""
+		return memory.SECTION in layout
+
+	def test_migrate_leaves_a_removed_section_removed(self):
+		frappe.db.set_default(memory.PLACED, None)
+		with remembering():
+			for doctype in memory.DOCTYPES:
+				self._without_section(doctype)
+			memory.refresh_layout(on_migrate=True)
+			self.assertTrue(self._has_section("CRM Lead"), "placed the first time")
+			for doctype in memory.DOCTYPES:
+				self._without_section(doctype)
+			memory.refresh_layout(on_migrate=True)
+			self.assertFalse(self._has_section("CRM Lead"), "a manager removed it: migrate leaves it")
+			self.assertFalse(self._has_section("CRM Deal"))
+			memory.refresh_layout()   # the provider's switch changed
+			self.assertTrue(self._has_section("CRM Lead"))
+
+
+class TestNamedRefusal(CardCase):
+	def test_an_old_row_that_breaks_a_rule_is_named(self):
+		lead = _lead()
+		_staff_memory(lead, {"kind": "want", "text": "Garand", "keywords": "Garand", "locked": 1})
+		frappe.get_doc({"doctype": f"{memory.MEMORY} Item", "parent": _mem(lead).name, "parenttype": memory.MEMORY,
+			"parentfield": "items", "idx": 5, "kind": "preference", "text": "DL TX12345678 on file", "said": "Staff",
+			"locked": 1}).db_insert()
+		with remembering():
+			values = api.memory_card("CRM Lead", lead.name)["values"]
+			with self.assertRaisesRegex(frappe.ValidationError, "Prefers"):
+				api.memory_save("CRM Lead", lead.name, json.dumps({**values, "want": "Garand\nSKS"}))
+			api.memory_save("CRM Lead", lead.name, json.dumps({**values, "want": "Garand\nSKS", "preference": ""}))
+		self.assertEqual([r[1] for r in _rows(lead)], ["Garand", "SKS"])

@@ -412,7 +412,9 @@ _REPLY_SCRIPT_TEMPLATE = """class %(cls)s {
 			actions: [{ label: __("Clear"), variant: "solid", theme: "red", onClick: async (close) => {
 				close()
 				try {
-					this.fflShowMemory(await call("ffl_core.api.crm.memory_clear", { doctype: "%(dt)s", name: this.doc.name }))
+					const card = await call("ffl_core.api.crm.memory_clear", { doctype: "%(dt)s", name: this.doc.name })
+					this.fflShowMemory(card)
+					if (card.summaries_kept) toast(__("{0} summaries on records you can't change were kept.", [card.summaries_kept]))
 				} catch (e) {
 					toast.error(this.fflMessage(e))
 				}
@@ -719,7 +721,7 @@ def ensure(backfill: bool = True) -> dict:
 		_as_administrator(ensure_contact_script)
 		_as_administrator(ensure_reply_scripts)
 		_as_administrator(apply_pos_link)
-		_as_administrator(memory.refresh_layout)
+		_as_administrator(lambda: memory.refresh_layout(on_migrate=True))
 		_as_administrator(team.apply)
 		if backfill:
 			enqueue_backfill()
