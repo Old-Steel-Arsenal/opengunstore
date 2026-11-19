@@ -130,6 +130,21 @@ def push_item_task(item_code: str, site: str = "retail",
 
 
 @_for_a_running_store
+def push_new_variations_task(template: str, site: str = "retail") -> None:
+    """New variants of a template already on the store: its variation attributes, then a
+    variation for each (:func:`ffl_woo_sync.woocommerce.sync.push_new_variations`). Errors are
+    logged like :func:`push_item_task`; each variant's own ``sync_error`` says which failed."""
+    from ffl_woo_sync.woocommerce import sync
+    try:
+        sync.push_new_variations(template, site=site)
+    except Exception:
+        frappe.log_error(
+            title=f"Woo push_new_variations_task failed: {template}",
+            message=frappe.get_traceback(),
+        )
+
+
+@_for_a_running_store
 def push_copy_task(item_code: str, site: str = "retail") -> None:
     """The Item's name and description onto its existing product, nothing else —
     a listing's optimized copy loaded after it was listed (``mode="copy"`` on

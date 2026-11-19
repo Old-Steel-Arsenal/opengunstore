@@ -27,7 +27,7 @@ variant is left as it is (``woo_only``).
 
 **Returns:** {ok, dry_run, template, product, matched, pos_only, woo_only, replaced}: ``matched`` is {item_code: variation id}; ``replaced`` the product ids the Items held before.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/variants.py:145`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/variants.py:112`</sub>
 
 ## `make_variants`
 
@@ -57,4 +57,4 @@ variation with :func:`adopt_variable_product`.
 
 **Returns:** {ok, dry_run, template, errors, variants, cleared}: ``variants`` is the item codes that are (or would be) variants of the template; ``cleared`` is {item_code: the simple product id it held} for Items that were not yet variants.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/variants.py:62`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/variants.py:68`</sub>

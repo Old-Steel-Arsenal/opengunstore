@@ -263,6 +263,18 @@ gunshop_serial_hold_changed = [
     "ffl_woo_sync.woocommerce.doc_events.on_serial_hold_changed",
 ]
 
+# ffl_core's items that come in options (ffl_core/item_options.py): Items about to be
+# grouped under a template lose their simple product's id, and new variants of a
+# template already on the store get their variations.
+#
+#     fn(template: str, item_codes: list[str]) -> None
+ffl_item_options_grouping = [
+    "ffl_woo_sync.woocommerce.variants.before_grouping",
+]
+ffl_item_options_added = [
+    "ffl_woo_sync.woocommerce.variants.variants_added",
+]
+
 # Document Events
 # ---------------
 # Auto-push to WooCommerce when POS records change.

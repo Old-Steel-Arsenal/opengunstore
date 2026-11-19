@@ -28,7 +28,7 @@ frappe.ui.form.on('Item', {
 		// Stock-modification buttons. Skipped for new / non-stock /
 		// serial-tracked items (those go through Receive Goods so the FFL
 		// flow runs and each unit gets its own Serial No record).
-		if (!frm.is_new() && frm.doc.is_stock_item && !frm.doc.has_serial_no) {
+		if (!frm.is_new() && frm.doc.is_stock_item && !frm.doc.has_serial_no && !frm.doc.has_variants) {
 			const $addStock = frm.add_custom_button(__('+ Add Stock'),
 				() => openAddStockDialog(frm));
 			$addStock.removeClass('btn-default').addClass('btn-success');
@@ -55,7 +55,7 @@ frappe.ui.form.on('Item', {
 		}
 		// Live stock indicator above the form (saved Items only — new items
 		// have no stock yet by definition).
-		if (!frm.is_new() && frm.doc.is_stock_item) {
+		if (!frm.is_new() && frm.doc.is_stock_item && !frm.doc.has_variants) {
 			showStockIndicator(frm);
 		}
 		// Photo manager at the very top of the form (multi-upload, order, featured).
