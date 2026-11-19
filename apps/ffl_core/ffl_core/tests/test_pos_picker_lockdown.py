@@ -415,6 +415,26 @@ class CurrentInvoiceSelfExemption(PickerLockdownFixtures):
 		self.assertNotIn(serial,
 			available_serials_for_items([ITEM], current_invoice=inv).get(ITEM, []))
 
+	def test_a_pickup_ticket_does_not_lift_another_channels_hold_of_the_same_ref(self):
+		"""The order link lifts ITS channel's reservation: a marketplace hold whose
+		ref merely reads the same is somebody else's sale."""
+		from ffl_core.firearm import _pos_picker_excluded_serials
+		if not frappe.db.has_column("Serial No", "gb_reserved"):
+			self.skipTest("the marketplace channel's custom fields are not migrated on this bench")
+		order = "WOO-ORD-LOCK-PICKUP-6"
+		serial = "POS-LOCK-PICKUP-OTHERCHANNEL"
+		self._receive(serial)
+		inv = self._pickup_ticket(serial, order)
+		self._web_reserved(serial, "")  # columns present; no web hold
+		frappe.db.set_value("Serial No", serial,
+			{"woo_reserved": 0, "gb_reserved": 1, "gb_order": order}, update_modified=False)
+		self.assertIn(serial, _pos_picker_excluded_serials([ITEM], current_invoice=inv))
+
+	def test_every_channel_link_names_a_reserving_channel(self):
+		from ffl_core.compliance.channel_invoice import CHANNEL_INVOICE_LINKS
+		from ffl_core.reservations import CHANNEL_RESERVE_FIELDS
+		self.assertLessEqual(set(CHANNEL_INVOICE_LINKS), {spec[2] for spec in CHANNEL_RESERVE_FIELDS})
+
 	def test_a_submitted_pickup_ticket_grants_no_exemption(self):
 		"""Only a live Draft lifts its order's reservation, as for a POS hold."""
 		from ffl_core.firearm import _pos_picker_excluded_serials

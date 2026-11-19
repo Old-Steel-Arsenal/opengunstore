@@ -16350,7 +16350,7 @@
           "ffl_core"
         ],
         "summary": "Return {item_code: [in-stock serial, ...]} so the POS 4473 dialog can offer",
-        "description": "a pick-list of real on-hand serials instead of free-typing one.\n\nEvery firearm has has_serial_no=1 and its serials live in the Serial No\ntable — Item.firearm_serial fallback was removed when the Used Firearm\npath was unified. Codes with nothing on hand map to [] so the caller can\nwarn + block the sale.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:627`",
+        "description": "a pick-list of real on-hand serials instead of free-typing one.\n\nEvery firearm has has_serial_no=1 and its serials live in the Serial No\ntable — Item.firearm_serial fallback was removed when the Used Firearm\npath was unified. Codes with nothing on hand map to [] so the caller can\nwarn + block the sale.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:642`",
         "operationId": "ffl_core.firearm.available_serials_for_items",
         "responses": {
           "200": {
@@ -16391,7 +16391,7 @@
                       "string",
                       "null"
                     ],
-                    "description": "Optional POS Invoice docname — the serial already parked on THIS invoice's own line stays offered (incident a past invoice, see _pos_picker_excluded_serials). The POS 4473 dialog passes it so the serial on the line the cashier is completing doesn't vanish from its own dropdown."
+                    "description": "Optional POS Invoice docname — the serial already parked on THIS invoice's own line stays offered (incident a past invoice, see _pos_picker_excluded_serials). The POS 4473 dialog passes it so the serial on the line the cashier is completing doesn't vanish from its own dropdown. On a web order's in-store pickup ticket, the gun that order reserved stays offered too."
                   },
                   "customer": {
                     "type": [
@@ -16416,7 +16416,7 @@
           "ffl_core"
         ],
         "summary": "Like available_serials_for_items but enriches each serial with sell_price",
-        "description": "and purchase_rate (cost), sorted by sell_price ascending so the POS picks\nthe cheapest in-stock unit by default. Used by the POS Item Details serial\npicker to render a price-first dropdown.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1368`",
+        "description": "and purchase_rate (cost), sorted by sell_price ascending so the POS picks\nthe cheapest in-stock unit by default. Used by the POS Item Details serial\npicker to render a price-first dropdown.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1385`",
         "operationId": "ffl_core.firearm.available_serials_with_prices",
         "responses": {
           "200": {
@@ -16530,7 +16530,7 @@
           "ffl_core"
         ],
         "summary": "POS transfer-dialog config: the fee item + default per-firearm fee.",
-        "description": "Lazily creates the TRANSFER-FEE service item on first use — by the time the POS\nis live the site's UOM/Item-Group masters exist, unlike at install/migrate time\n(a fresh install runs hooks/patches before ERPNext's setup wizard). Mirrors\nreceive_goods.get_receive_sources for reading FFL Settings.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1510`",
+        "description": "Lazily creates the TRANSFER-FEE service item on first use — by the time the POS\nis live the site's UOM/Item-Group masters exist, unlike at install/migrate time\n(a fresh install runs hooks/patches before ERPNext's setup wizard). Mirrors\nreceive_goods.get_receive_sources for reading FFL Settings.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1527`",
         "operationId": "ffl_core.firearm.get_transfer_config",
         "responses": {
           "200": {
@@ -16560,7 +16560,7 @@
           "ffl_core"
         ],
         "summary": "Every in-stock firearm serial, for the POS customer-transfer picker.",
-        "description": "The two cart-driven pickers (available_serials_for_items, firearm_items_in)\nneed item_codes up front; a transfer starts before any gun is in the cart,\nso this returns the whole in-stock firearm set instead. Price is informational\n(picker label) — reuses the uniform/per-serial logic of\navailable_serials_with_prices; the transfer always adds the gun at $0.\n\nCustody guns are deliberately NOT excluded here (exclude_custody=False),\nunlike in the two SALE pickers. This dialog is how a customer's gun goes\nhome: hiding custody guns from it would strand every gun the custody\nwarehouse receives, which is the opposite of the point.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1569`",
+        "description": "The two cart-driven pickers (available_serials_for_items, firearm_items_in)\nneed item_codes up front; a transfer starts before any gun is in the cart,\nso this returns the whole in-stock firearm set instead. Price is informational\n(picker label) — reuses the uniform/per-serial logic of\navailable_serials_with_prices; the transfer always adds the gun at $0.\n\nCustody guns are deliberately NOT excluded here (exclude_custody=False),\nunlike in the two SALE pickers. This dialog is how a customer's gun goes\nhome: hiding custody guns from it would strand every gun the custody\nwarehouse receives, which is the opposite of the point.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1586`",
         "operationId": "ffl_core.firearm.in_stock_firearm_serials",
         "responses": {
           "200": {
@@ -16612,7 +16612,7 @@
           "ffl_core"
         ],
         "summary": "Per-item POS pricing summary — the single data source for the POS card",
-        "description": "price range, the add-to-cart rate seed, the picker's auto-pick decision and\nthe checkout gate.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1462`",
+        "description": "price range, the add-to-cart rate seed, the picker's auto-pick decision and\nthe checkout gate.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1479`",
         "operationId": "ffl_core.firearm.pos_pricing_summary",
         "responses": {
           "200": {
@@ -16660,7 +16660,7 @@
           "ffl_core"
         ],
         "summary": "Flip Serial No.needs_service AND keep the gunsmith ToDo queue in sync.",
-        "description": "Used by the Service Needed pill on the Item form's Serial Numbers tab.\nGoes through this single helper (instead of raw db.set_value on the client)\nso the ToDo create/close stays glued to the flag — toggling on creates a\nToDo, toggling off closes the matching Open ones.\n\nPermission gate: the helpers below elevate via flags.ignore_permissions /\nraw db.set_value to bypass ToDo/Serial No DocPerms (managers vs cashiers).\nWithout this gate, any logged-in user could flip needs_service on any\nserial — including silently closing a gunsmith's Open ToDo queue. Restrict\nto roles that already own Serial No writes.\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\n**Permissions:** Frappe write permission on Serial No (a DocType permission check, not a fixed role list — whichever roles carry Serial No write).\n\nSource: `apps/ffl_core/ffl_core/firearm.py:722`",
+        "description": "Used by the Service Needed pill on the Item form's Serial Numbers tab.\nGoes through this single helper (instead of raw db.set_value on the client)\nso the ToDo create/close stays glued to the flag — toggling on creates a\nToDo, toggling off closes the matching Open ones.\n\nPermission gate: the helpers below elevate via flags.ignore_permissions /\nraw db.set_value to bypass ToDo/Serial No DocPerms (managers vs cashiers).\nWithout this gate, any logged-in user could flip needs_service on any\nserial — including silently closing a gunsmith's Open ToDo queue. Restrict\nto roles that already own Serial No writes.\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\n**Permissions:** Frappe write permission on Serial No (a DocType permission check, not a fixed role list — whichever roles carry Serial No write).\n\nSource: `apps/ffl_core/ffl_core/firearm.py:739`",
         "operationId": "ffl_core.firearm.toggle_serial_service_need",
         "responses": {
           "200": {
