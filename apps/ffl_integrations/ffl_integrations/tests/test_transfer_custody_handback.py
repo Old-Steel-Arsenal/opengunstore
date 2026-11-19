@@ -25,7 +25,6 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from unittest.mock import patch
 
-from frappe.utils import now_datetime
 
 from ffl_core.setup import custody
 from ffl_core.setup.transfer_fee import TRANSFER_FEE_ITEM
@@ -70,49 +69,20 @@ class ACustodyGunIsIssuedFromTheWarehouseItIsActuallyIn(FrappeTestCase):
 			}).insert(ignore_permissions=True)
 
 	def _ensure_pos_opening(self) -> None:
-		"""Saving a POS Invoice requires an OPEN POS Opening Entry for the
-		profile. This test creates its own rather than relying on whatever the
-		site happens to have: test_pos_close.py deletes every non-Closed opening
-		entry, so depending on ambient state makes this suite pass alone and
-		fail in a full run — which is exactly what it did (docs/testing.md's
-		same-site repeatability rule).
+		"""The session user's Open shift, started today, on a POS Profile of the test's own company: the transfer
+		builds its invoice on the profile of the cashier's own Open shift. Made here rather than taken from the
+		site: test_pos_close.py deletes every non-Closed opening entry, and a shift another module left Open for
+		this user on another profile made ERPNext refuse a second one ('Cashier is currently assigned to another
+		POS') — todays_pos_opening closes that one first.
 
-		Submitted via a direct docstatus UPDATE for the reason test_pos_close.py
-		documents: ERPNext re-runs check_open_pos_exists() on the submit→save
-		chain, by which point this very row exists and trips a false
-		'already open'."""
-		profile = frappe.db.get_value("POS Profile", {"disabled": 0}, "name")
-		if not profile:
-			# Build one rather than skip. These tests are the regression guard for
-			# a BLOCKER (a custody gun that cannot be handed back), and a guard
-			# that quietly skips itself on a differently-seeded site is no guard —
-			# it would report green while covering nothing (review c).
-			from ffl_core.setup.dev_site import _pos_profile
-			_pos_profile()
-			profile = frappe.db.get_value("POS Profile", {"disabled": 0}, "name")
-		self.assertTrue(
-			profile,
-			"No enabled POS Profile and none could be created — the handback "
-			"regression guard cannot run, and must fail rather than skip.")
-		from ffl_core.tests.pos_opening import close_stale_pos_openings
-		close_stale_pos_openings()                 # an earlier day's Open entry: ERPNext calls it outdated
-		if frappe.db.exists("POS Opening Entry",
-				{"pos_profile": profile, "status": "Open", "docstatus": 1}):
-			return
-		mop = frappe.db.get_value("Mode of Payment", {"enabled": 1}, "name") or "Cash"
-		now = now_datetime()
-		opening = frappe.get_doc({
-			"doctype": "POS Opening Entry",
-			"posting_date": now.date(), "period_start_date": now,
-			"user": "Administrator", "pos_profile": profile,
-			"company": frappe.db.get_value("POS Profile", profile, "company"),
-			"status": "Open",
-			"balance_details": [{"mode_of_payment": mop, "opening_amount": 100}],
-		})
-		opening.flags.ignore_permissions = True
-		opening.insert()
-		frappe.db.set_value("POS Opening Entry", opening.name,
-			{"docstatus": 1}, update_modified=False)
+		No profile and none could be made fails the test (ensure_pos_profile raises), never skips it: these tests
+		guard a BLOCKER, a custody gun that cannot be handed back."""
+		from ffl_core.tests.pos_opening import ensure_pos_profile, todays_pos_opening
+		profile = ensure_pos_profile(self.company)
+		self.assertEqual(
+			tuple(frappe.db.get_value("POS Profile", profile, ["company", "disabled"]) or ()), (self.company, 0),
+			"the handback regression guard needs an enabled POS Profile of the test's company")
+		todays_pos_opening(self.company, profile)
 
 	def setUp(self) -> None:
 		super().setUp()

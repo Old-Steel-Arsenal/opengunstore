@@ -18,6 +18,7 @@ from ffl_core.custody import is_custody_serial
 from ffl_core.setup import gunsmith as setup
 from ffl_core.setup.customer_deposits import deposit_account
 from ffl_core.setup.gunsmith import DEPOSIT_ITEM, LABOR_ITEM
+from ffl_core.tests.tax_defaults import make_default_template
 from ffl_core.tests.test_agreements import _png
 from ffl_core.tests.test_customer_profile import _hooks, _uniq, _user
 
@@ -89,6 +90,10 @@ class _Base(FrappeTestCase):
 	def setUpClass(cls):
 		super().setUpClass()
 		frappe.set_user("Administrator")
+		# The register's template made the company default and the 0% template synced to it, as a store's
+		# migrate leaves them: which accounts the labor and deposit lines are exempt on follows the default,
+		# and another module (or an older release's suite on an upgraded site) may have left its own.
+		make_default_template(COMPANY, TAX)
 		setup.ensure()
 		frappe.defaults.set_user_default("Company", COMPANY)
 		if not frappe.db.exists("Item", "_Test GW Part"):
