@@ -571,7 +571,6 @@ def price_text(doctype: str, name: str, item_code: str, serial_no: str | None = 
 def _memory_record(doctype: str, name: str, ptype: str):
 	from ffl_core.crm import reply_draft
 
-	frappe.only_for(CRM_ROLES)
 	return reply_draft.record(doctype, name, ptype)
 
 
@@ -589,6 +588,7 @@ def memory_card(doctype: str, name: str) -> dict:
 	    "has_content", "values": {"want", "trade_in", "preference", "question" (one row a line),
 	    "budget", "state", "auto_update"} for Edit memory}.
 	"""
+	frappe.only_for(CRM_ROLES)
 	from ffl_core.crm import memory
 
 	return memory.card(_memory_record(doctype, name, "read"))
@@ -607,6 +607,7 @@ def memory_source(doctype: str, name: str, row: str) -> dict:
 	    dict: {"subject", "at", "text": plain text, 2000 characters at most}. Refused for a row that is
 	    not this customer's, or a message on a record you may not read.
 	"""
+	frappe.only_for(CRM_ROLES)
 	from ffl_core.crm import memory
 
 	return memory.source(_memory_record(doctype, name, "read"), str(row or ""))
@@ -627,6 +628,7 @@ def memory_save(doctype: str, name: str, values) -> dict:
 	    dict: The new card, as memory_card returns it. Refused with ID numbers, eligibility details,
 	    prices or stock in a row, a state that is not a US state, or more lines than a kind keeps.
 	"""
+	frappe.only_for(CRM_ROLES)
 	from ffl_core.crm import memory
 
 	return memory.save(_memory_record(doctype, name, "write"), values)
@@ -643,6 +645,7 @@ def memory_clear(doctype: str, name: str) -> dict:
 	Returns:
 	    dict: The new card, as memory_card returns it.
 	"""
+	frappe.only_for(CRM_ROLES)
 	from ffl_core.crm import memory
 
 	return memory.clear(_memory_record(doctype, name, "write"))
@@ -660,6 +663,7 @@ def memory_update_now(doctype: str, name: str) -> dict:
 	    dict: The new card, as memory_card returns it. Refused while memory is off, with the
 	    extension's own reason (for example a spending limit), or when nothing could be updated.
 	"""
+	frappe.only_for(CRM_ROLES)
 	from ffl_core.crm import memory
 
 	return memory.update_now(_memory_record(doctype, name, "write"))

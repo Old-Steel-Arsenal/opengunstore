@@ -8986,7 +8986,7 @@
           "ffl_core"
         ],
         "summary": "The Memory card of a Lead or Deal page: what the customer told the store, and the record's summary.",
-        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:579`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:578`",
         "operationId": "ffl_core.api.crm.memory_card",
         "responses": {
           "200": {
@@ -9039,7 +9039,7 @@
           "ffl_core"
         ],
         "summary": "Clear memory: every row of the customer's memory and this record's summary go.",
-        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:636`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:638`",
         "operationId": "ffl_core.api.crm.memory_clear",
         "responses": {
           "200": {
@@ -9092,7 +9092,7 @@
           "ffl_core"
         ],
         "summary": "Edit memory: save what the customer's memory says. A new or changed row is yours and the AI leaves",
-        "description": "it alone.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:616`",
+        "description": "it alone.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:617`",
         "operationId": "ffl_core.api.crm.memory_save",
         "responses": {
           "200": {
@@ -9149,7 +9149,7 @@
           "ffl_core"
         ],
         "summary": "The customer message a row of the Memory card came from (its \"said\" link).",
-        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:598`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:598`",
         "operationId": "ffl_core.api.crm.memory_source",
         "responses": {
           "200": {
@@ -9207,7 +9207,7 @@
           "ffl_core"
         ],
         "summary": "Update memory: have the extension read the record's latest customer messages now.",
-        "description": "**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:652`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:655`",
         "operationId": "ffl_core.api.crm.memory_update_now",
         "responses": {
           "200": {

@@ -256,7 +256,7 @@ counts as a sale (the deal's value).
 
 `POST /api/method/ffl_core.api.crm.memory_card`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager
 
 The Memory card of a Lead or Deal page: what the customer told the store, and the record's summary.
 
@@ -267,13 +267,13 @@ The Memory card of a Lead or Deal page: what the customer told the store, and th
 
 **Returns:** dict: {"html", "shown": the page shows the card (memory is on, or something is kept), "ready": an extension updates memory (Update memory shows), "can_edit": you may change this record, "has_content", "values": {"want", "trade_in", "preference", "question" (one row a line), "budget", "state", "auto_update"} for Edit memory}.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:579`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:578`</sub>
 
 ## `memory_clear`
 
 `POST /api/method/ffl_core.api.crm.memory_clear`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager
 
 Clear memory: every row of the customer's memory and this record's summary go.
 
@@ -284,13 +284,13 @@ Clear memory: every row of the customer's memory and this record's summary go.
 
 **Returns:** dict: The new card, as memory_card returns it.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:636`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:638`</sub>
 
 ## `memory_save`
 
 `POST /api/method/ffl_core.api.crm.memory_save`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager
 
 Edit memory: save what the customer's memory says. A new or changed row is yours and the AI leaves
 
@@ -304,13 +304,13 @@ it alone.
 
 **Returns:** dict: The new card, as memory_card returns it. Refused with ID numbers, eligibility details, prices or stock in a row, a state that is not a US state, or more lines than a kind keeps.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:616`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:617`</sub>
 
 ## `memory_source`
 
 `POST /api/method/ffl_core.api.crm.memory_source`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager
 
 The customer message a row of the Memory card came from (its "said" link).
 
@@ -328,7 +328,7 @@ The customer message a row of the Memory card came from (its "said" link).
 
 `POST /api/method/ffl_core.api.crm.memory_update_now`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager
 
 Update memory: have the extension read the record's latest customer messages now.
 
@@ -339,7 +339,7 @@ Update memory: have the extension read the record's latest customer messages now
 
 **Returns:** dict: The new card, as memory_card returns it. Refused while memory is off, with the extension's own reason (for example a spending limit), or when nothing could be updated.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:652`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:655`</sub>
 
 ## `open_deal`
 
