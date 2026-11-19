@@ -315,6 +315,52 @@ class TestWriteBack(_ShippingCase):
 		client.set_order_shipping.assert_not_called()
 		self.assertNotIn("GB-ORD-00001", self.written)
 
+	def _flag_refused(self, order, error):
+		client = MagicMock()
+		client.set_order_flags.side_effect = error
+		client.get_order.return_value = fx.order_detail(
+			tracking="1Z999", carrier=2, status=5)
+		self._patch("frappe.get_doc", return_value=order)
+		self._patch_object(shipping, "_fetch_label", return_value=("1Z999", "ups", ""))
+		return client
+
+	def test_an_order_already_shipped_on_gunbroker_still_gets_its_tracking(self):
+		# Someone marked the order shipped on the GunBroker website. The flag PUT
+		# is then refused, not ignored, and the tracking upload behind it must
+		# not be lost to that refusal.
+		body = ('{"userMessage":"Order 998877 has shipped.  You cannot undo.",'
+			'"developerMessage":"Order 998877 has shipped.  You cannot undo.",'
+			'"gbStatusCode":0,"links":[]}')
+		order = self._order()
+		client = self._flag_refused(order, GunBrokerError(
+			f"PUT /Orders/998877/Flags \u2192 403: {body}",
+			status_code=403, body=body, terminal=True, json_body=True))
+		result = shipping.push_tracking(order.name, client=client)
+		self.assertTrue(result["ok"])
+		self.assertEqual(result["steps"], ["flag", "shipping", "readback"])
+		self.assertIn("shipping_flag_pushed_at", self.written["GB-ORD-00001"])
+		client.set_order_shipping.assert_called_once()
+		self.assertEqual(self.written["GB-ORD-00001"]["tracking_number"], "1Z999")
+
+	def test_any_other_flag_refusal_still_stops_before_the_upload(self):
+		order = self._order()
+		body = '{"userMessage":"Not authorised to set order flags."}'
+		for error in (
+			GunBrokerError("403", status_code=403, body=body, terminal=True,
+				json_body=True),
+			# The right words under another status code are not the same fact.
+			GunBrokerError("500", status_code=500,
+				body="Order 998877 has shipped.  You cannot undo."),
+			GunBrokerError("timeout"),
+		):
+			with self.subTest(error=str(error)):
+				client = self._flag_refused(order, error)
+				with self.assertRaises(GunBrokerError):
+					shipping.push_tracking(order.name, client=client)
+				client.set_order_shipping.assert_not_called()
+				self.assertNotIn("shipping_flag_pushed_at",
+					self.written.get("GB-ORD-00001", {}))
+
 	def test_a_failed_upload_is_recorded_rather_than_raised(self):
 		# A throw would roll the transaction back and take the pending flag and
 		# the reason with it — the operator would see the error once and the
