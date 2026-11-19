@@ -403,6 +403,41 @@ def _release_reserved_serials(order_name: str) -> None:
 			{"woo_reserved": 0, "woo_order": ""}, update_modified=False)
 
 
+def require_ordered_guns_on_ticket(doc, method: str | None = None) -> None:
+	"""POS Invoice validate — a pickup ticket hands over the guns the buyer ordered.
+
+	A web order that names its gun (a per-gun listing, or a serial staff entered
+	on the order) opens its ticket with that serial on the line. The 4473 dialog
+	could then replace it: when the ordered gun was missing from its pick-list
+	the dropdown fell back to another in-stock serial of the same Item, and
+	starting the 4473 only asked that SOME serial be present. The 4473 and the
+	disposition would then have been booked against a gun the order never named,
+	with the ordered one still reserved on the shelf.
+
+	Checked on every save, not only at submit: starting the 4473 is a save of the
+	draft, and by submit the form is already signed. What the ticket must carry is
+	read from the same builder that opened it (:func:`build_invoice_items`), so an
+	order that names no gun, or whose gun ships from a distributor, asks nothing.
+	"""
+	from ffl_core.serials import serials_for_lines
+
+	link = (doc.get("woo_online_order") or "").strip()
+	if not link or doc.get("is_return"):
+		return
+	order = frappe.get_doc("Woo Online Order", link)
+	ordered = {s for row in build_invoice_items(order)
+		for s in (row.get("serial_no") or "").split("\n") if s}
+	on_ticket = {s for serials in serials_for_lines(doc.get("items") or []) for s in serials}
+	missing = sorted(ordered - on_ticket)
+	if missing:
+		frappe.throw(_(
+			"{0} is the pickup for web order {1}, which is for serial {2}. Put that "
+			"serial back on the ticket. To hand over a different gun, change it on the "
+			"web order first."
+		).format(doc.name, link, frappe.bold(", ".join(missing))),
+			title=_("Not the Ordered Gun"))
+
+
 def require_web_tender_on_submit(doc, method: str | None = None) -> None:
 	"""POS Invoice before_submit — a pickup ticket is settled by WooCommerce, in
 	full, and by nothing else.

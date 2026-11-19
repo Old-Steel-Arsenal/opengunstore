@@ -6,7 +6,8 @@ files a mail the AI screening left without a lead; the Deal page's customer card
 (``ffl_core.crm.setup.DEAL_SCRIPT``), behind Lead Mail Settings' switch; a sell request's Gun offered card,
 **Make offer**, **Seller accepted** and **Receive gun** (``ffl_core.crm.sell_requests``), behind the same switch; guns held for a deal (the Deal page's
 **Hold gun**, and the counter's check and manager override, ``ffl_core.crm.holds``); the stand-ins that take quotes off the Deal page and other mail off the Leads list; **Draft reply** and
-**Insert price** on the Lead and Deal pages (``ffl_core.crm.reply_draft``, ``ffl_core.crm.price_insert``)."""
+**Insert price** on the Lead and Deal pages (``ffl_core.crm.reply_draft``, ``ffl_core.crm.price_insert``); the Lead and
+Deal pages' Memory card, **Edit memory**, **Update memory** and **Clear memory** (``ffl_core.crm.memory``)."""
 from __future__ import annotations
 
 import frappe
@@ -565,3 +566,106 @@ def price_text(doctype: str, name: str, item_code: str, serial_no: str | None = 
 
 	frappe.only_for(CRM_ROLES)
 	return price_insert.text(doctype, name, item_code, serial_no=serial_no or None)
+
+
+def _memory_record(doctype: str, name: str, ptype: str):
+	from ffl_core.crm import memory
+
+	return memory.record_for(doctype, name, ptype)
+
+
+@frappe.whitelist()
+def memory_card(doctype: str, name: str) -> dict:
+	"""The Memory card of a Lead or Deal page: what the customer told the store, and the record's summary.
+
+	Args:
+	    doctype: "CRM Lead" or "CRM Deal".
+	    name: The record's name.
+
+	Returns:
+	    dict: {"html", "shown": the page shows the card (memory is on, or something is kept), "ready":
+	    an extension updates memory (Update memory shows), "can_edit": you may change this record,
+	    "has_content", "values": {"want", "trade_in", "preference", "question" (one row a line),
+	    "budget", "state", "auto_update"} for Edit memory}.
+	"""
+	frappe.only_for(CRM_ROLES)
+	from ffl_core.crm import memory
+
+	return memory.card(_memory_record(doctype, name, "read"))
+
+
+@frappe.whitelist()
+def memory_source(doctype: str, name: str, row: str) -> dict:
+	"""The customer message a row of the Memory card came from (its "said" link).
+
+	Args:
+	    doctype: "CRM Lead" or "CRM Deal".
+	    name: The record's name.
+	    row: The memory row's name, from the card.
+
+	Returns:
+	    dict: {"subject", "at", "text": plain text, 2000 characters at most}. Refused for a row that is
+	    not this customer's, or a message on a record you may not read.
+	"""
+	frappe.only_for(CRM_ROLES)
+	from ffl_core.crm import memory
+
+	return memory.source(_memory_record(doctype, name, "read"), str(row or ""))
+
+
+@frappe.whitelist(methods=["POST"])
+def memory_save(doctype: str, name: str, values) -> dict:
+	"""Edit memory: save what the customer's memory says. A new or changed row is yours and the AI leaves
+	it alone.
+
+	Args:
+	    doctype: "CRM Lead" or "CRM Deal".
+	    name: The record's name.
+	    values: {"want", "trade_in", "preference", "question" (one row a line), "budget", "state",
+	        "auto_update"}, as a dict or JSON.
+
+	Returns:
+	    dict: The new card, as memory_card returns it. Refused with ID numbers, eligibility details,
+	    prices or stock in a row, a state that is not a US state, or more lines than a kind keeps.
+	"""
+	frappe.only_for(CRM_ROLES)
+	from ffl_core.crm import memory
+
+	return memory.save(_memory_record(doctype, name, "write"), values)
+
+
+@frappe.whitelist(methods=["POST"])
+def memory_clear(doctype: str, name: str) -> dict:
+	"""Clear memory: every row of the customer's memory you can see goes, and the summary of each of their
+	leads and deals you may change. On a lead that became a deal, the deal's rights apply.
+
+	Args:
+	    doctype: "CRM Lead" or "CRM Deal".
+	    name: The record's name.
+
+	Returns:
+	    dict: The new card, as memory_card returns it, with "summaries_cleared" and "summaries_kept"
+	    (the person's other leads and deals you may not change keep theirs).
+	"""
+	frappe.only_for(CRM_ROLES)
+	from ffl_core.crm import memory
+
+	return memory.clear(_memory_record(doctype, name, "write"))
+
+
+@frappe.whitelist(methods=["POST"])
+def memory_update_now(doctype: str, name: str) -> dict:
+	"""Update memory: have the extension read the record's latest customer messages now.
+
+	Args:
+	    doctype: "CRM Lead" or "CRM Deal".
+	    name: The record's name.
+
+	Returns:
+	    dict: The new card, as memory_card returns it. Refused while memory is off, with the
+	    extension's own reason (for example a spending limit), or when nothing could be updated.
+	"""
+	frappe.only_for(CRM_ROLES)
+	from ffl_core.crm import memory
+
+	return memory.update_now(_memory_record(doctype, name, "write"))
