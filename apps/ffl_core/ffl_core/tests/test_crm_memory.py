@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from unittest.mock import patch
 
 import frappe
-from frappe.utils import add_to_date, get_datetime, getdate, now_datetime
+from frappe.utils import add_days, add_to_date, get_datetime, getdate, now_datetime, nowdate
 
 from ffl_core.crm import inquiries, mail, memory, orders
 from ffl_core.crm.gunbroker import MSGID_FIELD, SENDER as GB_SENDER
@@ -350,6 +350,40 @@ class TestSweepAndRun(MemoryCase):
 		self.assertEqual(_run(lead, {"refused": "Not this one."}), "skipped")
 		self.assertFalse(_due(lead))
 		self.assertTrue(frappe.db.get_value("CRM Lead", lead.name, memory.SEEN))
+
+	def test_a_deferral_waits_without_starting_the_failure_clock(self):
+		lead = _lead()
+		_msg(lead, "Garand?", minutes_ago=30)
+		_set(lead, **{memory.DUE: _ago(5)})
+		at = add_to_date(now_datetime(), hours=9)
+		self.assertEqual(_run(lead, {"deferred": str(at)}), "deferred")
+		self.assertEqual(get_datetime(_due(lead)), get_datetime(str(at)))
+		self.assertFalse(self._failing(lead), "a deferral is not a failure")
+		self.assertFalse(frappe.db.get_value("CRM Lead", lead.name, memory.SEEN))
+		# No time, a time gone by, or nonsense: the next site midnight; never further than two days.
+		for value in (None, str(_ago(60)), "soon"):
+			_set(lead, **{memory.DUE: _ago(5)})
+			self.assertEqual(_run(lead, {"deferred": value}), "deferred")
+			self.assertEqual(get_datetime(_due(lead)), get_datetime(add_days(nowdate(), 1)))
+		_set(lead, **{memory.DUE: _ago(5)})
+		self.assertEqual(_run(lead, {"deferred": str(add_to_date(now_datetime(), days=30))}), "deferred")
+		self.assertLessEqual(get_datetime(_due(lead)), add_to_date(now_datetime(), days=2, minutes=1))
+
+	def test_a_deferral_after_a_failure_pauses_the_clock(self):
+		lead = _lead()
+		_msg(lead, "Garand?", minutes_ago=30)
+		_set(lead, **{memory.DUE: _ago(5), memory.FAILING: _ago(5 * 60)})
+		self.assertEqual(_run(lead, {"deferred": str(add_to_date(now_datetime(), hours=10))}), "deferred")
+		# Five hours of failing before the pause are still five hours once it is over.
+		self.assertGreater(get_datetime(self._failing(lead)), add_to_date(now_datetime(), hours=4, minutes=59))
+		_set(lead, **{memory.DUE: _ago(5)})
+		self.assertEqual(_run(lead, None), "retry")
+
+	def test_a_manual_update_is_not_deferred(self):
+		lead = _lead()
+		_msg(lead, "Garand?", minutes_ago=30)
+		self.assertEqual(_run(lead, {"deferred": None}, manual=True), "no_answer")
+		self.assertFalse(_due(lead))
 
 	def test_a_win_with_no_answer_gives_up_too(self):
 		deal = _deal(products=[{"product_code": product_of(AMMO), "qty": 1}])
