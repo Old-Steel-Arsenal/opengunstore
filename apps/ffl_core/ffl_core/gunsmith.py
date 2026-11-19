@@ -743,13 +743,33 @@ def complete_pickup(doc, invoice: str | None = None) -> None:
 # ------------------------------------------------------------------ invoice hooks
 
 
+def _refuse_taxed_lines(doc) -> None:
+	"""Deposit lines are never taxed, and neither is a work order's labor line while its item carries the
+	company's 0% template (its default): a register on another template would tax them, so refuse
+	(:func:`deposits.refuse_taxed_line`). Labor whose own template taxes it is the store's choice and passes.
+	A return is left alone: the money of an invoice taxed before this check must still go back."""
+	from ffl_core.setup.tax import _exempt_templates_by_company
+
+	exempt = _exempt_templates_by_company().get(doc.company)
+	labor = setup.labor_item()
+	for row in doc.get("items") or []:
+		if row.item_code == DEPOSIT_ITEM:
+			deposits.refuse_taxed_line(doc, row, _("gunsmith deposit"))
+		elif row.item_code == labor and row.get(LINK_FIELD) and exempt and row.get("item_tax_template") == exempt:
+			deposits.refuse_taxed_line(doc, row, _("gunsmith labor"))
+
+
 def guard_deposit_lines(doc, method=None) -> None:
 	"""POS Invoice / Sales Invoice validate: a GUNSMITH-DEPOSIT line comes only from a
 	work order, for that order's customer, once per invoice: a payment on an open job at
 	the amount stamped when it was made, a release never more than is held. A consolidated
 	Sales Invoice is a copy and is left alone; a Sales Invoice made by hand may not carry one."""
+	if cint(doc.get("is_consolidated")):
+		return
+	if doc.doctype == "POS Invoice" and not cint(doc.is_return):
+		_refuse_taxed_lines(doc)
 	rows = [r for r in doc.get("items") or [] if r.item_code == DEPOSIT_ITEM]
-	if not rows or cint(doc.get("is_consolidated")):
+	if not rows:
 		return
 	if doc.doctype != "POS Invoice":
 		frappe.throw(_("A gunsmith deposit is taken and applied at the register, from its work order."))
