@@ -35,7 +35,7 @@ from datetime import timedelta
 import frappe
 from frappe import _
 from frappe.core.utils import html_to_plain_text
-from frappe.utils import add_to_date, cint, escape_html, flt, fmt_money, get_datetime, getdate, now_datetime, nowdate
+from frappe.utils import add_days, add_to_date, cint, escape_html, flt, fmt_money, get_datetime, getdate, now_datetime, nowdate
 from frappe.utils.synchronization import filelock
 
 from ffl_core.crm import TITLE, installed, sensitive
@@ -64,6 +64,7 @@ QUIET = timedelta(minutes=3)       # a record is read once it has had no new mes
 BATCH = 10
 RETRY = timedelta(hours=1)         # no answer, or the answer could not be written: tried again after this
 GIVE_UP = timedelta(hours=6)       # still failing this long after the first failure: the batch is skipped
+MAX_DEFER = timedelta(days=2)      # a provider's deferral is kept no longer than this
 # lazy: 5 messages per update, oldest unread first; a longer backlog is read 5 a round, one sweep apart;
 # upgrade path: a larger batch once the provider's context allows it.
 NEW_COUNT, NEW_BODY, SUBJECT_LIMIT = 5, 2000, 500
@@ -302,6 +303,27 @@ def _failed(doctype: str, name: str, due0, batch: "Batch", refused: bool = False
 	return {"outcome": "retry"}
 
 
+def _deferred(doctype: str, name: str, due0, until) -> dict:
+	"""A provider that cannot answer before *until* for a passing reason (a daily spending limit): the record
+	is due again then (the next site midnight when *until* is missing, past or unreadable; :data:`MAX_DEFER`
+	at most), and the wait is not counted toward :data:`GIVE_UP` (a failure clock already running is moved on
+	by the wait)."""
+	now = now_datetime()
+	try:
+		at = get_datetime(until) if until else None
+	except (ValueError, TypeError, OverflowError):
+		at = None
+	if not at or at <= now:
+		at = get_datetime(add_days(nowdate(), 1))
+	at = min(at, now + MAX_DEFER)
+	first = frappe.db.get_value(doctype, name, FAILING)
+	if first:
+		frappe.db.set_value(doctype, name, FAILING, get_datetime(first) + (at - now), update_modified=False)
+	frappe.db.sql(f"UPDATE `tab{doctype}` SET `{DUE}` = %s WHERE name = %s AND `{DUE}` <=> %s", (at, name, due0))
+	commit()
+	return {"outcome": "deferred"}
+
+
 def _advance(doctype: str, name: str, seen) -> None:
 	if not seen:
 		return
@@ -319,7 +341,7 @@ def run(doctype: str, name: str, manual: bool = False) -> dict:
 	**Update memory**, which reads the latest messages again when nothing is unread, and raises a failed
 	write instead of retrying). Returns
 	``{"outcome": str, "refused": str | None}``; *outcome* is one of gone, off, moved, paused, nothing,
-	no_answer, retry, skipped, discarded, updated."""
+	no_answer, retry, deferred, skipped, discarded, updated."""
 	if doctype not in DOCTYPES or not table_ready() or not frappe.db.exists(doctype, name):
 		return {"outcome": "gone"}
 	due0 = frappe.db.get_value(doctype, name, DUE)
@@ -348,9 +370,12 @@ def run(doctype: str, name: str, manual: bool = False) -> dict:
 	commit()   # only reads so far; a provider's spending reservation commits on its own
 	answer = _ask(batch.context)
 	refused = answer.get("refused") if isinstance(answer, dict) else None
-	if refused or answer is None:
+	deferred = isinstance(answer, dict) and "deferred" in answer
+	if refused or answer is None or deferred:
 		if manual:
 			return {"outcome": "no_answer", "refused": str(refused) if refused else None}
+		if deferred and not refused:
+			return _deferred(doctype, name, due0, answer.get("deferred"))
 		return _failed(doctype, name, due0, batch, refused=bool(refused))
 	commit()   # a fresh snapshot: an edit made while the provider worked is visible
 	frappe.db.savepoint("ffl_crm_memory_write")
