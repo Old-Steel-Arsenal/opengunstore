@@ -178,6 +178,19 @@ def on_item_update(doc, method=None) -> None:
 	if _skip_push():
 		return
 
+	# A variant switched off (an unticked row of an item that comes in options): its
+	# variation comes off sale. A machine take-down, not a human delist — switching the
+	# variant back on is an ordinary save, whose push below publishes it again.
+	if (doc.get("variant_of") and doc.get("disabled") and doc.has_value_changed("disabled")
+			and (doc.woo_product_id or "")):
+		frappe.enqueue(
+			"ffl_woo_sync.woocommerce.tasks.delist_item_task",
+			queue="long",
+			enqueue_after_commit=True,
+			item_code=doc.name,
+		)
+		return
+
 	gallery_chg = _gallery_changed(doc)
 	watched = _ITEM_WOO_FIELDS + _extension_push_fields("Item")
 	map_chg = (doc.get_doc_before_save() is not None

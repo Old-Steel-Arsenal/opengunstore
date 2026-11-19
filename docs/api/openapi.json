@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenGunstore API",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "RPC API of the OpenGunstore custom apps (Frappe/ERPNext v16): ffl_core, ffl_integrations, ffl_woo_sync.\n\nAll endpoints are Frappe *whitelisted methods* invoked as `/api/method/<dotted.path>`. Unless an endpoint declares explicit HTTP verbs, it is documented here as POST (Frappe also accepts GET for read-only calls; always POST mutations). Arguments may be sent as JSON body, form data, or query string — JSON body is recommended.\n\nEvery operation carries an **Auth (derived from code)** line statically resolved from the role gate the function actually executes; the prose Permissions note adds semantics the machine can't infer.\n\nStandard CRUD on DocTypes is served by Frappe's REST layer (`/api/resource/<DocType>`) — see docs/api/frappe-rest.md; the custom DocTypes are modelled under components.schemas and listed in reference/doctypes.md."
   },
   "servers": [
@@ -17368,6 +17368,372 @@
         }
       }
     },
+    "/api/method/ffl_core.item_options.create_item_with_options": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Create an item that comes in options: the template Item, any missing options (Item",
+        "description": "Attributes) and values, and one variant Item per included combination — all or nothing.\n\nEach variant copies the template's shared fields once (group, brand, description, photos,\ntax and accounting defaults, flags) and has its own item code (its SKU), price (with the\nregister's Item Price), cost and pre-order slots. The template keeps no price, cost, UPC or\nstock of its own.\n\n**Auth (derived from code):** Requires create permission on Item (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/item_options.py:393`",
+        "operationId": "ffl_core.item_options.create_item_with_options",
+        "responses": {
+          "200": {
+            "description": "{\"template\": the template's item code, \"variants\": [the variants' item codes]}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "description": "The Item form's document (dict or JSON), as the form would save it. ``item_code`` is required."
+                  },
+                  "options": {
+                    "description": "``[{name, values: [value, ...]}]`` in order (1–3 options); values in the order the storefront lists them. Names and values are matched to existing ones ignoring case."
+                  },
+                  "rows": {
+                    "description": "``[{values: {option: value}, include, sku, price, cost, preorder, eta}]`` — one per combination; unticked rows (``include`` 0) are skipped. An included row needs a SKU (letters, numbers and ``. _ / -``, not an existing item code) and a price above 0."
+                  }
+                },
+                "required": [
+                  "item",
+                  "options",
+                  "rows"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.item_options.group_items": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Group existing Items under an item that comes in options, each with its option values,",
+        "description": "keeping their item codes. Nothing is written when any Item fails a check.\n\n**Auth (derived from code):** Requires write permission on Item (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/item_options.py:804`",
+        "operationId": "ffl_core.item_options.group_items",
+        "responses": {
+          "200": {
+            "description": "{\"ok\", \"errors\": [one line per problem], \"variants\": [the item codes grouped]}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "template": {
+                    "type": "string",
+                    "description": "The Item that comes in options."
+                  },
+                  "variants": {
+                    "description": "``{item_code: {option: value}}`` (dict or JSON); every option needs one of its existing values, and no two Items (nor an Item and an existing row) the same values."
+                  }
+                },
+                "required": [
+                  "template",
+                  "variants"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.item_options.item_options_state": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "A saved item's options and one row per variant, for the Item form's panel.",
+        "description": "**Auth (derived from code):** Requires read permission on Item (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/item_options.py:499`",
+        "operationId": "ffl_core.item_options.item_options_state",
+        "responses": {
+          "200": {
+            "description": "{\"template\", \"item_name\", \"preorder\": whether pre-order fields exist, \"options\": [{name, values: [in storefront order], abbr: {value: abbreviation}}], \"rows\": [{item_code, item_name, values: {option: value}, disabled, price, cost, preorder, eta}]}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "template": {
+                    "type": "string",
+                    "description": "The Item that comes in options."
+                  }
+                },
+                "required": [
+                  "template"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.item_options.option_codes": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "The short code each value of an option has, or will get when saved — what the Item form",
+        "description": "builds default SKUs from.\n\n**Auth (derived from code):** Requires read permission on Item (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/item_options.py:679`",
+        "operationId": "ffl_core.item_options.option_codes",
+        "responses": {
+          "200": {
+            "description": "{value: code} — an existing value's own code, a new value the code saving gives it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "option": {
+                    "type": "string",
+                    "description": "The option (Item Attribute) name; it need not exist yet."
+                  },
+                  "values": {
+                    "description": "The option's values in order (list or JSON)."
+                  }
+                },
+                "required": [
+                  "option",
+                  "values"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.item_options.option_suggestions": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Existing option names, or one option's values, for the Item form's typeahead.",
+        "description": "**Auth (derived from code):** Requires read permission on Item (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/item_options.py:650`",
+        "operationId": "ffl_core.item_options.option_suggestions",
+        "responses": {
+          "200": {
+            "description": "[{\"value\", \"abbr\"?}] — option names without abbreviations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "array"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "option": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "An option (Item Attribute) name: its values are returned (in storefront order). Blank: option names."
+                  },
+                  "txt": {
+                    "type": "string",
+                    "description": "What was typed (matched anywhere, ignoring case).",
+                    "default": ""
+                  },
+                  "limit": {
+                    "description": "At most this many (default 20, up to 500).",
+                    "default": 20
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.item_options.taken_item_codes": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Which of *codes* are already item codes (ignoring case) — the Item form's SKU check.",
+        "description": "**Auth (derived from code):** Requires read permission on Item (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/item_options.py:712`",
+        "operationId": "ffl_core.item_options.taken_item_codes",
+        "responses": {
+          "200": {
+            "description": "The ones that exist, as given.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "array"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "codes": {
+                    "description": "Item codes (list or JSON), up to 500."
+                  }
+                },
+                "required": [
+                  "codes"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.item_options.update_option_rows": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Save the panel of an item that comes in options: edits to existing rows, and new rows for",
+        "description": "values added to its options — one transaction.\n\nAn existing row is saved through an ordinary Item save (so the website and GunBroker pushes\nrun); a new price also becomes the register's price. Unticking a row disables that variant —\nnever deletes it — and ticking it again enables it.\n\n**Auth (derived from code):** Requires write permission on Item (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/item_options.py:585`",
+        "operationId": "ffl_core.item_options.update_option_rows",
+        "responses": {
+          "200": {
+            "description": ":func:`item_options_state` after the save, plus ``\"created\"``: the new variants' item codes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "template": {
+                    "type": "string",
+                    "description": "The Item that comes in options."
+                  },
+                  "rows": {
+                    "description": "``[{item_code, include?, price?, cost?, preorder?, eta?}]`` for existing rows (only the keys sent change), and ``[{values: {option: value}, include, sku, price, cost, preorder, eta}]`` for new combinations (created when included; same checks as :func:`create_item_with_options`)."
+                  },
+                  "options": {
+                    "description": "``[{name, values}]`` — the item's options in order with every value it shows, new ones included, in the order the storefront lists them (needed when new rows are sent; the option names can't change). Unused new values are kept on the option."
+                  }
+                },
+                "required": [
+                  "template",
+                  "rows"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.marketing.providers.ses.notify": {
       "post": {
         "tags": [
@@ -27813,7 +28179,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Report web orders WooCommerce says shipped while POS still holds them open.",
-        "description": "A shipped firearm with no disposition is a missing A&D entry, and nothing\nsurfaced it before — the seven such orders on 2026-08-14 were found by hand.\n\nReports only; it never disposes anything. Which rifle went in the box is\nexactly what POS does not know in this state, and guessing it is the mistake\nthe whole serial-handling rework exists to stop.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\n**Permissions:** Counter roles (manual path; the scheduler runs as Administrator).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/tasks.py:1638`",
+        "description": "A shipped firearm with no disposition is a missing A&D entry, and nothing\nsurfaced it before — the seven such orders on 2026-08-14 were found by hand.\n\nReports only; it never disposes anything. Which rifle went in the box is\nexactly what POS does not know in this state, and guessing it is the mistake\nthe whole serial-handling rework exists to stop.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\n**Permissions:** Counter roles (manual path; the scheduler runs as Administrator).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/tasks.py:1653`",
         "operationId": "ffl_woo_sync.woocommerce.tasks.alert_shipped_undisposed_orders",
         "responses": {
           "200": {
@@ -27843,7 +28209,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Re-apply the serial WooCommerce still holds to rows stuck on a STALE",
-        "description": "``reservation_error``.\n\nA rejection is a snapshot of the moment it was written (\"that gun is held by\nWOO-ORD-x\"). The only thing that ever retried it was the next\n``order.updated`` webhook — so when the obstacle cleared (the other order\ncancelled, or swapped to a different gun) nothing re-ran, and a Woo order that\nhas gone ``completed`` sends no further webhook. The row then sat in the\nPending Order queue indefinitely, quoting a reason that had stopped being\ntrue, and staff had no way to clear it but to re-save the serial on Woo.\n(2026-08-07: WOO-ORD-01488 was refused C2322, which WOO-ORD-01491 released\neight minutes later; only an unrelated update two hours on unstuck it.)\n\nWhitelisted so staff can run it on demand rather than waiting out the cron —\nwhich also gives the aged-out orders below a manual way back in.\n\nBounded on every axis, because this is an unattended writer that calls an\nexternal store:\n\n* ``LIMIT`` per run, oldest first;\n* orders older than ``_RETRY_MAX_AGE_DAYS`` are reported **once** and then\n  left alone — a sweep that retries forever is how a permanent failure turns\n  into permanent noise (the lesson ``_fb_error_is_terminal`` encodes);\n* out-of-stock rejections are excluded outright: no dealer serial exists on\n  Woo to re-apply, so re-reading that order could never fix it;\n* per-site ``auto_sync_enabled`` gate, one Settings read per site.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (manual path; the scheduler runs as Administrator).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/tasks.py:1669`",
+        "description": "``reservation_error``.\n\nA rejection is a snapshot of the moment it was written (\"that gun is held by\nWOO-ORD-x\"). The only thing that ever retried it was the next\n``order.updated`` webhook — so when the obstacle cleared (the other order\ncancelled, or swapped to a different gun) nothing re-ran, and a Woo order that\nhas gone ``completed`` sends no further webhook. The row then sat in the\nPending Order queue indefinitely, quoting a reason that had stopped being\ntrue, and staff had no way to clear it but to re-save the serial on Woo.\n(2026-08-07: WOO-ORD-01488 was refused C2322, which WOO-ORD-01491 released\neight minutes later; only an unrelated update two hours on unstuck it.)\n\nWhitelisted so staff can run it on demand rather than waiting out the cron —\nwhich also gives the aged-out orders below a manual way back in.\n\nBounded on every axis, because this is an unattended writer that calls an\nexternal store:\n\n* ``LIMIT`` per run, oldest first;\n* orders older than ``_RETRY_MAX_AGE_DAYS`` are reported **once** and then\n  left alone — a sweep that retries forever is how a permanent failure turns\n  into permanent noise (the lesson ``_fb_error_is_terminal`` encodes);\n* out-of-stock rejections are excluded outright: no dealer serial exists on\n  Woo to re-apply, so re-reading that order could never fix it;\n* per-site ``auto_sync_enabled`` gate, one Settings read per site.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (manual path; the scheduler runs as Administrator).\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/tasks.py:1684`",
         "operationId": "ffl_woo_sync.woocommerce.tasks.retry_stuck_serial_reservations",
         "responses": {
           "200": {
@@ -27873,7 +28239,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Link a template to a variable product that already exists on the store, and",
-        "description": "each variant to the variation whose SKU is its item code.\n\nAfterwards, pushing the template updates that product and those variations;\na variant with no variation there gets a new one, and a variation with no\nvariant is left as it is (``woo_only``).\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/variants.py:145`",
+        "description": "each variant to the variation whose SKU is its item code.\n\nAfterwards, pushing the template updates that product and those variations;\na variant with no variation there gets a new one, and a variation with no\nvariant is left as it is (``woo_only``).\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/variants.py:112`",
         "operationId": "ffl_woo_sync.woocommerce.variants.adopt_variable_product",
         "responses": {
           "200": {
@@ -27934,7 +28300,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Make existing Items variants of a template, keeping their item codes.",
-        "description": "Sets each Item's ``variant_of`` and its attribute values. Nothing is written\nwhen any Item fails a check (unknown Item, already another template's variant,\nmissing or unknown attribute value, the same values as another requested Item\nor an existing variant).\n\nAn Item that is listed as its own simple product loses that link\n(``{site}_product_id`` / ``listed`` cleared, returned in ``cleared``): as a\nvariant its id must be a variation of the template's product, so a stale\nsimple-product id would be sent as a variation id. The simple product itself\nis left on the store — draft or trash it there, or link the variant to its\nvariation with :func:`adopt_variable_product`.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/variants.py:62`",
+        "description": "Sets each Item's ``variant_of`` and its attribute values. Nothing is written\nwhen any Item fails a check (unknown Item, already another template's variant,\nmissing or unknown attribute value, the same values as another requested Item\nor an existing variant).\n\nAn Item that is listed as its own simple product loses that link\n(``{site}_product_id`` / ``listed`` cleared, returned in ``cleared``): as a\nvariant its id must be a variation of the template's product, so a stale\nsimple-product id would be sent as a variation id. The simple product itself\nis left on the store — draft or trash it there, or link the variant to its\nvariation with :func:`adopt_variable_product`.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/variants.py:68`",
         "operationId": "ffl_woo_sync.woocommerce.variants.make_variants",
         "responses": {
           "200": {

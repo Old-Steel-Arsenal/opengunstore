@@ -1190,6 +1190,44 @@ def _push_variations(template: str, *, wc: WooCommerceClient, attr_ids, _retries
     return {"variations": out, "variation_errors": errors}
 
 
+def push_new_variations(template: str, *, client: WooCommerceClient | None = None,
+        _retries: int = 2, site: str = "retail") -> dict:
+    """Variations for a listed template's variants that have none yet (values added to its
+    options, or Items grouped under it): the parent's attributes first — a variation's value
+    must be one of the parent's options — then each new variant's own push, which creates its
+    variation. The rest of the parent (name, description, images) is not rewritten: wp-admin
+    edits survive, as under a machine push.
+
+    Returns ``{"variations": {item_code: variation id | skip reason},
+    "variation_errors": {item_code: {"error", "status_code"}}}``, or ``{"skipped": reason}``
+    when the template is not on the store or was delisted."""
+    pid = _f(site, "product_id")
+    row = frappe.db.get_value("Item", template, [pid, _f(site, "delisted")], as_dict=True) or {}
+    parent = str(row.get(pid) or "")
+    if not parent:
+        return {"skipped": NO_PARENT, "item_code": template, "site": site}
+    if row.get(_f(site, "delisted")):
+        return {"skipped": "delisted", "item_code": template, "site": site}
+    new = [code for code in mapping.template_variants(template)
+           if not frappe.db.get_value("Item", code, pid)]
+    if not new:
+        return {"variations": {}, "variation_errors": {}}
+    wc = _client(client, site)
+    attr_ids = wc.get_attribute_ids()
+    attributes = mapping.template_to_product_payload(template, attr_ids=attr_ids, site=site)["attributes"]
+    _push_with_retry(lambda: wc.update_product(parent, {"attributes": attributes}), retries=_retries)
+    out: dict[str, str] = {}
+    errors: dict[str, dict] = {}
+    for code in new:
+        try:
+            res = push_item(code, client=wc, attr_ids=attr_ids, _retries=_retries, site=site,
+                            pos_fields_only=True)
+            out[code] = res.get("skipped") or str(res.get("id") or "")
+        except Exception as exc:
+            errors[code] = {"error": str(exc)[:300], "status_code": getattr(exc, "status_code", None)}
+    return {"variations": out, "variation_errors": errors}
+
+
 # A variant whose template has no product on the store yet: a machine (lean) push
 # does not create one — the template's full push creates the parent and its variations.
 NO_PARENT = "no_parent_product"
