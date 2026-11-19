@@ -146,13 +146,18 @@ class TestCRMContract(CRMTestCase):
 		root = frappe.get_app_path("crm", "..", "frontend", "src")
 		if not os.path.isdir(root):
 			self.skipTest("a release build without the frontend's source")
-		reads = {
-			"data/script.js": "setFieldHtml",
-			"components/SidePanelLayout.vue": "fieldHtmlMap",
-			"components/Controls/HtmlControl.vue": "sanitizeHTML",
-			"utils/dialogs.jsx": "dialog.html",
-		}
-		for path, needle in reads.items():
+		# The Memory card (crm.memory): its hidden field is shown by setFieldProperty, and the "..." menu takes
+		# a group from each script.
+		reads = (
+			("data/script.js", "setFieldHtml"),
+			("data/script.js", "setFieldProperty"),
+			("components/SidePanelLayout.vue", "fieldHtmlMap"),
+			("components/SidePanelLayout.vue", "isFieldVisible(_field, overrides?.hidden)"),
+			("components/Controls/HtmlControl.vue", "sanitizeHTML"),
+			("components/CustomActions.vue", "action.group && !action.buttonLabel"),
+			("utils/dialogs.jsx", "dialog.html"),
+		)
+		for path, needle in reads:
 			with open(os.path.join(root, path)) as handle:
 				self.assertIn(needle, handle.read(), path)
 

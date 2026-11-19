@@ -16,8 +16,10 @@ customer message: a received mail, or a website inquiry note (which may come wit
 For a Deal the timeline includes its Lead, as CRM's own does, when the user may read the Lead.
 
 What the provider is given: the message, at most five others of the conversation, the customer's
-first name and state, and product facts with the register's price and what is in stock now. Never an
-internal note, a serial number, an ID, an address beyond the state, a phone number or an email address.
+first name and state, what the customer's memory holds (``crm.memory``: the record's summary and its rows,
+blanked by ``crm.sensitive.redact``), and product facts with the register's price and what is in stock now.
+Never an internal note, a serial number, an ID, an address beyond the state, a phone number or an email
+address.
 """
 from __future__ import annotations
 
@@ -35,7 +37,7 @@ from ffl_core.crm.deals import DEAL
 from ffl_core.crm.inquiries import EVENT_FIELD
 from ffl_core.crm.mail import LEAD
 from ffl_core.crm.item import PRODUCT
-from ffl_core.crm import sell_requests, wants
+from ffl_core.crm import memory, sell_requests, wants
 
 READY_HOOK = "gunshop_crm_reply_draft_ready"
 DRAFT_HOOK = "gunshop_crm_reply_draft"
@@ -47,6 +49,9 @@ QUOTE_MATCH = 200       # how much of it (letters and digits) must start the mai
 LATEST_LIMIT = 4000
 THREAD_COUNT, THREAD_EACH, THREAD_TOTAL = 5, 1500, 8000
 FACT_LIMIT, UNIT_LIMIT = 12, 5
+# lazy: the memory's wants put at most 36 matches in budget order (each priced one by one); upgrade path: a
+# batch price read if a store's matches ever run that long.
+BUDGET_CANDIDATES = 3 * FACT_LIMIT
 STORE_NAME_LIMIT, FIRST_NAME_LIMIT = 140, 40
 
 NO_MAIL = "No mail from the customer to reply to."
@@ -388,16 +393,43 @@ class Facts:
 		return [dict(f) for f in self.facts[before:]]
 
 
-def gather_facts(doc) -> Facts:
+def by_budget(codes: list[str], budget: float) -> list[str]:
+	"""*codes* with what the register prices at or under the budget (10% over at most) first, each group
+	nearest the budget first; the order is kept between equals and for an item with no price (last)."""
+	from ffl_core import pricing
+
+	def key(code):
+		price = flt(pricing.counter_price_for(code))
+		return (True, float("inf")) if price <= 0 else (price > budget * 1.1, abs(price - budget))
+	return sorted(codes, key=key)
+
+
+def gather_facts(doc, remembered: list | None = None) -> Facts:
+	"""The record's product lines, then what its open wants fit in stock, then what the wants in the
+	customer's memory (*remembered*, ``crm.memory.kept_rows``) fit, nearest the remembered budget first.
+
+	lazy: only the memory's wants are put in budget order; keywords are matched as substrings and 12 facts at
+	most are kept; upgrade path: a keyword index once a store's stock is large (as ``crm.wants``)."""
 	facts = Facts()
 	for item, _serial in record_lines(doc):
 		facts.add(item)
-	for code in matching_items(record_wants(doc)):
+	found = record_wants(doc)
+	asked = [frappe._dict(item=None, keywords=r.keywords) for r in remembered or []
+		if r.kind == "want" and wants.keyword_tokens(r.keywords)]
+	if not found and not asked:
+		return facts
+	stock = in_stock_items()
+	for code in matching_items(found, stock):
+		facts.add(code)
+	# Enough candidates to fill the facts, priced only when ordered by the budget.
+	codes = matching_items(asked, stock)[:BUDGET_CANDIDATES] if asked else []
+	budget = next((flt(r.amount) for r in remembered or [] if r.kind == "budget" and flt(r.amount) > 0), 0)
+	for code in by_budget(codes, budget) if budget else codes:
 		facts.add(code)
 	return facts
 
 
-def context(doc, latest, messages: list, facts: Facts, channel: str) -> dict:
+def context(doc, latest, messages: list, facts: Facts, channel: str, memory: dict | None = None) -> dict:
 	"""What ``gunshop_crm_reply_draft`` is given (docs/extensions/hooks.md)."""
 	return {
 		"channel": channel,
@@ -405,6 +437,7 @@ def context(doc, latest, messages: list, facts: Facts, channel: str) -> dict:
 		"latest": {"subject": _clip(latest.subject, 500), "body": _clip(_body(latest), LATEST_LIMIT), "at": str(latest.at)},
 		"thread": _thread(messages, latest),
 		"customer": _customer(doc),
+		"memory": memory or {"summary": "", "items": []},
 		"facts": [dict(f) for f in facts.facts],
 		"find_stock": facts.find_stock,
 	}
@@ -467,7 +500,9 @@ def draft(doctype: str, name: str, quote_text: str = "") -> dict:
 	quote_text = str(quote_text or "")[:QUOTE_LIMIT]
 	latest, native = target(doc, quote_text)
 	env = envelope(doc, latest)
-	ctx = context(doc, latest, _messages(doc), gather_facts(doc), env["channel"])
+	remembered = memory.kept_rows(doc)
+	ctx = context(doc, latest, _messages(doc), gather_facts(doc, remembered), env["channel"],
+		memory.draft_context(doc, remembered))
 	answer = _ask(ctx)
 	handoff = answer.get("handoff")
 	return {"native_ok": 1 if native else 0, **env, "content_html": to_html(answer["body"]),
