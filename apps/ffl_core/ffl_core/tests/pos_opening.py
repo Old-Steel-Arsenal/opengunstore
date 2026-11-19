@@ -18,22 +18,27 @@ def close_stale_pos_openings() -> None:
 			frappe.db.set_value("POS Opening Entry", row.name, "status", "Closed", update_modified=False)
 
 
-def ensure_pos_profile(company: str, name: str = "FFL Test") -> str:
-	"""A POS Profile ``name`` on the test company, made when the site has none: a module run alone on a fresh site
-	(CI re-runs a failed module by itself) must not depend on another module having created it. Cash only, no
-	taxes; the company's standard test accounts (abbreviation FT)."""
-	if frappe.db.exists("POS Profile", name):
+def ensure_pos_profile(company: str, name: str | None = None) -> str:
+	"""A POS Profile of *company* named *name* (default: the company's own name), made when the site has none: a
+	module run alone on a fresh site (CI re-runs a failed module by itself) must not depend on another module having
+	created it. Cash only, no taxes; the company's own accounts, warehouse and cost centre (its abbreviation). A
+	profile of that name on another company is refused, never returned."""
+	name = name or company
+	owner = frappe.db.get_value("POS Profile", name, "company")
+	if owner:
+		assert owner == company, f"POS Profile {name!r} belongs to {owner!r}, not {company!r}"
 		return name
+	abbr = frappe.get_cached_value("Company", company, "abbr")
 	mop = frappe.get_doc("Mode of Payment", "Cash")
 	if not any(r.company == company for r in mop.accounts):
-		mop.append("accounts", {"company": company, "default_account": "Cash - FT"})
+		mop.append("accounts", {"company": company, "default_account": f"Cash - {abbr}"})
 		mop.save(ignore_permissions=True)
 	account = lambda **f: frappe.db.get_value("Account", {"company": company, "is_group": 0, **f})  # noqa: E731
 	frappe.get_doc({
-		"doctype": "POS Profile", "name": name, "company": company, "warehouse": "Stores - FT",
+		"doctype": "POS Profile", "name": name, "company": company, "warehouse": f"Stores - {abbr}",
 		"currency": "USD", "customer_group": "All Customer Groups", "territory": "All Territories",
 		"selling_price_list": "Standard Selling",
-		"write_off_account": account(account_name=("like", "Write Off%")), "write_off_cost_center": "Main - FT",
+		"write_off_account": account(account_name=("like", "Write Off%")), "write_off_cost_center": f"Main - {abbr}",
 		"income_account": account(account_name="Sales"), "expense_account": account(account_type="Expense Account"),
 		"payments": [{"mode_of_payment": "Cash", "default": 1}],
 	}).insert(ignore_permissions=True)

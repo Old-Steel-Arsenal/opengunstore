@@ -45,6 +45,36 @@ The text of a waiver or agreement customers sign.
 | `body` | Text Editor | Agreement Text | ✓ |  |
 | `description` | Small Text | Staff Notes |  |  |
 
+## CRM Customer Memory
+
+app: `ffl_core` · module: FFL Core · roles: Sales Manager, System Manager
+
+What a customer has told the store, kept for the next reply: one per person, written by ffl_core.crm.memory.
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `customer` | Link | Customer |  | Customer |
+| `contact` | Link | Contact |  | Contact |
+| `lead` | Link | Lead |  | CRM Lead |
+| `auto_update` | Check | Update with AI |  |  |
+| `items` | Table | Items |  | CRM Customer Memory Item |
+
+## CRM Customer Memory Item
+
+app: `ffl_core` · module: FFL Core · child table
+
+| field | type | label | reqd | options |
+|---|---|---|---|---|
+| `kind` | Select | Kind | ✓ | want, budget, state, trade_in, preference, question |
+| `text` | Data | Text |  |  |
+| `keywords` | Data | Keywords |  |  |
+| `amount` | Currency | Amount |  |  |
+| `said` | Select | Said by |  | Customer, Staff, Order |
+| `source_doctype` | Link | Source type |  | DocType |
+| `source_name` | Dynamic Link | Source |  | source_doctype |
+| `noted_on` | Date | Noted on |  |  |
+| `locked` | Check | Locked |  |  |
+
 ## CRM Deal Hold
 
 app: `ffl_core` · module: FFL Core · roles: Sales Manager, Sales User, Stock Manager, System Manager

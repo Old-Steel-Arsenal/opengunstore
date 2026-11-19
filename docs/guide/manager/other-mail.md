@@ -13,6 +13,10 @@ Each sender gets one lead with the status **Other mail** and a category:
 
 A customer who already has a contact stays a customer, whatever their domain. A staff member's own mailbox leaves this mail out.
 
+## GunBroker notices
+
+GunBroker's own mail about a sale, an item the store won, or an FFL transfer names the other party as its reply address. It stays in the mail log with a **GunBroker notice** note and makes no lead. When that buyer or seller writes, their mail is sorted like anyone's. A seller's mail about an item the store won goes to **Other mail** as **Vendor**.
+
 These leads can hold account mail, such as a password reset sent to a team address. So only Sales Managers see them, in the **Other mail** view in CRM. CRM's dashboard still counts them in its lead totals.
 
 ## Fix a wrong guess

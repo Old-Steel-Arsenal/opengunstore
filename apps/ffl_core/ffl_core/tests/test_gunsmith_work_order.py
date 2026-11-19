@@ -18,6 +18,7 @@ from ffl_core.custody import is_custody_serial
 from ffl_core.setup import gunsmith as setup
 from ffl_core.setup.customer_deposits import deposit_account
 from ffl_core.setup.gunsmith import DEPOSIT_ITEM, LABOR_ITEM
+from ffl_core.tests.tax_defaults import default_template_from_rows, make_default_template
 from ffl_core.tests.test_agreements import _png
 from ffl_core.tests.test_customer_profile import _hooks, _uniq, _user
 
@@ -89,6 +90,10 @@ class _Base(FrappeTestCase):
 	def setUpClass(cls):
 		super().setUpClass()
 		frappe.set_user("Administrator")
+		# The register's template made the company default and the 0% template synced to it, as a store's
+		# migrate leaves them: which accounts the labor and deposit lines are exempt on follows the default,
+		# and another module (or an older release's suite on an upgraded site) may have left its own.
+		make_default_template(COMPANY, TAX)
 		setup.ensure()
 		frappe.defaults.set_user_default("Company", COMPANY)
 		if not frappe.db.exists("Item", "_Test GW Part"):
@@ -541,6 +546,53 @@ class Money(_Base):
 		si.append("items", {"item_code": DEPOSIT_ITEM, "qty": 1, "rate": 100, "ffl_work_order": job.name})
 		with self.assertRaises(frappe.ValidationError):
 			gunsmith.guard_deposit_lines(si)
+
+
+class TaxGuard(_Base):
+	"""A deposit or labor line is never taxed by accident: the 0% template covers only the accounts of the
+	company's default template, so a register on any other template is refused (as for a pre-order payment)."""
+
+	def _register_off_default(self):
+		"""The register keeps TAX while the company default (and the 0% template synced to it) moves to a
+		template on another account, as a store whose register was never re-pointed after a template change."""
+		before = make_default_template(COMPANY, TAX)
+		acct = "_Test GW Other Tax - FT"
+		if not frappe.db.exists("Account", acct):
+			parent = frappe.db.get_value("Account", {"company": COMPANY, "account_name": "Duties and Taxes", "is_group": 1})
+			frappe.get_doc({"doctype": "Account", "account_name": "_Test GW Other Tax", "company": COMPANY,
+				"parent_account": parent, "account_type": "Tax", "is_group": 0}).insert(ignore_permissions=True)
+		default_template_from_rows(COMPANY, "_Test GW Other 5", [(acct, 5)])
+		self.addCleanup(make_default_template, COMPANY, before)
+
+	def test_a_deposit_on_a_template_the_zero_template_does_not_cover_is_refused(self):
+		job = _job(self.cust)
+		self._register_off_default()
+		with self.assertRaisesRegex(frappe.ValidationError, "gunsmith deposit line would be taxed"):
+			_payment(job, 100)
+
+	def test_labor_on_a_template_the_zero_template_does_not_cover_is_refused(self):
+		job = _ready(_job(self.cust), [(LABOR_ITEM, 150), ("_Test GW Part", 40)])
+		self._register_off_default()
+		with self.assertRaisesRegex(frappe.ValidationError, "gunsmith labor line would be taxed"):
+			gunsmith.open_pickup(job.name)
+
+	def test_labor_the_store_taxes_on_purpose_is_not_refused(self):
+		"""A store may point the labor setting at its own item whose template taxes labor (a state question,
+		setup/gunsmith.py): that is the store's choice, not an accident."""
+		template = f"_Test GW Taxable Labor - {frappe.get_cached_value('Company', COMPANY, 'abbr')}"
+		if not frappe.db.exists("Item Tax Template", template):
+			frappe.get_doc({"doctype": "Item Tax Template", "title": "_Test GW Taxable Labor", "company": COMPANY,
+				"taxes": [{"tax_type": frappe.db.get_value("Sales Taxes and Charges", {"parent": TAX}, "account_head"),
+					"tax_rate": 6}]}).insert(ignore_permissions=True)
+		if not frappe.db.exists("Item", "_Test GW Taxed Labor"):
+			frappe.get_doc({"doctype": "Item", "item_code": "_Test GW Taxed Labor", "item_name": "Taxed labor",
+				"item_group": "Service", "stock_uom": "Nos", "is_stock_item": 0,
+				"taxes": [{"item_tax_template": template}]}).insert(ignore_permissions=True)
+		frappe.db.set_single_value("FFL Settings", "gunsmith_labor_item", "_Test GW Taxed Labor")
+		self.addCleanup(frappe.db.set_single_value, "FFL Settings", "gunsmith_labor_item", LABOR_ITEM)
+		job = _ready(_job(self.cust), [("_Test GW Taxed Labor", 100)])
+		pick = frappe.get_doc("POS Invoice", gunsmith.open_pickup(job.name)["pos_invoice"])
+		self.assertEqual(flt(pick.total_taxes_and_charges), 6)
 
 
 class Register(_Base):

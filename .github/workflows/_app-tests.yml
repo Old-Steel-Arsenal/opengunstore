@@ -433,9 +433,21 @@ jobs:
                 && timeout 300 sudo apt-get "${APT[@]}" install -y "/tmp/$DEB"; then
               break
             fi
-            [ "$try" = 2 ] && exit 1
+            if [ "$try" = 2 ]; then
+              echo "::error title=wkhtmltopdf not installed::apt could not install wkhtmltox and its dependencies (apt output above); no test ran in this job"
+              exit 1
+            fi
             echo "::warning::apt-get failed or timed out (try $try); trying again"
             sudo dpkg --configure -a || true
+            # Some hosted images list no Ubuntu archive at all, only packages.microsoft.com (seen on an
+            # AWS-provisioned ubuntu-26.04): the font packages wkhtmltox depends on are then "not
+            # installable" on every try. Give the second try the archive.
+            if ! apt-cache show xfonts-75dpi >/dev/null 2>&1; then
+              . /etc/os-release
+              echo "::warning::no Ubuntu archive in this image's apt sources; adding archive.ubuntu.com ($VERSION_CODENAME)"
+              printf 'Types: deb\nURIs: http://archive.ubuntu.com/ubuntu\nSuites: %s %s-updates %s-security\nComponents: main universe\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n' \
+                "$VERSION_CODENAME" "$VERSION_CODENAME" "$VERSION_CODENAME" | sudo tee /etc/apt/sources.list.d/ci-ubuntu-archive.sources
+            fi
           done
           wkhtmltopdf --version
           # The hosted image carries the MySQL 8 client, not MariaDB's. scripts/ci/parallel_tests.py

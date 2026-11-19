@@ -36,6 +36,8 @@ jobs:
   # longer limit below.
   # Schedules run the default branch's copy of this file, and the default branch is
   # develop, so the workflow, _app-tests.yml and the checked-out code all come from develop.
+  # A manual run on a branch tests that branch's commit, as the fresh-site leg does: a fix to
+  # this leg can be proved before it merges.
   upgrade-regression:
     name: Upgrade regression (main → develop)
     uses: ./.github/workflows/_app-tests.yml
@@ -45,7 +47,6 @@ jobs:
       workers: 8
       # One job: every shard would first seed its site with the old release's whole suite, serially
       # (the longest part), so sharding would repeat that, not split it.
-      ref: develop
       upgrade_from: main
       seed_with_old_tests: true
       # Seeded with main's whole suite (~8 min serially) before the migrate and the suite.

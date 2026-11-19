@@ -31,9 +31,10 @@ from ffl_core.crm import TITLE, installed, pos_link_on, team
 from ffl_core.crm.customer import CARD_FIELD
 from ffl_core.crm.deal import SERIAL_FIELD
 from ffl_core.crm.deals import DEAL, STATUS
-from ffl_core.crm.gunbroker import MSGID_FIELD
+from ffl_core.crm.gunbroker import MORE_MSGIDS_FIELD, MSGID_FIELD
 from ffl_core.crm.inquiries import EVENT_FIELD
 from ffl_core.crm.mail import AUTO_LEAD, CATEGORY, CATEGORY_FIELD, LEAD, OTHER_MAIL, SETTINGS
+from ffl_core.crm import memory
 from ffl_core.crm.orders import DEAL_FIELD
 from ffl_core.crm import sell_requests
 from ffl_core.crm.web_orders import ORDER as WEB_ORDER, WON_BY
@@ -326,6 +327,99 @@ _REPLY_SCRIPT_TEMPLATE = """class %(cls)s {
 				this.actions.unshift(...add)
 			})
 			.catch((e) => console.warn("[OpenGunstore] reply buttons", e))
+		this.fflLoadMemory()
+	}
+	fflLoadMemory() {
+		call("ffl_core.api.crm.memory_card", { doctype: "%(dt)s", name: this.doc.name })
+			.then((card) => this.fflShowMemory(card))
+			.catch((e) => console.warn("[OpenGunstore] memory card", e))
+	}
+	fflShowMemory(card) {
+		this.fflMemory = card
+		const at = this.actions.findIndex((a) => a.fflMemory)
+		if (at > -1) this.actions.splice(at, 1)
+		this.setFieldProperty("%(card)s", "hidden", !card.shown)
+		if (!card.shown) return
+		this.setFieldHtml("%(card)s", card.html)
+		this.fflWatchSources()
+		if (!card.can_edit) return
+		const items = [{ label: __("Edit memory"), onClick: () => this.fflEditMemory() }]
+		if (card.ready) items.push({ label: __("Update memory"), onClick: () => this.fflUpdateMemory() })
+		if (card.has_content) items.push({ label: __("Clear memory"), onClick: () => this.fflClearMemory() })
+		this.actions.push({ group: __("More"), hideLabel: true, fflMemory: true, items })
+	}
+	fflEsc(s) {
+		return String(s ?? "").replace(/[&<>"'{}]/g, (c) => "&#" + c.charCodeAt(0) + ";")
+	}
+	fflWatchSources() {
+		// One listener for the page's life: each "said" link on a card carries its own record.
+		if (window.fflMemorySources) return
+		window.fflMemorySources = true
+		window.document.addEventListener("click", (ev) => {
+			const link = ev.target.closest && ev.target.closest("[data-ffl-memory-source]")
+			if (!link) return
+			ev.preventDefault()
+			call("ffl_core.api.crm.memory_source", { doctype: link.dataset.fflMemoryDoctype,
+				name: link.dataset.fflMemoryName, row: link.dataset.fflMemorySource })
+				.then((m) => createDialog({ title: m.subject || __("Message"),
+					html: "<div class='text-ink-gray-5'>" + this.fflEsc(m.at) + "</div>"
+						+ "<div class='text-ink-gray-8' style='white-space:pre-wrap;margin-top:8px'>" + this.fflEsc(m.text) + "</div>" }))
+				.catch((e) => toast.error(this.fflMessage(e)))
+		}, true)
+	}
+	fflEditMemory() {
+		formDialog({
+			title: __("Edit memory"),
+			fields: [
+				{ fieldname: "want", fieldtype: "Small Text", label: __("Wants") },
+				{ fieldname: "budget", fieldtype: "Currency", label: __("Budget") },
+				{ fieldname: "state", fieldtype: "Data", label: __("State") },
+				{ fieldname: "trade_in", fieldtype: "Small Text", label: __("Trade-in") },
+				{ fieldname: "preference", fieldtype: "Small Text", label: __("Prefers") },
+				{ fieldname: "question", fieldtype: "Small Text", label: __("Open") },
+				{ fieldname: "auto_update", fieldtype: "Check", label: __("Update with AI") },
+			],
+			defaults: { ...this.fflMemory.values },
+			submitLabel: __("Save"),
+			onSubmit: async (data) => {
+				try {
+					this.fflShowMemory(await call("ffl_core.api.crm.memory_save", {
+						doctype: "%(dt)s", name: this.doc.name, values: JSON.stringify(data) }))
+				} catch (e) {
+					throw new Error(this.fflMessage(e))
+				}
+			},
+		})
+	}
+	async fflUpdateMemory() {
+		if (this.fflUpdating) return
+		this.fflUpdating = true
+		const waiting = toast.loading(__("Updating…"))
+		try {
+			this.fflShowMemory(await call("ffl_core.api.crm.memory_update_now", { doctype: "%(dt)s", name: this.doc.name }))
+			toast.dismiss(waiting)
+			toast.success(__("Memory updated."))
+		} catch (e) {
+			toast.dismiss(waiting)
+			toast.error(e?.messages?.[0] || __("Couldn't update memory."))
+		} finally {
+			this.fflUpdating = false
+		}
+	}
+	fflClearMemory() {
+		createDialog({
+			title: __("Clear memory?"),
+			actions: [{ label: __("Clear"), variant: "solid", theme: "red", onClick: async (close) => {
+				close()
+				try {
+					const card = await call("ffl_core.api.crm.memory_clear", { doctype: "%(dt)s", name: this.doc.name })
+					this.fflShowMemory(card)
+					if (card.summaries_kept) toast(__("{0} summaries on records you can't change were kept.", [card.summaries_kept]))
+				} catch (e) {
+					toast.error(this.fflMessage(e))
+				}
+			} }],
+		})
 	}
 	fflMessage(e) {
 		return e?.messages?.[0] || e?.message || __("Something went wrong.")
@@ -381,7 +475,7 @@ _REPLY_SCRIPT_TEMPLATE = """class %(cls)s {
 		}
 	}
 	fflReplyDialog(draft) {
-		const esc = (s) => String(s ?? "").replace(/[&<>"'{}]/g, (c) => "&#" + c.charCodeAt(0) + ";")
+		const esc = (s) => this.fflEsc(s)
 		const fields = [{ fieldname: "ffl_envelope", fieldtype: "HTML",
 			options: "<div class='text-ink-gray-7'>" + esc(draft.to) + " · " + esc(draft.subject) + "</div>" }]
 		if (draft.handoff) fields.push({ fieldname: "ffl_handoff", fieldtype: "HTML",
@@ -455,8 +549,9 @@ _REPLY_SCRIPT_TEMPLATE = """class %(cls)s {
 
 
 def reply_script_js(doctype: str) -> str:
-	"""The Draft reply / Insert price script of the Lead or Deal page."""
-	return _REPLY_SCRIPT_TEMPLATE % {"cls": doctype.replace(" ", ""), "dt": doctype}
+	"""The Draft reply / Insert price script of the Lead or Deal page, with its Memory card and the card's
+	Edit memory / Update memory / Clear memory in the "..." menu (crm/memory.py)."""
+	return _REPLY_SCRIPT_TEMPLATE % {"cls": doctype.replace(" ", ""), "dt": doctype, "card": memory.CARD_FIELD}
 
 
 REPLY_SCRIPTS = {LEAD_SCRIPT: (LEAD, reply_script_js(LEAD)), DEAL_REPLY_SCRIPT: (DEAL, reply_script_js(DEAL))}
@@ -465,8 +560,55 @@ SIDE_PANEL = f"{DEAL}-Side Panel"
 CARD_SECTION = "ffl_customer_section"
 SELL_SECTION = "ffl_sell_section"
 
+# The customer memory's per-record fields (crm.memory). Same names on Lead and Deal: CRM's conversion
+# copies a lead's onto its deal, the summary and the watermark with them.
+MEMORY_FIELDS = [{
+	# The side panel's Memory card: hidden until the page script has a card to show (crm.memory.card).
+	"fieldname": memory.CARD_FIELD,
+	"fieldtype": "HTML",
+	"label": "Memory",
+	"hidden": 1,
+}, {
+	"fieldname": memory.SUMMARY,
+	"fieldtype": "Small Text",
+	"label": "Summary",
+	"read_only": 1,
+	"hidden": 1,
+	"no_copy": 1,
+}, {
+	"fieldname": memory.DUE,
+	"fieldtype": "Datetime",
+	"label": "Memory update due",
+	"read_only": 1,
+	"hidden": 1,
+	"no_copy": 1,
+	"search_index": 1,
+}, {
+	"fieldname": memory.SEEN,
+	"fieldtype": "Datetime",
+	"label": "Memory read up to",
+	"read_only": 1,
+	"hidden": 1,
+	"no_copy": 1,
+}, {
+	"fieldname": memory.FAILING,
+	"fieldtype": "Datetime",
+	"label": "Memory update failing since",
+	"read_only": 1,
+	"hidden": 1,
+	"no_copy": 1,
+}]
+
 CUSTOM_FIELDS = {
-	"CRM Deal": [{
+	"CRM Deal": [*map(dict, MEMORY_FIELDS), {
+		# Won since the last memory update: the next one is told what was bought.
+		"fieldname": memory.WON,
+		"fieldtype": "Check",
+		"label": "Memory: won since last update",
+		"read_only": 1,
+		"hidden": 1,
+		"no_copy": 1,
+	}, {
 		"fieldname": CARD_FIELD,
 		"fieldtype": "HTML",
 		"label": "Customer card",
@@ -528,7 +670,16 @@ CUSTOM_FIELDS = {
 		"no_copy": 1,
 		"search_index": 1,
 		"insert_after": CATEGORY_FIELD,
-	}],
+	}, {
+		# The conversation's other MsgIds: a member's later question joined to it (crm.mail).
+		"fieldname": MORE_MSGIDS_FIELD,
+		"fieldtype": "Small Text",
+		"label": "More GunBroker message ids",
+		"read_only": 1,
+		"hidden": 1,
+		"no_copy": 1,
+		"insert_after": MSGID_FIELD,
+	}, *map(dict, MEMORY_FIELDS)],
 	"Email Account": [{
 		"fieldname": AUTO_LEAD,
 		"fieldtype": "Check",
@@ -579,6 +730,7 @@ def ensure(backfill: bool = True) -> dict:
 		_as_administrator(ensure_contact_script)
 		_as_administrator(ensure_reply_scripts)
 		_as_administrator(apply_pos_link)
+		_as_administrator(lambda: memory.refresh_layout(on_migrate=True))
 		_as_administrator(team.apply)
 		if backfill:
 			enqueue_backfill()

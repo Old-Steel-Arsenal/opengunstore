@@ -538,6 +538,65 @@ class TestWebTenderOnSubmit(FrappeTestCase):
 		self.assertIn("ffl_woo_sync.woocommerce.pickup.require_web_tender_on_submit", hooks)
 
 
+class TestTicketCarriesTheOrderedGun(FrappeTestCase):
+	"""The buyer ordered one particular gun. Its pickup ticket is opened with that
+	serial on the line, and the 4473 dialog used to be able to replace it with a
+	different one: the ticket then ran its 4473, and booked its disposition,
+	against a gun the order never named."""
+
+	def _doc(self, serials, *, woo_order=ORDER, is_return=0, item="Sample Pistol Grade A"):
+		return frappe._dict(doctype="POS Invoice", name="ACC-PSINV-2026-09999",
+			woo_online_order=woo_order, is_return=is_return,
+			items=[frappe._dict(item_code=item, serial_no=s) for s in serials])
+
+	def _validate(self, doc, order=None):
+		from ffl_woo_sync.woocommerce import pickup
+		order = order or _order(serials=[_serial_row(confirmed_serial="ORDERED-1")])
+		with patch("frappe.get_doc", return_value=order) as get_doc:
+			pickup.require_ordered_guns_on_ticket(doc)
+		return get_doc
+
+	def test_the_ordered_gun_passes(self):
+		self._validate(self._doc(["ORDERED-1"]))
+
+	def test_a_different_gun_is_refused_and_the_ordered_one_is_named(self):
+		with self.assertRaises(frappe.ValidationError) as caught:
+			self._validate(self._doc(["SOME-OTHER-GUN"]))
+		self.assertIn("ORDERED-1", str(caught.exception))
+
+	def test_a_line_with_no_serial_is_refused(self):
+		with self.assertRaises(frappe.ValidationError):
+			self._validate(self._doc([""]))
+
+	def test_every_ordered_gun_must_be_there(self):
+		order = _order(lines=[_line(qty=2, line_total=1299.0)], serials=[
+			_serial_row(confirmed_serial="ORDERED-1"), _serial_row(confirmed_serial="ORDERED-2")])
+		self._validate(self._doc(["ORDERED-1\nORDERED-2"]), order)
+		with self.assertRaises(frappe.ValidationError) as caught:
+			self._validate(self._doc(["ORDERED-1\nSOME-OTHER-GUN"]), order)
+		self.assertIn("ORDERED-2", str(caught.exception))
+
+	def test_an_order_that_names_no_gun_leaves_the_choice_to_the_counter(self):
+		"""Stock sold by the unit: any one on the shelf is the one ordered."""
+		self._validate(self._doc(["ANY-UNIT"]), _order(serials=[_serial_row()]))
+
+	def test_a_drop_shipped_gun_is_not_expected_on_the_ticket(self):
+		"""Its serial is a record of what the distributor sent, never our stock."""
+		order = _order(serials=[_serial_row(confirmed_serial="DISTRIBUTOR-1", fulfillment="fds")])
+		self._validate(self._doc([""]), order)
+
+	def test_an_ordinary_counter_sale_is_left_alone(self):
+		self._validate(self._doc(["ANY-UNIT"], woo_order=None)).assert_not_called()
+
+	def test_a_return_is_left_alone(self):
+		self._validate(self._doc(["ANY-UNIT"], is_return=1)).assert_not_called()
+
+	def test_it_runs_on_every_save(self):
+		"""Not only at submit: the 4473 starts from a save of the draft."""
+		hooks = frappe.get_hooks("doc_events")["POS Invoice"]["validate"]
+		self.assertIn("ffl_woo_sync.woocommerce.pickup.require_ordered_guns_on_ticket", hooks)
+
+
 class TestOpenDraftsForOrders(FrappeTestCase):
 	def test_many_orders_are_answered_in_one_query(self):
 		"""The Pending Order page renders every pending order and reloads after
