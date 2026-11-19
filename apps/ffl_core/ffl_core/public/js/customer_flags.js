@@ -15,13 +15,14 @@
 //     the register shows under the customer's name. An agreement still to sign
 //     is a clickable chip that opens ffl.agreements.request (agreement_actions.js).
 // The POS wiring is here too: the POS Invoice `customer` event (both the register
-// and the Desk form), the ItemCart customer section (strip + Agreements button + "Scan ID" lookup,
-// shown only while FFL Settings → Store Customer ID Numbers is on), wrapped on
+// and the Desk form), the ItemCart customer section (strip + Agreements button + "Scan ID" lookup
+// and, in the opened contact panel, the date of birth and ID numbers read-only — both
+// only while FFL Settings → Store Customer ID Numbers is on), wrapped on
 // ERPNext's prototype via ffl.installClassHook — never edited.
 // New Customer dialog: confirmNotDuplicate(values) — customer_quick_entry.js asks
 // it before saving.
 //
-// The pure half (summarize / stripHtml / dupLabel / maskId) is Node-tested.
+// The pure half (summarize / stripHtml / dupLabel / maskId / idRows) is Node-tested.
 (function (root, factory) {
 	var api = factory();
 	if (typeof module === 'object' && module.exports) module.exports = api;
@@ -114,13 +115,27 @@
 		return (row.matched || []).map(function (m) { return names[m] || m; }).join(', ');
 	}
 
-	// Last four characters only — an ID number is never shown whole.
+	// Last four characters only: a message box never shows an ID number whole.
 	function maskId(v) {
 		var s = String(v || '');
 		return s.length > 4 ? '••' + s.slice(-4) : s;
 	}
 
-	return { summarize: summarize, stripHtml: stripHtml, dupLabel: dupLabel, maskId: maskId, escText: escText };
+	// Customer doc → [{label, value, fieldtype}] for the register's contact panel:
+	// the date of birth, then every ID document that holds a number.
+	function idRows(doc, L) {
+		L = L || id;
+		var d = doc || {}, rows = [];
+		if (d.date_of_birth) rows.push({ label: L('Date of Birth'), value: d.date_of_birth, fieldtype: 'Date' });
+		(d.customer_ids || []).forEach(function (r) {
+			var number = String(r.id_number || '').trim();
+			if (number) rows.push({ label: L(r.id_type || 'ID'), value: number, fieldtype: 'Data' });
+		});
+		return rows;
+	}
+
+	return { summarize: summarize, stripHtml: stripHtml, dupLabel: dupLabel, maskId: maskId, idRows: idRows,
+		escText: escText };
 });
 
 // Browser wiring.
@@ -298,6 +313,25 @@
 
 	function idsOn() { return !!(frappe.boot && frappe.boot.ffl_store_customer_id_numbers); }
 
+	// Read-only, straight off the Customer (the same read permission the flags ask for).
+	function paintIds(cart) {
+		var c = cart.customer_info && cart.customer_info.customer;
+		if (!c) return;
+		frappe.db.get_doc('Customer', c).then(function (doc) {
+			var $form = cart.$customer_section.find('.customer-fields-container');
+			// Closed, or another customer picked, while the read was out.
+			if (!$form.length || !cart.customer_info || cart.customer_info.customer !== c) return;
+			$form.find('.ffl-id-field').remove();
+			api.idRows(doc, __).forEach(function (row, i) {
+				frappe.ui.form.make_control({
+					df: { fieldname: 'ffl_id_' + i, fieldtype: row.fieldtype, label: row.label, read_only: 1 },
+					parent: $('<div class="ffl-id-field"></div>').appendTo($form),
+					render_input: true,
+				}).set_value(row.value);
+			});
+		}, function () { /* the panel still shows the contact fields */ });
+	}
+
 	// Promise<customer name | null>.
 	function scanForCustomer() {
 		return new Promise(function (resolve) {
@@ -392,6 +426,13 @@
 					}, function () { /* the strip is a hint */ });
 				}
 			} catch (e) { /* never break the cart */ }
+			return out;
+		};
+		// The opened contact panel (Email, Phone, Loyalty…): date of birth and ID numbers after them.
+		var toggle = proto.toggle_customer_info;
+		proto.toggle_customer_info = function (show) {
+			var out = toggle.apply(this, arguments);
+			try { if (show && idsOn()) paintIds(this); } catch (e) { /* never break the cart */ }
 			return out;
 		};
 		var make = proto.make_customer_selector;

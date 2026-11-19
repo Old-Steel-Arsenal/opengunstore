@@ -24,6 +24,7 @@ from ffl_core.tests.settings_sandbox import SettingsSandbox
 
 _SWITCH = ("FFL Settings", "store_customer_id_numbers")
 _OUR_FIELDS = [f["fieldname"] for f in profile_setup.FIELDS]
+_IDENTIFICATION = ["section_customer_ids", "date_of_birth", "customer_ids"]
 
 
 def _uniq(prefix: str) -> str:
@@ -149,8 +150,21 @@ class ProfileSetup(FrappeTestCase):
 		frappe.clear_cache(doctype="Customer")
 
 		names = [f.fieldname for f in frappe.get_meta("Customer").fields]
+		tab = [f for f in ours if f not in _IDENTIFICATION]
 		start = names.index("loyalty_program_tier") + 1
-		self.assertEqual(names[start:start + len(ours)], ours)
+		self.assertEqual(names[start:start + len(tab)], tab)
+		self._assert_identification_on_details(names)
+
+	def test_identification_sits_on_the_details_tab_above_ffl_dealer(self):
+		frappe.clear_cache(doctype="Customer")
+		self._assert_identification_on_details([f.fieldname for f in frappe.get_meta("Customer").fields])
+
+	def _assert_identification_on_details(self, names):
+		start = names.index("section_customer_ids")
+		self.assertEqual(names[start:start + 4], [*_IDENTIFICATION, "section_ffl"])
+		# The name and contact fields stay in the section above it.
+		self.assertLess(max(names.index(f) for f in ("customer_group", "territory", "gender", "ffl_phone")), start)
+		self.assertLess(start, names.index("customer_profile_tab"))
 
 
 class RetiredStatuses(FrappeTestCase):
