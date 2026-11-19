@@ -81,13 +81,13 @@ def _timeline(doc) -> list[tuple[str, str]]:
 
 def _messages(doc) -> list[frappe._dict]:
 	"""Every email (both ways) and website inquiry note on the timeline, newest first. Each has ``kind``
-	("in", "out" or "note"), ``at``, ``subject`` and ``html``."""
+	("in", "out" or "note"), ``at``, ``creation``, ``subject`` and ``html``."""
 	out = []
 	for doctype, name in _timeline(doc):
 		for c in frappe.get_all("Communication", filters={"reference_doctype": doctype, "reference_name": name,
 				"communication_type": "Communication", "communication_medium": "Email"},
 				fields=["name", "sender", "recipients", "cc", "bcc", "subject", "content", "communication_date",
-					"sent_or_received", "email_account"]):
+					"sent_or_received", "email_account", "creation"]):
 			out.append(frappe._dict(c, kind="in" if c.sent_or_received == "Received" else "out",
 				at=get_datetime(c.communication_date), html=c.content or ""))
 		if frappe.db.has_column(NOTE, EVENT_FIELD):

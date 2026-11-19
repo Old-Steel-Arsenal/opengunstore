@@ -34,6 +34,7 @@ from ffl_core.crm.deals import DEAL, STATUS
 from ffl_core.crm.gunbroker import MSGID_FIELD
 from ffl_core.crm.inquiries import EVENT_FIELD
 from ffl_core.crm.mail import AUTO_LEAD, CATEGORY, CATEGORY_FIELD, LEAD, OTHER_MAIL, SETTINGS
+from ffl_core.crm import memory
 from ffl_core.crm.orders import DEAL_FIELD
 from ffl_core.crm import sell_requests
 from ffl_core.crm.web_orders import ORDER as WEB_ORDER, WON_BY
@@ -465,8 +466,42 @@ SIDE_PANEL = f"{DEAL}-Side Panel"
 CARD_SECTION = "ffl_customer_section"
 SELL_SECTION = "ffl_sell_section"
 
+# The customer memory's per-record fields (crm.memory). Same names on Lead and Deal: CRM's conversion
+# copies a lead's onto its deal, the summary and the watermark with them.
+MEMORY_FIELDS = [{
+	"fieldname": memory.SUMMARY,
+	"fieldtype": "Small Text",
+	"label": "Summary",
+	"read_only": 1,
+	"hidden": 1,
+	"no_copy": 1,
+}, {
+	"fieldname": memory.DUE,
+	"fieldtype": "Datetime",
+	"label": "Memory update due",
+	"read_only": 1,
+	"hidden": 1,
+	"no_copy": 1,
+	"search_index": 1,
+}, {
+	"fieldname": memory.SEEN,
+	"fieldtype": "Datetime",
+	"label": "Memory read up to",
+	"read_only": 1,
+	"hidden": 1,
+	"no_copy": 1,
+}]
+
 CUSTOM_FIELDS = {
-	"CRM Deal": [{
+	"CRM Deal": [*map(dict, MEMORY_FIELDS), {
+		# Won since the last memory update: the next one is told what was bought.
+		"fieldname": memory.WON,
+		"fieldtype": "Check",
+		"label": "Memory: won since last update",
+		"read_only": 1,
+		"hidden": 1,
+		"no_copy": 1,
+	}, {
 		"fieldname": CARD_FIELD,
 		"fieldtype": "HTML",
 		"label": "Customer card",
@@ -528,7 +563,7 @@ CUSTOM_FIELDS = {
 		"no_copy": 1,
 		"search_index": 1,
 		"insert_after": CATEGORY_FIELD,
-	}],
+	}, *map(dict, MEMORY_FIELDS)],
 	"Email Account": [{
 		"fieldname": AUTO_LEAD,
 		"fieldtype": "Check",

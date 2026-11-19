@@ -22,7 +22,7 @@ from frappe import _
 from frappe.utils import escape_html, validate_email_address
 from frappe.utils.synchronization import filelock
 
-from ffl_core.crm import installed, sell_requests
+from ffl_core.crm import installed, memory, sell_requests
 from ffl_core.crm.deal import add_product_row
 from ffl_core.crm.deals import DEAL, open_deal_for
 from ffl_core.crm.mail import LEAD, OTHER_MAIL, _customer_contact, _new_lead, share_with_team
@@ -136,5 +136,6 @@ def file_inquiry(kind: str, event_id: str, email: str, full_name: str = "", phon
 			add_product_row(doctype, name, item, serial)
 		if sell and photos:
 			sell_requests.queue_photos(name)   # runs once this commits
+		memory.mark_due(doctype, name)   # never raises
 		commit()   # before the lock goes: the repeat waiting on it must see this note
 	return {"filed": True, "doctype": doctype, "name": name, "created": created}

@@ -1,0 +1,102 @@
+{
+ "actions": [],
+ "creation": "2026-11-19 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "editable_grid": 1,
+ "istable": 1,
+ "field_order": [
+  "kind",
+  "text",
+  "keywords",
+  "amount",
+  "column_break_source",
+  "said",
+  "source_doctype",
+  "source_name",
+  "noted_on",
+  "locked"
+ ],
+ "fields": [
+  {
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "label": "Kind",
+   "options": "want\nbudget\nstate\ntrade_in\npreference\nquestion",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "text",
+   "fieldtype": "Data",
+   "label": "Text",
+   "length": 160,
+   "in_list_view": 1,
+   "columns": 4
+  },
+  {
+   "fieldname": "keywords",
+   "fieldtype": "Data",
+   "label": "Keywords",
+   "length": 80
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Amount",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "column_break_source",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "said",
+   "fieldtype": "Select",
+   "label": "Said by",
+   "options": "Customer\nStaff\nOrder",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "source_doctype",
+   "fieldtype": "Link",
+   "label": "Source type",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "source_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Source",
+   "options": "source_doctype"
+  },
+  {
+   "fieldname": "noted_on",
+   "fieldtype": "Date",
+   "label": "Noted on",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "locked",
+   "fieldtype": "Check",
+   "label": "Locked",
+   "in_list_view": 1,
+   "columns": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-19 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FFL Core",
+ "name": "CRM Customer Memory Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "ASC",
+ "states": []
+}

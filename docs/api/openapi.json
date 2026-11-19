@@ -198,6 +198,101 @@
           "body"
         ]
       },
+      "CRM_Customer_Memory": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/CRM%20Customer%20Memory — see docs/api/frappe-rest.md.",
+        "properties": {
+          "customer": {
+            "type": "string",
+            "description": "Customer (Link: Customer)"
+          },
+          "contact": {
+            "type": "string",
+            "description": "Contact (Link: Contact)"
+          },
+          "lead": {
+            "type": "string",
+            "description": "Lead (Link: CRM Lead)"
+          },
+          "auto_update": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Update with AI"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CRM_Customer_Memory_Item"
+            },
+            "description": "Items"
+          }
+        }
+      },
+      "CRM_Customer_Memory_Item": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/CRM%20Customer%20Memory%20Item — see docs/api/frappe-rest.md.",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "want",
+              "budget",
+              "state",
+              "trade_in",
+              "preference",
+              "question"
+            ],
+            "description": "Kind"
+          },
+          "text": {
+            "type": "string",
+            "description": "Text"
+          },
+          "keywords": {
+            "type": "string",
+            "description": "Keywords"
+          },
+          "amount": {
+            "type": "number",
+            "description": "Amount"
+          },
+          "said": {
+            "type": "string",
+            "enum": [
+              "Customer",
+              "Staff",
+              "Order"
+            ],
+            "description": "Said by"
+          },
+          "source_doctype": {
+            "type": "string",
+            "description": "Source type (Link: DocType)"
+          },
+          "source_name": {
+            "type": "string",
+            "description": "Source (Link: source_doctype)"
+          },
+          "noted_on": {
+            "type": "string",
+            "description": "Noted on"
+          },
+          "locked": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Locked"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
       "CRM_Deal_Hold": {
         "type": "object",
         "description": "Custom DocType (ffl_core); CRUD via /api/resource/CRM%20Deal%20Hold — see docs/api/frappe-rest.md.",
