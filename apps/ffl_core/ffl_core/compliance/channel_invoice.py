@@ -30,9 +30,14 @@ from __future__ import annotations
 
 import frappe
 
-# (fieldname, doctype-that-owns-it) for every channel whose sales are mirrored
-# into a Sales Invoice. Order is only cosmetic.
-CHANNEL_INVOICE_FIELDS: tuple[str, ...] = ("woo_online_order", "gunbroker_order")
+# Every channel whose sales are mirrored into an invoice: the channel's label
+# (the one reservations.CHANNEL_RESERVE_FIELDS reports a hold under) -> the Link
+# field on the invoice that names its order. Order is only cosmetic.
+CHANNEL_INVOICE_LINKS: dict[str, str] = {
+	"woo": "woo_online_order",
+	"gunbroker": "gunbroker_order",
+}
+CHANNEL_INVOICE_FIELDS: tuple[str, ...] = tuple(CHANNEL_INVOICE_LINKS.values())
 
 
 def is_channel_mirrored_invoice(doc) -> bool:

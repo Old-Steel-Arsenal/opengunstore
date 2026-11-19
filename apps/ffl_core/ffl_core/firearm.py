@@ -522,7 +522,9 @@ def _pos_picker_excluded_serials(item_codes, current_invoice: str | None = None,
 	     other gates once POS happened to name that same gun). Owner's decision,
 	     2026-08-26: the picker excludes reservations from every channel, so a
 	     gun claimed online has to be released online before the counter can
-	     sell it.
+	     sell it. One ticket is not "the counter" in that sense: a web order's
+	     in-store pickup ticket IS that order's sale, so `current_invoice`
+	     lifts the reservation of the order the ticket itself belongs to.
 
 	`item_codes`: the codes being offered (reserved_counter_serials is
 	per-item). Returns the union set of serials to drop.
@@ -534,7 +536,9 @@ def _pos_picker_excluded_serials(item_codes, current_invoice: str | None = None,
 	feature receives. Rules 1-3 still apply there, so a custody gun already held
 	on another ticket is still refused.
 
-	`current_invoice` (POS Invoice docname, optional): lift the hold that THIS
+	`current_invoice` (POS Invoice docname, optional): lift the holds that are
+	THIS invoice's own. For a channel order's ticket that is the reservation of
+	the order it links to (rule 5). For every ticket it is the hold that THIS
 	invoice's OWN Draft POS line places on a serial — a gun parked on the invoice
 	being edited IS this sale, not someone else's hold, so its own 4473 / Item-
 	Details picker must still offer it (a past incident self-lockout,
@@ -555,6 +559,7 @@ def _pos_picker_excluded_serials(item_codes, current_invoice: str | None = None,
 	customer this is stays offered (it is held FOR them); every other hold still
 	excludes it. `kept_for_customer`, when given, collects those serials so a
 	picker can label them."""
+	from ffl_core.compliance.channel_invoice import CHANNEL_INVOICE_LINKS
 	from ffl_core.crm.holds import KIND as DEAL_HOLD
 	from ffl_core.reservations import channel_reserved_serials, counter_holds
 	from ffl_core.warehouses import consignment_warehouse_names, custody_warehouse_names
@@ -577,6 +582,16 @@ def _pos_picker_excluded_serials(item_codes, current_invoice: str | None = None,
 	preorder = None
 	if current_invoice and frappe.db.has_column("POS Invoice", "ffl_preorder"):
 		preorder = frappe.db.get_value("POS Invoice", current_invoice, "ffl_preorder")
+	# A channel order's own ticket (a web order's in-store pickup) carries the
+	# gun that order reserved. Only a live Draft counts, as for own_serials.
+	# Keyed by channel: the link lifts its own channel's hold and no other's.
+	own_channel_orders: dict[str, str] = {}
+	links = {channel: f for channel, f in CHANNEL_INVOICE_LINKS.items()
+		if frappe.db.has_column("POS Invoice", f)} if current_invoice else {}
+	if links:
+		ticket = frappe.db.get_value("POS Invoice",
+			{"name": current_invoice, "docstatus": 0}, list(links.values()), as_dict=True) or {}
+		own_channel_orders = {channel: ticket[f] for channel, f in links.items() if ticket.get(f)}
 	excluded: set[str] = set()
 	for code in codes:
 		for serial, hold in counter_holds(code).items():
@@ -594,12 +609,12 @@ def _pos_picker_excluded_serials(item_codes, current_invoice: str | None = None,
 					kept_for_customer.add(serial)
 				continue
 			excluded.add(serial)
-		# Rule 5. NOT exempted by current_invoice: that exemption exists for a
-		# gun parked on the POS invoice being edited, which is a hold this same
-		# counter placed. A channel reservation is somebody else's paid order on
-		# another storefront — no POS invoice can be its rightful owner, so
-		# lifting it for "my own" invoice would be exactly the double sale.
-		excluded.update(channel_reserved_serials(code))
+		# Rule 5. Being on the current invoice's line does NOT lift this one: a
+		# channel reservation is a paid order on another storefront, and a
+		# counter ticket naming that gun would be exactly the double sale. The
+		# one rightful owner is the ticket opened FOR that order.
+		excluded.update(serial for serial, hold in channel_reserved_serials(code).items()
+			if own_channel_orders.get(hold["channel"]) != hold["ref"])
 	consignment_whs = consignment_warehouse_names()
 	custody_whs = custody_warehouse_names() if exclude_custody else set()
 	# has_column guard: during a deploy the app code is live before
@@ -647,7 +662,9 @@ def available_serials_for_items(item_codes: list[str] | str,
 	        parked on THIS invoice's own line stays offered (incident
 	        a past invoice, see _pos_picker_excluded_serials). The
 	        POS 4473 dialog passes it so the serial on the line the cashier
-	        is completing doesn't vanish from its own dropdown.
+	        is completing doesn't vanish from its own dropdown. On a web
+	        order's in-store pickup ticket, the gun that order reserved
+	        stays offered too.
 	    customer: Optional buyer — a gun held for this customer's CRM deal
 	        stays offered.
 
