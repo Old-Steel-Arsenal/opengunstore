@@ -30,13 +30,36 @@ class TestRedact(unittest.TestCase):
 		out = sensitive.redact("I was convicted of a misdemeanor in 2010. Can I still buy? Also want a Glock 19.")
 		self.assertEqual(out, "[removed] Can I still buy? Also want a Glock 19.")
 		self.assertEqual(sensitive.redact("My NICS got delayed again!"), "[removed]")
-		self.assertEqual(sensitive.redact("Do I fill out a 4473 at pickup?"), "[removed]")
 
 	def test_ordinary_text_is_left_alone(self):
 		for text in ("Model 1911 in 45 ACP, budget $1,500", "Do you have a Glock 19 Gen5? ID me at the counter",
 				"order 1234567890123 (not a card)", "Mosin 91/30 in stock?", ""):
 			self.assertEqual(sensitive.redact(text), text)
 			self.assertFalse(sensitive.has_sensitive(text))
+
+	def test_model_numbers_near_a_permit_or_an_id_stay(self):
+		for text in ("I have my CCW, looking for a P365XL", "Got my permit last week. Do you have a P320-XCOMPACT?",
+				"CCW holder here, want a 1911-A1 for carry", "Bring your ID when you pick up the 1911-A1",
+				"My CCW P365XL is my favorite"):
+			self.assertEqual(sensitive.redact(text), text, text)
+			self.assertFalse(sensitive.has_sensitive(text), text)
+		# Real numbers by their label still go.
+		for text, number in (("my DL is TX12345678", "TX12345678"), ("passport P12345678 attached", "P12345678"),
+				("Permit #: P-1234567", "P-1234567"), ("CCW number 123456789", "123456789"),
+				("ID: D1234567", "D1234567"), ("driver's license no. 98765432", "98765432")):
+			self.assertNotIn(number, sensitive.redact(text), text)
+
+	def test_ordinary_buying_sentences_stay(self):
+		for text in ("I'm committed to buying the Garand this week, when can I come fill out the 4473?",
+				"Looking for a birthday gift, a 1911 for my dad",
+				"After the background check clears, I'll pick it up"):
+			self.assertEqual(sensitive.redact(text), text, text)
+		# What can bar a purchase still goes, sentence and all.
+		for text in ("I was committed to a mental hospital in 2015.", "I was involuntarily committed once.",
+				"I have a restraining order against me.", "My NICS was denied last month.",
+				"I'm on probation until March.", "I use medical marijuana.", "born in 1975, by the way."):
+			self.assertTrue(sensitive.has_sensitive(text), text)
+		self.assertTrue(sensitive.is_compliance_question("Do I need to fill out a 4473 for this?"))
 
 	def test_price_stock_and_compliance_words(self):
 		for text in ("budget $1,500", "about 800 dollars", "is it in stock", "sold out?", "we have 3", "available now"):

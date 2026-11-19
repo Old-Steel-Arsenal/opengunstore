@@ -10,9 +10,9 @@ Pure functions, no database. Three uses (``crm.memory``):
 3. :func:`has_sensitive` / :func:`has_price_or_stock` run once more on every memory row before it is
    written: an AI row that fails is dropped, a staff edit that fails is refused.
 
-The lists err towards removing: what is lost is one sentence of a message, or one memory row.
-lazy: English keyword and pattern lists; upgrade path: extend them as misses and false hits are found,
-or have the provider classify first.
+The lists err towards removing: what is lost is one sentence of a message, or one memory row. They do not
+remove an ordinary buying sentence: a model number next to "CCW" or "ID", "committed to buying", a mention
+of the 4473.
 """
 from __future__ import annotations
 
@@ -24,34 +24,43 @@ MAX_AMOUNT = 1_000_000
 
 _I = re.I
 
-# A value next to its label: a token of letters and digits (dashes allowed) that has a digit in it.
-_TOKEN = r"([A-Za-z0-9][A-Za-z0-9-]*\d[A-Za-z0-9-]*|\d[A-Za-z0-9-]*)"
+# lazy: English keyword and pattern lists, matched without context; upgrade path: extend them as misses and
+# false hits turn up in the stores' Memory cards, or have the provider classify a message first.
+
+# A number right after its label: only punctuation and "no", "number", "is" between them (not "CCW, looking
+# for a P365XL"), and a value with enough digits to be an ID, not a model ("P320-XCOMPACT", "1911-A1" under 5).
+_GAP = r"[\s:#.]*(?:(?:no|nos|num|number|is|was)\b[\s:#.]*){0,3}"
+_VALUE = r"([A-Za-z0-9][A-Za-z0-9-]*)\b"
 _SSN = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
 _SSN_LABELLED = re.compile(r"\b(?:ssn|social\s+security)\b[^\d\n]{0,20}((?:\d[\s-]?){8}\d)\b", _I)
-_ID_LABELLED = re.compile(
-	r"\b(?:driver'?s?\s+licen[cs]e|dl|id|identification|passport|permit|ccw|chl|ltc)\b[^\n]{0,20}?\b" + _TOKEN, _I)
-_CHECK_LABELLED = re.compile(r"\b(?:ntn|nics\s+transaction|upin|ppn)\b[^\n]{0,20}?\b" + _TOKEN, _I)
+_ID_LABEL = r"(?:driver'?s?\s+licen[cs]e|licen[cs]e|dl|id|identification|passport|permit|ccw|chl|ltc)"
+_ID_LABELLED = re.compile(r"\b" + _ID_LABEL + r"(?:\s+" + _ID_LABEL + r")?\b" + _GAP + _VALUE, _I)   # "CCW permit no."
+_CHECK_LABELLED = re.compile(r"\b(?:ntn|nics(?:\s+transaction)?|upin|ppn)\b" + _GAP + _VALUE, _I)
+_ID_DIGITS, _CHECK_DIGITS = 5, 3
 _MONTH = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?"
 _DATE = (r"(?:\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2}|" + _MONTH + r"\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}"
-	r"|\d{1,2}\s+" + _MONTH + r",?\s+\d{4}|(?:19|20)\d{2})")
-_BIRTH = re.compile(r"\b(?:dob|d\.o\.b\.?|date\s+of\s+birth|born|birthday|birth\s+date)\b[^\n]{0,15}?" + "(" + _DATE + ")",
-	_I)
+	r"|\d{1,2}\s+" + _MONTH + r",?\s+\d{4})")
+_BIRTH_LABEL = r"\b(?:dob|d\.o\.b\.?|date\s+of\s+birth|born|birthday|birth\s+date)\b"
+_BIRTH = re.compile(_BIRTH_LABEL + r"[^\n]{0,15}?(" + _DATE + ")", _I)
+# A year alone only right after the label ("born in 1975"), not "a birthday gift, a 1911".
+_BIRTH_YEAR = re.compile(_BIRTH_LABEL + r"[\s:]*(?:in\s+)?((?:19|20)\d{2})\b", _I)
 _CARD = re.compile(r"\b(?:\d[ -]?){12,18}\d\b")
 
 # A sentence with one of these is about something that can bar a purchase: removed whole.
 _BARRING = re.compile(r"|".join((
 	r"\bfelon(?:y|ies|s)?\b", r"\bconvict(?:ed|ion|ions)?\b", r"\bmisdemeanou?r", r"\bdomestic\s+violence\b",
 	r"\brestraining\s+order", r"\bprotective\s+order", r"\bprobation\b", r"\bparole", r"\bindict(?:ed|ment)?\b",
-	r"\bfugitive", r"\bdishonorabl[ey]\s+discharg", r"\bcommitted\s+to\b", r"\bmental\s+(?:health|institution|illness)",
+	r"\bfugitive", r"\bdishonorabl[ey]\s+discharg", r"\binvoluntar(?:y|ily)\s+commit",
+	r"\bcommitted\s+(?:to\s+)?(?:a\s+|an\s+|the\s+)?(?:mental|psychiatric|psych\b|hospital|institution|asylum|facility|ward)",
+	r"\bmental\s+(?:health|institution|illness)",
 	r"\badjudicated\b", r"\bunlawful\s+user\b", r"\bmarijuana\b", r"\bcannabis\b",
 	r"\brenounced?\s+(?:my\s+|his\s+|her\s+)?citizenship", r"\billegal(?:ly)?\s+alien", r"\bprohibited\s+person",
 	r"\b(?:nics|background\s+check).{0,20}\b(?:denied|delayed|proceed)", r"\bdenied.{0,20}\b(?:nics|background)",
-	r"\b4473\b",
 )), _I)
 # A question on these is the draft's handoff to a person, never a memory row.
 _COMPLIANCE_TOPIC = re.compile(r"|".join((
 	r"\blegal", r"\ballowed\b", r"\bship\w*\s+(?:\w+\s+){0,2}to\b", r"\bage\b", r"\bbackground\s+check", r"\bnfa\b",
-	r"\btransfer\s+eligib",
+	r"\btransfer\s+eligib", r"\b4473\b",
 )), _I)
 _PRICE_STOCK = re.compile(r"|".join((
 	r"\$\s?\d", r"\b\d[\d,]*(?:\.\d+)?\s*dollars?\b", r"\bin\s+stock\b", r"\bout\s+of\s+stock\b", r"\bsold\s+out\b",
@@ -77,8 +86,11 @@ def _card(match: re.Match) -> bool:
 	return 13 <= len(digits) <= 19 and _luhn(digits)
 
 
-def _long_enough(match: re.Match) -> bool:
-	return 5 <= len(match.group(1)) <= 20
+def _id_number(digits: int):
+	def keep(match: re.Match) -> bool:
+		value = match.group(1)
+		return 5 <= len(value) <= 20 and sum(c.isdigit() for c in value) >= digits
+	return keep
 
 
 def _sub_group(pattern: re.Pattern, text: str, keep=lambda m: True) -> str:
@@ -98,8 +110,9 @@ def _numbers(text: str) -> str:
 	text = _SSN.sub(REMOVED, text)
 	text = _CARD.sub(lambda m: REMOVED if _card(m) else m.group(0), text)
 	text = _sub_group(_BIRTH, text)
-	text = _sub_group(_CHECK_LABELLED, text, _long_enough)
-	return _sub_group(_ID_LABELLED, text, _long_enough)
+	text = _sub_group(_BIRTH_YEAR, text)
+	text = _sub_group(_CHECK_LABELLED, text, _id_number(_CHECK_DIGITS))
+	return _sub_group(_ID_LABELLED, text, _id_number(_ID_DIGITS))
 
 
 def redact(text: str | None) -> str:

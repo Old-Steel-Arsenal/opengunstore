@@ -45,13 +45,19 @@ SUMMARY = "ffl_summary"
 DUE = "ffl_memory_due"     # when the record was last marked for an update; cleared once read
 SEEN = "ffl_memory_seen"   # the creation of the newest customer message already read
 WON = "ffl_memory_won"     # CRM Deal only: Won since the last update, tell the provider what was bought
+FAILING = "ffl_memory_failing"   # when the current batch first got no answer; cleared once it is read or skipped
 DOCTYPES = (LEAD, DEAL)
+WANTED_FLAG = "ffl_crm_memory_wanted"   # frappe.local.flags: the ready answer, once per request or job
 BACKFILLED = "ffl_crm_memory_backfilled_on"
 
 QUIET = timedelta(minutes=3)       # a record is read once it has had no new message for this long
-BATCH = 10                         # records queued per sweep
-RETRY = timedelta(hours=1)         # no answer: tried again after this
-GIVE_UP = timedelta(hours=6)       # no answer and the oldest new message is this old: skipped
+# lazy: 10 records per five-minute sweep (a 100-record backfill takes ~50 minutes); upgrade path: a larger
+# batch, or a sweep that runs until the queue is empty, if stores ever need it faster.
+BATCH = 10
+RETRY = timedelta(hours=1)         # no answer, or the answer could not be written: tried again after this
+GIVE_UP = timedelta(hours=6)       # still failing this long after the first failure: the batch is skipped
+# lazy: 5 messages per update, oldest unread first; a longer backlog is read 5 a round, one sweep apart;
+# upgrade path: a larger batch once the provider's context allows it.
 NEW_COUNT, NEW_BODY, SUBJECT_LIMIT = 5, 2000, 500
 THREAD_COUNT, THREAD_BODY = 4, 1000
 PRODUCT_COUNT = 10
@@ -59,6 +65,8 @@ LIMITS = {"want": 6, "budget": 1, "state": 1, "trade_in": 3, "preference": 4, "q
 SINGLE = ("budget", "state")
 TOTAL = 20
 TEXT_LIMIT, KEYWORDS_LIMIT, SUMMARY_LIMIT = 160, 80, 300
+# lazy: one lock for the whole site serializes every memory write (a run's write, a merge); upgrade path: a
+# lock per person, once many runs wait on it.
 LOCK = "ffl_crm_memory"
 _SAVEPOINT = "ffl_crm_memory"
 
@@ -76,16 +84,26 @@ def table_ready() -> bool:
 # ── providers ──
 
 def memory_wanted() -> bool:
-	"""Whether any provider has memory on (no network call)."""
+	"""Whether any provider has memory on (no network call). Asked once per request or job (a mail pull
+	files many mails): a failing provider is logged once, not once per mail."""
 	if not installed():
 		return False
-	for hook in frappe.get_hooks(READY_HOOK):
+	hooks = tuple(frappe.get_hooks(READY_HOOK))
+	if not hooks:
+		return False
+	cached = frappe.local.flags.get(WANTED_FLAG) or {}
+	if hooks in cached:
+		return cached[hooks]
+	answer = False
+	for hook in hooks:
 		try:
 			if frappe.get_attr(hook)():
-				return True
+				answer = True
+				break
 		except Exception:
 			frappe.log_error(title=f"{READY_HOOK} provider failed: {hook}")
-	return False
+	frappe.local.flags[WANTED_FLAG] = {**cached, hooks: answer}
+	return answer
 
 
 def _ask(ctx: dict) -> dict | None:
@@ -185,13 +203,40 @@ def sweep() -> list[tuple[str, str]]:
 	return queued
 
 
-def _clear(doctype: str, name: str, due0, won: bool = False) -> None:
+def _clear(doctype: str, name: str, due0, won: bool = False, more: bool = False) -> None:
 	"""Clear the due mark, only if it is still the one read when the run began: a message that came in
-	meanwhile moved it, and stays for the next round."""
-	if due0 is not None:
+	meanwhile moved it, and stays for the next round. *more*: unread messages are left (a backlog), so the
+	record is due again at the next sweep. The failure mark goes too."""
+	if more:
+		frappe.db.set_value(doctype, name, DUE, now_datetime() - QUIET, update_modified=False)
+	elif due0 is not None:
 		frappe.db.sql(f"UPDATE `tab{doctype}` SET `{DUE}` = NULL WHERE name = %s AND `{DUE}` = %s", (name, due0))
+	values = {FAILING: None} if frappe.db.has_column(doctype, FAILING) else {}
 	if won and doctype == DEAL:
-		frappe.db.set_value(DEAL, name, WON, 0, update_modified=False)
+		values[WON] = 0
+	if values:
+		frappe.db.set_value(doctype, name, values, update_modified=False)
+
+
+def _failed(doctype: str, name: str, due0, batch: "Batch", refused: bool = False) -> dict:
+	"""No usable answer for *batch* in the background: tried again in an hour, counted from the first
+	failure; once that is :data:`GIVE_UP` old, or the provider refused, the batch is skipped (watermark
+	advanced past it, one log line without content) so it is never asked about, and paid for, without end."""
+	first = frappe.db.get_value(doctype, name, FAILING)
+	now = now_datetime()
+	if refused or (first and get_datetime(first) <= now - GIVE_UP):
+		_advance(doctype, name, batch.seen)
+		_clear(doctype, name, due0, won=batch.bought, more=batch.more)
+		_log().info(f"memory update skipped: {doctype} {name}, {len(batch.sources)} message(s)"
+			+ (", won" if batch.bought else "") + (" (refused)" if refused else ""))
+		commit()
+		return {"outcome": "skipped"}
+	if not first:
+		frappe.db.set_value(doctype, name, FAILING, now, update_modified=False)
+	frappe.db.sql(f"UPDATE `tab{doctype}` SET `{DUE}` = %s WHERE name = %s AND `{DUE}` <=> %s",
+		(now + RETRY, name, due0))
+	commit()
+	return {"outcome": "retry"}
 
 
 def _advance(doctype: str, name: str, seen) -> None:
@@ -208,7 +253,8 @@ def _snapshot(memory) -> tuple | None:
 
 def run(doctype: str, name: str, manual: bool = False) -> dict:
 	"""Update the memory from a record's new customer messages (the queued job; *manual*: the employee's
-	**Update memory**, which reads the latest messages whatever was read before). Returns
+	**Update memory**, which reads the latest messages again when nothing is unread, and raises a failed
+	write instead of retrying). Returns
 	``{"outcome": str, "refused": str | None}``; *outcome* is one of gone, off, moved, paused, nothing,
 	no_answer, retry, skipped, discarded, updated."""
 	if doctype not in DOCTYPES or not table_ready() or not frappe.db.exists(doctype, name):
@@ -242,28 +288,28 @@ def run(doctype: str, name: str, manual: bool = False) -> dict:
 	if refused or answer is None:
 		if manual:
 			return {"outcome": "no_answer", "refused": str(refused) if refused else None}
-		if batch.oldest and get_datetime(batch.oldest) < now_datetime() - GIVE_UP:
-			_advance(doctype, name, batch.seen)
-			_clear(doctype, name, due0, won=batch.bought)
-			_log().info(f"memory update skipped: {doctype} {name}, {len(batch.sources)} message(s) unanswered")
-			commit()
-			return {"outcome": "skipped"}
-		if due0 is not None:
-			frappe.db.sql(f"UPDATE `tab{doctype}` SET `{DUE}` = %s WHERE name = %s AND `{DUE}` = %s",
-				(now_datetime() + RETRY, name, due0))
-		commit()
-		return {"outcome": "retry"}
+		return _failed(doctype, name, due0, batch, refused=bool(refused))
 	commit()   # a fresh snapshot: an edit made while the provider worked is visible
-	with filelock(LOCK, timeout=60):
-		doc = frappe.get_doc(doctype, name)
-		if _snapshot(memory_for(doc)) != before:
-			# Staff (or another record's run) changed this memory meanwhile: read again next round.
-			return {"outcome": "discarded"}
-		memory = memory_for(doc, write=True)
-		counts = apply(doc, memory, batch, answer)
-		_advance(doctype, name, batch.seen)
-		_clear(doctype, name, due0, won=batch.bought)
-		commit()
+	frappe.db.savepoint("ffl_crm_memory_write")
+	try:
+		with filelock(LOCK, timeout=60):
+			doc = frappe.get_doc(doctype, name)
+			if _snapshot(memory_for(doc)) != before:
+				# Staff (or another record's run) changed this memory meanwhile: read again next round.
+				return {"outcome": "discarded"}
+			memory = memory_for(doc, write=True)
+			counts = apply(doc, memory, batch, answer)
+			_advance(doctype, name, batch.seen)
+			_clear(doctype, name, due0, won=batch.bought, more=batch.more)
+			commit()
+	except Exception:
+		# The answer is paid for but could not be written (a lock, a bad row, the database): never rerun
+		# every five minutes; a retry like any other failure, skipped after GIVE_UP.
+		frappe.db.rollback(save_point="ffl_crm_memory_write")
+		frappe.log_error(title=f"[{TITLE}] Customer memory not written: {doctype} {name}", message=frappe.get_traceback())
+		if manual:
+			raise
+		return _failed(doctype, name, due0, batch)
 	if counts.get("dropped"):
 		_log().info(f"memory update: {doctype} {name}, {counts['dropped']} entr(ies) dropped")
 	return {"outcome": "updated"}
@@ -279,7 +325,7 @@ class Batch:
 		self.sources: dict[str, frappe._dict] = {}   # E1 → the message
 		self.rows: dict[str, str] = {}               # M1 → the memory row's name
 		self.seen = None                             # the newest creation among the new messages
-		self.oldest = None                           # the oldest of them
+		self.more = False                            # unread messages left for the next round
 		self.bought = False
 
 
@@ -359,25 +405,28 @@ def _clip(text: str | None, limit: int) -> str:
 
 
 def batch_for(doc, memory=None, trigger: str | None = None, everything: bool = False) -> Batch | None:
-	"""What the provider is asked about this record: the customer messages past its watermark (the
-	latest five whatever the watermark when *everything*), oldest first, and what a won deal bought.
-	None when there is nothing to ask. Every message is blanked by ``crm.sensitive.redact``. Also the
-	contract an extension's tests build its context from."""
+	"""What the provider is asked about this record: the oldest five customer messages past its watermark
+	(oldest first; the rest are left for the next round), and what a won deal bought. With nothing unread,
+	*everything* (a manual update) reads the latest five again. None when there is nothing to ask. Every
+	message is blanked by ``crm.sensitive.redact``, and a locked row that breaks a rule written since is
+	not sent. Also the contract an extension's tests build its context from.
+
+	lazy: the watermark is a creation time, so a mail filed on the record later than newer ones were read
+	(an old mail made a lead by hand) is never read; upgrade path: keep the names of the messages read."""
 	from ffl_core.crm.reply_draft import _body, _store_name
 
-	messages = _customer_messages(doc)
+	messages = sorted(_customer_messages(doc), key=lambda m: (get_datetime(m.creation), m.name))
 	seen = doc.get(SEEN)
-	if not everything and seen:
-		messages = [m for m in messages if get_datetime(m.creation) > get_datetime(seen)]
-	new = list(reversed(messages[:NEW_COUNT]))
+	unread = [m for m in messages if not seen or get_datetime(m.creation) > get_datetime(seen)]
+	new = unread[:NEW_COUNT] if unread else (messages[-NEW_COUNT:] if everything else [])
 	bought = _bought(doc) if doc.doctype == DEAL and cint(doc.get(WON)) else None
 	if not new and not bought:
 		return None
 	batch = Batch()
 	batch.bought = bool(cint(doc.get(WON))) if doc.doctype == DEAL else False
+	batch.more = len(unread) > NEW_COUNT
 	if new:
 		batch.seen = max(m.creation for m in new)
-		batch.oldest = min(m.creation for m in new)
 	from ffl_core.crm.reply_draft import _messages
 
 	timeline = _messages(doc)
@@ -396,7 +445,9 @@ def batch_for(doc, memory=None, trigger: str | None = None, everything: bool = F
 		entries.append({"ref": ref, "kind": "mail" if m.kind == "in" else "inquiry", "at": str(m.at),
 			"subject": _clip(m.subject, SUBJECT_LIMIT), "body": _clip(_body(m), NEW_BODY)})
 	rows = []
-	for i, row in enumerate((memory.get("items") if memory else None) or [], 1):
+	kept = [r for r in ((memory.get("items") if memory else None) or [])
+		if not any(sensitive.has_sensitive(v) or sensitive.has_price_or_stock(v) for v in (r.text, r.keywords))]
+	for i, row in enumerate(kept, 1):
 		ref = f"M{i}"
 		batch.rows[ref] = row.name
 		rows.append({"ref": ref, "kind": row.kind, "text": row.text or "", "keywords": row.keywords or "",

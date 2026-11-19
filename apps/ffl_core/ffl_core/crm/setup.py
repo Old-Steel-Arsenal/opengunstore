@@ -490,6 +490,13 @@ MEMORY_FIELDS = [{
 	"read_only": 1,
 	"hidden": 1,
 	"no_copy": 1,
+}, {
+	"fieldname": memory.FAILING,
+	"fieldtype": "Datetime",
+	"label": "Memory update failing since",
+	"read_only": 1,
+	"hidden": 1,
+	"no_copy": 1,
 }]
 
 CUSTOM_FIELDS = {

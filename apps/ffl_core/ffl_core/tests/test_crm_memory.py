@@ -311,24 +311,110 @@ class TestSweepAndRun(MemoryCase):
 		self.assertEqual(_run(deal), "nothing")
 		self.assertFalse(ASKED)
 
-	def test_no_answer_retries_then_skips(self):
+	def _failing(self, doc):
+		return frappe.db.get_value(doc.doctype, doc.name, memory.FAILING)
+
+	def test_no_answer_retries_then_skips_six_hours_after_the_first_failure(self):
 		lead = _lead()
 		_msg(lead, "Garand?", minutes_ago=30)
-		due0 = _ago(5)
-		_set(lead, **{memory.DUE: due0})
+		_set(lead, **{memory.DUE: _ago(5)})
 		self.assertEqual(_run(lead, None), "retry")
 		self.assertGreater(get_datetime(_due(lead)), add_to_date(now_datetime(), minutes=55))
+		first = self._failing(lead)
+		self.assertTrue(first)
 		self.assertEqual(_run(lead, RuntimeError("down")), "retry")
 		self.assertTrue(frappe.db.exists("Error Log", {"method": ["like", f"%{memory.UPDATE_HOOK} provider failed%"]}))
-		self.assertEqual(_run(lead, {"refused": "Today's AI limit is used up."}), "retry", "a refusal is no answer here")
+		self.assertEqual(get_datetime(self._failing(lead)), get_datetime(first), "counted from the first failure")
 		self.assertFalse(frappe.db.get_value("CRM Lead", lead.name, memory.SEEN))
-		old = _lead()
-		_msg(old, "Garand?", minutes_ago=7 * 60)
-		_set(old, **{memory.DUE: _ago(5)})
-		self.assertEqual(_run(old, None), "skipped")
-		self.assertFalse(_due(old))
-		self.assertTrue(frappe.db.get_value("CRM Lead", old.name, memory.SEEN))
-		self.assertFalse(_mem(old))
+		_set(lead, **{memory.FAILING: _ago(7 * 60), memory.DUE: _ago(5)})
+		self.assertEqual(_run(lead, None), "skipped")
+		self.assertFalse(_due(lead))
+		self.assertFalse(self._failing(lead))
+		self.assertTrue(frappe.db.get_value("CRM Lead", lead.name, memory.SEEN))
+		self.assertFalse(_mem(lead))
+
+	def test_an_old_mail_gets_its_retries(self):
+		# A backfilled mail weeks old: one short outage must not skip it.
+		lead = _lead()
+		_msg(lead, "Garand?", minutes_ago=60 * 24 * 20)
+		_set(lead, **{memory.DUE: _ago(5)})
+		self.assertEqual(_run(lead, None), "retry")
+		self.assertFalse(frappe.db.get_value("CRM Lead", lead.name, memory.SEEN))
+		self.assertEqual(_run(lead, {"add": []}), "updated")
+		self.assertFalse(self._failing(lead), "a success clears the failure")
+
+	def test_a_refusal_is_not_retried(self):
+		lead = _lead()
+		_msg(lead, "Garand?", minutes_ago=30)
+		_set(lead, **{memory.DUE: _ago(5)})
+		self.assertEqual(_run(lead, {"refused": "Not this one."}), "skipped")
+		self.assertFalse(_due(lead))
+		self.assertTrue(frappe.db.get_value("CRM Lead", lead.name, memory.SEEN))
+
+	def test_a_win_with_no_answer_gives_up_too(self):
+		deal = _deal(products=[{"product_code": product_of(AMMO), "qty": 1}])
+		_set(deal, **{memory.WON: 1, memory.DUE: _ago(5)})
+		self.assertEqual(_run(deal, None), "retry")
+		self.assertTrue(self._failing(deal))
+		_set(deal, **{memory.FAILING: _ago(7 * 60), memory.DUE: _ago(5)})
+		self.assertEqual(_run(deal, None), "skipped")
+		self.assertFalse(_due(deal))
+		self.assertFalse(frappe.db.get_value("CRM Deal", deal.name, memory.WON))
+
+	def test_a_failed_write_after_the_answer_is_a_retry(self):
+		lead = _lead()
+		_msg(lead, "Garand?", minutes_ago=30)
+		_set(lead, **{memory.DUE: _ago(5)})
+		with patch.object(memory, "apply", side_effect=RuntimeError("write failed")):
+			self.assertEqual(_run(lead, {"add": []}), "retry")
+		self.assertTrue(frappe.db.exists("Error Log", {"method": ["like", "%Customer memory not written%"]}))
+		self.assertGreater(get_datetime(_due(lead)), add_to_date(now_datetime(), minutes=55))
+		self.assertTrue(self._failing(lead))
+		self.assertFalse(frappe.db.get_value("CRM Lead", lead.name, memory.SEEN))
+		_set(lead, **{memory.FAILING: _ago(7 * 60), memory.DUE: _ago(5)})
+		with patch.object(memory, "apply", side_effect=RuntimeError("write failed")):
+			self.assertEqual(_run(lead, {"add": []}), "skipped", "never rerun (and paid for) without end")
+		self.assertFalse(_due(lead))
+
+	def test_a_backlog_is_read_five_at_a_time_oldest_first(self):
+		lead = _lead()
+		for i in range(7):
+			_msg(lead, f"Mail {i}", minutes_ago=60 - i)
+		_set(lead, **{memory.DUE: _ago(5)})
+		self.assertEqual(_run(lead, {"add": []}), "updated")
+		self.assertEqual([e["body"] for e in ASKED[0]["new"]], [f"Mail {i}" for i in range(5)])
+		self.assertTrue(_due(lead), "the rest wait for the next round")
+		self.assertEqual(_run(lead, {"add": []}), "updated")
+		self.assertEqual([e["body"] for e in ASKED[0]["new"]], ["Mail 5", "Mail 6"])
+		self.assertFalse(_due(lead))
+
+	def test_a_locked_row_that_breaks_a_newer_rule_does_not_block_updates(self):
+		lead = _lead()
+		found = _staff_memory(lead, {"kind": "want", "text": "Garand", "keywords": "Garand", "locked": 1})
+		# Written before the rule existed: straight to the row.
+		frappe.db.set_value(found.items[0].doctype, found.items[0].name, "text", "Garand, DL TX12345678",
+			update_modified=False)
+		_msg(lead, "Also a Mosin.", minutes_ago=10)
+		self.assertEqual(_run(lead, {"add": [{"kind": "trade_in", "text": "Mosin 91/30", "source": "E1"}]}), "updated")
+		self.assertNotIn("TX12345678", frappe.as_json(ASKED[0]), "never sent to the provider")
+		self.assertEqual(sorted(r[1] for r in _rows(lead)), ["Garand, DL TX12345678", "Mosin 91/30"],
+			"kept as staff wrote it")
+
+	def test_ready_is_asked_once_per_request(self):
+		calls = []
+
+		def counting():
+			calls.append(1)
+			raise RuntimeError("settings unreadable")
+
+		lead = _lead()
+		frappe.local.flags.pop(memory.WANTED_FLAG, None)
+		with patch(f"{HERE}.ready", side_effect=counting), remembering():
+			for _i in range(3):
+				memory.mark_due("CRM Lead", lead.name)
+		self.assertEqual(len(calls), 1)
+		self.assertEqual(frappe.db.count("Error Log", {"method": ["like", f"%{memory.READY_HOOK} provider failed%"]}), 1)
+		frappe.local.flags.pop(memory.WANTED_FLAG, None)
 
 	def test_a_manual_update_reads_the_latest_and_reports_a_refusal(self):
 		lead = _lead()
