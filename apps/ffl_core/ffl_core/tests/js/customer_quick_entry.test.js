@@ -91,12 +91,44 @@ test('arrangeFields: switch off adds nothing, switch on puts DOB / licence # / e
 	const on = qe.arrangeFields(META, null, { ids: true });
 	assert.deepStrictEqual(on.map((f) => f.fieldname),
 		['customer_type', 'ffl_scan_id', 'ffl_first_name', 'middle_name', 'ffl_last_name', 'name_suffix', 'customer_name',
-			'date_of_birth', 'ffl_id_number', 'ffl_id_expiry', 'customer_group']);
+			'date_of_birth', 'gender', 'ffl_id_number', 'ffl_id_expiry', 'ffl_carry_number', 'ffl_carry_expiry', 'customer_group']);
 	const by = Object.fromEntries(on.map((f) => [f.fieldname, f]));
 	assert.strictEqual(by.date_of_birth.fieldtype, 'Date');
 	assert.strictEqual(by.ffl_id_expiry.fieldtype, 'Date');
 	assert.strictEqual(by.ffl_id_number.fieldtype, 'Data');
-	['date_of_birth', 'ffl_id_number', 'ffl_id_expiry'].forEach((f) => assert.strictEqual(by[f].depends_on, qe.INDIVIDUAL));
+	['date_of_birth', 'gender', 'ffl_id_number', 'ffl_id_expiry'].forEach((f) => assert.strictEqual(by[f].depends_on, qe.INDIVIDUAL));
+	assert.deepStrictEqual([by.gender.fieldtype, by.gender.options], ['Link', 'Gender']);
+	// The licence-to-carry pair shows only once a scan has filled its number.
+	['ffl_carry_number', 'ffl_carry_expiry'].forEach((f) =>
+		assert.strictEqual(by[f].depends_on, "eval:doc.customer_type=='Individual' && doc.ffl_carry_number"));
+});
+
+test('a Texas License to Carry scan: its number becomes a CCW row, the holder\'s licence the Driver License row', () => {
+	const aamva = require('../../public/js/aamva.js');
+	const raw = '@\n\x1e\rANSI 636015090001ID00410240ZT02810027IDDCSSAMPLE\nDACALEX\nDBB01151975\nDBC2\nDBA04292030\nDAG1 MAIN ST\nDAISPRINGFIELD\nDAJTX\nDAK70001\nDAQ01234567\n\rZTZTBTX 12345678\nZTCTXLTC\n\r';
+	// A partial tick (the Texas subfile not typed yet) reads as a plain ID card…
+	const early = qe.scanValues(aamva.parse(raw.slice(0, raw.indexOf('ZTZTB')), { ids: true }));
+	assert.strictEqual(early.ffl_id_number, '01234567');
+	assert.strictEqual(early.ffl_id_expiry, '2030-04-29');
+	// …and the full payload puts each number where it belongs, clearing the expiry it lent.
+	const values = qe.scanValues(aamva.parse(raw, { ids: true }), early);
+	assert.deepStrictEqual(values, { ffl_first_name: 'Alex', ffl_last_name: 'Sample', address_line1: '1 Main St', city: 'Springfield',
+		state: 'TX', pincode: '70001', date_of_birth: '1975-01-15', gender: 'Female', ffl_id_number: '12345678', ffl_id_expiry: '',
+		ffl_carry_number: '01234567', ffl_carry_expiry: '2030-04-29' });
+
+	let made = 0;
+	const addRow = (doc) => { made += 1; const row = {}; (doc.customer_ids = doc.customer_ids || []).push(row); return row; };
+	const doc = { customer_type: 'Individual', ...values };
+	qe.applyIdRow(doc, addRow);
+	qe.applyIdRow(Object.assign(doc, values), addRow);   // update_doc runs twice per save
+	assert.strictEqual(made, 2);
+	assert.deepStrictEqual(doc.customer_ids, [
+		{ __ffl_scanned: 1, id_type: 'Driver License', id_number: '12345678', expiry_date: null },
+		{ __ffl_scanned: 1, id_type: 'CCW', id_number: '01234567', expiry_date: '2030-04-29' }]);
+	['ffl_id_number', 'ffl_id_expiry', 'ffl_carry_number', 'ffl_carry_expiry'].forEach((f) => assert.ok(!(f in doc), f));
+	// Flipped to Company afterwards: both scanned rows go.
+	qe.applyIdRow(Object.assign(doc, values, { customer_type: 'Company' }), addRow);
+	assert.deepStrictEqual(doc.customer_ids, []);
 });
 
 test('scanValues: switch-on parse fills the licence fields; a switch-off parse never does', () => {

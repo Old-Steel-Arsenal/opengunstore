@@ -12,7 +12,15 @@
 //   DCS last [DAB]   DAC first [DCT]   DAD middle   DCU suffix [DAE]
 //   DAA legacy "LAST,FIRST,MIDDLE" (or "LAST FIRST MIDDLE")
 //   DAG street   DAH street 2   DAI city   DAJ state   DAK zip   DCG country
-//   DAQ licence number   DBB date of birth   DBA expiry   (only with {ids: true})
+//   DAQ licence number   DBB date of birth   DBA expiry   DBC sex (1 male, 2 female)
+//   (these four only with {ids: true})
+//
+// A Texas License to Carry is an ID subfile whose Texas subfile says so
+// (ZTC "TXLTC"). Its DAQ and DBA are the carry licence's own number and expiry;
+// the holder's driver licence travels in ZTB, state first ("TX 12345678"). With
+// {ids: true} such a card returns idNumber = the driver licence, expiry = ''
+// (the card does not carry it), and carryNumber / carryExpiry for the licence
+// to carry — so the carry number is never taken for a driver licence.
 //
 // Two wire shapes are handled: the spec's (one element per line, LF/CR/RS
 // separators) and what a keyboard-wedge scanner actually types — the same
@@ -36,7 +44,10 @@
 		DAG: 'address1', DAH: 'address2', DAI: 'city', DAJ: 'state', DAK: 'zip', DCG: 'country',
 	};
 	// Read off the card always, but returned only for parse(raw, {ids: true}).
-	var ID_TAGS = { DAQ: 'idNumber', DBB: 'dob', DBA: 'expiry' };
+	var ID_TAGS = { DAQ: 'idNumber', DBB: 'dob', DBA: 'expiry', DBC: 'sex', ZTB: 'holderId', ZTC: 'cardType' };
+	// DBC: 1 / 2 (2003+), M / F (2000); 9 "not specified" and anything else read as ''.
+	var GENDERS = { 1: 'Male', M: 'Male', 2: 'Female', F: 'Female' };
+	var TEXAS_LTC = 'TXLTC';
 	function keyOf(tag) { return TAGS[tag] || ID_TAGS[tag]; }
 	// Every tag the DL/ID subfile can carry (AAMVA 2000–2020) — the cut points
 	// for the glued shape. Jurisdiction subfiles use Z + two letters.
@@ -118,8 +129,8 @@
 	}
 
 	// Split the payload into tag/value pairs. The first element of a subfile is
-	// glued to its designator ("DLDAQ…", "IDDCS…"), so a leading DL/ID is
-	// dropped when what follows is itself a known tag.
+	// glued to its designator ("DLDAQ…", "IDDCS…", "ZTZTB…"), so a leading
+	// DL/ID/ZT is dropped when what follows is itself a known tag.
 	function elements(raw) {
 		var out = {};
 		String(raw || '').split(/[\r\n\x1e]+/).forEach(function (line) {
@@ -128,7 +139,7 @@
 			// subfile's designator glued to its first element: keep that tail.
 			var header = /^ANSI\s*\d+.*?(DL|ID)([A-Z]{3}.*)$/.exec(line);
 			if (header) line = header[1] + header[2];
-			if (/^(DL|ID)[A-Z]{3}/.test(line) && keyOf(line.slice(2, 5))) line = line.slice(2);
+			if (/^(DL|ID|ZT)[A-Z]{3}/.test(line) && keyOf(line.slice(2, 5))) line = line.slice(2);
 			var key = keyOf(line.slice(0, 3));
 			if (key && !(key in out)) out[key] = clean(line.slice(3));
 		});
@@ -186,8 +197,9 @@
 
 	// Returns null when the text is not an AAMVA payload (so a typed name never
 	// gets mangled), else {first, middle, last, suffix, address1, address2,
-	// city, state, zip, country} — plus {idNumber, dob, expiry} (dates as
-	// YYYY-MM-DD, '' when unreadable) when called with {ids: true}.
+	// city, state, zip, country} — plus {idNumber, dob, expiry, gender} (dates as
+	// YYYY-MM-DD, gender Male / Female, '' when unreadable) when called with {ids: true}, and
+	// {carryNumber, carryExpiry} too for a Texas License to Carry.
 	function parse(raw, opts) {
 		if (!looksLikeAamva(raw)) return null;
 		var separated = (String(raw || '').match(/[\r\n\x1e]/g) || []).length >= 3;
@@ -221,6 +233,13 @@
 			out.idNumber = idNumber(e.idNumber);
 			out.dob = isoDate(e.dob);
 			out.expiry = isoDate(e.expiry);
+			out.gender = GENDERS[clean(e.sex).toUpperCase()] || '';
+			if (clean(e.cardType).toUpperCase() === TEXAS_LTC) {
+				out.carryNumber = out.idNumber;
+				out.carryExpiry = out.expiry;
+				out.idNumber = idNumber(clean(e.holderId).replace(/^[A-Za-z]{2}\s+/, ''));
+				out.expiry = '';
+			}
 		}
 		return out;
 	}

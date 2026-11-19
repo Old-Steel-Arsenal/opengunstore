@@ -342,16 +342,24 @@
 			});
 			var lookup = function (raw) {
 				var parsed = window.ffl && ffl.aamva && ffl.aamva.parse(raw, { ids: true });
-				if (!parsed || !parsed.idNumber) return;
+				// A licence to carry holds two numbers (aamva.js): either one finds its holder.
+				var numbers = parsed ? [parsed.idNumber, parsed.carryNumber].filter(Boolean) : [];
+				if (!numbers.length) return;
 				d.set_value('scan', '');
-				frappe.call({ method: METHOD + 'find_customers_by_id_number', args: { id_number: parsed.idNumber } })
-					.then(function (r) {
-						var rows = r.message || [];
+				var find = function (i) {
+					return frappe.call({ method: METHOD + 'find_customers_by_id_number', args: { id_number: numbers[i] } })
+						.then(function (r) {
+							var found = r.message || [];
+							return found.length || i + 1 >= numbers.length ? found : find(i + 1);
+						});
+				};
+				find(0)
+					.then(function (rows) {
 						if (rows.length === 1) { result = rows[0].name; d.hide(); return; }
 						if (!rows.length) {
 							d.hide();
 							frappe.msgprint(__('No customer has ID {0}. Add one with "Create a new Customer" and scan the licence there.',
-								[api.maskId(parsed.idNumber)]));
+								[api.maskId(numbers[0])]));
 							return;
 						}
 						var pick = new frappe.ui.Dialog({

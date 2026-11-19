@@ -27,14 +27,20 @@ test('switch on: the separated shape also returns licence number, DOB and expiry
 	assert.deepStrictEqual(parse(TX, { ids: true }), {
 		first: 'Alex', middle: 'Morgan', last: 'Sample', suffix: 'Jr',
 		address1: '100 Sample St Ste 5', address2: '', city: 'Springfield', state: 'TX', zip: '70001', country: 'United States',
-		idNumber: '12345678', dob: '1975-01-15', expiry: '2030-12-31',
+		idNumber: '12345678', dob: '1975-01-15', expiry: '2030-12-31', gender: 'Male',
 	});
+});
+
+test('switch on: DBC reads as Male / Female, anything else as none', () => {
+	const sex = (v) => parse(TX.replace('DBC1', 'DBC' + v), { ids: true }).gender;
+	assert.deepStrictEqual(['1', '2', '9', 'M', 'F', '', 'X'].map(sex), ['Male', 'Female', '', 'Male', 'Female', '', '']);
+	assert.strictEqual(parse(GLUED.replace(/[\n\r\x1e]/g, ''), { ids: true }).gender, parse(GLUED, { ids: true }).gender);
 });
 
 test('switch on: everything else is exactly the switch-off result', () => {
 	for (const raw of [TX, GLUED]) {
 		const on = parse(raw, { ids: true });
-		const { idNumber, dob, expiry, ...rest } = on;
+		const { idNumber, dob, expiry, gender, ...rest } = on;
 		assert.deepStrictEqual(rest, parse(raw));
 	}
 	assert.strictEqual(parse('Alex Sample', { ids: true }), null);
@@ -140,6 +146,32 @@ test('glued shape: identifiers never leak into name/address even when elements a
 test('street keeps ordinals and splits glued numbers', () => {
 	const p = parse('@\nANSI636015100102DL0040281ZT03220056DLDCSDOEDDENDACJANEDDFNDADNONEDDGNDAG123 W 5TH ST APT4211DAISPRINGFIELDDAJTXDAK75074DCGUSA');
 	assert.strictEqual(p.address1, '123 W 5th St Apt 4211');
+});
+
+// Texas License to Carry: an ID subfile whose Texas subfile carries the holder's
+// driver licence (ZTB, state first) and the card kind (ZTC).
+const LTC = '@\n\x1e\rANSI 636015090001ID00410240ZT02810027IDDCANONE\nDCBNONE\nDCDNONE\nDCIRC\nDBA04292030\nDCSSAMPLE\nDDEN\nDACALEX\nDDFN\nDADNONE\nDDGN\nDBDNONE\nDBB01151975\nDBC1\nDAYBRO\nDAU070 in\nDAG100 SAMPLE ST\nDAISPRINGFIELD\nDAJTX\nDAK700010000  \nDAQ01234567\nDCF1234567\nDCGUSA\nDAZBLK\nDCLAP\nDAW185\n\rZTZTBTX 12345678\nZTCTXLTC\n\r';
+
+test('Texas License to Carry: DAQ is the carry number, ZTB the driver licence — both wire shapes', () => {
+	const expected = {
+		first: 'Alex', middle: '', last: 'Sample', suffix: '',
+		address1: '100 Sample St', address2: '', city: 'Springfield', state: 'TX', zip: '70001', country: 'United States',
+		idNumber: '12345678', dob: '1975-01-15', expiry: '', gender: 'Male', carryNumber: '01234567', carryExpiry: '2030-04-29',
+	};
+	assert.deepStrictEqual(parse(LTC, { ids: true }), expected);
+	assert.deepStrictEqual(parse(LTC.replace(/[\n\r\x1e]/g, ''), { ids: true }), expected);
+	// Switch off: neither number, and nothing else changes.
+	const { idNumber, dob, expiry, gender, carryNumber, carryExpiry, ...rest } = expected;
+	assert.deepStrictEqual(parse(LTC), rest);
+	assert.ok(!/1234567|1975|2030/.test(JSON.stringify(parse(LTC))));
+});
+
+test('Texas License to Carry without a readable ZTB: the carry number is never the driver licence', () => {
+	const p = parse(LTC.replace('ZTZTBTX 12345678\n', 'ZT'), { ids: true });
+	assert.strictEqual(p.idNumber, '');
+	assert.strictEqual(p.carryNumber, '01234567');
+	// A driver licence (no ZTC "TXLTC") has no carry fields at all.
+	assert.ok(!('carryNumber' in parse(TX, { ids: true })) && !('carryExpiry' in parse(TX, { ids: true })));
 });
 
 test('typed text that is not a barcode is left alone', () => {
