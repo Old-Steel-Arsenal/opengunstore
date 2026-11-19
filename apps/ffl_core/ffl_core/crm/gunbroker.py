@@ -25,6 +25,8 @@ from ffl_core.crm import TITLE
 
 SENDER = "members@members.gunbroker.com"
 MSGID_FIELD = "ffl_gb_msgid"
+# The other MsgIds of a conversation a member asked again in: ",id1,id2," (crm.mail joins and the repair merge).
+MORE_MSGIDS_FIELD = "ffl_gb_more_msgids"
 _MSGID = re.compile(r"MsgId:\s*([\w-]{4,64})")
 _END = re.compile(r"-+\s*END MESSAGE FROM USER\s*-+", re.I)
 _LISTING = re.compile(r"Item Number[ \t:|]*(\d+)", re.I)
@@ -39,11 +41,35 @@ _NOTICES = (
 	("transfer", re.compile(r"(?:New Inbound FFL Transfer|FFL Transfer Documents Ready|FFL Transfer Complete)\b", re.I)),
 )
 WON_LIKE = "Congratulations!%won this item%"
+# Mail about an order on GunBroker: its order or item number, or the FFL and payment details the store
+# sends a seller it won from (and their answer to them).
+_ORDER_MAIL = re.compile(r"GunBroker(?:\.com)? Order|\b(?:Order|Item)\s*#?\s*\d{6,}|FFL\s*(?:&|and)\s*payment", re.I)
+# A GunBroker user name: one word. A display name with a space is a person's name or a GunBroker
+# service writing for many members ("GunBroker Valet"), and GunBroker's own names are no member's.
+# lazy: GunBroker's user name rules are not published; 3-30 letters, digits, "_", "-", "."; upgrade
+# path: the member's user id from the mail body, once GunBroker puts one there.
+_USER_NAME = re.compile(r"[A-Za-z0-9][\w.-]{2,29}")
 
 
 def msgid(subject: str | None) -> str | None:
 	found = _MSGID.search(subject or "")
 	return found.group(1) if found else None
+
+
+def order_mail(subject: str | None) -> bool:
+	return bool(_ORDER_MAIL.search(subject or ""))
+
+
+def user_name(name: str | None) -> bool:
+	"""Whether a member mail's display name is a GunBroker user name, the one person it can be."""
+	name = (name or "").strip()
+	return bool(_USER_NAME.fullmatch(name)) and not name.lower().startswith("gunbroker")
+
+
+def joined(value: str | None, msgid: str) -> str:
+	"""*value* of :data:`MORE_MSGIDS_FIELD` with *msgid* in it."""
+	ids = [i for i in (value or "").split(",") if i]
+	return "," + ",".join([*ids, msgid] if msgid not in ids else ids) + ","
 
 
 def notice(email: str, sender_name: str | None, subject: str | None) -> str | None:

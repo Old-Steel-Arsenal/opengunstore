@@ -31,7 +31,7 @@ from ffl_core.crm import TITLE, installed, pos_link_on, team
 from ffl_core.crm.customer import CARD_FIELD
 from ffl_core.crm.deal import SERIAL_FIELD
 from ffl_core.crm.deals import DEAL, STATUS
-from ffl_core.crm.gunbroker import MSGID_FIELD
+from ffl_core.crm.gunbroker import MORE_MSGIDS_FIELD, MSGID_FIELD
 from ffl_core.crm.inquiries import EVENT_FIELD
 from ffl_core.crm.mail import AUTO_LEAD, CATEGORY, CATEGORY_FIELD, LEAD, OTHER_MAIL, SETTINGS
 from ffl_core.crm import memory
@@ -570,6 +570,15 @@ CUSTOM_FIELDS = {
 		"no_copy": 1,
 		"search_index": 1,
 		"insert_after": CATEGORY_FIELD,
+	}, {
+		# The conversation's other MsgIds: a member's later question joined to it (crm.mail).
+		"fieldname": MORE_MSGIDS_FIELD,
+		"fieldtype": "Small Text",
+		"label": "More GunBroker message ids",
+		"read_only": 1,
+		"hidden": 1,
+		"no_copy": 1,
+		"insert_after": MSGID_FIELD,
 	}, *map(dict, MEMORY_FIELDS)],
 	"Email Account": [{
 		"fieldname": AUTO_LEAD,

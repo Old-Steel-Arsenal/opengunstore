@@ -210,6 +210,7 @@ class TestMailWithoutTo(TeamMailCase):
 BUYER, SELLER = "gb-buyer@example.org", "gb-seller@example.org"
 SOLD = "Congratulations! Your item has sold Winchester Model 70 (1219067857)"
 WON = "Congratulations! You won this item Colt Python (1300000099) on GunBroker.com!"
+ORDER_MAIL = "Re: FFL & payment info for GunBroker Order 32000099"
 TRANSFERS = ("New Inbound FFL Transfer: GunBroker Order 32000001", "FFL Transfer Documents Ready: GunBroker Order 32000002",
 	"FFL Transfer Complete: GunBroker Order 32000003")
 
@@ -329,12 +330,20 @@ class TestGunBrokerNotices(TeamMailCase):
 
 	def test_the_sellers_mail_after_a_won_notice_is_vendor_mail_not_a_lead(self):
 		_pull(INFO, (_notice(WON, SELLER), _uid[0]))
-		kept = self._screened(_person(SELLER, "Tracking number"), answer="customer")
+		kept = self._screened(_person(SELLER, ORDER_MAIL), answer="customer")
 		[lead] = _leads(SELLER)
 		self.assertEqual((kept.reference_name, lead.status, lead.get(mail.CATEGORY_FIELD)),
 			(lead.name, mail.OTHER_MAIL, gunbroker.SELLER_CATEGORY))
 		self.assertFalse(ASKED, "a seller is known without asking")
 		self.assertFalse(_assignees("CRM Lead", lead.name), "other mail is not shared")
+
+	def test_a_seller_writing_about_something_else_is_screened(self):
+		"""A private seller the store once won from may come back as a buyer."""
+		_pull(INFO, (_notice(WON, SELLER), _uid[0]))
+		kept = self._screened(_person(SELLER, "Looking for a Garand"), answer="customer")
+		[lead] = _leads(SELLER)
+		self.assertTrue(ASKED, "screened as anyone's mail")
+		self.assertEqual((kept.reference_name, lead.status), (lead.name, "New"))
 
 	def test_a_lead_a_notice_made_earlier_does_not_keep_the_buyers_mail(self):
 		lead = _legacy_notice_lead(BUYER, SOLD)
@@ -354,7 +363,7 @@ class TestGunBrokerNotices(TeamMailCase):
 
 	def test_a_lead_a_won_notice_made_earlier_becomes_vendor_mail(self):
 		lead = _legacy_notice_lead(SELLER, WON)
-		raw = _person(SELLER, "Invoice")
+		raw = _person(SELLER, ORDER_MAIL)
 		_pull(INFO, (raw, _uid[0]))
 		self.assertEqual(_stored(raw)[0].reference_name, lead)
 		self.assertEqual(frappe.db.get_value("CRM Lead", lead, mail.CATEGORY_FIELD), gunbroker.SELLER_CATEGORY)
@@ -369,6 +378,51 @@ class TestGunBrokerNotices(TeamMailCase):
 		_pull(INFO, (reply, _uid[0]))
 		self.assertEqual(_stored(reply)[0].reference_name, lead)
 		self.assertEqual(frappe.db.get_value("CRM Lead", lead, "status"), "New")
+
+	def test_a_thread_answer_on_such_a_lead_is_screened_too(self):
+		"""An FFL service answering in that thread is not a customer just for answering."""
+		lead = _legacy_notice_lead(BUYER, TRANSFERS[0])
+		sent = frappe.get_doc({"doctype": "Communication", "communication_type": "Communication",
+			"communication_medium": "Email", "sent_or_received": "Sent", "subject": "Re: " + TRANSFERS[0],
+			"sender": SALES, "recipients": BUYER, "reference_doctype": "CRM Lead", "reference_name": lead,
+			"message_id": f"ffl-gbt-{frappe.generate_hash(length=8)}@example.com"}).insert(ignore_permissions=True)
+		reply = _team_raw("Transfers <transfers@ffl.example.org>", SALES, in_reply_to=sent.message_id)
+		kept = self._screened(reply, answer="ffl")
+		self.assertTrue(ASKED)
+		self.assertEqual(frappe.db.get_value("CRM Lead", lead, ["status", mail.CATEGORY_FIELD]), (mail.OTHER_MAIL, "Notification"))
+		ffl = _leads("transfers@ffl.example.org")
+		self.assertEqual([(kept.reference_name, mail.OTHER_MAIL)], [(r.name, r.status) for r in ffl])
+
+	def test_direct_mail_from_a_sender_only_notices_filed_is_kept(self):
+		lead = _legacy_notice_lead(BUYER, SOLD)
+		raw = _person(BUYER)
+		raw = raw.replace(SALES.encode(), ADDRESS[STAFF_A].encode())
+		_answer("customer")
+		with hooks(mail.SCREEN_HOOK, [f"{HERE}.provider"]), patch("frappe.enqueue"):
+			_pull(STAFF_A, (raw, _uid[0]))
+			[kept] = _stored(raw)
+			mail.screen_new_sender(kept.name)
+		self.assertTrue(ASKED)
+		self.assertEqual(_stored(raw)[0].reference_name, lead)
+		self.assertEqual(frappe.db.get_value("CRM Lead", lead, "status"), "New")
+		self.assertNoPullErrors()
+
+	def test_a_notice_lead_is_read_a_page_at_a_time(self):
+		lead = _legacy_notice_lead(BUYER, SOLD)
+		for _i in range(25):
+			_comm(BUYER, SOLD, "GunBroker.com", lead)
+		_comm(BUYER, "Payment sent", "Pat Person", lead)
+		real, calls = frappe.get_all, []
+
+		def get_all(doctype, *args, **kwargs):
+			if doctype == "Communication":
+				calls.append(kwargs.get("limit") or kwargs.get("page_length"))
+			return real(doctype, *args, **kwargs)
+
+		with patch.object(mail.frappe, "get_all", side_effect=get_all):
+			self.assertFalse(mail._notice_made(lead))
+		self.assertEqual(len(calls), 1, "stops at the newest page: it has a person's mail")
+		self.assertTrue(calls[0] and calls[0] <= 20, calls)
 
 	def test_a_lead_with_a_persons_mail_keeps_its_sender(self):
 		"""Other mail that is not only notices is left as the store filed it."""
@@ -399,6 +453,27 @@ class TestGunBrokerMemberAsksAgain(TeamMailCase):
 		self.assertNotEqual(other, lead)
 		self.assertNoPullErrors()
 
+	def test_shared_and_real_names_are_not_joined(self):
+		"""GunBroker's own services write for many members; a person's name is not a GunBroker user name."""
+		for i, name in enumerate(("GunBroker Valet", "GunBrokercom User Email", "John Smith", "gunbroker_relay")):
+			_, one = _file(_raw(msgid=f"V{i}first", name=name, body=_listed(f"_T-CRM-GBV-{i}a", f"15000000{i}1")))
+			_, two = _file(_raw(msgid=f"V{i}second", name=name, body=_listed(f"_T-CRM-GBV-{i}b", f"15000000{i}2")))
+			self.assertNotEqual(one, two, name)
+
+	def test_a_lead_no_mail_of_that_member_is_on_is_not_joined(self):
+		lead = mail._new_lead("", "renamedmember", source="GunBroker", **{gunbroker.MSGID_FIELD: "W1nomail"})
+		_, again = _file(_raw(msgid="W2nomail", name="renamedmember", body=_listed("_T-CRM-GBR-8", "1400000008")))
+		self.assertNotEqual(again, lead)
+
+	def test_the_conversation_is_looked_up_once_and_a_joined_msgid_is_kept(self):
+		_, lead = _file(_raw(msgid="X1once", name="oncemember", body=_listed("_T-CRM-GBR-9", "1400000009")))
+		with patch.object(mail, "_gunbroker_place", wraps=mail._gunbroker_place) as place:
+			_file(_raw(msgid="X2once", name="oncemember", body=_listed("_T-CRM-GBR-10", "1400000010")))
+		self.assertEqual(place.call_count, 1, "decide's answer is reused when filing")
+		# Found by what the lead keeps, not by reading the mail's subject.
+		frappe.db.set_value("Communication", {"reference_name": lead}, "subject", "Question", update_modified=False)
+		self.assertEqual(mail._gunbroker_place("X2once"), ("CRM Lead", lead))
+
 	def test_a_closed_conversation_is_not_joined(self):
 		_, lead = _file(_raw(msgid="S1closed", name="closedmember", body=_listed("_T-CRM-GBR-4", "1400000004")))
 		frappe.db.set_value("CRM Lead", lead, {"status": "Junk", "lost_reason": None}, update_modified=False)
@@ -424,11 +499,11 @@ class TestRepairGunBrokerMail(TeamMailCase):
 		buyer = _legacy_notice_lead(BUYER, SOLD)
 		_comm(BUYER, "Payment sent", "Pat Person", buyer)
 		seller = _legacy_notice_lead(SELLER, WON)
-		_comm(SELLER, "Tracking number", "Sam Seller", seller)
+		_comm(SELLER, ORDER_MAIL, "Sam Seller", seller)
 		only_notice = _legacy_notice_lead("gb-quiet@example.org", SOLD)
 		first = mail._new_lead("", "repeatmember", source="GunBroker", **{gunbroker.MSGID_FIELD: "U1first"})
 		second = mail._new_lead("", "repeatmember", source="GunBroker", **{gunbroker.MSGID_FIELD: "U2second"})
-		question = _comm(GB, "Question (Do not remove MsgId: U2second)", "repeatmember", second)
+		question = _comm(GB, "Question", "repeatmember", second)   # the MsgId is kept on the lead only
 		serial = _gun("_T-CRM-GBR-7", 899)
 		add_product_row("CRM Lead", second, frappe.db.get_value("Serial No", serial, "item_code"), serial)
 		return {"buyer": buyer, "seller": seller, "quiet": only_notice, "first": first, "second": second,
