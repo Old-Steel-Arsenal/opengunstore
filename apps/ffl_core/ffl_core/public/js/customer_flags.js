@@ -333,7 +333,9 @@
 	}
 
 	// Bring the customer's stored IDs and address up to the scanned ID (apply_id_scan).
-	// A name on the ID that is not the customer's is asked about first. Resolves either way.
+	// An ID that looks like someone else's (name, date of birth) is asked about first.
+	// Resolves to what was changed ([] when nothing, or the clerk said no); rejects when the
+	// request fails, so a caller that must go on adds its own catch.
 	function applyScan(customer, parsed, force) {
 		return frappe.call({ method: METHOD + 'apply_id_scan', args: { customer: customer, scan: parsed, force: force ? 1 : 0 } })
 			.then(function (r) {
@@ -342,14 +344,16 @@
 					return new Promise(function (resolve) {
 						frappe.confirm(__('The ID says {0}. This customer is {1}. Update this customer from the ID?',
 							[api.escText(m.mismatch.on_id), api.escText(m.mismatch.customer)]),
-							function () { resolve(applyScan(customer, parsed, true)); }, function () { resolve(); });
+							function () { resolve(applyScan(customer, parsed, true)); }, function () { resolve([]); });
 					});
 				}
-				if ((m.changed || []).length) {
+				var changed = m.changed || [];
+				if (changed.length) {
 					delete cache[customer];
 					frappe.show_alert({ indicator: 'green', message: __('Updated from the ID: {0}',
-						[m.changed.map(function (x) { return __(x); }).join(', ')]) });
+						[changed.map(function (x) { return __(x); }).join(', ')]) });
 				}
+				return changed;
 			});
 	}
 
@@ -463,9 +467,15 @@
 							.appendTo($details)
 							.on('click', function (e) {
 								e.stopPropagation();
-								scanForCustomer(c).then(function () {
-									if (cart.customer_info && cart.customer_info.customer === c) cart.update_customer_section();
-								});
+								scanDialog(c).then(function (r) {
+									return r ? applyScan(c, r.parsed) : [];
+								}).then(function (changed) {
+									if (!cart.customer_info || cart.customer_info.customer !== c) return;
+									cart.update_customer_section();
+									// The ticket holds the old address (and the tax that follows the
+									// state): have it read the customer again.
+									if (changed.indexOf('Address') >= 0) cart.events.get_frm().trigger('customer');
+								}, function () { /* the request's own error is already on screen */ });
 							});
 					}
 				};

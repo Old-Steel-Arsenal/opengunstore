@@ -383,6 +383,30 @@ class ApplyIdScan(SettingsSandbox, FrappeTestCase):
 		# The name itself is never changed by a scan.
 		self.assertEqual(frappe.db.get_value("Customer", self.doc.name, "ffl_last_name"), "Sample")
 
+	def test_the_same_name_with_another_birth_date_is_someone_else(self):
+		self._apply()
+		got = self._apply(idNumber="99990000", dob="2001-09-09", address1="7 Pine Ct", zip="70003")
+		self.assertEqual(got, {"changed": [], "mismatch": {"on_id": "Alex Sample (born 2001-09-09)",
+			"customer": f"{self.doc.customer_name} (born 1975-01-15)"}})
+		self.assertEqual(self._stored()[1], [("Driver License", "12345678", "2031-12-31")])
+
+	def test_an_address_already_theirs_becomes_primary_instead_of_a_copy(self):
+		linked = frappe.get_doc({"doctype": "Address", "address_title": "Web order", "address_type": "Billing",
+			"address_line1": "100 SAMPLE ST.", "city": "Springfield", "state": "TX", "pincode": "70001-0000",
+			"country": "United States", "links": [{"link_doctype": "Customer", "link_name": self.doc.name}]})
+		linked.insert(ignore_permissions=True)
+		frappe.db.set_value("Customer", self.doc.name, "customer_primary_address", None)
+		self.assertIn("Address", self._apply()["changed"])
+		self.assertEqual(frappe.db.get_value("Customer", self.doc.name, "customer_primary_address"), linked.name)
+		self.assertEqual(frappe.db.count("Dynamic Link", {"parenttype": "Address", "link_doctype": "Customer",
+			"link_name": self.doc.name}), 1)
+
+	def test_an_id_whose_zip_did_not_read_leaves_the_address_alone(self):
+		self._apply()
+		self.assertEqual(self._apply(zip="")["changed"], [])
+		doc, _ids = self._stored()
+		self.assertEqual(frappe.db.get_value("Address", doc.customer_primary_address, "pincode"), "70001")
+
 	def test_nothing_is_written_with_the_switch_off_or_for_a_company(self):
 		self.set_single(*_SWITCH, 0)
 		self.assertEqual(self._apply(), {"changed": []})

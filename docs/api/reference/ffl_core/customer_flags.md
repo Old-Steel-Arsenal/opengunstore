@@ -14,24 +14,27 @@ Bring an existing customer's ID documents and address up to the ID just scanned.
 
 For a customer who renewed or replaced an ID, or moved. Nothing is written while FFL
 Settings → Store Customer ID Numbers is off, for a customer who is not an Individual, or
-when the name on the ID is not the customer's (unless ``force``).
+when the ID is someone else's (unless ``force``): another first + last name, or another
+date of birth than the one on file (a parent and child can share a name).
 
 * ID documents: the Driver License row from ``idNumber`` / ``expiry`` and the CCW row from
   ``carryNumber`` / ``carryExpiry``. A row of that type is updated in place (the one with
   the same number, else the only one); otherwise a row is added. An expiry the scan does
   not carry leaves the stored one alone, unless the number changed.
 * Date of birth and gender: filled when empty, never overwritten.
-* Address: when the ID's street and ZIP are not the primary address. That address is
-  changed in place when only this customer uses it; a shared one is left alone and a new
-  primary address is made. The old address goes on the customer's timeline.
+* Address: when the ID's street and ZIP are not the primary address (an ID whose ZIP did
+  not read changes nothing). An address the customer already has under that street and
+  ZIP becomes the primary one. Otherwise the primary address is changed in place when
+  only this customer uses it; a shared one is left alone and a new primary address is
+  made. The old address goes on the customer's timeline.
 
 | arg | type | required | default | description |
 |---|---|---|---|---|
 | `customer` | string | yes | — | Customer name (document id). |
 | `scan` | dict | str | yes | — | What ``ffl.aamva.parse(raw, {ids: true})`` returned in the browser: first, last, address1, address2, city, state, zip, country, idNumber, dob, expiry, gender and, for a licence to carry, carryNumber, carryExpiry. |
-| `force` | bool | int | str | no | `False` | Write although the name on the ID differs from the customer's. |
+| `force` | bool | int | str | no | `False` | Write although the name or date of birth on the ID differs from the customer's. |
 
-**Returns:** {"changed": [str]} naming what was written ("Driver License", "CCW", "Date of Birth", "Gender", "Address"; empty when the record already matched), or {"changed": [], "mismatch": {"on_id": str, "customer": str}} when the names differ and nothing was written.
+**Returns:** {"changed": [str]} naming what was written ("Driver License", "CCW", "Date of Birth", "Gender", "Address"; empty when the record already matched), or {"changed": [], "mismatch": {"on_id": str, "customer": str}} (each a name, with "(born YYYY-MM-DD)" when the dates of birth differ) when the ID is someone else's and nothing was written.
 
 <sub>`apps/ffl_core/ffl_core/customer_flags.py:276`</sub>
 
@@ -56,7 +59,7 @@ customer, then the buyer's GunBroker id (field, then alias), then email.
 
 **Returns:** {"woo": [names], "gb": [names], "customers": [names]} — only the Banned ones.
 
-<sub>`apps/ffl_core/ffl_core/customer_flags.py:515`</sub>
+<sub>`apps/ffl_core/ffl_core/customer_flags.py:536`</sub>
 
 ## `find_customers_by_id_number`
 
@@ -97,7 +100,7 @@ pick; a number match is the person.
 
 **Returns:** [{"name", "customer_name", "customer_status", "address": primary address on one line, "by_id": matched on the ID number}], at most 5.
 
-<sub>`apps/ffl_core/ffl_core/customer_flags.py:404`</sub>
+<sub>`apps/ffl_core/ffl_core/customer_flags.py:425`</sub>
 
 ## `find_possible_duplicates`
 
@@ -118,7 +121,7 @@ Matches the customer's email (or an email merged into it), mobile number
 
 **Returns:** [{"name", "customer_name", "customer_status", "matched": ["email" | "phone" | "id_number"]}], at most 5.
 
-<sub>`apps/ffl_core/ffl_core/customer_flags.py:460`</sub>
+<sub>`apps/ffl_core/ffl_core/customer_flags.py:481`</sub>
 
 ## `get_customer_flags`
 
