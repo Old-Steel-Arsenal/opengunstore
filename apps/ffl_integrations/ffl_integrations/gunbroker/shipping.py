@@ -242,7 +242,16 @@ def push_tracking(gunbroker_order: str,
 	sent: list[str] = []
 
 	if "flag" in owed:
-		client.set_order_flags(order.gb_order_id, OrderShipped=True)
+		try:
+			client.set_order_flags(order.gb_order_id, OrderShipped=True)
+		except GunBrokerError as exc:
+			# Marked shipped on the GunBroker website already: GunBroker answers
+			# 403 "Order N has shipped.  You cannot undo." rather than treating
+			# the repeat as a no-op. The flag is where we wanted it, and
+			# re-raising would keep the tracking upload behind it from ever
+			# running. Anything else about a flag refusal is still an error.
+			if not (exc.status_code == 403 and "has shipped" in exc.body.lower()):
+				raise
 		frappe.db.set_value(ORDER_DOCTYPE, order.name, "shipping_flag_pushed_at",
 			now_datetime(), update_modified=False)
 		order.shipping_flag_pushed_at = now_datetime()

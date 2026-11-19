@@ -962,8 +962,11 @@ class GunBrokerClient:
 	def set_order_flags(self, order_id: str, **flags: bool) -> Any:
 		"""``PUT /Orders/{orderID}/Flags`` — set order flags.
 
-		Naturally idempotent: a flag already true is a no-op, and false does not
-		clear one. So a retry is always safe.
+		False does not clear a flag. Repeating a flag is not always a no-op:
+		``OrderShipped`` on an order GunBroker already has as shipped is refused
+		with a 403 ("Order N has shipped.  You cannot undo."), which
+		``shipping.push_tracking`` treats as the flag having landed. The other
+		flags are not known to refuse a repeat.
 		"""
 		unknown = [k for k in flags if k not in self._SETTABLE_FLAGS]
 		if unknown:
