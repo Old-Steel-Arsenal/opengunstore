@@ -621,13 +621,30 @@ class California(_Base):
 			inv.save(ignore_permissions=True)
 
 
-def _race_profile() -> str:
+def _race_profile(test: FrappeTestCase) -> str:
 	"""An enabled POS Profile for the race tests, which commit their fixtures: the sessions in the
 	other threads see committed rows only, so the tests cannot count on a profile another module
-	happened to leave behind on this site."""
+	happened to leave behind on this site.
+
+	Its template becomes the company's default and the 0% template is synced to it, and the test's
+	commit makes that stick: the default before it is put back (and the 0% template synced back) when
+	the test ends. Left as this module's, every later module on the site selling under the company's
+	own template had its service and deposit lines taxed."""
+	before = frappe.db.get_value("Sales Taxes and Charges Template", {"company": COMPANY, "is_default": 1}, "name")
+	test.addCleanup(_restore_default_template, before)
 	name = _profile(_Base.PROFILE, _default_template(_Base.TEMPLATE_TITLE, [(_account("_Test PO Sales Tax"), 8.25)]))
 	frappe.db.set_value("POS Profile", name, "disabled", 0)
 	return name
+
+
+def _restore_default_template(name: str | None) -> None:
+	frappe.db.rollback()
+	frappe.db.sql("UPDATE `tabSales Taxes and Charges Template` SET is_default = 0 WHERE company = %s", COMPANY)
+	if name:
+		frappe.db.set_value("Sales Taxes and Charges Template", name, "is_default", 1)
+	from ffl_core.setup import tax
+	tax.ensure()
+	frappe.db.commit()
 
 
 class LastSlotRace(FrappeTestCase):
@@ -641,7 +658,7 @@ class LastSlotRace(FrappeTestCase):
 		setup.ensure()
 		token = frappe.generate_hash(length=6).upper()
 		item = f"_T-PO-RACE-{token}"
-		_race_profile()
+		_race_profile(self)
 		frappe.get_doc({"doctype": "Item", "item_code": item, "item_name": item, "item_group": "All Item Groups",
 			"stock_uom": "Nos", "is_stock_item": 1, AVAILABLE_FIELD: 1}).insert(ignore_permissions=True)
 		customers = [frappe.get_doc({"doctype": "Customer", "customer_name": f"_Test PO Race {token} {i}",
@@ -729,7 +746,7 @@ class PaymentLockRace(FrappeTestCase):
 		setup.ensure()
 		token = frappe.generate_hash(length=6).upper()
 		item = f"_T-PO-LOCK-{token}"
-		_race_profile()
+		_race_profile(self)
 		frappe.get_doc({"doctype": "Item", "item_code": item, "item_name": item, "item_group": "All Item Groups",
 			"stock_uom": "Nos", "is_stock_item": 0, AVAILABLE_FIELD: 1}).insert(ignore_permissions=True)
 		customer = frappe.get_doc({"doctype": "Customer", "customer_name": f"_Test PO Lock {token}",
