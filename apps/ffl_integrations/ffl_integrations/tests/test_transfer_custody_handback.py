@@ -69,13 +69,20 @@ class ACustodyGunIsIssuedFromTheWarehouseItIsActuallyIn(FrappeTestCase):
 			}).insert(ignore_permissions=True)
 
 	def _ensure_pos_opening(self) -> None:
-		"""The session user's Open shift, started today, on the test company's POS Profile: the transfer
-		builds its invoice on the profile of the cashier's own Open shift. Made here rather than taken from
-		the site: test_pos_close.py deletes every non-Closed opening entry, and a shift another module
-		left Open for this user on another profile made ERPNext refuse a second one ('Cashier is
-		currently assigned to another POS') — todays_pos_opening closes that one first."""
+		"""The session user's Open shift, started today, on a POS Profile of the test's own company: the transfer
+		builds its invoice on the profile of the cashier's own Open shift. Made here rather than taken from the
+		site: test_pos_close.py deletes every non-Closed opening entry, and a shift another module left Open for
+		this user on another profile made ERPNext refuse a second one ('Cashier is currently assigned to another
+		POS') — todays_pos_opening closes that one first.
+
+		No profile and none could be made fails the test (ensure_pos_profile raises), never skips it: these tests
+		guard a BLOCKER, a custody gun that cannot be handed back."""
 		from ffl_core.tests.pos_opening import ensure_pos_profile, todays_pos_opening
-		todays_pos_opening(self.company, ensure_pos_profile(self.company))
+		profile = ensure_pos_profile(self.company)
+		self.assertEqual(
+			tuple(frappe.db.get_value("POS Profile", profile, ["company", "disabled"]) or ()), (self.company, 0),
+			"the handback regression guard needs an enabled POS Profile of the test's company")
+		todays_pos_opening(self.company, profile)
 
 	def setUp(self) -> None:
 		super().setUp()

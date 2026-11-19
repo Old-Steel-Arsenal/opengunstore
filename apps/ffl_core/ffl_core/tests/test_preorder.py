@@ -21,6 +21,7 @@ from frappe.utils import add_days, flt, nowdate
 from ffl_core import deposits, preorder
 from ffl_core.setup import preorder as setup
 from ffl_core.setup.preorder import ACCOUNT_TITLE, AVAILABLE_FIELD, PREORDER_ITEM
+from ffl_core.tests.tax_defaults import default_template, default_template_from_rows, restore_default_template
 from ffl_core.tests.test_customer_profile import _hooks, _uniq
 
 COMPANY = "FFL Test"
@@ -40,20 +41,6 @@ def _account(name: str, parent_name: str = "Duties and Taxes", account_type: str
 		frappe.get_doc({"doctype": "Account", "account_name": name, "company": COMPANY, "parent_account": parent,
 			"account_type": account_type, "is_group": 0}).insert(ignore_permissions=True)
 	return acct
-
-
-def _default_template(title: str, rows: list[tuple[str, float]]) -> str:
-	"""A sales-tax template made the company's default, and the 0% template synced from it (setup.tax)."""
-	name = f"{title} - {ABBR}"
-	if not frappe.db.exists("Sales Taxes and Charges Template", name):
-		frappe.get_doc({"doctype": "Sales Taxes and Charges Template", "title": title, "company": COMPANY,
-			"taxes": [{"charge_type": "On Net Total", "account_head": a, "rate": r, "description": a}
-				for a, r in rows]}).insert(ignore_permissions=True)
-	frappe.db.sql("UPDATE `tabSales Taxes and Charges Template` SET is_default = 0 WHERE company = %s", COMPANY)
-	frappe.db.set_value("Sales Taxes and Charges Template", name, "is_default", 1)
-	from ffl_core.setup import tax
-	tax.ensure()
-	return name
 
 
 def _profile(name: str, template: str) -> str:
@@ -156,7 +143,7 @@ class _Base(FrappeTestCase):
 		frappe.set_user("Administrator")
 		setup.ensure()   # first: on a fresh site it adds columns, and DDL commits (docs/testing.md rule 1)
 		frappe.defaults.set_user_default("Company", COMPANY)
-		cls.template = _default_template(cls.TEMPLATE_TITLE, cls.tax_rows())
+		cls.template = default_template_from_rows(COMPANY, cls.TEMPLATE_TITLE, cls.tax_rows())
 		setup.ensure()   # the payment item's 0% template, synced to the new default
 		cls.profile = _profile(cls.PROFILE, cls.template)
 		_items()
@@ -621,30 +608,18 @@ class California(_Base):
 			inv.save(ignore_permissions=True)
 
 
-def _race_profile(test: FrappeTestCase) -> str:
+def _race_profile() -> str:
 	"""An enabled POS Profile for the race tests, which commit their fixtures: the sessions in the
 	other threads see committed rows only, so the tests cannot count on a profile another module
 	happened to leave behind on this site.
 
-	Its template becomes the company's default and the 0% template is synced to it, and the test's
-	commit makes that stick: the default before it is put back (and the 0% template synced back) when
-	the test ends. Left as this module's, every later module on the site selling under the company's
-	own template had its service and deposit lines taxed."""
-	before = frappe.db.get_value("Sales Taxes and Charges Template", {"company": COMPANY, "is_default": 1}, "name")
-	test.addCleanup(_restore_default_template, before)
-	name = _profile(_Base.PROFILE, _default_template(_Base.TEMPLATE_TITLE, [(_account("_Test PO Sales Tax"), 8.25)]))
+	Its template becomes the company's default (and the 0% template is synced to it), which the
+	test's commit makes stick: each race test takes default_template() first and, after its own
+	clean-up, puts it back with restore_default_template()."""
+	name = _profile(_Base.PROFILE, default_template_from_rows(COMPANY, _Base.TEMPLATE_TITLE,
+		[(_account("_Test PO Sales Tax"), 8.25)]))
 	frappe.db.set_value("POS Profile", name, "disabled", 0)
 	return name
-
-
-def _restore_default_template(name: str | None) -> None:
-	frappe.db.rollback()
-	frappe.db.sql("UPDATE `tabSales Taxes and Charges Template` SET is_default = 0 WHERE company = %s", COMPANY)
-	if name:
-		frappe.db.set_value("Sales Taxes and Charges Template", name, "is_default", 1)
-	from ffl_core.setup import tax
-	tax.ensure()
-	frappe.db.commit()
 
 
 class LastSlotRace(FrappeTestCase):
@@ -658,7 +633,8 @@ class LastSlotRace(FrappeTestCase):
 		setup.ensure()
 		token = frappe.generate_hash(length=6).upper()
 		item = f"_T-PO-RACE-{token}"
-		_race_profile(self)
+		before = default_template(COMPANY)
+		_race_profile()
 		frappe.get_doc({"doctype": "Item", "item_code": item, "item_name": item, "item_group": "All Item Groups",
 			"stock_uom": "Nos", "is_stock_item": 1, AVAILABLE_FIELD: 1}).insert(ignore_permissions=True)
 		customers = [frappe.get_doc({"doctype": "Customer", "customer_name": f"_Test PO Race {token} {i}",
@@ -719,6 +695,7 @@ class LastSlotRace(FrappeTestCase):
 				frappe.delete_doc("Customer", c, force=True, ignore_permissions=True)
 			frappe.delete_doc("Item", item, force=True, ignore_permissions=True)
 			frappe.db.commit()
+			restore_default_template(COMPANY, before)
 
 
 class SalesReport(FrappeTestCase):
@@ -746,7 +723,8 @@ class PaymentLockRace(FrappeTestCase):
 		setup.ensure()
 		token = frappe.generate_hash(length=6).upper()
 		item = f"_T-PO-LOCK-{token}"
-		_race_profile(self)
+		before = default_template(COMPANY)
+		_race_profile()
 		frappe.get_doc({"doctype": "Item", "item_code": item, "item_name": item, "item_group": "All Item Groups",
 			"stock_uom": "Nos", "is_stock_item": 0, AVAILABLE_FIELD: 1}).insert(ignore_permissions=True)
 		customer = frappe.get_doc({"doctype": "Customer", "customer_name": f"_Test PO Lock {token}",
@@ -789,3 +767,4 @@ class PaymentLockRace(FrappeTestCase):
 			frappe.delete_doc("Customer", customer, force=True, ignore_permissions=True)
 			frappe.delete_doc("Item", item, force=True, ignore_permissions=True)
 			frappe.db.commit()
+			restore_default_template(COMPANY, before)
