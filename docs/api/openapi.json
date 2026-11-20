@@ -28233,7 +28233,7 @@
           "ffl_woo_sync"
         ],
         "summary": "Begin a one-click connection: issue a one-time state and return the store's approval URL.",
-        "description": "The saved Store URL is used; the browser is sent to WooCommerce's\n``/wc-auth/v1/authorize`` page, which posts a new read/write REST key back to\n``wc_auth_callback`` once the store owner approves.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/connect.py:155`",
+        "description": "The saved Store URL is used; the browser is sent to WooCommerce's\n``/wc-auth/v1/authorize`` page, which posts a new read/write REST key back to\n``wc_auth_callback`` once the store owner approves.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/connect.py:169`",
         "operationId": "ffl_woo_sync.woocommerce.connect.start_connect",
         "responses": {
           "200": {
@@ -28263,7 +28263,7 @@
           "webhooks"
         ],
         "summary": "WooCommerce wc-auth callback: receives the REST key the store owner approved.",
-        "description": "**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\n**Payload:** WooCommerce's JSON body ``{key_id, user_id, consumer_key, consumer_secret, key_permissions}``. ``user_id`` carries the one-time state from ``start_connect``.\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/connect.py:202`",
+        "description": "**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\n**Payload:** WooCommerce's JSON body ``{key_id, user_id, consumer_key, consumer_secret, key_permissions}``. ``user_id`` carries the one-time state from ``start_connect``.\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/connect.py:227`",
         "operationId": "ffl_woo_sync.woocommerce.connect.wc_auth_callback",
         "responses": {
           "200": {

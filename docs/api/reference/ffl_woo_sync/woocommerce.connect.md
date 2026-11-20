@@ -18,9 +18,9 @@ The saved Store URL is used; the browser is sent to WooCommerce's
 
 **Returns:** {"url": <the store's wc-auth approval URL>}.
 
-**Raises:** ValidationError: the Store URL is blank or not HTTPS.
+**Raises:** ValidationError: the Store URL is blank or not HTTPS, or (outside developer mode) this POS's own address is not HTTPS — set ``host_name`` in the site config.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/connect.py:155`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/connect.py:169`</sub>
 
 ## `wc_auth_callback`
 
@@ -42,4 +42,4 @@ WooCommerce wc-auth callback: receives the REST key the store owner approved.
 
 **Returns:** 200 ``{"ok": true}`` once the key is stored and the rest of the connection is queued; 400 ``{"ok": false, "error"}`` for an unknown, expired or used state, a key that is not read/write, or a store that is no longer the one in Settings.
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/connect.py:202`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/connect.py:227`</sub>

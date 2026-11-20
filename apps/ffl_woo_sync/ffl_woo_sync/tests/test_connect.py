@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlparse
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
+from redis.exceptions import LockError
 
 from ffl_woo_sync.woocommerce import connect
 from ffl_woo_sync.woocommerce.client import (
@@ -34,7 +35,8 @@ def _status() -> list[str]:
 class FakeStore:
 	"""Stands in for WooCommerceClient: webhooks in memory, the plugin route scripted."""
 
-	def __init__(self, webhooks=None, plugin=True, put_answer=None, fail=None):
+	def __init__(self, webhooks=None, plugin=True, put_answer=None, fail=None, creates_before_fail=0):
+		self.creates_before_fail = creates_before_fail
 		self.webhooks = list(webhooks or [])
 		self.plugin = plugin
 		self.put_answer = {"connected": True} if put_answer is None else put_answer
@@ -67,7 +69,10 @@ class FakeStore:
 
 	def post(self, path, json=None, namespace="wc/v3", **kwargs):
 		self.calls.append(("POST", namespace, path, json))
-		self._maybe_fail("create")
+		if self.creates_before_fail:
+			self.creates_before_fail -= 1
+		else:
+			self._maybe_fail("create")
 		self._next_id += 1
 		self.webhooks.append(dict(json, id=self._next_id))
 		return {"id": self._next_id}
@@ -90,6 +95,10 @@ class ConnectCase(FrappeTestCase):
 		frappe.db.set_single_value(SETTINGS_DOCTYPE, "connect_status", "")
 		for field in ("consumer_key", "consumer_secret", "webhook_secret", "outbound_webhook_secret"):
 			connect._set_password(field, f"old-{field}")
+		# Neither plugin user active at the start of a test, whatever the site held before.
+		for email in connect.api_user_emails():
+			if frappe.db.exists("User", email):
+				frappe.db.set_value("User", email, "enabled", 0)
 
 	def tearDown(self):
 		frappe.set_user("Administrator")
@@ -190,37 +199,59 @@ class TestStartAndCallback(ConnectCase):
 		self.assertEqual(_password("consumer_key"), "old-consumer_key")
 
 
+OLD_HOOKS = [
+	{"id": 1, "delivery_url": POS + HOOK_PATH, "topic": "order.created", "secret": "old-webhook_secret"},
+	{"id": 2, "delivery_url": "http://POS.example.test" + HOOK_PATH + "?site=retail",
+	 "topic": "order.updated", "secret": "old-webhook_secret"},
+	{"id": 3, "delivery_url": "https://other-pos.example.test" + HOOK_PATH, "topic": "order.created"},
+	{"id": 4, "delivery_url": POS + "/api/method/something.else", "topic": "order.created"},
+]
+
+
 class TestWebhooks(ConnectCase):
 	def test_only_this_pos_hooks_are_replaced(self):
-		store = FakeStore(webhooks=[
-			{"id": 1, "delivery_url": POS + HOOK_PATH, "topic": "order.created"},
-			{"id": 2, "delivery_url": "http://POS.example.test" + HOOK_PATH + "?site=retail",
-			 "topic": "order.updated"},
-			{"id": 3, "delivery_url": "https://other-pos.example.test" + HOOK_PATH, "topic": "order.created"},
-			{"id": 4, "delivery_url": POS + "/api/method/something.else", "topic": "order.created"},
-		])
-		created, removed = connect.replace_webhooks(store, "s3cret", POS)
+		store = FakeStore(webhooks=[dict(h) for h in OLD_HOOKS])
+		created, removed = connect.replace_webhooks(store, POS)
 		self.assertEqual((created, removed), (3, 2))
 		self.assertEqual(sorted(w["id"] for w in store.webhooks if w["id"] < 1000), [3, 4])
 		new = [w for w in store.webhooks if w["id"] > 1000]
 		self.assertEqual(sorted(w["topic"] for w in new), sorted(connect.WEBHOOK_TOPICS))
+		secret = _password("webhook_secret")
+		self.assertNotEqual(secret, "old-webhook_secret")
 		for hook in new:
 			self.assertEqual(hook["delivery_url"], POS + HOOK_PATH)
-			self.assertEqual(hook["secret"], "s3cret")
+			self.assertEqual(hook["secret"], secret)
 			self.assertEqual(hook["status"], "active")
+
+	def test_new_hooks_exist_before_any_old_one_is_deleted(self):
+		store = FakeStore(webhooks=[dict(h) for h in OLD_HOOKS])
+		connect.replace_webhooks(store, POS)
+		verbs = [c[0] for c in store.calls if c[0] in ("POST", "DELETE")]
+		self.assertEqual(verbs, ["POST"] * 3 + ["DELETE"] * 2)
+
+	def test_a_failed_create_leaves_the_old_hooks_and_secret_alone(self):
+		store = FakeStore(webhooks=[dict(h) for h in OLD_HOOKS], creates_before_fail=2,
+			fail={"create": WooCommerceError("POST webhooks → 500: boom", status_code=500)})
+		with self.assertRaises(WooCommerceError):
+			connect.replace_webhooks(store, POS)
+		self.assertEqual(sorted(w["id"] for w in store.webhooks), [1, 2, 3, 4],
+			"the two new hooks are removed again, the old ones kept")
+		self.assertEqual(_password("webhook_secret"), "old-webhook_secret")
 
 	def test_reconnecting_leaves_three_hooks(self):
 		store = FakeStore()
-		connect.replace_webhooks(store, "first", POS)
-		self.assertEqual(connect.replace_webhooks(store, "second", POS), (3, 3))
+		connect.replace_webhooks(store, POS)
+		first = _password("webhook_secret")
+		self.assertEqual(connect.replace_webhooks(store, POS), (3, 3))
 		ours = [w for w in store.webhooks if connect._points_here(w["delivery_url"], POS + HOOK_PATH)]
 		self.assertEqual(len(ours), 3)
-		self.assertEqual({w["secret"] for w in ours}, {"second"})
+		self.assertEqual({w["secret"] for w in ours}, {_password("webhook_secret")})
+		self.assertNotEqual(first, _password("webhook_secret"))
 
 	def test_every_page_of_webhooks_is_read(self):
 		others = [{"id": i, "delivery_url": f"https://x{i}.example.test/hook"} for i in range(1, 151)]
 		store = FakeStore(webhooks=others + [{"id": 151, "delivery_url": POS + HOOK_PATH}])
-		self.assertEqual(connect.replace_webhooks(store, "s", POS), (3, 1))
+		self.assertEqual(connect.replace_webhooks(store, POS), (3, 1))
 
 
 class TestRunConnectWithoutPlugin(ConnectCase):
@@ -239,6 +270,14 @@ class TestRunConnectWithoutPlugin(ConnectCase):
 		self.assertEqual({w["secret"] for w in store.webhooks}, {new_secret})
 
 
+def _put_body(store: FakeStore) -> dict:
+	return [c for c in store.calls if c[0] == "PUT"][-1][3]
+
+
+def _secret(email: str) -> str:
+	return frappe.get_doc("User", email).get_password("api_secret", raise_exception=False) or ""
+
+
 class TestRunConnect(ConnectCase):
 	def test_with_the_plugin_the_pos_credentials_are_pushed(self):
 		store = FakeStore()
@@ -252,34 +291,71 @@ class TestRunConnect(ConnectCase):
 		self.assertEqual(body["webhook_secret"], _password("outbound_webhook_secret"))
 		self.assertNotEqual(body["webhook_secret"], _password("webhook_secret"))
 
-		user = frappe.get_doc("User", connect.api_user_email())
+		active = connect.active_api_user()
+		user = frappe.get_doc("User", active)
 		self.assertEqual(user.api_key, body["api_key"])
 		self.assertEqual(user.get_password("api_secret"), body["api_secret"])
 		self.assertTrue({"Stock Manager", "Distributor Console"} <= {r.role for r in user.roles})
 		self.assertEqual(frappe.db.get_value("Role", "Distributor Console", "desk_access"), 0)
-		self.assertFalse(frappe.db.sql("select 1 from `__Auth` where doctype='User' and name=%s"
-			" and fieldname='password'", user.name), "the API user must have no password")
 
 		status = _status()
 		self.assertEqual(status[0], connect.CONNECTED)
-		self.assertEqual(status[-1], f"FFL Core plugin connected as {user.name}")
+		self.assertEqual(status[-1], f"FFL Core plugin connected as {active}")
 
-	def test_reconnecting_reuses_the_user_and_rotates_every_secret(self):
+	def test_reconnecting_switches_user_and_revokes_the_previous_one(self):
 		first = FakeStore()
 		self._run(first)
-		body1 = [c for c in first.calls if c[0] == "PUT"][0][3]
+		body1, user1 = _put_body(first), connect.active_api_user()
 		hook1 = _password("webhook_secret")
 
 		second = FakeStore()
 		self._run(second)
-		body2 = [c for c in second.calls if c[0] == "PUT"][0][3]
-		self.assertEqual(frappe.db.count("User", {"name": connect.api_user_email()}), 1)
-		self.assertEqual(body1["api_key"], body2["api_key"])
-		self.assertNotEqual(body1["api_secret"], body2["api_secret"])
+		body2, user2 = _put_body(second), connect.active_api_user()
+		self.assertEqual({user1, user2}, set(connect.api_user_emails()))
+		self.assertEqual(frappe.db.get_value("User", user1, "enabled"), 0)
+		self.assertNotEqual(_secret(user1), body1["api_secret"], "the previous secret is dead")
+		self.assertEqual(_secret(user2), body2["api_secret"])
+		self.assertNotEqual(body1["api_key"], body2["api_key"])
 		self.assertNotEqual(body1["webhook_secret"], body2["webhook_secret"])
 		self.assertNotEqual(hook1, _password("webhook_secret"))
-		user = frappe.get_doc("User", connect.api_user_email())
-		self.assertEqual(user.get_password("api_secret"), body2["api_secret"])
+
+		third = FakeStore()
+		self._run(third)
+		self.assertEqual(connect.active_api_user(), user1, "the two users alternate")
+		self.assertEqual(_secret(user1), _put_body(third)["api_secret"])
+		self.assertEqual(frappe.db.get_value("User", user2, "enabled"), 0)
+
+	def test_both_users_are_valid_while_the_plugin_probes(self):
+		first = FakeStore()
+		self._run(first)
+		user1, body1 = connect.active_api_user(), _put_body(first)
+		seen = {}
+
+		class Probing(FakeStore):
+			def put(self, path, json=None, namespace="wc/v3", **kwargs):
+				new = frappe.db.get_value("User", {"api_key": json["api_key"]}, "name")
+				seen["new"] = (frappe.db.get_value("User", new, "enabled"), _secret(new) == json["api_secret"])
+				seen["old"] = (frappe.db.get_value("User", user1, "enabled"), _secret(user1) == body1["api_secret"])
+				return super().put(path, json=json, namespace=namespace, **kwargs)
+
+		self._run(Probing())
+		self.assertEqual(seen, {"new": (1, True), "old": (1, True)})
+
+	def test_the_users_cannot_sign_in(self):
+		from frappe.auth import LoginManager
+
+		self._run(FakeStore())
+		email = connect.active_api_user()
+		self.assertEqual(frappe.db.get_value("User", email, "login_after"), connect.NO_LOGIN_AFTER_HOUR)
+		self.assertTrue(frappe.db.sql("select 1 from `__Auth` where doctype='User' and name=%s"
+			" and fieldname='password'", email), "a random password, so the account is not passwordless")
+		manager = LoginManager.__new__(LoginManager)
+		manager.user = email
+		for hour in (0, 12, 23):
+			with patch("frappe.utils.now_datetime", return_value=frappe.utils.get_datetime(
+					f"2026-11-20 {hour:02d}:30:00")):
+				with self.assertRaises(frappe.AuthenticationError, msg=hour):
+					manager.validate_hour()
 
 
 class TestRunConnectFailures(ConnectCase):
@@ -297,12 +373,14 @@ class TestRunConnectFailures(ConnectCase):
 		self.assertEqual([c[0] for c in store.calls], ["probe"])
 
 	def test_webhook_create_fails(self):
-		store = FakeStore(fail={"create": WooCommerceError(
+		store = FakeStore(webhooks=[dict(h) for h in OLD_HOOKS], fail={"create": WooCommerceError(
 			'POST webhooks → 403: {"code":"woocommerce_rest_cannot_create","message":"Sorry, you cannot create."}',
 			status_code=403)})
 		line = self._fails_at(store, "Webhooks")
 		self.assertIn("Sorry, you cannot create. (403)", line)
 		self.assertNotIn("PUT", [c[0] for c in store.calls])
+		self.assertEqual(sorted(w["id"] for w in store.webhooks), [1, 2, 3, 4])
+		self.assertEqual(_password("webhook_secret"), "old-webhook_secret")
 
 	def test_plugin_route_refuses_the_key(self):
 		store = FakeStore(fail={"plugin_get": WooCommerceError(
@@ -313,25 +391,64 @@ class TestRunConnectFailures(ConnectCase):
 		issue.assert_not_called()
 		self.assertNotIn("PUT", [c[0] for c in store.calls])
 
-	def test_plugin_cannot_reach_the_pos(self):
+	def test_a_refused_push_keeps_the_plugins_current_credentials_working(self):
+		self._run(FakeStore())
+		current = connect.active_api_user()
+		current_secret = _secret(current)
+		outbound = _password("outbound_webhook_secret")
 		store = FakeStore(fail={"plugin_put": WooCommerceError(
 			'PUT pos-connection → 422: {"code":"pos_unreachable","message":"The POS did not answer."}',
 			status_code=422)})
 		line = self._fails_at(store, "FFL Core plugin")
 		self.assertIn("The POS did not answer. (422)", line)
-		self.assertEqual(_password("outbound_webhook_secret"), "old-outbound_webhook_secret",
+		self.assertEqual(connect.active_api_user(), current)
+		self.assertEqual(_secret(current), current_secret, "the plugin's secret still works")
+		tried = frappe.db.get_value("User", {"api_key": _put_body(store)["api_key"]}, "name")
+		self.assertNotEqual(tried, current)
+		self.assertEqual(frappe.db.get_value("User", tried, "enabled"), 0)
+		self.assertNotEqual(_secret(tried), _put_body(store)["api_secret"])
+		self.assertEqual(_password("outbound_webhook_secret"), outbound,
 			"the POS keeps signing with the secret the plugin still has")
 
 	def test_plugin_answer_without_connected_is_a_failure(self):
 		store = FakeStore(put_answer={"connected": False})
 		self._fails_at(store, "FFL Core plugin")
 		self.assertEqual(_password("outbound_webhook_secret"), "old-outbound_webhook_secret")
+		self.assertIsNone(connect.active_api_user())
 
 	def test_missing_store_key_is_reported_not_raised(self):
 		with patch.object(WooCommerceConfig, "from_settings",
 				side_effect=connect.WooCommerceError("WooCommerce Settings: Consumer Key is missing.")):
 			connect.run_connect(run_as="Administrator", pos_url=POS)
 		self.assertEqual(_status()[-1], "Store failed: WooCommerce Settings: Consumer Key is missing.")
+
+
+class TestConnectGuards(ConnectCase):
+	def test_runs_are_serialised(self):
+		lock = frappe.cache.lock(frappe.cache.make_key(connect.CONNECT_LOCK), timeout=30)
+		self.assertTrue(lock.acquire(blocking=False))
+		store = FakeStore()
+		try:
+			with patch.object(connect, "CONNECT_LOCK_SECONDS", 1):
+				with self.assertRaises(LockError):
+					self._run(store)
+		finally:
+			lock.release()
+		self.assertEqual(store.calls, [], "nothing touched the store while another run held the lock")
+		self._run(FakeStore())
+		self.assertEqual(_status()[0], connect.CONNECTED)
+
+	def test_pos_address_must_be_https_outside_developer_mode(self):
+		with patch.dict(frappe.conf, {"developer_mode": 0}):
+			with patch.object(connect, "get_url", return_value="http://10.0.0.5:8000"):
+				with self.assertRaises(frappe.ValidationError) as ctx:
+					connect.start_connect()
+			self.assertIn("host_name", str(ctx.exception))
+			with patch.object(connect, "get_url", return_value=POS):
+				self.assertTrue(connect.start_connect()["url"].startswith(STORE))
+		with patch.dict(frappe.conf, {"developer_mode": 1}):
+			with patch.object(connect, "get_url", return_value="http://dev.localhost:8000"):
+				self.assertEqual(connect.pos_base_url(), "http://dev.localhost:8000")
 
 
 class TestClientNamespace(FrappeTestCase):

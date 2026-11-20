@@ -11,17 +11,23 @@ The owner fills in the Store URL and presses Connect:
    each result to the Settings page's *Connect* status:
 
    * probe the store with the new key;
-   * a new ``webhook_secret``; every store webhook delivering to this POS's
-     ``woo_event`` is deleted, then order.created / order.updated / order.deleted
-     are created, so a reconnect never leaves duplicate deliveries;
+   * webhooks: order.created / order.updated / order.deleted are created with a new
+     secret; only when all three exist is the secret saved and every older webhook
+     delivering to this POS's ``woo_event`` deleted. A failure removes the new ones and
+     leaves the old ones (and their secret) as they were;
    * ``GET ffl-core/v1/pos-connection`` — the storefront plugin. Absent (404): done,
-     product and order sync already work. Present: a dedicated API user
-     (``webshop@<site>``) gets a fresh API secret, a new ``outbound_webhook_secret``
-     is made, and both are pushed with ``PUT ffl-core/v1/pos-connection``; the plugin
-     probes this POS with them before it stores anything.
+     product and order sync already work. Present: the plugin's POS credentials and a
+     new ``outbound_webhook_secret`` are pushed with ``PUT ffl-core/v1/pos-connection``;
+     the plugin probes this POS with them before it stores anything.
 
-Every Connect starts over and rotates every secret. There is no disconnect, and
-one POS still connects one store (``client.STORES``).
+The plugin's POS user alternates between two dedicated users (:data:`API_USER_LOCAL_PARTS`):
+the one the plugin is not using gets a fresh API secret and is pushed; the one it was using
+keeps working until the plugin has confirmed, and only then is disabled. A refused push
+disables the new one instead, so the plugin never holds a dead secret.
+
+Runs are serialised by a lock: two Connects in a row never interleave their webhook and
+secret writes. Every Connect starts over and rotates every secret. There is no
+disconnect, and one POS still connects one store (``client.STORES``).
 """
 from __future__ import annotations
 
@@ -51,7 +57,15 @@ WEBHOOK_TOPICS = ("order.created", "order.updated", "order.deleted")
 PLUGIN_NAMESPACE = "ffl-core/v1"
 PLUGIN_ROUTE = "pos-connection"
 
-API_USER_LOCAL_PART = "webshop"
+# lazy: two users so the plugin's credentials never go dead mid-rotation (Frappe keeps one API
+# secret per user); a per-key credential store would let one user hold two secrets.
+API_USER_LOCAL_PARTS = ("webshop", "webshop2")
+# Frappe's interactive logins (password, reset link, email link, social) all end in
+# LoginManager.post_login → validate_hour, which refuses when the hour is before login_after.
+# 24 is never reached, so these users can never sign in; API keys do not pass through it.
+NO_LOGIN_AFTER_HOUR = 24
+CONNECT_LOCK = "ffl_woo_sync:woo_connect"
+CONNECT_LOCK_SECONDS = 15 * 60
 # lazy: the two existing roles are the smallest set every current plugin call passes (product
 # push/pull, web_inquiry, web_events need Stock Manager; the drop-ship console's order actions
 # take Distributor Console); a narrower role of its own before the plugin goes public.
@@ -163,16 +177,15 @@ def start_connect() -> dict:
 	    {"url": <the store's wc-auth approval URL>}.
 
 	Raises:
-	    ValidationError: the Store URL is blank or not HTTPS.
+	    ValidationError: the Store URL is blank or not HTTPS, or (outside developer mode)
+	        this POS's own address is not HTTPS — set ``host_name`` in the site config.
 	"""
 	frappe.only_for(SYSTEM_ROLES)
 	try:
 		store_url = clean_store_url(frappe.db.get_single_value(SETTINGS_DOCTYPE, "store_url"))
 	except WooCommerceError as exc:
 		frappe.throw(str(exc))
-	# This request's own address: the one the store owner reached the POS on, and the one the
-	# webhooks and the plugin are given later (a background job has no request to read it from).
-	pos_url = get_url().rstrip("/")
+	pos_url = pos_base_url()
 	state = secrets.token_urlsafe(32)
 	frappe.cache.set(_state_key(state), json.dumps({"user": frappe.session.user,
 		"store_url": store_url, "pos_url": pos_url}), ex=STATE_TTL_SECONDS)
@@ -185,6 +198,18 @@ def start_connect() -> dict:
 		"callback_url": f"{pos_url}/api/method/{CALLBACK_METHOD}",
 	})
 	return {"url": f"{store_url}/wc-auth/v1/authorize?{query}"}
+
+
+def pos_base_url() -> str:
+	"""The POS address the store and the plugin are given: the site's ``host_name`` when it is
+	configured (``get_url`` prefers it), else the address this request came in on. Anything but
+	https is refused outside developer mode — the store would post its key, and the plugin send
+	its API secret, in the clear."""
+	pos_url = get_url().rstrip("/")
+	if not pos_url.startswith("https://") and not frappe.conf.developer_mode:
+		frappe.throw(frappe._("This POS is reached at {0}. Set host_name in the site config to its "
+			"https:// address, then press Connect again.").format(pos_url))
+	return pos_url
 
 
 # ---------------------------------------------------------------------------
@@ -261,17 +286,36 @@ def _list_webhooks(client: WooCommerceClient) -> list[dict]:
 		page += 1
 
 
-def replace_webhooks(client: WooCommerceClient, secret: str, pos_url: str) -> tuple[int, int]:
-	"""Delete every store webhook delivering to this POS's ``woo_event``, then create one per
-	:data:`WEBHOOK_TOPICS` signed with *secret*. Returns ``(created, removed)``."""
+def replace_webhooks(client: WooCommerceClient, pos_url: str) -> tuple[int, int]:
+	"""Give the store a fresh set of order webhooks for this POS's ``woo_event``.
+
+	New first: one per :data:`WEBHOOK_TOPICS`, signed with a new secret. Only when all of them
+	exist is the secret saved (and committed) and every older webhook delivering here deleted.
+	If a create fails, the ones just made are deleted and the error raised: the old webhooks and
+	the saved secret are untouched, so orders keep arriving. Between the save and the deletes
+	both sets deliver; whichever signs with the other secret is refused (401), which costs nothing
+	while the other copy is accepted. Returns ``(created, removed)``."""
 	target = _delivery_url(pos_url)
-	ours = [w for w in _list_webhooks(client) if _points_here(w.get("delivery_url"), target)]
-	for hook in ours:
+	old = [w for w in _list_webhooks(client) if _points_here(w.get("delivery_url"), target)]
+	secret = _new_secret()
+	made: list = []
+	try:
+		for topic in WEBHOOK_TOPICS:
+			hook = client.post("webhooks", json={"name": f"{APP_NAME} {topic}", "topic": topic,
+				"delivery_url": target, "secret": secret, "status": "active"}) or {}
+			made.append(hook.get("id"))
+	except Exception:
+		for hook_id in made:
+			try:
+				client.delete(f"webhooks/{hook_id}", params={"force": True})
+			except Exception:  # noqa: BLE001 — the next Connect removes it (it points here)
+				pass
+		raise
+	_set_password("webhook_secret", secret)
+	commit()
+	for hook in old:
 		client.delete(f"webhooks/{hook['id']}", params={"force": True})
-	for topic in WEBHOOK_TOPICS:
-		client.post("webhooks", json={"name": f"{APP_NAME} {topic}", "topic": topic,
-			"delivery_url": target, "secret": secret, "status": "active"})
-	return len(WEBHOOK_TOPICS), len(ours)
+	return len(made), len(old)
 
 
 def plugin_connection(client: WooCommerceClient) -> dict | None:
@@ -294,20 +338,35 @@ def _ensure_role(role: str) -> None:
 	doc.insert()
 
 
-def api_user_email() -> str:
-	return f"{API_USER_LOCAL_PART}@{frappe.local.site}"
+def api_user_emails() -> tuple[str, str]:
+	return tuple(f"{part}@{frappe.local.site}" for part in API_USER_LOCAL_PARTS)
 
 
-def issue_api_user() -> tuple[str, str, str]:
-	"""Create or reuse the storefront plugin's POS user and give it a fresh API secret.
+def active_api_user() -> str | None:
+	"""The plugin's current POS user: the enabled one of the two (a successful Connect disables
+	the other, a failed one disables the one it tried)."""
+	for email in api_user_emails():
+		if frappe.db.get_value("User", email, "enabled"):
+			return email
+	return None
 
-	The user is never given a password and gets no welcome email, so nobody can sign in as it;
-	it only answers to its API key. Its roles are :data:`API_USER_ROLES` (added when missing;
-	roles someone else gave it are left alone). The key is kept, the secret rotated — the old
-	pair stops working at once. Returns ``(user, api_key, api_secret)``."""
+
+def standby_api_user() -> str:
+	"""The one of the two the plugin is not using: the next Connect's user."""
+	active = active_api_user()
+	return next(e for e in api_user_emails() if e != active)
+
+
+def issue_api_user(email: str) -> tuple[str, str, str]:
+	"""Create or reuse *email* as a plugin POS user, enable it and give it a fresh API secret.
+
+	Its roles are :data:`API_USER_ROLES` (added when missing; roles someone else gave it are
+	left alone). It cannot sign in: a new random password nobody is told, no welcome email, and
+	``login_after`` = :data:`NO_LOGIN_AFTER_HOUR`, which every interactive login (including a
+	password reset) is refused by. The key is kept, the secret rotated.
+	Returns ``(user, api_key, api_secret)``."""
 	for role in API_USER_ROLES:
 		_ensure_role(role)
-	email = api_user_email()
 	if frappe.db.exists("User", email):
 		user = frappe.get_doc("User", email)
 	else:
@@ -315,7 +374,10 @@ def issue_api_user() -> tuple[str, str, str]:
 		user.email = email
 		user.first_name = "Web Shop"
 		user.send_welcome_email = 0
+	user.new_password = secrets.token_urlsafe(48)
 	user.enabled = 1
+	user.login_after = NO_LOGIN_AFTER_HOUR
+	user.login_before = 0
 	held = {r.role for r in user.get("roles") or []}
 	for role in API_USER_ROLES:
 		if role not in held:
@@ -332,34 +394,30 @@ def issue_api_user() -> tuple[str, str, str]:
 	return user.name, user.api_key, api_secret
 
 
-def run_connect(run_as: str = "Administrator", pos_url: str | None = None) -> None:
-	"""Background job queued by :func:`wc_auth_callback`. Each step's outcome goes to the
-	*Connect* status; the first failure stops the run and names the step."""
-	frappe.set_user(run_as)
-	pos_url = (pos_url or get_url()).rstrip("/")
-	status = _Status.resume()
-	step = "Store"
+def revoke_api_user(email: str) -> None:
+	"""Disable *email* and replace its API secret with one nobody has."""
+	if not frappe.db.exists("User", email):
+		return
+	user = frappe.get_doc("User", email)
+	user.enabled = 0
+	user.api_secret = frappe.generate_hash(length=15)
+	user.flags.ignore_permissions = True
+	user.save()
+
+
+def push_to_plugin(client: WooCommerceClient, pos_url: str) -> str:
+	"""Push the plugin a fresh POS user + secret and a new outbound secret; returns the user.
+
+	The standby user is issued and committed first (the plugin signs in with it before it
+	answers), while the user the plugin holds now stays valid. Confirmed: the outbound secret
+	is saved and the previous user revoked. Refused: the standby user is revoked again and the
+	error raised — the plugin keeps working on what it had."""
+	previous = active_api_user()
+	with atomic("WooCommerce Connect API user"):
+		user, api_key, api_secret = issue_api_user(standby_api_user())
+	commit()
+	outbound_secret = _new_secret()
 	try:
-		client = WooCommerceClient.from_settings(RETAIL_SITE)
-		client.probe_connection()
-		status.step("Store reachable")
-
-		step = "Webhooks"
-		webhook_secret = _new_secret()
-		_set_password("webhook_secret", webhook_secret)
-		commit()
-		created, removed = replace_webhooks(client, webhook_secret, pos_url)
-		status.step(f"Webhooks: {created} created, {removed} removed")
-
-		step = "FFL Core plugin"
-		if plugin_connection(client) is None:
-			status.done("FFL Core plugin not installed")
-			return
-		with atomic("WooCommerce Connect API user"):
-			user, api_key, api_secret = issue_api_user()
-		outbound_secret = _new_secret()
-		# The plugin signs in with these before it answers, from another request: commit first.
-		commit()
 		answer = client.put(PLUGIN_ROUTE, namespace=PLUGIN_NAMESPACE, json={
 			"base_url": pos_url,
 			"api_key": api_key,
@@ -368,7 +426,47 @@ def run_connect(run_as: str = "Administrator", pos_url: str | None = None) -> No
 		}) or {}
 		if not answer.get("connected"):
 			raise WooCommerceError("the plugin did not confirm the connection")
-		_set_password("outbound_webhook_secret", outbound_secret)
+	except Exception:
+		with atomic("WooCommerce Connect API user rollback"):
+			revoke_api_user(user)
+		commit()
+		raise
+	_set_password("outbound_webhook_secret", outbound_secret)
+	if previous and previous != user:
+		with atomic("WooCommerce Connect previous API user"):
+			revoke_api_user(previous)
+	commit()
+	return user
+
+
+def run_connect(run_as: str = "Administrator", pos_url: str | None = None) -> None:
+	"""Background job queued by :func:`wc_auth_callback`. Each step's outcome goes to the
+	*Connect* status; the first failure stops the run and names the step. One run at a time:
+	a second Connect waits for the first to finish (:data:`CONNECT_LOCK`)."""
+	frappe.set_user(run_as)
+	pos_url = (pos_url or get_url()).rstrip("/")
+	with frappe.cache.lock(frappe.cache.make_key(CONNECT_LOCK), timeout=CONNECT_LOCK_SECONDS,
+			blocking_timeout=CONNECT_LOCK_SECONDS):
+		_run_connect(pos_url)
+
+
+def _run_connect(pos_url: str) -> None:
+	status = _Status.resume()
+	step = "Store"
+	try:
+		client = WooCommerceClient.from_settings(RETAIL_SITE)
+		client.probe_connection()
+		status.step("Store reachable")
+
+		step = "Webhooks"
+		created, removed = replace_webhooks(client, pos_url)
+		status.step(f"Webhooks: {created} created, {removed} removed")
+
+		step = "FFL Core plugin"
+		if plugin_connection(client) is None:
+			status.done("FFL Core plugin not installed")
+			return
+		user = push_to_plugin(client, pos_url)
 		status.done(f"FFL Core plugin connected as {user}")
 	except Exception as exc:  # noqa: BLE001 — every failure is reported on the page, never raised
 		status.fail(step, _reason(exc))
