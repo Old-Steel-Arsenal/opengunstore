@@ -114,3 +114,52 @@ class Form4473RecordsWorkspaceEntry(FrappeTestCase):
 		card = ws.links[links[0] - 1]
 		self.assertEqual((card.type, card.label), ("Card Break", "Compliance (A&D)"))
 		self.assertEqual(ws.links[links[0]].is_query_report, 1)
+
+
+def _checks_provider(logs):
+	"""A gunshop_4473_record_checks provider: answers for the records whose serial says so."""
+	_checks_provider.asked = logs
+	return {
+		logs[0]["name"]: {"label": "Passed", "indicator": "green", "route": "/app/some-check?invoice=X"},
+		logs[1]["name"]: {"label": "x" * 60, "indicator": "purple", "route": "https://elsewhere.example/x"},
+		logs[2]["name"]: {"label": "  ", "indicator": "red"},
+	}
+
+
+def _failing_provider(logs):
+	raise RuntimeError("boom")
+
+
+class Form4473RecordChecks(FrappeTestCase):
+	"""The Check column: what a gunshop_4473_record_checks provider says about each record."""
+
+	def setUp(self):
+		frappe.db.delete("Form 4473 Log", {"serials": ("like", "R4473-%")})
+		self.logs = [record_4473(form4473_id=f"R-CK{n}", serials=[f"R4473-CK{n}"], pos_invoices=[f"ACC-PSINV-CK-{n}"],
+			completed_on=f"2026-03-0{4 - n} 10:00:00") for n in range(3)]
+
+	def _run(self, *providers):
+		from unittest.mock import patch
+
+		from ffl_core.ffl_core.report.form_4473_records import form_4473_records as report
+		real = frappe.get_hooks
+		paths = [f"{__name__}.{p.__name__}" for p in providers]
+		with patch.object(frappe, "get_hooks", side_effect=lambda hook=None, *a, **k: paths if hook == report.RECORD_CHECKS_HOOK else real(hook, *a, **k)):
+			columns, rows = report.execute({"serial": "R4473-CK"})
+		column = next(c for c in columns if c["fieldname"] == "check")
+		return column, {r["log"]: (r["check"], r["check_indicator"], r["check_route"]) for r in rows}
+
+	def test_without_a_provider_the_column_stays_hidden(self):
+		column, rows = self._run()
+		self.assertEqual(column["hidden"], 1)
+		self.assertEqual(set(rows.values()), {("", "", "")})
+
+	def test_a_providers_answer_is_shown_cut_down_to_what_is_safe(self):
+		column, rows = self._run(_failing_provider, _checks_provider)
+		self.assertEqual(column["hidden"], 0)
+		self.assertEqual([(l["name"], l["pos_invoices"], l["source"]) for l in _checks_provider.asked],
+			[(name, [f"ACC-PSINV-CK-{n}"], "FastBound") for n, name in enumerate(self.logs)])
+		self.assertEqual(rows[self.logs[0]], ("Passed", "green", "/app/some-check?invoice=X"))
+		self.assertEqual(rows[self.logs[1]], ("x" * 40, "gray", ""))          # a long label, an unknown colour, a link out of the desk
+		self.assertEqual(rows[self.logs[2]], ("", "", ""))                    # no label: nothing to show
+		self.assertTrue(frappe.db.exists("Error Log", {"method": ("like", "gunshop_4473_record_checks provider failed%")}))
