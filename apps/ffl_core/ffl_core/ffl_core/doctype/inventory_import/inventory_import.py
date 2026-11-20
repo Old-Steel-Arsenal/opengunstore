@@ -14,7 +14,10 @@ ROLE = "System Manager"
 
 
 class InventoryImport(Document):
-	pass
+	def onload(self):
+		if not self.warehouse:
+			from ffl_core.api.item_admin import _default_warehouse
+			self.set_onload("default_warehouse", _default_warehouse())
 
 
 def _settings():

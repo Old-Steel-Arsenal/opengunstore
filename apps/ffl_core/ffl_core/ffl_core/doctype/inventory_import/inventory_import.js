@@ -8,6 +8,8 @@ frappe.ui.form.on('Inventory Import', {
 	},
 	refresh(frm) {
 		frm.disable_save();
+		const wh = frm.doc.__onload && frm.doc.__onload.default_warehouse;
+		if (!frm.doc.warehouse && wh) frm.set_value('warehouse', wh);
 		frm.add_custom_button(__('Download Template'), () => window.open(II_TEMPLATE));
 		if (frm.doc.csv_file) {
 			frm.add_custom_button(__('Preview'), () => iiPreview(frm));
@@ -40,11 +42,20 @@ function iiPreview(frm) {
 						callback() {
 							frappe.show_alert({ message: __('Import started. This page updates when it finishes.'), indicator: 'blue' });
 							frm.remove_custom_button(__('Import {0} Rows', [ready]));
+							iiWait(frm, frm.doc.last_run);
 						},
 					}));
 			}).removeClass('btn-default').addClass('btn-primary');
 		},
 	});
+}
+
+// The realtime event reloads the page; this covers a site without a socket server.
+function iiWait(frm, before) {
+	setTimeout(() => frappe.db.get_value('Inventory Import', 'Inventory Import', 'last_run').then((r) => {
+		if (r.message.last_run !== before) frm.reload_doc();
+		else iiWait(frm, before);
+	}), 4000);
 }
 
 function iiRender(frm, res, title) {
