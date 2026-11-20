@@ -147,9 +147,21 @@ dev-install-our-apps: ## Install ffl_core / ffl_integrations / ffl_woo_sync into
 dev-reset: dev-down-volumes ## Full reset: drop containers + volumes + frappe-bench dir
 	rm -rf frappe-bench
 
-# Refuses a site that would run zero tests, then bootstraps the masters once, outside the test transaction.
+# Refuses a site that would run zero tests and a stack with a bench worker alive, then bootstraps the masters
+# once, outside the test transaction.
 # One shell line (it is spliced into a single-quoted bash -lc string); both test targets start with it.
+# The worker pattern is written "[w]orker" so it does not match this very command line.
 TEST_PREFLIGHT = \
+	if pgrep -f "bench_helper frappe [w]orker" >/dev/null; then \
+		echo "ERROR: a bench worker is running in this stack (bench start / make dev-serve was left on)."; \
+		echo "  Tests that commit enqueue real jobs, and a live worker runs them against the test"; \
+		echo "  sites while the tests still change the same rows: lock errors (1020 / 1205) and"; \
+		echo "  failures in modules the change never touched, different on every run."; \
+		echo "  Stop it with either of:"; \
+		echo "    make dev-down && make dev-up"; \
+		echo "    make dev-shell   \# then: pkill -f \"bench_helper frappe\""; \
+		exit 1; \
+	fi && \
 	if ! python3 -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get(\"allow_tests\") else 1)" \
 			"sites/$(SITE_NAME)/site_config.json" 2>/dev/null; then \
 		echo "ERROR: sites/$(SITE_NAME)/site_config.json has no truthy allow_tests."; \
