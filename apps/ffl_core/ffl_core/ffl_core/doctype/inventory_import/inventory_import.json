@@ -1,0 +1,64 @@
+{
+ "actions": [],
+ "creation": "2026-11-20 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "csv_file",
+  "warehouse",
+  "posting_date",
+  "result",
+  "last_run"
+ ],
+ "fields": [
+  {
+   "fieldname": "csv_file",
+   "fieldtype": "Attach",
+   "label": "CSV File"
+  },
+  {
+   "fieldname": "warehouse",
+   "fieldtype": "Link",
+   "label": "Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "label": "Cut-over Date",
+   "default": "Today",
+   "reqd": 1
+  },
+  {
+   "fieldname": "result",
+   "fieldtype": "HTML",
+   "label": "Result"
+  },
+  {
+   "fieldname": "last_run",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Last Run",
+   "read_only": 1
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-11-20 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FFL Core",
+ "name": "Inventory Import",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

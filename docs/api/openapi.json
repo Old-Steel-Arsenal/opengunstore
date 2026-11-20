@@ -2082,6 +2082,31 @@
           "warehouse"
         ]
       },
+      "Inventory_Import": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Inventory%20Import — see docs/api/frappe-rest.md.",
+        "properties": {
+          "csv_file": {
+            "type": "string",
+            "description": "CSV File"
+          },
+          "warehouse": {
+            "type": "string",
+            "description": "Warehouse (Link: Warehouse)"
+          },
+          "posting_date": {
+            "type": "string",
+            "description": "Cut-over Date"
+          },
+          "last_run": {
+            "type": "string",
+            "description": "Last Run"
+          }
+        },
+        "required": [
+          "posting_date"
+        ]
+      },
       "Item_Image_Gallery": {
         "type": "object",
         "description": "Custom DocType (ffl_core); CRUD via /api/resource/Item%20Image%20Gallery — see docs/api/frappe-rest.md.",
@@ -16670,6 +16695,66 @@
                 ]
               }
             }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.ffl_core.doctype.inventory_import.inventory_import.preview": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "What importing the attached CSV would do, row by row. Writes nothing.",
+        "description": "**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_core/ffl_core/ffl_core/doctype/inventory_import/inventory_import.py:42`",
+        "operationId": "ffl_core.ffl_core.doctype.inventory_import.inventory_import.preview",
+        "responses": {
+          "200": {
+            "description": "{summary: {counts, units, value}, rows: [{line, upc, name, outcome, item_code, message, qty, cost}], warehouse}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.ffl_core.doctype.inventory_import.inventory_import.start_import": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Import the attached CSV in the background. The result is saved on the",
+        "description": "page and announced with the ``inventory_import_done`` event.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_core/ffl_core/ffl_core/doctype/inventory_import/inventory_import.py:59`",
+        "operationId": "ffl_core.ffl_core.doctype.inventory_import.inventory_import.start_import",
+        "responses": {
+          "200": {
+            "description": "{queued: True}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
           }
         }
       }

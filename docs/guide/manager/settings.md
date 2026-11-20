@@ -32,7 +32,7 @@ Open it from **Settings**, the last row of the sidebar.
 |---|---|
 | **FFL & Compliance** | FFL Settings, MCP Settings, ATF FFL Record |
 | **POS & Sales** | ShipStation Settings, Cash Drawer Settings, Membership Settings, Lead Mail Settings, POS Profile, Mode of Payment, Selling Settings |
-| **Catalog Reference** | Item Group, Brand, Caliber, Warehouse, Stock Settings |
+| **Catalog Reference** | Item Group, Brand, Caliber, Warehouse, Stock Settings, Inventory Import |
 
 Several of these are also under **Setup** in **All records** on the [Dashboard](../start/dashboard.md).
 
