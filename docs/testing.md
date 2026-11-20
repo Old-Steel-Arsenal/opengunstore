@@ -25,6 +25,7 @@ It counts tests from the runner's own output, so it does not cover JS tests, a n
 ## A green run that means nothing
 
 - No `allow_tests` on the site: Frappe runs zero tests and exits 0. `make test` refuses such a site; `make dev-site-create` sets the key.
+- A bench worker alive in the stack (`bench start` or `make dev-serve` left on): tests that commit enqueue real jobs into the bench's queue, the worker runs them against the test sites while the tests still change the same rows, and modules the change never touched fail with lock errors (1020 / 1205), differently on every run. `make test` and `make test-serial` refuse such a stack; `make dev-down && make dev-up` stops it. CI has no worker.
 - A site you thought was fresh: `dev-site-create` never recreates one. Fresh means `make dev-site-drop CONFIRM=yes` first.
 - Counting the last block on screen instead of the `TOTAL` line.
 - A worktree whose test run executed another tree's code, or a changed test file that was never collected: the run guard above refuses both.
