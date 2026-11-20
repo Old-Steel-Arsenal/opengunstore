@@ -152,6 +152,13 @@ class ProfileSetup(FrappeTestCase):
 		start = names.index("loyalty_program_tier") + 1
 		self.assertEqual(names[start:start + len(ours)], ours)
 
+	def test_identification_is_its_own_tab_between_details_and_profile(self):
+		frappe.clear_cache(doctype="Customer")
+		names = [f.fieldname for f in frappe.get_meta("Customer").fields]
+		start = names.index("loyalty_program_tier") + 1
+		self.assertEqual(names[start:start + 5], ["customer_ids_tab", "section_customer_ids", "date_of_birth",
+			"customer_ids", "customer_profile_tab"])
+
 
 class RetiredStatuses(FrappeTestCase):
 	"""Inactive and Prospect → Active (never Disabled); the old status stays on the timeline."""

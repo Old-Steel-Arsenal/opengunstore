@@ -6,9 +6,12 @@
 // wedge scanner) and fills name + address through ffl.aamva. Licence number,
 // date of birth and expiry are read ONLY when the store keeps them (FFL
 // Settings → Store Customer ID Numbers, frappe.boot.ffl_store_customer_id_numbers):
-// then the dialog shows Date of Birth / Driver License # / License Expiry and
-// the licence becomes a Driver License row in customer_ids. Switch off, the
-// dialog is exactly what it was before the switch existed.
+// then the dialog shows Date of Birth / Gender / Driver License # / License Expiry and
+// the licence becomes a Driver License row in customer_ids. A Texas License to
+// Carry carries two numbers (aamva.js): its own becomes a CCW row, shown as
+// License to Carry # / Expiry once scanned, and the holder's driver licence the
+// Driver License row. Switch off, the dialog is exactly what it was before the
+// switch existed.
 //
 // "Add family member" (Customer form → Family) opens this same dialog with
 // route_options {customer_type: 'Individual', primary_customer, ffl_last_name};
@@ -48,13 +51,22 @@
 		address1: 'address_line1', address2: 'address_line2', city: 'city', state: 'state',
 		zip: 'pincode', country: 'country_address',
 	};
-	// Only present when parse() was asked for IDs (switch on). date_of_birth is
-	// the real Customer field; the other two are dialog-only and become a
-	// customer_ids row in applyIdRow.
-	var ID_SCAN_MAP = { dob: 'date_of_birth', idNumber: 'ffl_id_number', expiry: 'ffl_id_expiry' };
+	// Only present when parse() was asked for IDs (switch on). date_of_birth and
+	// gender are the real Customer fields; the others are dialog-only and become
+	// customer_ids rows in applyIdRow.
+	var ID_SCAN_MAP = { dob: 'date_of_birth', gender: 'gender', idNumber: 'ffl_id_number', expiry: 'ffl_id_expiry',
+		carryNumber: 'ffl_carry_number', carryExpiry: 'ffl_carry_expiry' };
 	var ID_NUMBER_FIELD = 'ffl_id_number';
 	var ID_EXPIRY_FIELD = 'ffl_id_expiry';
-	var SCANNED_ID_TYPE = 'Driver License';
+	var CARRY_NUMBER_FIELD = 'ffl_carry_number';
+	var CARRY_EXPIRY_FIELD = 'ffl_carry_expiry';
+	// Shown only once a scan has filled the number: no other card has one.
+	var CARRY_SCANNED = "eval:doc.customer_type=='Individual' && doc.ffl_carry_number";
+	// Dialog-only number + expiry → the customer_ids row of that type.
+	var SCANNED_ROWS = [
+		{ type: 'Driver License', number: ID_NUMBER_FIELD, expiry: ID_EXPIRY_FIELD },
+		{ type: 'CCW', number: CARRY_NUMBER_FIELD, expiry: CARRY_EXPIRY_FIELD },
+	];
 
 	// "First Middle Last Suffix" from the parts (JS twin of
 	// ffl_core.customer_name.compose_display_name; customer_form.js uses it too).
@@ -128,8 +140,12 @@
 		if (opts && opts.ids) {
 			out.push(take('date_of_birth', { depends_on: INDIVIDUAL })
 				|| { fieldname: 'date_of_birth', fieldtype: 'Date', label: L('Date of Birth'), depends_on: INDIVIDUAL });
+			out.push(take('gender', { depends_on: INDIVIDUAL })
+				|| { fieldname: 'gender', fieldtype: 'Link', options: 'Gender', label: L('Gender'), depends_on: INDIVIDUAL });
 			out.push({ fieldname: ID_NUMBER_FIELD, fieldtype: 'Data', label: L('Driver License #'), depends_on: INDIVIDUAL });
 			out.push({ fieldname: ID_EXPIRY_FIELD, fieldtype: 'Date', label: L('License Expiry'), depends_on: INDIVIDUAL });
+			out.push({ fieldname: CARRY_NUMBER_FIELD, fieldtype: 'Data', label: L('License to Carry #'), depends_on: CARRY_SCANNED });
+			out.push({ fieldname: CARRY_EXPIRY_FIELD, fieldtype: 'Date', label: L('License to Carry Expiry'), depends_on: CARRY_SCANNED });
 		}
 		(docfields || []).forEach(function (df) { if (!used[df.fieldname]) out.push(df); });
 		return out;
@@ -164,37 +180,38 @@
 	}
 
 	// Switch on: turn the dialog-only licence fields into ONE customer_ids row
-	// and drop them from the doc. update_doc() runs more than once per save
+	// per kind (Driver License; CCW for a licence to carry) and drop them from
+	// the doc. update_doc() runs more than once per save
 	// (the primary action calls it, then insert() calls it again), so the row
 	// is marked and updated in place, never appended twice; clearing the number
 	// removes it. `addRow(doc)` makes the child (frappe.model.add_child in the
 	// browser). The server still blanks the number if the switch is off.
-	// The three licence fields are hidden unless the type is Individual, so a
+	// The licence fields are hidden unless the type is Individual, so a
 	// scan followed by a switch to Company leaves values the clerk cannot see:
 	// those are dropped (and a row made earlier removed), never written.
 	function applyIdRow(doc, addRow) {
 		if (!doc) return doc;
-		var number = String(doc[ID_NUMBER_FIELD] || '').trim();
-		var expiry = doc[ID_EXPIRY_FIELD] || null;
-		delete doc[ID_NUMBER_FIELD];
-		delete doc[ID_EXPIRY_FIELD];
-		var rows = doc.customer_ids || [];
-		var row = rows.filter(function (r) { return r && r.__ffl_scanned; })[0];
-		if (doc.customer_type !== 'Individual') {
-			delete doc.date_of_birth;
-			number = '';
-		}
-		if (!number) {
-			if (row) doc.customer_ids = rows.filter(function (r) { return r !== row; });
-			return doc;
-		}
-		if (!row) {
-			row = addRow(doc);
-			row.__ffl_scanned = 1;
-		}
-		row.id_type = SCANNED_ID_TYPE;
-		row.id_number = number;
-		row.expiry_date = expiry;
+		var individual = doc.customer_type === 'Individual';
+		if (!individual) { delete doc.date_of_birth; delete doc.gender; }
+		SCANNED_ROWS.forEach(function (kind) {
+			var number = individual ? String(doc[kind.number] || '').trim() : '';
+			var expiry = doc[kind.expiry] || null;
+			delete doc[kind.number];
+			delete doc[kind.expiry];
+			var rows = doc.customer_ids || [];
+			var row = rows.filter(function (r) { return r && r.__ffl_scanned && r.id_type === kind.type; })[0];
+			if (!number) {
+				if (row) doc.customer_ids = rows.filter(function (r) { return r !== row; });
+				return;
+			}
+			if (!row) {
+				row = addRow(doc);
+				row.__ffl_scanned = 1;
+			}
+			row.id_type = kind.type;
+			row.id_number = number;
+			row.expiry_date = expiry;
+		});
 		return doc;
 	}
 

@@ -157,6 +157,8 @@ function newCustomer(frm, raw) {
 // (a new customer's is the licence's already) and fill the ID.
 async function useCustomer(frm, customer, p) {
 	frm._contact = null;
+	// The record first (a renewed ID, a move), so the address loaded below is the ID's.
+	if (p && ffl.customerFlags && ffl.customerFlags.applyScan) await ffl.customerFlags.applyScan(customer, p).catch(() => {});
 	await frm.set_value('customer', customer);
 	await frm._contact;
 	if (p) await settleAddress(frm, p);

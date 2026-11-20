@@ -28,6 +28,8 @@ ID documents, family; rules in ``customer_profile.py``):
 * **ID scan** — :func:`find_customers_by_id_number`: a licence scanned at the
   register finds the customer holding that ID number (only while the store keeps
   ID numbers, FFL Settings → Store Customer ID Numbers).
+  :func:`apply_id_scan` then brings that customer's ID documents and address up
+  to the ID in hand (a renewed licence, a move).
 * **Duplicates** — :func:`find_possible_duplicates`: before a new customer is
   saved, the customers already holding the same email, phone or ID number.
 """
@@ -263,6 +265,180 @@ def find_customers_by_id_number(id_number: str) -> list[dict]:
 		and upper(replace(replace(id_number, ' ', ''), '-', '')) = %s
 		limit %s""", (key, _MAX_MATCHES), pluck=True)
 	return _customer_rows(names)
+
+
+# Scan key for the number, scan key for its expiry → the customer_ids row of that type.
+_SCANNED_ROWS = (("Driver License", "idNumber", "expiry"), ("CCW", "carryNumber", "carryExpiry"))
+_SCANNED_GENDERS = ("Male", "Female")
+
+
+@frappe.whitelist(methods=["POST"])
+def apply_id_scan(customer: str, scan: dict | str, force: bool | int | str = False) -> dict:
+	"""Bring an existing customer's ID documents and address up to the ID just scanned.
+
+	For a customer who renewed or replaced an ID, or moved. Nothing is written while FFL
+	Settings → Store Customer ID Numbers is off, for a customer who is not an Individual, or
+	when the ID is someone else's (unless ``force``): another first + last name, or another
+	date of birth than the one on file (a parent and child can share a name).
+
+	* ID documents: the Driver License row from ``idNumber`` / ``expiry`` and the CCW row from
+	  ``carryNumber`` / ``carryExpiry``. A row of that type is updated in place (the one with
+	  the same number, else the only one); otherwise a row is added. An expiry the scan does
+	  not carry leaves the stored one alone, unless the number changed.
+	* Date of birth and gender: filled when empty, never overwritten.
+	* Address: when the ID's street and ZIP are not the primary address (an ID whose ZIP did
+	  not read changes nothing). An address the customer already has under that street and
+	  ZIP becomes the primary one. Otherwise the primary address is changed in place when
+	  only this customer uses it; a shared one is left alone and a new primary address is
+	  made. The old address goes on the customer's timeline.
+
+	Args:
+	    customer: Customer name (document id).
+	    scan: What ``ffl.aamva.parse(raw, {ids: true})`` returned in the browser: first, last,
+	        address1, address2, city, state, zip, country, idNumber, dob, expiry, gender and,
+	        for a licence to carry, carryNumber, carryExpiry.
+	    force: Write although the name or date of birth on the ID differs from the customer's.
+
+	Returns:
+	    {"changed": [str]} naming what was written ("Driver License", "CCW", "Date of Birth",
+	    "Gender", "Address"; empty when the record already matched), or {"changed": [],
+	    "mismatch": {"on_id": str, "customer": str}} (each a name, with "(born YYYY-MM-DD)" when
+	    the dates of birth differ) when the ID is someone else's and nothing was written.
+	"""
+	frappe.has_permission("Customer", "write", doc=customer, throw=True)
+	scan = frappe.parse_json(scan) or {}
+	if not customer_id_numbers_enabled():
+		return {"changed": []}
+	doc = frappe.get_doc("Customer", customer)
+	if doc.customer_type != "Individual":
+		return {"changed": []}
+	text = lambda key: str(scan.get(key) or "").strip()  # noqa: E731
+	born, on_file = _scan_date(text("dob")), str(doc.get("date_of_birth") or "")
+	other_birth = bool(born and on_file and born != on_file)
+	if not frappe.utils.cint(force) and (other_birth or _name_key(text("first"), text("last")) != _name_key(
+			doc.get("ffl_first_name"), doc.get("ffl_last_name"))):
+		who = lambda name, date: name + (f" (born {date})" if other_birth else "")  # noqa: E731
+		return {"changed": [], "mismatch": {
+			"on_id": who(" ".join(filter(None, [text("first"), text("last")])), born),
+			"customer": who(doc.customer_name, on_file)}}
+
+	changed = []
+	for id_type, number_key, expiry_key in _SCANNED_ROWS:
+		number, expiry = text(number_key), _scan_date(text(expiry_key))
+		if not number:
+			continue
+		rows = [r for r in doc.get("customer_ids") or [] if r.id_type == id_type]
+		row = next((r for r in rows if _id_key(r.id_number) == _id_key(number)), None) \
+			or (rows[0] if len(rows) == 1 else None)
+		if not row:
+			doc.append("customer_ids", {"id_type": id_type, "id_number": number, "expiry_date": expiry})
+			changed.append(id_type)
+			continue
+		same = _id_key(row.id_number) == _id_key(number)
+		expiry = expiry or (row.expiry_date if same else None)
+		if same and str(expiry or "") == str(row.expiry_date or ""):
+			continue
+		if not same:
+			row.id_number = number
+		row.expiry_date = expiry
+		changed.append(id_type)
+	if not doc.get("date_of_birth") and _scan_date(text("dob")):
+		doc.date_of_birth = _scan_date(text("dob"))
+		changed.append("Date of Birth")
+	if not doc.get("gender") and text("gender") in _SCANNED_GENDERS and frappe.db.exists("Gender", text("gender")):
+		doc.gender = text("gender")
+		changed.append("Gender")
+	if changed:
+		doc.save()
+	if _apply_scanned_address(doc, {key: text(key) for key in ("address1", "address2", "city", "state", "zip")}):
+		changed.append("Address")
+	return {"changed": changed}
+
+
+def _name_key(first: str | None, last: str | None) -> str:
+	return re.sub(r"[^a-z]", "", f"{first or ''}{last or ''}".lower())
+
+
+def _scan_date(value: str) -> str | None:
+	"""A YYYY-MM-DD date from the scan, or None for anything else."""
+	if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value or ""):
+		return None
+	try:
+		return str(getdate(value))
+	except Exception:
+		return None
+
+
+def _address_key(line1: str | None, zip_code: str | None) -> str:
+	"""Street line + five-digit ZIP, compared without case, spaces or punctuation."""
+	return re.sub(r"[^a-z0-9|]", "", f"{line1 or ''}|{(zip_code or '')[:5]}".lower())
+
+
+def _apply_scanned_address(doc, on_id: dict) -> bool:
+	"""Make the address on the ID the customer's primary address; True when one was written."""
+	if not on_id["address1"] or not on_id["city"] or not on_id["zip"]:
+		return False
+	fields = ["address_line1", "address_line2", "city", "state", "pincode"]
+	wanted = _address_key(on_id["address1"], on_id["zip"])
+	primary = doc.get("customer_primary_address")
+	current = frappe.db.get_value("Address", primary, fields, as_dict=True) if primary else None
+	if current and _address_key(current.address_line1, current.pincode) == wanted:
+		return False
+	# Already theirs under another record (a web order's billing address, never made primary).
+	for row in frappe.get_all("Address", filters=[["Dynamic Link", "link_doctype", "=", "Customer"],
+			["Dynamic Link", "link_name", "=", doc.name], ["disabled", "=", 0]],
+			fields=["name", "address_line1", "pincode"], order_by="is_primary_address desc, creation asc"):
+		if row.name != primary and _address_key(row.address_line1, row.pincode) == wanted:
+			return _make_primary(doc, row.name, current, fields)
+	values = {"address_line1": on_id["address1"], "address_line2": on_id["address2"] or None,
+		"city": on_id["city"], "state": on_id["state"] or None, "pincode": on_id["zip"] or None}
+	if primary and not _is_shared(primary):
+		address = frappe.get_doc("Address", primary)
+		address.update(values)
+	else:
+		address = frappe.new_doc("Address")
+		# Not flagged here: Address.validate would unflag the old primary even when it is shared;
+		# _make_primary sets the flag.
+		address.update({**values, "address_title": doc.customer_name, "address_type": "Billing",
+			"country": "United States"})
+		address.append("links", {"link_doctype": "Customer", "link_name": doc.name})
+	# The caller's write permission on the Customer is the gate (checked in apply_id_scan).
+	address.flags.ignore_permissions = True
+	address.save()
+	return _make_primary(doc, address.name, current, fields)
+
+
+def _is_shared(address: str) -> bool:
+	"""True when the Address is linked to anything besides one party."""
+	return frappe.db.count("Dynamic Link", {"parenttype": "Address", "parent": address}) > 1
+
+
+def _make_primary(doc, address: str, was: dict | None, fields: list[str]) -> bool:
+	"""Point the customer at *address*, make it their one flagged address and note on the
+	timeline what the address was.
+
+	``is_primary_address`` sits on the Address, so it is primary for everyone linked to it.
+	The customer's other flagged addresses are unflagged only when nobody else uses them; a
+	shared one keeps its flag because it may still be another customer's primary. (Writes
+	the flag with ``db.set_value``: ``Address.validate`` would unflag one of the customer's
+	flagged addresses, shared or not.)
+	"""
+	from frappe.contacts.doctype.address.address import render_address
+
+	for other in frappe.get_all("Address", pluck="name", filters=[
+			["Dynamic Link", "link_doctype", "=", "Customer"], ["Dynamic Link", "link_name", "=", doc.name],
+			["is_primary_address", "=", 1], ["name", "!=", address]]):
+		if not _is_shared(other):
+			frappe.db.set_value("Address", other, "is_primary_address", 0)
+	frappe.db.set_value("Address", address, "is_primary_address", 1)
+	if address != doc.get("customer_primary_address"):
+		doc.db_set({"customer_primary_address": address,
+			"primary_address": render_address(address, check_permissions=False)})
+	line = lambda a: escape_html(", ".join(filter(None, [a.get(f) for f in fields])))  # noqa: E731
+	now = frappe.db.get_value("Address", address, fields, as_dict=True)
+	doc.add_comment("Comment", _("ID scan: address changed from {0} to {1}.").format(line(was), line(now))
+		if was else _("ID scan: address set to {0}.").format(line(now)))
+	return True
 
 
 @frappe.whitelist()

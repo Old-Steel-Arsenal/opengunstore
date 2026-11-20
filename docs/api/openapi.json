@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenGunstore API",
-    "version": "1.3.0",
+    "version": "1.3.1",
     "description": "RPC API of the OpenGunstore custom apps (Frappe/ERPNext v16): ffl_core, ffl_integrations, ffl_woo_sync.\n\nAll endpoints are Frappe *whitelisted methods* invoked as `/api/method/<dotted.path>`. Unless an endpoint declares explicit HTTP verbs, it is documented here as POST (Frappe also accepts GET for read-only calls; always POST mutations). Arguments may be sent as JSON body, form data, or query string — JSON body is recommended.\n\nEvery operation carries an **Auth (derived from code)** line statically resolved from the role gate the function actually executes; the prose Permissions note adds semantics the machine can't infer.\n\nStandard CRUD on DocTypes is served by Frappe's REST layer (`/api/resource/<DocType>`) — see docs/api/frappe-rest.md; the custom DocTypes are modelled under components.schemas and listed in reference/doctypes.md."
   },
   "servers": [
@@ -16164,13 +16164,69 @@
         }
       }
     },
+    "/api/method/ffl_core.customer_flags.apply_id_scan": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Bring an existing customer's ID documents and address up to the ID just scanned.",
+        "description": "For a customer who renewed or replaced an ID, or moved. Nothing is written while FFL\nSettings → Store Customer ID Numbers is off, for a customer who is not an Individual, or\nwhen the ID is someone else's (unless ``force``): another first + last name, or another\ndate of birth than the one on file (a parent and child can share a name).\n\n* ID documents: the Driver License row from ``idNumber`` / ``expiry`` and the CCW row from\n  ``carryNumber`` / ``carryExpiry``. A row of that type is updated in place (the one with\n  the same number, else the only one); otherwise a row is added. An expiry the scan does\n  not carry leaves the stored one alone, unless the number changed.\n* Date of birth and gender: filled when empty, never overwritten.\n* Address: when the ID's street and ZIP are not the primary address (an ID whose ZIP did\n  not read changes nothing). An address the customer already has under that street and\n  ZIP becomes the primary one. Otherwise the primary address is changed in place when\n  only this customer uses it; a shared one is left alone and a new primary address is\n  made. The old address goes on the customer's timeline.\n\n**Auth (derived from code):** Requires write permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:276`",
+        "operationId": "ffl_core.customer_flags.apply_id_scan",
+        "responses": {
+          "200": {
+            "description": "{\"changed\": [str]} naming what was written (\"Driver License\", \"CCW\", \"Date of Birth\", \"Gender\", \"Address\"; empty when the record already matched), or {\"changed\": [], \"mismatch\": {\"on_id\": str, \"customer\": str}} (each a name, with \"(born YYYY-MM-DD)\" when the dates of birth differ) when the ID is someone else's and nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "customer": {
+                    "type": "string",
+                    "description": "Customer name (document id)."
+                  },
+                  "scan": {
+                    "description": "What ``ffl.aamva.parse(raw, {ids: true})`` returned in the browser: first, last, address1, address2, city, state, zip, country, idNumber, dob, expiry, gender and, for a licence to carry, carryNumber, carryExpiry."
+                  },
+                  "force": {
+                    "description": "Write although the name or date of birth on the ID differs from the customer's.",
+                    "default": false
+                  }
+                },
+                "required": [
+                  "customer",
+                  "scan"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.customer_flags.banned_order_rows": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "Which Pending Order rows belong to a Banned customer, for the page's red badge.",
-        "description": "A web or GunBroker order is booked to a customer only once it has shipped, so\nits buyer is looked up the way that booking will: a Woo order by its billing\nemail (customer email, then merged-email alias); a GunBroker order by its linked\ncustomer, then the buyer's GunBroker id (field, then alias), then email.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:380`",
+        "description": "A web or GunBroker order is booked to a customer only once it has shipped, so\nits buyer is looked up the way that booking will: a Woo order by its billing\nemail (customer email, then merged-email alias); a GunBroker order by its linked\ncustomer, then the buyer's GunBroker id (field, then alias), then email.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:556`",
         "operationId": "ffl_core.customer_flags.banned_order_rows",
         "responses": {
           "200": {
@@ -16220,7 +16276,7 @@
           "ffl_core"
         ],
         "summary": "Customers holding this ID number (a licence scanned at the register).",
-        "description": "Only while FFL Settings → Store Customer ID Numbers is on (otherwise none are\nstored, and the answer is an empty list). Compared without case, spaces or dashes.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:243`",
+        "description": "Only while FFL Settings → Store Customer ID Numbers is on (otherwise none are\nstored, and the answer is an empty list). Compared without case, spaces or dashes.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:245`",
         "operationId": "ffl_core.customer_flags.find_customers_by_id_number",
         "responses": {
           "200": {
@@ -16268,7 +16324,7 @@
           "ffl_core"
         ],
         "summary": "Customers a scanned licence may belong to (the gunsmith work order's Scan ID): by",
-        "description": "its number (only while ID numbers are stored, as :func:`find_customers_by_id_number`),\nthen by first + last name. A name match is only a guess, so the caller lets the clerk\npick; a number match is the person.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:269`",
+        "description": "its number (only while ID numbers are stored, as :func:`find_customers_by_id_number`),\nthen by first + last name. A name match is only a guess, so the caller lets the clerk\npick; a number match is the person.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:445`",
         "operationId": "ffl_core.customer_flags.find_customers_by_scan",
         "responses": {
           "200": {
@@ -16330,7 +16386,7 @@
           "ffl_core"
         ],
         "summary": "Existing customers a new one may duplicate, for the New Customer dialog.",
-        "description": "Matches the customer's email (or an email merged into it), mobile number\n(last 10 digits) and — while the store keeps ID numbers — an ID number.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:325`",
+        "description": "Matches the customer's email (or an email merged into it), mobile number\n(last 10 digits) and — while the store keeps ID numbers — an ID number.\n\n**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:501`",
         "operationId": "ffl_core.customer_flags.find_possible_duplicates",
         "responses": {
           "200": {
@@ -16392,7 +16448,7 @@
           "ffl_core"
         ],
         "summary": "What the counter panel shows when this customer is picked.",
-        "description": "**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:137`",
+        "description": "**Auth (derived from code):** Requires read permission on Customer (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:139`",
         "operationId": "ffl_core.customer_flags.get_customer_flags",
         "responses": {
           "200": {
@@ -16440,7 +16496,7 @@
           "ffl_core"
         ],
         "summary": "Manager lets a Banned customer be served for the next 30 minutes.",
-        "description": "Opens the window every counter screen and the server-side sale gate read\n(``ban_override_until`` / ``ban_override_by``) and records who and why on the\ncustomer's timeline. The customer stays Banned.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:203`",
+        "description": "Opens the window every counter screen and the server-side sale gate read\n(``ban_override_until`` / ``ban_override_by``) and records who and why on the\ncustomer's timeline. The customer stays Banned.\n\n**Auth (derived from code):** Roles: Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/customer_flags.py:205`",
         "operationId": "ffl_core.customer_flags.override_customer_ban",
         "responses": {
           "200": {
