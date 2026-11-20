@@ -7,6 +7,7 @@ import random
 from unittest.mock import patch
 
 import frappe
+from frappe.utils import add_to_date, now_datetime
 
 from ffl_core.crm import web_orders
 from ffl_core.tests.crm_support import user
@@ -39,6 +40,16 @@ def _tasks(deal: str | None = None) -> list:
 def _deals_of(email: str) -> list[str]:
 	contacts = web_orders.contacts_with_email(email)
 	return frappe.get_all("CRM Contacts", filters={"parenttype": "CRM Deal", "contact": ["in", list(contacts) or [""]]}, pluck="parent")
+
+
+def _lead(email: str = EMAIL, owner: str | None = OWNER, status: str | None = None) -> str:
+	doc = frappe.get_doc({"doctype": "CRM Lead", "first_name": "Pat", "last_name": "Buyer", "email": email,
+		"lead_owner": owner})
+	if status:
+		doc.status = status
+		if frappe.db.get_value("CRM Lead Status", status, "type") == "Lost":
+			doc.lost_reason, doc.lost_notes = "Other", "Bought elsewhere"
+	return doc.insert(ignore_permissions=True).name
 
 
 def _notes(deal: str) -> list[str]:
@@ -87,6 +98,83 @@ class TestPaymentFailed(DealPOSCase):
 		(task,) = _tasks(deal)
 		self.assertEqual(frappe.db.get_value("ToDo", {"reference_type": web_orders.TASK, "reference_name": task.name,
 			"status": "Open"}, "allocated_to"), OWNER)
+
+	def test_a_failure_converts_the_customers_lead_instead_of_making_a_deal(self):
+		lead = _lead()
+		self._send(_body(self.order, "failed"))
+		(deal,) = _deals_of(EMAIL)
+		self.assertEqual(frappe.db.get_value("CRM Deal", deal, ["lead", "deal_owner"]), (lead, OWNER))
+		self.assertEqual(frappe.db.count("CRM Deal", {"lead": lead}), 1)
+		self.assertEqual(frappe.db.get_value("CRM Lead", lead, "converted"), 1)
+		self.assertEqual(_notes(deal), [f"Web order {self.order} payment failed"])
+		(task,) = _tasks(deal)
+		self.assertTrue(frappe.db.exists("ToDo", {"reference_type": web_orders.TASK, "reference_name": task.name,
+			"status": "Open", "allocated_to": OWNER}), "the lead's owner follows it up")
+		# The customer then pays: the converted deal is the one that is won, not a second one.
+		self._send(_body(_id(), "processing", date_paid="2026-11-01T10:00:00"))
+		order = frappe.db.get_value("Woo Online Order", {"customer_email": EMAIL, "woo_status": "processing"}, "name")
+		self.assertEqual(web_orders.web_order_paid(order), deal)
+		self.assertEqual(frappe.db.get_value("CRM Deal", deal, web_orders.WON_BY), order)
+		self.assertEqual(_deals_of(EMAIL), [deal])
+
+	def test_a_lead_nobody_owns_is_converted_from_the_guest_webhook(self):
+		lead = _lead(owner=None)
+		frappe.set_user("Guest")
+		try:
+			self._send(_body(self.order, "failed"))
+		finally:
+			frappe.set_user("Administrator")
+		self.assertEqual(frappe.db.get_value("CRM Deal", {"lead": lead}, "name"), _deals_of(EMAIL)[0])
+		self.assertEqual(len(_tasks()), 1)
+
+	def test_a_lead_that_cannot_be_converted_gets_a_new_deal(self):
+		lost = frappe.get_all("CRM Lead Status", filters={"type": "Lost"}, pluck="name", limit=1)
+		self.assertTrue(lost, "CRM ships a Lost status")
+		lead = _lead(status=lost[0])
+		self._send(_body(self.order, "failed"))
+		(deal,) = _deals_of(EMAIL)
+		self.assertFalse(frappe.db.get_value("CRM Deal", deal, "lead"))
+		self.assertEqual(frappe.db.get_value("CRM Lead", lead, "converted"), 0)
+
+	def _legacy_failure(self, email: str, order: str) -> None:
+		"""A failure as the webhook handled it before it converted leads: a guest-owned deal, no lead on it."""
+		frappe.set_user("Guest")
+		try:
+			with patch.object(web_orders, "_deal_from_lead", return_value=None):
+				self._send(_body(order, "failed", email=email))
+		finally:
+			frappe.set_user("Administrator")
+
+	def test_the_repair_links_only_the_guest_deals_that_had_an_older_lead(self):
+		other, later, staff = "legacy-later@example.org", "legacy-staff@example.org", "legacy-open@example.org"
+		lead = _lead()
+		self._legacy_failure(EMAIL, self.order)
+		(deal,) = _deals_of(EMAIL)
+		self.assertEqual(frappe.db.get_value("CRM Deal", deal, ["owner", "lead"]), ("Guest", None))
+		# Not repaired: a lead made after the deal, and a failure noted on a staff-made open deal.
+		late = _lead(later)
+		self._legacy_failure(later, _id())
+		frappe.db.set_value("CRM Lead", late, "creation", add_to_date(now_datetime(), days=1), update_modified=False)
+		staff_lead = _lead(staff)
+		_deal(web_orders._contact_of(staff, "Pat Buyer", ""), owner=OWNER)
+		self._send(_body(_id(), "failed", email=staff))
+		# What CRM's own conversion leaves on a lead.
+		converted = _lead(other)
+		web_orders._convert(converted)
+
+		rows = web_orders.link_failed_payment_leads()
+		self.assertEqual(rows, [{"deal": deal, "lead": lead, "applied": False}], "a dry run by default")
+		self.assertFalse(frappe.db.get_value("CRM Deal", deal, "lead"))
+		self.assertEqual(frappe.db.get_value("CRM Lead", lead, "converted"), 0)
+
+		rows = web_orders.link_failed_payment_leads(dry_run=0)
+		self.assertEqual(rows, [{"deal": deal, "lead": lead, "applied": True}])
+		self.assertEqual(frappe.db.get_value("CRM Deal", deal, "lead"), lead)
+		self.assertEqual(frappe.db.get_value("CRM Lead", lead, ["converted", "status"]),
+			frappe.db.get_value("CRM Lead", converted, ["converted", "status"]))
+		self.assertEqual(frappe.db.get_value("CRM Lead", late, "converted"), 0)
+		self.assertEqual(frappe.db.get_value("CRM Lead", staff_lead, "converted"), 0)
+		self.assertEqual(web_orders.link_failed_payment_leads(dry_run=0), [], "nothing left to repair")
 
 	def test_an_unpaid_cancel_is_a_failure_a_paid_one_is_not(self):
 		self._send(_body(self.order, "cancelled"))
