@@ -223,14 +223,9 @@ def _lead_to_convert(email: str, before, hand_closed: bool) -> str | None:
 
 def _deal_from_lead(email: str, before, hand_closed: bool = False) -> str | None:
 	"""The deal CRM's conversion makes of the customer's newest lead (:func:`_lead_to_convert`), None when
-	they have none. Run as Administrator from the Guest webhook, as the paid-order job is."""
-	from ffl_core.utils import guest_job_elevated
-
+	they have none."""
 	lead = _lead_to_convert(email, before, hand_closed)
-	if not lead:
-		return None
-	with guest_job_elevated():
-		return _convert(lead)
+	return _convert(lead) if lead else None
 
 
 def _convert(lead: str) -> str:
@@ -363,6 +358,18 @@ def _add_to_task(deal: str, order_id: str, html: str) -> None:
 		priority="High", due_date=now_datetime())
 
 
+def _lead_deal_for_failure(email: str) -> str | None:
+	"""The deal the customer's lead becomes, None when they have no lead or its conversion fails: the failure
+	is followed up on a new deal then (the lead stays as it was), never dropped."""
+	frappe.db.savepoint("ffl_crm_payment_failed_convert")
+	try:
+		return _deal_from_lead(email, now_datetime())
+	except Exception:
+		frappe.db.rollback(save_point="ffl_crm_payment_failed_convert")
+		frappe.log_error(title=f"[{TITLE}] Lead not converted on a payment failure: {email}", message=frappe.get_traceback())
+		return None
+
+
 def payment_failed(order_id: str, email: str, full_name: str = "", phone: str = "", total: float = 0,
 		currency: str | None = None, items: list[str] | None = None, pay_link: str = "", method: str = "") -> None:
 	"""A web order's payment failed (the webhook decides what counts): note it on the customer's open deal,
@@ -377,7 +384,7 @@ def payment_failed(order_id: str, email: str, full_name: str = "", phone: str = 
 		return
 	frappe.db.savepoint("ffl_crm_payment_failed")
 	try:
-		deal = _open_deal(email) or _deal_from_lead(email, now_datetime())
+		deal = _open_deal(email) or _lead_deal_for_failure(email)
 		if not deal:
 			# new: their only open deals, if any, are sell requests (_open_deal)
 			deal = open_deal_for(_contact_of(email, full_name, phone), new=True)
@@ -430,7 +437,7 @@ def payment_recovered(order_id: str, email: str) -> None:
 
 # One-off repair of deals made before a failed payment converted the customer's lead -----------------
 
-def link_failed_payment_leads(dry_run: int | str = 1) -> list[dict]:
+def link_failed_payment_leads(dry_run: int | str = 1) -> dict:
 	"""Deals a failed payment made while the customer's lead sat unconverted: the guest webhook's deals
 	(owner Guest, no lead, with a payment-failed note) whose customer had a lead made before the deal,
 	by :func:`_lead_to_convert`'s rules. Run by hand, never by a patch::
@@ -438,15 +445,18 @@ def link_failed_payment_leads(dry_run: int | str = 1) -> list[dict]:
 		bench --site <site> execute ffl_core.crm.web_orders.link_failed_payment_leads
 		bench --site <site> execute ffl_core.crm.web_orders.link_failed_payment_leads --kwargs '{"dry_run": 0}'
 
-	Only an explicit 0 applies: the deal's ``lead`` is set (CRM then shows the lead's mail and notes on its
-	timeline) and the lead is marked converted exactly as CRM's own conversion does. The deal's owner, status
-	and value are left as they are. Returns one row per deal: ``deal``, ``lead``, ``applied``."""
+	Only an explicit 0 applies. A deal's ``lead`` is set (CRM then shows the lead's mail and notes on its
+	timeline), the lead is marked converted exactly as CRM's own conversion does, a deal nobody owns gets
+	the lead's owner, and the team sees the deal as it sees a converted team lead (:func:`share_converted_deal`).
+	Its status and value are left as they are. One deal at a time: a failure is rolled back, logged and
+	reported, the rest go on. Returns ``dry_run``, ``linked`` and ``failed`` (rows of ``deal`` and ``lead``)."""
 	apply = dry_run in (0, "0", False)
+	report = {"dry_run": not apply, "linked": [], "failed": []}
 	notes = frappe.get_all(NOTE, filters={"reference_doctype": DEAL, "title": ["like", "Web order % payment failed"]},
 		pluck="reference_docname")
 	deals = notes and frappe.get_all(DEAL, filters={"name": ["in", notes], "owner": "Guest"},
 		fields=["name", "creation", "lead"], order_by="creation asc")
-	rows, taken = [], set()
+	taken = set()
 	for deal in deals or []:
 		if deal.lead:
 			continue
@@ -460,17 +470,31 @@ def link_failed_payment_leads(dry_run: int | str = 1) -> list[dict]:
 		else:
 			continue
 		taken.add(lead)
-		if apply:
+		row = {"deal": deal.name, "lead": lead}
+		if not apply:
+			report["linked"].append(row)
+			continue
+		frappe.db.savepoint("ffl_crm_failed_lead_repair")
+		try:
 			_link(deal.name, lead)
-		rows.append({"deal": deal.name, "lead": lead, "applied": apply})
-	return rows
+			report["linked"].append(row)
+		except Exception:
+			frappe.db.rollback(save_point="ffl_crm_failed_lead_repair")
+			frappe.log_error(title=f"[{TITLE}] Failed-payment deal not linked to its lead: {row}", message=frappe.get_traceback())
+			report["failed"].append(row)
+	return report
 
 
 def _link(deal: str, lead: str) -> None:
 	from crm.fcrm.doctype.crm_lead.crm_lead import mark_converted
 
+	from ffl_core.crm.mail import share_converted_deal
 	from ffl_core.utils import commit
 
 	frappe.db.set_value(DEAL, deal, "lead", lead, update_modified=False)
 	mark_converted(frappe.get_doc(LEAD, lead))
+	owner = frappe.db.get_value(LEAD, lead, "lead_owner")
+	if owner and not frappe.db.get_value(DEAL, deal, "deal_owner"):
+		frappe.db.set_value(DEAL, deal, "deal_owner", owner, update_modified=False)
+	share_converted_deal(frappe.get_doc(DEAL, deal))   # idempotent: only adds team members missing
 	commit()
