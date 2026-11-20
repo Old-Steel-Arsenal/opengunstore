@@ -105,3 +105,5 @@ ffl_core.patches.crm_sell_request_deals
 ffl_core.patches.close_finished_crm_assignments
 # Received mail with no recipients (GunBroker member mail) gets its mailbox's address, so CRM's Reply works on it.
 ffl_core.patches.fill_received_mail_recipients
+# Inventory Import: the link (opening stock from a CSV) in the Settings workspace.
+ffl_core.patches.add_inventory_import_workspace_entry
