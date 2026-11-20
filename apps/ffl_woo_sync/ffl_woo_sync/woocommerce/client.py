@@ -133,6 +133,20 @@ def store_entry(site) -> dict:
 	return STORES[site]
 
 
+def clean_store_url(url: str | None) -> str:
+	"""The Store URL without its trailing slash; raises :class:`WooCommerceConfigError` when it is
+	blank or not HTTPS (plain http only for a local dev store)."""
+	cleaned_url = str(url or "").strip().rstrip("/")
+	if not cleaned_url:
+		raise WooCommerceConfigError("WooCommerce Settings: Store URL is empty.")
+	if not cleaned_url.startswith("https://") and not _LOCAL_HTTP_RE.match(cleaned_url):
+		raise WooCommerceConfigError(
+			"WooCommerce Settings: Store URL must use HTTPS (Basic auth credentials "
+			"would otherwise be sent in plaintext)."
+		)
+	return cleaned_url
+
+
 @dataclass(repr=False)
 class WooCommerceConfig(RedactedRepr):
 	store_url: str
@@ -151,14 +165,8 @@ class WooCommerceConfig(RedactedRepr):
 		consumer_secret = s.get_password("consumer_secret", raise_exception=False) or ""
 		if not consumer_secret:
 			raise WooCommerceConfigError("WooCommerce Settings: Consumer Secret is missing.")
-		cleaned_url = s.store_url.rstrip("/")
-		if not cleaned_url.startswith("https://") and not _LOCAL_HTTP_RE.match(cleaned_url):
-			raise WooCommerceConfigError(
-				"WooCommerce Settings: Store URL must use HTTPS (Basic auth credentials "
-				"would otherwise be sent in plaintext)."
-			)
 		return cls(
-			store_url=cleaned_url,
+			store_url=clean_store_url(s.store_url),
 			consumer_key=consumer_key,
 			consumer_secret=consumer_secret,
 			timeout=int(s.request_timeout_seconds or 30),
@@ -200,14 +208,16 @@ class WooCommerceClient:
 		s.auth = RedactedBasicAuth(self.config.consumer_key, self.config.consumer_secret)
 		return s
 
-	def _url(self, path: str) -> str:
-		"""Build the full wc/v3 endpoint URL."""
-		return f"{self.config.store_url}/wp-json/wc/v3/{path.lstrip('/')}"
+	def _url(self, path: str, namespace: str = "wc/v3") -> str:
+		"""Build the full endpoint URL under ``/wp-json/<namespace>/`` (wc/v3 by default; the
+		storefront plugin's ``ffl-core/v1`` routes sit behind the same WooCommerce key auth)."""
+		return f"{self.config.store_url}/wp-json/{namespace}/{path.lstrip('/')}"
 
-	def _request(self, method: str, path: str, **kwargs) -> dict | list | None:
+	def _request(self, method: str, path: str, *, namespace: str = "wc/v3",
+			**kwargs) -> dict | list | None:
 		response = self.session.request(
 			method,
-			self._url(path),
+			self._url(path, namespace),
 			timeout=self.config.timeout,
 			**kwargs,
 		)
