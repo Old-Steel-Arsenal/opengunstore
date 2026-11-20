@@ -16703,44 +16703,14 @@
         }
       }
     },
-    "/api/method/ffl_core.ffl_core.doctype.inventory_import.inventory_import.preview": {
+    "/api/method/ffl_core.ffl_core.doctype.inventory_import.inventory_import.start": {
       "post": {
         "tags": [
           "ffl_core"
         ],
-        "summary": "What importing the attached CSV would do, row by row. Writes nothing.",
-        "description": "**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_core/ffl_core/ffl_core/doctype/inventory_import/inventory_import.py:45`",
-        "operationId": "ffl_core.ffl_core.doctype.inventory_import.inventory_import.preview",
-        "responses": {
-          "200": {
-            "description": "{summary: {counts, units, value}, rows: [{line, upc, name, outcome, item_code, message, qty, cost}], warehouse}.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "message": {
-                      "type": "object"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/FrappeError"
-          }
-        }
-      }
-    },
-    "/api/method/ffl_core.ffl_core.doctype.inventory_import.inventory_import.start_import": {
-      "post": {
-        "tags": [
-          "ffl_core"
-        ],
-        "summary": "Import the attached CSV in the background. The result is saved on the",
-        "description": "page and announced with the ``inventory_import_done`` event.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_core/ffl_core/ffl_core/doctype/inventory_import/inventory_import.py:62`",
-        "operationId": "ffl_core.ffl_core.doctype.inventory_import.inventory_import.start_import",
+        "summary": "Preview or import the attached CSV in the background: one catalog lookup",
+        "description": "per unknown UPC outlasts a web request on a new store's file. The result is\nsaved on the page (``last_run``) and announced with ``inventory_import_done``.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_core/ffl_core/ffl_core/doctype/inventory_import/inventory_import.py:54`",
+        "operationId": "ffl_core.ffl_core.doctype.inventory_import.inventory_import.start",
         "responses": {
           "200": {
             "description": "{queued: True}.",
@@ -16759,6 +16729,21 @@
           },
           "default": {
             "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "description": "\"preview\" reads every row and writes nothing; \"import\" creates the missing items and posts the opening stock."
+                  }
+                }
+              }
+            }
           }
         }
       }

@@ -84,8 +84,9 @@ def parse(content: str) -> list[dict]:
 
 
 def normalize_upc(raw: str) -> tuple[str, str | None]:
-	"""(upc, problem). Digits only; a UPC-A that lost its leading zero (a
-	spreadsheet read it as a number) gets it back."""
+	"""(upc, problem). Digits only, in one form: a UPC-A that lost its leading zero
+	(a spreadsheet read it as a number) gets it back, and an EAN-13 or GTIN-14
+	that only zero-pads a UPC-A becomes that UPC-A."""
 	raw = (raw or "").strip()
 	if not raw:
 		return "", None
@@ -96,7 +97,16 @@ def normalize_upc(raw: str) -> tuple[str, str | None]:
 		return "", _("UPC {0} is not 8 to 14 digits.").format(raw)
 	if len(digits) == 11:
 		digits = "0" + digits
+	if len(digits) in (13, 14) and digits[:-12].strip("0") == "":
+		digits = digits[-12:]
 	return digits, None
+
+
+def _barcode_forms(upc: str) -> list[str]:
+	"""Every spelling an Item Barcode may hold for this UPC-A."""
+	if len(upc) != 12:
+		return [upc]
+	return [upc, "0" + upc, "00" + upc, upc.lstrip("0") or upc]
 
 
 def _number(value, label: str, *, required: bool) -> tuple[float | None, str | None]:
@@ -111,10 +121,10 @@ def _number(value, label: str, *, required: bool) -> tuple[float | None, str | N
 
 def _existing_item(upc: str, code: str) -> str | None:
 	if upc:
-		hit = frappe.db.get_value("Item Barcode", {"barcode": upc}, "parent")
+		hit = frappe.db.get_value("Item Barcode", {"barcode": ("in", _barcode_forms(upc))}, "parent")
 		if hit:
 			return hit
-	for candidate in (upc, code):
+	for candidate in (*_barcode_forms(upc), code) if upc else (code,):
 		if candidate and frappe.db.exists("Item", candidate):
 			return candidate
 	return None
@@ -201,6 +211,8 @@ def plan(rows: list[dict], warehouse: str) -> list[dict]:
 					.format(item_code), SKIPPED)
 				continue
 			r.update(outcome=MATCHED, item_code=item_code, message=_("Existing item {0}").format(item_code))
+			if price and flt(price) != flt(frappe.db.get_value("Item", item_code, "standard_rate")):
+				r["message"] += " · " + _("Price is not changed on an existing item.")
 		else:
 			offer = _catalog_offer(upc)
 			if offer and offer["is_firearm"]:
@@ -326,30 +338,43 @@ def run(planned: list[dict], *, warehouse: str, posting_date, source: str | None
 	names = []
 	for start in range(0, len(stock_rows), CHUNK):
 		chunk = stock_rows[start:start + CHUNK]
-		sr = frappe.get_doc({
-			"doctype": "Stock Reconciliation",
-			"company": company,
-			"purpose": "Opening Stock",
-			"posting_date": getdate(posting_date),
-			"posting_time": "00:00:00",
-			"set_posting_time": 1,
-			"expense_account": account,
-			"items": [{
-				"item_code": r["item_code"],
-				"warehouse": warehouse,
-				"qty": r["qty"],
-				"valuation_rate": r["cost"],
-			} for r in chunk],
-		})
-		sr.flags.ignore_permissions = True
-		sr.insert()
-		sr.submit()
-		_note(sr.name, source, chunk, posting_date, first=not names)
-		commit()
-		names.append(sr.name)
+		frappe.db.savepoint("inventory_import_chunk")
+		try:
+			name = _post_chunk(chunk, company, account, warehouse, posting_date, source, first=not names)
+		except Exception as exc:  # noqa: BLE001 — the batches already posted stay on the report
+			frappe.db.rollback(save_point="inventory_import_chunk")
+			for r in chunk:
+				r["outcome"], r["message"] = ERROR, _("Not posted: {0}").format(frappe.utils.strip_html(str(exc)))
+			continue
+		names.append(name)
 		for r in chunk:
-			r["reconciliation"] = sr.name
+			r["reconciliation"] = name
 	return {"summary": summarize(planned), "rows": planned, "reconciliations": names}
+
+
+def _post_chunk(chunk: list[dict], company: str, account: str, warehouse: str, posting_date,
+		source: str | None, *, first: bool) -> str:
+	sr = frappe.get_doc({
+		"doctype": "Stock Reconciliation",
+		"company": company,
+		"purpose": "Opening Stock",
+		"posting_date": getdate(posting_date),
+		"posting_time": "00:00:00",
+		"set_posting_time": 1,
+		"expense_account": account,
+		"items": [{
+			"item_code": r["item_code"],
+			"warehouse": warehouse,
+			"qty": r["qty"],
+			"valuation_rate": r["cost"],
+		} for r in chunk],
+	})
+	sr.flags.ignore_permissions = True
+	sr.insert()
+	sr.submit()
+	_note(sr.name, source, chunk, posting_date, first=first)
+	commit()
+	return sr.name
 
 
 def _note(name: str, source: str | None, chunk: list[dict], posting_date, *, first: bool) -> None:

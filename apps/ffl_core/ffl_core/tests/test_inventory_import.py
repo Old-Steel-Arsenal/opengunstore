@@ -61,6 +61,10 @@ class InventoryImportTest(FrappeTestCase):
 		self.assertEqual(imp.normalize_upc("0123-4567-8901")[0], "012345678901")
 		self.assertTrue(imp.normalize_upc("8.5E+11")[1])
 		self.assertTrue(imp.normalize_upc("12345")[1])
+		# EAN-13 / GTIN-14 that only zero-pad a UPC-A read as that UPC-A; a real EAN-13 stays.
+		self.assertEqual(imp.normalize_upc("0012345678905")[0], "012345678905")
+		self.assertEqual(imp.normalize_upc("00012345678905")[0], "012345678905")
+		self.assertEqual(imp.normalize_upc("4006381333931")[0], "4006381333931")
 
 	# --- planning ---
 
@@ -165,3 +169,46 @@ class InventoryImportTest(FrappeTestCase):
 		planned = self.plan(_csv(f"{self.upc(1)},Swapped,,,,1,30,20"))
 		self.assertEqual(planned[0]["outcome"], "new")
 		self.assertIn("Unit Cost is not below Price", planned[0]["message"])
+
+	def test_ean13_spelling_matches_the_existing_item(self):
+		code = f"II-EAN-{self.seed}"
+		doc = frappe.get_doc({"doctype": "Item", "item_code": code, "item_name": code,
+			"item_group": "Magazine", "stock_uom": "Nos", "is_stock_item": 1, "standard_rate": 20})
+		doc.append("barcodes", {"barcode": self.upc(1), "barcode_type": "UPC"})
+		doc.insert(ignore_permissions=True)
+		planned = self.plan(_csv(f"0{self.upc(1)},,,,,2,10,25"))
+		self.assertEqual((planned[0]["outcome"], planned[0]["item_code"]), ("matched", code))
+		self.assertIn("Price is not changed", planned[0]["message"])
+
+	def test_a_failed_batch_keeps_the_posted_ones_on_the_report(self):
+		u = self.upc
+		text = _csv(f"{u(1)},Batch A {self.seed},,,Magazine,1,5,", f"{u(2)},Batch B {self.seed},,,Magazine,1,5,")
+		real = imp._post_chunk
+		calls = []
+
+		def second_fails(chunk, *a, **kw):
+			calls.append(1)
+			if len(calls) == 2:
+				raise frappe.ValidationError("boom")
+			return real(chunk, *a, **kw)
+
+		with patch.object(imp, "CHUNK", 1), patch.object(imp, "_post_chunk", side_effect=second_fails):
+			result = imp.run(self.plan(text), warehouse=self.warehouse, posting_date=frappe.utils.nowdate())
+		self.assertEqual(len(result["reconciliations"]), 1)
+		self.assertEqual([r["outcome"] for r in result["rows"]], ["new", "error"])
+		self.assertIn("boom", result["rows"][1]["message"])
+		self.assertEqual(result["summary"]["value"], 5.0)
+
+	def test_windows_1252_csv_is_read(self):
+		from ffl_core.ffl_core.doctype.inventory_import.inventory_import import _decode
+		self.assertEqual(_decode("Leupold\u00ae 3\u20139\u00d740".encode("cp1252")), "Leupold\u00ae 3\u20139\u00d740")
+		self.assertEqual(_decode("\ufeffUPC".encode("utf-8")), "UPC")
+
+	def test_a_job_that_fails_early_still_reports(self):
+		from ffl_core.ffl_core.doctype.inventory_import import inventory_import as page
+		frappe.db.set_single_value("Inventory Import", "csv_file", None)
+		with patch.object(frappe.db, "rollback"), patch.object(frappe, "publish_realtime"):
+			page.run_job("preview")
+		last = frappe.parse_json(frappe.db.get_single_value("Inventory Import", "last_run"))
+		self.assertEqual(last["mode"], "preview")
+		self.assertIn("Attach the CSV file", last["error"])

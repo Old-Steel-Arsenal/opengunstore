@@ -12,40 +12,41 @@ frappe.ui.form.on('Inventory Import', {
 		if (!frm.doc.warehouse && wh) frm.set_value('warehouse', wh);
 		frm.add_custom_button(__('Download Template'), () => window.open(II_TEMPLATE));
 		if (frm.doc.csv_file) {
-			frm.add_custom_button(__('Preview'), () => iiPreview(frm));
+			frm.add_custom_button(__('Preview'), () => iiStart(frm, 'preview'));
 		}
 		const last = frm.doc.last_run ? JSON.parse(frm.doc.last_run) : null;
-		iiRender(frm, last, last ? __('Last import, {0}', [frappe.datetime.str_to_user(last.finished_at)]) : '');
+		if (!last) return;
+		const preview = last.mode === 'preview';
+		const when = frappe.datetime.str_to_user(last.finished_at);
+		iiRender(frm, last, preview ? __('Preview, {0}', [when]) : __('Last import, {0}', [when]));
+		// Import only what this preview showed: same file, warehouse and date.
+		const current = preview && !last.error && last.csv_file === frm.doc.csv_file
+			&& last.warehouse === frm.doc.warehouse && last.posting_date === frm.doc.posting_date;
+		const c = (last.summary || {}).counts || {};
+		const ready = (c.matched || 0) + (c.catalog || 0) + (c.new || 0);
+		if (current && ready) {
+			frm.add_custom_button(__('Import {0} Rows', [ready]), () => frappe.confirm(
+				__('Bring in {0} units worth {1} as opening stock in {2}, as of {3}?',
+					[last.summary.units, format_currency(last.summary.value), last.warehouse,
+						frappe.datetime.str_to_user(last.posting_date)]),
+				() => iiStart(frm, 'import'))).removeClass('btn-default').addClass('btn-primary');
+		}
 	},
 	csv_file: (frm) => frm.save(),
 	warehouse: (frm) => frm.save(),
 	posting_date: (frm) => frm.save(),
 });
 
-function iiPreview(frm) {
+function iiStart(frm, mode) {
+	const before = frm.doc.last_run;
 	frappe.call({
-		method: II + 'preview',
-		freeze: true,
-		freeze_message: __('Checking every row...'),
-		callback(r) {
-			const res = r.message;
-			iiRender(frm, res, __('Preview'));
-			const ready = res.summary.counts.matched + res.summary.counts.catalog + res.summary.counts.new;
-			if (!ready) return;
-			frm.add_custom_button(__('Import {0} Rows', [ready]), () => {
-				frappe.confirm(
-					__('Bring in {0} units worth {1} as opening stock in {2}, as of {3}?',
-						[res.summary.units, format_currency(res.summary.value), res.warehouse,
-							frappe.datetime.str_to_user(frm.doc.posting_date)]),
-					() => frappe.call({
-						method: II + 'start_import',
-						callback() {
-							frappe.show_alert({ message: __('Import started. This page updates when it finishes.'), indicator: 'blue' });
-							frm.remove_custom_button(__('Import {0} Rows', [ready]));
-							iiWait(frm, frm.doc.last_run);
-						},
-					}));
-			}).removeClass('btn-default').addClass('btn-primary');
+		method: II + 'start',
+		args: { mode },
+		callback() {
+			frm.clear_custom_buttons();
+			frm.get_field('result').$wrapper.html(`<p class="text-muted">${
+				mode === 'preview' ? __('Checking every row...') : __('Importing...')}</p>`);
+			iiWait(frm, before);
 		},
 	});
 }

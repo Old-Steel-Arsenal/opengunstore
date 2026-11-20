@@ -54,7 +54,7 @@ Firearms never go in the CSV. A firearm row is refused and the report says where
 | **Category** | One of the store's categories, such as `Magazine`, `Optic` or `Rifle Ammo`. Left blank, the item goes under `Misc Accessory` |
 | **Quantity** | Units on the shelf at the cut-over date. Whole numbers |
 | **Unit Cost** | What one unit cost you, as your old books carry it. Required |
-| **Price** | Your selling price. Optional |
+| **Price** | Your selling price for a new item. An item already in the system keeps its price. Optional |
 
 Put each product on one line. Two lines with the same UPC are both refused; add the quantities into one line and run it again.
 

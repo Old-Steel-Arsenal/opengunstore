@@ -643,8 +643,11 @@ def _ensure_item(item_code: str, fb_item: dict[str, Any], *, aggregate_by: str =
 	firearm_type = _map_firearm_type(fb_item.get("type"))
 
 	if frappe.db.exists("Item", item_code):
-		existing = frappe.db.get_value("Item", item_code, ["is_firearm", "has_serial_no"], as_dict=True)
-		if not (existing.is_firearm and existing.has_serial_no):
+		from ffl_core.firearm import _is_firearm_row
+
+		existing = frappe.db.get_value("Item", item_code, ["is_firearm", "item_group", "has_serial_no"],
+			as_dict=True)
+		if not (_is_firearm_row(existing) and existing.has_serial_no):
 			raise ValueError(f"Item {item_code} already exists and is not a serial-tracked firearm; "
 				"give the gun its own SKU in FastBound or import with Aggregate By = model.")
 		return item_code

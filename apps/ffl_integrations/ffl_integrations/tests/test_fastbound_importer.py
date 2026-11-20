@@ -852,3 +852,13 @@ class FastBoundImportOpening(FrappeTestCase):
 			with self.assertRaises(frappe.ValidationError):
 				importer.import_bound_book(commit_each=0,
 					cutover_date=frappe.utils.add_days(frappe.utils.nowdate(), 1))
+
+	def test_gun_joins_a_legacy_firearm_group_item(self):
+		sku = f"LEG-{self._testMethodName}"[:60]
+		frappe.get_doc({"doctype": "Item", "item_code": sku, "item_name": sku, "item_group": "Rifle",
+			"stock_uom": "Nos", "is_stock_item": 1, "has_serial_no": 1}).insert(ignore_permissions=True)
+		frappe.db.set_value("Item", sku, "is_firearm", 0)
+		gun = self._gun(sku=sku)
+		with self._patch_client([[gun]]):
+			result = importer.import_bound_book(commit_each=0, cutover_date=frappe.utils.nowdate())
+		self.assertEqual((result["created"], result["error_count"]), (1, 0))
