@@ -27,9 +27,9 @@ def _sample_items(suffix: str) -> list[dict]:
 			"model": "Model 19",
 			"caliber": ".357 Magnum",
 			"type": "Pistol",
-			"acquireType": "Individual",
-			"acquireDate": "2026-04-01T10:00:00Z",
-			"acquisitionCost": 350.00,
+			"acquisitionType": "Individual",
+			"acquire_Date": "2026-04-01T10:00:00Z",
+			"cost": 350.00,
 			"acquiredFrom": {"name": "Jane Doe"},
 		},
 		{
@@ -39,9 +39,9 @@ def _sample_items(suffix: str) -> list[dict]:
 			"model": "G17",
 			"caliber": "9mm Luger",
 			"type": "Pistol",
-			"acquireType": "FFL Dealer",
-			"acquireDate": "2026-04-15T12:00:00Z",
-			"acquisitionCost": 480.00,
+			"acquisitionType": "FFL Dealer",
+			"acquire_Date": "2026-04-15T12:00:00Z",
+			"cost": 480.00,
 			"acquiredFrom": {"name": "Acme Distributors", "ffl": "1-12-345-67-8K-99999"},
 		},
 	]
@@ -271,8 +271,8 @@ class FastBoundImporter(FrappeTestCase):
 			"id": f"fb-mode-a-{sfx}",
 			"serial": f"GA-{sfx}", "manufacturer": "Glock", "model": "19",
 			"caliber": "9MM", "type": "Pistol", "sku": "SKU-FROM-DISTRIBUTOR-A",
-			"acquireType": "Individual", "acquireDate": "2026-04-01T10:00:00Z",
-			"acquisitionCost": 500.0,
+			"acquisitionType": "Individual", "acquire_Date": "2026-04-01T10:00:00Z",
+			"cost": 500.0,
 		}
 		gun_b = {**gun_a, "id": f"fb-mode-b-{sfx}", "serial": f"GB-{sfx}",
 			"sku": "SKU-FROM-DISTRIBUTOR-B"}
@@ -298,8 +298,8 @@ class FastBoundImporter(FrappeTestCase):
 			"id": f"fb-spr-{sfx}", "serial": f"M1-SPR-{sfx}",
 			"manufacturer": "Springfield Armory", "importer": "",
 			"model": "M1", "caliber": ".30", "type": "Rifle",
-			"acquireType": "Individual", "acquireDate": "2026-04-01T10:00:00Z",
-			"acquisitionCost": 1200.0,
+			"acquisitionType": "Individual", "acquire_Date": "2026-04-01T10:00:00Z",
+			"cost": 1200.0,
 		}
 		win = {**spr, "id": f"fb-win-{sfx}", "serial": f"M1-WIN-{sfx}",
 			"manufacturer": "Winchester", "importer": "Acme Importers Inc"}
@@ -341,8 +341,8 @@ class FastBoundImporter(FrappeTestCase):
 		gun = {
 			"id": f"fb-rs-{sfx}", "serial": f"RS-{sfx}", "manufacturer": "Colt",
 			"importer": "Old Importer", "model": "1911", "caliber": "45ACP",
-			"type": "Pistol", "acquireType": "Individual",
-			"acquireDate": "2026-04-01T10:00:00Z", "acquisitionCost": 700.0,
+			"type": "Pistol", "acquisitionType": "Individual",
+			"acquire_Date": "2026-04-01T10:00:00Z", "cost": 700.0,
 		}
 		with self._patch_client([[gun]]):
 			importer.import_bound_book(commit_each=0, aggregate_by="model")
@@ -366,8 +366,8 @@ class FastBoundImporter(FrappeTestCase):
 		gun = {
 			"id": f"fb-mc-{sfx}", "serial": f"MC-{sfx}", "manufacturer": "Colt",
 			"model": "1911", "caliber": "45ACP", "type": "Pistol",
-			"acquireType": "Individual", "acquireDate": "2026-04-01T10:00:00Z",
-			"acquisitionCost": 700.0,
+			"acquisitionType": "Individual", "acquire_Date": "2026-04-01T10:00:00Z",
+			"cost": 700.0,
 		}
 		with self._patch_client([[gun]]):
 			importer.import_bound_book(commit_each=0, aggregate_by="model")
@@ -383,8 +383,8 @@ class FastBoundImporter(FrappeTestCase):
 		gun = {
 			"id": f"fb-mv-{sfx}", "serial": f"MV-{sfx}", "manufacturer": "Glock",
 			"model": "19", "caliber": "9MM", "type": "Pistol",
-			"acquireType": "Individual", "acquireDate": "2026-04-01T10:00:00Z",
-			"acquisitionCost": 500.0,
+			"acquisitionType": "Individual", "acquire_Date": "2026-04-01T10:00:00Z",
+			"cost": 500.0,
 		}
 		with self._patch_client([[gun]]):
 			importer.import_bound_book(commit_each=0, aggregate_by="model")
@@ -415,8 +415,8 @@ class FastBoundImporter(FrappeTestCase):
 		gun = {
 			"id": f"fb-ra-{sfx}", "serial": f"RA-{sfx}", "manufacturer": "Colt",
 			"importer": "Imp Co", "model": "19", "caliber": "9MM", "type": "Pistol",
-			"acquireType": "Individual", "acquireDate": "2026-04-01T10:00:00Z",
-			"acquisitionCost": 500.0,
+			"acquisitionType": "Individual", "acquire_Date": "2026-04-01T10:00:00Z",
+			"cost": 500.0,
 		}
 		with self._patch_client([[gun]]):
 			importer.import_bound_book(commit_each=0, aggregate_by="model")
@@ -465,8 +465,8 @@ class FastBoundImporter(FrappeTestCase):
 		gun = {
 			"id": f"fb-ob-{sfx}", "serial": f"OB-{sfx}", "manufacturer": "Loewe",
 			"model": "Gew88", "caliber": "8MM", "type": "Rifle",
-			"acquireType": "Individual", "acquireDate": "2026-04-01T10:00:00Z",
-			"acquisitionCost": 300.0,
+			"acquisitionType": "Individual", "acquire_Date": "2026-04-01T10:00:00Z",
+			"cost": 300.0,
 		}
 		with self._patch_client([[gun]]):
 			importer.import_bound_book(commit_each=0, aggregate_by="model")
@@ -502,8 +502,8 @@ class FastBoundImporter(FrappeTestCase):
 		gun = {
 			"id": f"fb-rv-{sfx}", "serial": f"RV-{sfx}", "manufacturer": "Colt",
 			"model": "19", "caliber": "9MM", "type": "Pistol",
-			"acquireType": "Individual", "acquireDate": "2026-04-01T10:00:00Z",
-			"acquisitionCost": 500.0,
+			"acquisitionType": "Individual", "acquire_Date": "2026-04-01T10:00:00Z",
+			"cost": 500.0,
 		}
 		with self._patch_client([[gun]]):
 			importer.import_bound_book(commit_each=0, aggregate_by="model")
@@ -534,8 +534,8 @@ class FastBoundImporter(FrappeTestCase):
 		gun = {
 			"id": f"fb-dl-{sfx}", "serial": f"DL-{sfx}", "manufacturer": "Colt",
 			"model": "19", "caliber": "9MM", "type": "Pistol",
-			"acquireType": "Individual", "acquireDate": "2026-04-01T10:00:00Z",
-			"acquisitionCost": 500.0,
+			"acquisitionType": "Individual", "acquire_Date": "2026-04-01T10:00:00Z",
+			"cost": 500.0,
 		}
 		with self._patch_client([[gun]]):
 			importer.import_bound_book(commit_each=0, aggregate_by="model")
@@ -591,8 +591,8 @@ class FastBoundImporter(FrappeTestCase):
 		gun = {
 			"id": f"fb-rn-{sfx}", "serial": f"RN-OLD-{sfx}", "manufacturer": "Colt",
 			"model": "1911", "caliber": "45ACP", "type": "Pistol",
-			"acquireType": "Individual", "acquireDate": "2026-04-01T10:00:00Z",
-			"acquisitionCost": 700.0,
+			"acquisitionType": "Individual", "acquire_Date": "2026-04-01T10:00:00Z",
+			"cost": 700.0,
 		}
 		with self._patch_client([[gun]]):
 			importer.import_bound_book(commit_each=0, aggregate_by="model")
@@ -662,8 +662,8 @@ class FastBoundImporter(FrappeTestCase):
 		a = {
 			"id": f"fb-ca-{sfx}", "serial": f"CA-{sfx}", "manufacturer": "Colt",
 			"model": "1911", "caliber": "45 AUTO", "type": "Pistol",
-			"acquireType": "Individual", "acquireDate": "2026-04-01T10:00:00Z",
-			"acquisitionCost": 700.0,
+			"acquisitionType": "Individual", "acquire_Date": "2026-04-01T10:00:00Z",
+			"cost": 700.0,
 		}
 		b = {**a, "id": f"fb-cb-{sfx}", "serial": f"CB-{sfx}",
 			"manufacturer": "Remington Rand", "caliber": ".45ACP"}
@@ -782,3 +782,73 @@ class FbItemTypeRoundTrip(unittest.TestCase):
 
 if __name__ == "__main__":
 	unittest.main()
+
+
+class FastBoundImportOpening(FrappeTestCase):
+	"""How the import books the guns: opening stock against Temporary Opening on the
+	cut-over date, never at a made-up cost, with unmapped sources reported."""
+
+	_FakeClient = FastBoundImporter._FakeClient
+	_patch_client = FastBoundImporter._patch_client
+
+	@classmethod
+	def setUpClass(cls) -> None:
+		super().setUpClass()
+		FastBoundImporter._ensure_masters()
+
+	def setUp(self):
+		_drop_leftovers_from_earlier_runs(self._testMethodName)
+
+	def _gun(self, **over):
+		return {**_sample_items(self._testMethodName)[0], **over}
+
+	def test_receipt_is_an_opening_entry_against_temporary_opening(self):
+		gun = self._gun()
+		with self._patch_client([[gun]]):
+			result = importer.import_bound_book(commit_each=0, cutover_date=frappe.utils.nowdate())
+		self.assertEqual(result["created"], 1)
+		se = frappe.db.get_value("Stock Entry Detail", {"serial_no": gun["serial"]}, "parent")
+		self.assertEqual(frappe.db.get_value("Stock Entry", se, "is_opening"), "Yes")
+		gl = frappe.get_all("GL Entry", filters={"voucher_no": se, "is_cancelled": 0},
+			fields=["account", "debit", "credit", "is_opening"])
+		credit = [g for g in gl if g.credit]
+		self.assertEqual(len(credit), 1)
+		self.assertEqual(frappe.db.get_value("Account", credit[0].account, "account_type"), "Temporary")
+		self.assertEqual(credit[0].credit, 350.0)
+		self.assertEqual({g.is_opening for g in gl}, {"Yes"})
+
+	def test_gun_without_cost_is_listed_not_imported(self):
+		gun = self._gun(cost=0)
+		with self._patch_client([[gun]]):
+			dry = importer.import_bound_book(commit_each=0, dry_run=1)
+		self.assertEqual([g["fastbound_id"] for g in dry["needs_cost"]], [gun["id"]])
+		with self._patch_client([[gun]]):
+			result = importer.import_bound_book(commit_each=0, cutover_date=frappe.utils.nowdate())
+		self.assertEqual(result["created"], 0)
+		self.assertEqual([g["fastbound_id"] for g in result["needs_cost"]], [gun["id"]])
+		self.assertFalse(frappe.db.exists("FFL Acquisition", {"fastbound_id": gun["id"]}))
+		self.assertFalse(frappe.db.exists("Serial No", gun["serial"]))
+
+	def test_unmapped_acquisition_type_is_reported(self):
+		gun = self._gun(acquisitionType="Consignment")
+		with self._patch_client([[gun]]):
+			result = importer.import_bound_book(commit_each=0, cutover_date=frappe.utils.nowdate())
+		self.assertEqual(result["created"], 1)
+		self.assertEqual(result["unmapped_sources"], {"Consignment": 1})
+
+	def test_gun_never_joins_an_existing_non_firearm_item(self):
+		sku = f"SKU-{self._testMethodName}"[:60]
+		frappe.get_doc({"doctype": "Item", "item_code": sku, "item_name": sku,
+			"item_group": "Magazine", "stock_uom": "Nos", "is_stock_item": 1}).insert(ignore_permissions=True)
+		gun = self._gun(sku=sku)
+		with self._patch_client([[gun]]):
+			result = importer.import_bound_book(commit_each=0, cutover_date=frappe.utils.nowdate())
+		self.assertEqual(result["created"], 0)
+		self.assertEqual(result["error_count"], 1)
+		self.assertIn("not a serial-tracked firearm", result["errors"][0]["error"])
+
+	def test_future_cutover_date_is_refused(self):
+		with self._patch_client([[self._gun()]]):
+			with self.assertRaises(frappe.ValidationError):
+				importer.import_bound_book(commit_each=0,
+					cutover_date=frappe.utils.add_days(frappe.utils.nowdate(), 1))

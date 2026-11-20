@@ -31,7 +31,7 @@ Connect each distributor first. See [Distributor setup](distributors.md) and [In
 
 ## Firearms
 
-If your bound book is in FastBound, connect FastBound, then click **FastBound**, then **Import Bound Book**. Run it with **Dry Run** first and check the counts. The import creates each gun's item, serial number and acquisition from the bound book. See [FastBound](fastbound.md#import-bound-book).
+If your bound book is in FastBound, connect FastBound, then click **FastBound**, then **Import Bound Book**. Use the same **Cut-over Date**, and run it with **Dry Run** first. It creates each gun's item, serial number and acquisition at its FastBound cost. A gun with no cost in FastBound is listed, not imported. See [FastBound](fastbound.md#import-bound-book).
 
 If your bound book is somewhere else, receive each gun on [Receive goods](../stock/receive-goods.md), or ask us about the migration service below.
 
@@ -91,6 +91,6 @@ Click **Download Report** to keep the row-by-row result.
 
 ## For the bookkeeper
 
-The import posts one opening stock entry for every 500 rows. Each debits the stock account and credits Temporary Opening, dated the cut-over date and marked as opening entries. Sales and cost of goods sold are not touched.
+The CSV import posts one opening stock entry for every 500 rows, and the FastBound import one per gun. Each debits the stock account and credits Temporary Opening, dated the cut-over date and marked as opening entries. Sales and cost of goods sold are not touched.
 
 After the import, agree the total with the old system's inventory valuation at the cut-over date, counting only stock the store owns. Then clear Temporary Opening with one journal entry on the cut-over date: debit Temporary Opening, credit Opening Balance Equity. Temporary Opening should read zero before you go live.

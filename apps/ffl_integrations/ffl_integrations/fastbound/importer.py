@@ -25,7 +25,7 @@ from typing import Any
 
 import frappe
 from frappe import _
-from frappe.utils import now_datetime
+from frappe.utils import flt, getdate, now_datetime, nowdate
 
 from ffl_core.roles import SYSTEM_ROLES
 
@@ -70,6 +70,8 @@ class ImportStats:
 	regroup: list[dict] = field(default_factory=list)    # couldn't auto-move (not a clean in-stock import) → manual
 	projected: dict = field(default_factory=dict)   # dry-run only: item_code → grouping
 	duplicate_groups: list[dict] = field(default_factory=list)  # tagged guns: same serial / no serial
+	needs_cost: list[dict] = field(default_factory=list)  # in stock, no cost in FastBound: not imported
+	unmapped_sources: dict = field(default_factory=dict)  # FastBound acquisition type → count booked as Individual
 
 	def as_dict(self) -> dict:
 		return {
@@ -85,6 +87,8 @@ class ImportStats:
 			"projected_items": len(self.projected),
 			"projected": self.projected,
 			"duplicate_groups": self.duplicate_groups,
+			"needs_cost": self.needs_cost,
+			"unmapped_sources": self.unmapped_sources,
 		}
 
 
@@ -100,6 +104,7 @@ def import_bound_book(
 	commit_each: int = 1,
 	aggregate_by: str = AGGREGATE_AUTO,
 	skip_disposed: int = 1,
+	cutover_date: str | None = None,
 ) -> dict:
 	"""Import / re-sync the FastBound bound book into ERPNext.
 
@@ -126,6 +131,10 @@ def import_bound_book(
 	        into one Item; each gun's true maker + importer is stamped on
 	        its Serial No. Spelling variants are canonicalised (see
 	        fastbound.normalize).
+	    cutover_date: The day the bound book's inventory is counted as of
+	        (default today). Each new gun posts as an opening entry on it:
+	        stock debited, the company's Temporary Opening account credited.
+	        A future, frozen or closed date is refused.
 	    skip_disposed: 1 (default) imports only CURRENT INVENTORY — guns
 	        FastBound marks disposed (sold) or deleted are skipped (the
 	        importer creates acquisitions + receipts, not dispositions, so
@@ -160,10 +169,15 @@ def import_bound_book(
 	dry_items: list[dict] = []
 	# Resolve the receipt warehouse ONCE — it's constant for the whole run, so
 	# re-running the POS-Profile / Warehouse lookup per gun is pure waste.
-	warehouse = None
+	warehouse = opening = None
 	if not dry:
+		from ffl_core.inventory_import import check_posting
+
 		company = frappe.defaults.get_user_default("Company") or _first_company()
 		warehouse = _default_warehouse(company)
+		date = getdate(cutover_date or nowdate())
+		_company, account = check_posting(warehouse, date)
+		opening = (account, date)
 	# Read the whole book first: whether a gun needs a tagged key depends on every
 	# other in-stock item (two items with one serial are BOTH tagged; see _tag_plan).
 	book: list[dict] = []
@@ -177,12 +191,15 @@ def import_bound_book(
 	tagged, stats.duplicate_groups = _tag_plan(book)
 	for fb_item in book:
 		try:
+			if _needs_cost(fb_item):
+				stats.needs_cost.append(_brief(fb_item))
+				continue
 			if dry:
 				dry_items.append(fb_item)
 				stats.skipped += 1
 				continue
 			outcome = _upsert_one(fb_item, aggregate_by=mode, stats=stats, warehouse=warehouse,
-				force_tag=str(fb_item.get("id") or "").strip() in tagged)
+				force_tag=str(fb_item.get("id") or "").strip() in tagged, opening=opening)
 			if outcome == "created":
 				stats.created += 1
 			elif outcome == "updated":
@@ -206,6 +223,69 @@ def import_bound_book(
 		_record_run(stats)
 
 	return stats.as_dict()
+
+
+@frappe.whitelist()
+def start_import(page_size: int = 100, dry_run: int = 0, aggregate_by: str = AGGREGATE_AUTO,
+		cutover_date: str | None = None) -> dict:
+	"""Run import_bound_book in the background (a whole book outlasts a web
+	request). The result lands in FastBound Settings.last_import_result and is
+	announced with the ``fastbound_import_done`` event.
+
+	Args:
+	    page_size: FastBound page size per fetch.
+	    dry_run: 1 counts and lists what would happen, writing nothing.
+	    aggregate_by: "auto" or "model", as in import_bound_book.
+	    cutover_date: The day the bound book is counted as of (default today).
+
+	Returns:
+	    {queued: True}.
+	"""
+	frappe.only_for(SYSTEM_ROLES)
+	if not int(dry_run):
+		from ffl_core.inventory_import import check_posting
+
+		company = frappe.defaults.get_user_default("Company") or _first_company()
+		check_posting(_default_warehouse(company), getdate(cutover_date or nowdate()))
+	frappe.enqueue("ffl_integrations.fastbound.importer.run_import_job", queue="long", timeout=4 * 3600,
+		job_id="fastbound_import_bound_book", deduplicate=True, user=frappe.session.user,
+		kwargs={"page_size": int(page_size), "dry_run": int(dry_run), "aggregate_by": aggregate_by,
+			"cutover_date": cutover_date})
+	return {"queued": True}
+
+
+def run_import_job(user: str | None = None, kwargs: dict | None = None) -> None:
+	kwargs = kwargs or {}
+	try:
+		result = import_bound_book(**kwargs)
+	except Exception as exc:  # noqa: BLE001 — shown on the page, not only in the log
+		frappe.db.rollback()
+		frappe.log_error(title="FastBound import failed", message=frappe.get_traceback())
+		result = {"error": frappe.utils.strip_html(str(exc))}
+	result["dry_run"] = int(kwargs.get("dry_run") or 0)
+	result["finished_at"] = str(now_datetime())
+	frappe.db.set_single_value("FastBound Settings", "last_import_result",
+		frappe.as_json(result))
+	safe_commit()
+	frappe.publish_realtime("fastbound_import_done", result, user=user)
+
+
+def _already_imported(fb_id: str) -> bool:
+	return bool(frappe.db.exists("FFL Acquisition", {"fastbound_id": fb_id})
+		or frappe.db.exists("Serial No", {"fastbound_item_id": fb_id}))
+
+
+def _needs_cost(fb_item: dict) -> bool:
+	"""A gun not yet imported whose bound-book record carries no cost: it is listed,
+	not booked at a made-up value (its sale would show a cost of goods of zero)."""
+	fb_id = str(fb_item.get("id") or "").strip()
+	return bool(fb_id) and flt(fb_item.get("cost")) <= 0 and not _already_imported(fb_id)
+
+
+def _brief(fb_item: dict) -> dict:
+	return {"fastbound_id": fb_item.get("id"), "itemNumber": fb_item.get("itemNumber"),
+		"serial": _ledger_text(fb_item), "manufacturer": fb_item.get("manufacturer"),
+		"model": fb_item.get("model")}
 
 
 def _preview_grouping(items: list[dict], *, aggregate_by: str = AGGREGATE_AUTO) -> dict:
@@ -271,7 +351,7 @@ def _tag_plan(book: list[dict]) -> tuple[set[str], list[dict]]:
 
 def _upsert_one(fb_item: dict[str, Any], *, aggregate_by: str = AGGREGATE_AUTO,
 		stats: ImportStats | None = None, warehouse: str | None = None,
-		force_tag: bool = False) -> str:
+		force_tag: bool = False, opening: tuple | None = None) -> str:
 	"""Mirror one FastBound item; returns 'created', 'updated', or 'skipped'.
 
 	Does NOT commit — the caller (`import_bound_book`) decides the transaction
@@ -287,24 +367,25 @@ def _upsert_one(fb_item: dict[str, Any], *, aggregate_by: str = AGGREGATE_AUTO,
 	# A gun pushed FROM the POS carries the item id on its Serial No only (its
 	# acquisition holds FastBound's acquisition id), so look there too — creating it
 	# again would put a second unit of one gun in stock.
-	if (frappe.db.exists("FFL Acquisition", {"fastbound_id": fb_id})
-			or frappe.db.exists("Serial No", {"fastbound_item_id": fb_id})):
+	if _already_imported(fb_id):
 		return _resync_existing(fb_item, aggregate_by=aggregate_by, stats=stats, force_tag=force_tag)
 
-	_create_from_scratch(fb_item, aggregate_by=aggregate_by, warehouse=warehouse, force_tag=force_tag)
+	_create_from_scratch(fb_item, aggregate_by=aggregate_by, warehouse=warehouse, force_tag=force_tag,
+		opening=opening, stats=stats)
 	return "created"
 
 
 def _create_from_scratch(fb_item: dict[str, Any], *, aggregate_by: str,
-		warehouse: str | None = None, force_tag: bool = False) -> str:
+		warehouse: str | None = None, force_tag: bool = False, opening: tuple | None = None,
+		stats: ImportStats | None = None) -> str:
 	"""Item (created if absent) + FFL Acquisition + serialized stock receipt for one
 	gun. The aggregation key (SKU > UPC > MPN > model-slug > fb-id, or model+caliber
 	in model mode) decides which Item it rolls into."""
 	item_code = _item_code_for(fb_item, aggregate_by=aggregate_by)
 	key = _key_for_new_gun(fb_item, force_tag=force_tag)
 	_ensure_item(item_code, fb_item, aggregate_by=aggregate_by)
-	_create_acquisition(item_code, fb_item, key=key)
-	_create_stock_receipt(item_code, fb_item, warehouse=warehouse, serial=key)
+	_create_acquisition(item_code, fb_item, key=key, stats=stats)
+	_create_stock_receipt(item_code, fb_item, warehouse=warehouse, serial=key, opening=opening)
 	_stamp_ledger(key, _ledger_text(fb_item))
 	return item_code
 
@@ -562,6 +643,10 @@ def _ensure_item(item_code: str, fb_item: dict[str, Any], *, aggregate_by: str =
 	firearm_type = _map_firearm_type(fb_item.get("type"))
 
 	if frappe.db.exists("Item", item_code):
+		existing = frappe.db.get_value("Item", item_code, ["is_firearm", "has_serial_no"], as_dict=True)
+		if not (existing.is_firearm and existing.has_serial_no):
+			raise ValueError(f"Item {item_code} already exists and is not a serial-tracked firearm; "
+				"give the gun its own SKU in FastBound or import with Aggregate By = model.")
 		return item_code
 
 	caliber_link = _ensure_caliber(caliber_name) if caliber_name else None
@@ -711,13 +796,18 @@ def _describe(fb_item: dict) -> str:
 	return " | ".join(parts)
 
 
-def _create_acquisition(item_code: str, fb_item: dict, *, key: str | None = None) -> str:
+def _create_acquisition(item_code: str, fb_item: dict, *, key: str | None = None,
+		stats: ImportStats | None = None) -> str:
 	from ffl_core.acquisition import record_firearm_acquisition
 
 	# Importer doesn't follow acquisitionContactId — saves one HTTP per item.
 	# Source maps to Individual by default (see _map_acquisition_source); the
 	# bound book on FastBound's side stays authoritative.
 	source_type = _map_acquisition_source(fb_item)
+	raw_type = (fb_item.get("acquisitionType") or "").strip()
+	if stats is not None and source_type == "Individual" and raw_type.lower() != "individual":
+		label = raw_type or "(blank)"
+		stats.unmapped_sources[label] = stats.unmapped_sources.get(label, 0) + 1
 	src_name = "FastBound Import"
 	src_ffl = None
 	id_required = source_type in {"Individual", "Trade-in", "Estate", "Pawn"}
@@ -760,9 +850,15 @@ def _map_acquisition_source(fb_item: dict) -> str:
 
 
 def _create_stock_receipt(item_code: str, fb_item: dict, *, warehouse: str | None = None,
-		serial: str | None = None) -> str:
+		serial: str | None = None, opening: tuple | None = None) -> str:
 	"""One-unit Material Receipt of the gun named `serial` (its Serial No key; defaults
-	to the item's own serial, which is how reassign_serial_to_item passes it)."""
+	to the item's own serial, which is how reassign_serial_to_item passes it).
+
+	``opening`` = (Temporary Opening account, cut-over date) for the bound-book
+	import: the receipt is an opening entry on that date, credited to that account,
+	at the gun's own cost. Not an Opening Stock reconciliation, because one model
+	Item holds many guns and ERPNext allows one of those per Item and warehouse. A
+	serial is valued on its own, so dating a new gun back never re-costs another."""
 	serial = (serial or fb_item.get("serial") or "").strip()
 	# A given warehouse decides the company (reassign's receipt leg must land where
 	# issue_serial took the gun out); otherwise the user's default.
@@ -771,16 +867,22 @@ def _create_stock_receipt(item_code: str, fb_item: dict, *, warehouse: str | Non
 	warehouse = warehouse or _default_warehouse(company)
 	# 0.01 default — Material Receipt rejects qty=1 rate=0 when the
 	# imported Item has no valuation_rate yet.
+	row = serialized_receipt_row(
+		item_code=item_code, qty=1, warehouse=warehouse,
+		basic_rate=float(fb_item.get("cost") or 0) or 0.01,
+		serial=serial or None,
+	)
 	se = frappe.get_doc({
 		"doctype": "Stock Entry",
 		"stock_entry_type": "Material Receipt",
 		"company": company,
-		"items": [serialized_receipt_row(
-			item_code=item_code, qty=1, warehouse=warehouse,
-			basic_rate=float(fb_item.get("cost") or 0) or 0.01,
-			serial=serial or None,
-		)],
+		"items": [row],
 	})
+	if opening:
+		account, date = opening
+		se.update({"is_opening": "Yes", "posting_date": date, "posting_time": "00:00:00",
+			"set_posting_time": 1, "remarks": "Opening stock from the FastBound bound book."})
+		se.items[0].expense_account = account
 	se.flags.ignore_permissions = True
 	se.insert()
 	se.submit()

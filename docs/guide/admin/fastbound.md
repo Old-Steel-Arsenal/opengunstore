@@ -46,16 +46,28 @@ Refreshes the acquisition-type and disposition-type dropdowns from your FastBoun
 
 ### Import Bound Book
 
-A one-off migration. It pulls every item from your FastBound bound book and mirrors it into the POS as items, acquisitions and stock receipts. Items already imported, matched by their FastBound id, are skipped, so running it twice is safe.
+A one-off migration. It brings every gun in stock in your FastBound bound book into the POS as an item, an acquisition and opening stock. A gun already imported, matched by its FastBound id, is updated from FastBound instead: a corrected maker, importer, model, caliber or serial is carried over. Running it twice never adds a gun twice.
 
 1. Save the form first, or you are told to.
 2. Click **FastBound**, then **Import Bound Book**.
-3. Pick **Aggregate By**. `auto` groups by SKU, then UPC, then MPN, then manufacturer and model. `model` ignores SKU, UPC and MPN and groups by manufacturer, model and caliber. Pick `model` when your distributor SKUs are noisy.
-4. Set **Page Size**, the items fetched per request. Default 100.
-5. Tick **Dry Run** for the first run. It counts what would be imported and writes nothing.
-6. Click **Start Import**.
+3. Pick **Aggregate By**. `auto` groups by SKU, then UPC, then MPN, then manufacturer and model. `model` ignores SKU, UPC and MPN and groups by model and caliber. Pick `model` when your distributor SKUs are noisy.
+4. Pick the **Cut-over Date**: the day your bound book is counted as of. Each gun goes in as opening stock on that date.
+5. Set **Page Size**, the items fetched per request. Default 100.
+6. Tick **Dry Run** for the first run. It counts what would be imported and writes nothing.
+7. Click **Start Import**.
 
-A large book takes several minutes. The importer commits after every item, so a crash part way does not lose work. The result reports Fetched, Created (or Would create), Skipped (already imported) and Errors. Run it again without **Dry Run** once the counts look right.
+The import runs in the background, and the result opens when it finishes. It commits after every gun, so a stop part way does not lose work. Run it again without **Dry Run** once the counts look right.
+
+The result lists what needs you:
+
+| List | What to do |
+|---|---|
+| No cost in FastBound | The gun is not imported. Add its cost in FastBound, then import again |
+| Acquisition types recorded as Individual | FastBound types the POS has no match for, such as consignment. Check those guns' acquisitions |
+| Same serial or no serial | These guns come in under a tagged serial; see below |
+| Move to the right item by hand | A gun FastBound now describes differently that has already sold or moved |
+
+Each gun's opening stock debits the stock account and credits Temporary Opening, at the gun's cost in FastBound. See [Move your inventory in](migrate-inventory.md#for-the-bookkeeper).
 
 A gun recorded with no serial number, or with the same serial as another gun, comes in as its own gun with a label on its record name. **No-Serial Spellings** on [FFL Settings](ffl-settings.md#serial-numbers) lists how your book writes "no serial".
 

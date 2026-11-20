@@ -22,6 +22,7 @@
   "last_import_count",
   "column_status",
   "last_import_errors",
+  "last_import_result",
   "section_smartlists",
   "acquire_types",
   "column_smartlists",
@@ -46,7 +47,7 @@
   },
   {
    "default": "1",
-   "description": "Off: A&D records are kept locally only, and firearm sales need FFL Settings \u2192 Paper 4473 Mode (reload open tills).",
+   "description": "Off: A&D records are kept locally only, and firearm sales need FFL Settings → Paper 4473 Mode (reload open tills).",
    "fieldname": "enabled",
    "fieldtype": "Check",
    "label": "Enable FastBound"
@@ -86,7 +87,7 @@
    "label": "Webhook"
   },
   {
-   "description": "From FastBound \u2192 Settings \u2192 Webhooks.",
+   "description": "From FastBound → Settings → Webhooks.",
    "fieldname": "webhook_secret",
    "fieldtype": "Password",
    "label": "Webhook secret"
@@ -99,7 +100,7 @@
    "fieldname": "webhook_url_help",
    "fieldtype": "HTML",
    "label": "Webhook URL",
-   "options": "Register <code>https://&lt;your-site&gt;/api/method/ffl_integrations.fastbound.webhook.fastbound_event</code> in FastBound \u2192 Settings \u2192 Webhooks for <code>form4473.completed</code> and <code>disposition.committed</code>."
+   "options": "Register <code>https://&lt;your-site&gt;/api/method/ffl_integrations.fastbound.webhook.fastbound_event</code> in FastBound → Settings → Webhooks for <code>form4473.completed</code> and <code>disposition.committed</code>."
   },
   {
    "fieldname": "tab_status",
@@ -131,6 +132,13 @@
    "fieldname": "last_import_errors",
    "fieldtype": "Long Text",
    "label": "Import errors",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_import_result",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Last import result",
    "read_only": 1
   },
   {
@@ -190,7 +198,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-07-29 13:30:00",
+ "modified": "2026-11-20 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Integrations",
  "name": "FastBound Settings",

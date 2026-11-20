@@ -14,7 +14,7 @@ What importing the attached CSV would do, row by row. Writes nothing.
 
 **Returns:** {summary: {counts, units, value}, rows: [{line, upc, name, outcome, item_code, message, qty, cost}], warehouse}.
 
-<sub>`apps/ffl_core/ffl_core/ffl_core/doctype/inventory_import/inventory_import.py:42`</sub>
+<sub>`apps/ffl_core/ffl_core/ffl_core/doctype/inventory_import/inventory_import.py:45`</sub>
 
 ## `start_import`
 
@@ -28,4 +28,4 @@ page and announced with the ``inventory_import_done`` event.
 
 **Returns:** {queued: True}.
 
-<sub>`apps/ffl_core/ffl_core/ffl_core/doctype/inventory_import/inventory_import.py:59`</sub>
+<sub>`apps/ffl_core/ffl_core/ffl_core/doctype/inventory_import/inventory_import.py:62`</sub>

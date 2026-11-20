@@ -1253,6 +1253,7 @@ app: `ffl_integrations` · module: FFL Integrations · single · roles: System M
 | `last_import_at` | Datetime | Last import |  |  |
 | `last_import_count` | Int | Items imported |  |  |
 | `last_import_errors` | Long Text | Import errors |  |  |
+| `last_import_result` | Long Text | Last import result |  |  |
 | `acquire_types` | Small Text | Acquisition types |  |  |
 | `dispose_types` | Small Text | Disposition types |  |  |
 | `smart_lists_synced_at` | Datetime | Lists synced at |  |  |
