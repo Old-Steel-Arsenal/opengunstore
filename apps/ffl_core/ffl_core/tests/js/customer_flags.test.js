@@ -96,3 +96,15 @@ test('summarize: an Optional agreement not signed reads neutral, a required one 
 	assert.deepStrictEqual(chips.map((c) => [c.label, c.tone]),
 		[['Range Waiver not signed', 'gray'], ['Lane Rules needed', 'orange']]);
 });
+
+test('idRows: date of birth first, then each ID document that holds a number', () => {
+	assert.deepStrictEqual(cf.idRows({ date_of_birth: '1980-02-03', customer_ids: [
+		{ id_type: 'Driver License', id_number: ' D1234567 ' },
+		{ id_type: 'CCW', id_number: '' },
+		{ id_type: 'Passport', id_number: 'P99' }] }), [
+		{ label: 'Date of Birth', value: '1980-02-03', fieldtype: 'Date' },
+		{ label: 'Driver License', value: 'D1234567', fieldtype: 'Data' },
+		{ label: 'Passport', value: 'P99', fieldtype: 'Data' }]);
+	assert.deepStrictEqual(cf.idRows({ customer_ids: [{ id_type: 'State ID' }] }), []);
+	assert.deepStrictEqual(cf.idRows(null), []);
+});

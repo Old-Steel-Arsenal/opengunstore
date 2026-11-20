@@ -15,13 +15,14 @@
 //     the register shows under the customer's name. An agreement still to sign
 //     is a clickable chip that opens ffl.agreements.request (agreement_actions.js).
 // The POS wiring is here too: the POS Invoice `customer` event (both the register
-// and the Desk form), the ItemCart customer section (strip + Agreements button + "Scan ID" lookup,
-// shown only while FFL Settings → Store Customer ID Numbers is on), wrapped on
+// and the Desk form), the ItemCart customer section (strip + Agreements button + "Scan ID" lookup
+// and, in the opened contact panel, the date of birth and ID numbers read-only — both
+// only while FFL Settings → Store Customer ID Numbers is on), wrapped on
 // ERPNext's prototype via ffl.installClassHook — never edited.
 // New Customer dialog: confirmNotDuplicate(values) — customer_quick_entry.js asks
 // it before saving.
 //
-// The pure half (summarize / stripHtml / dupLabel / maskId) is Node-tested.
+// The pure half (summarize / stripHtml / dupLabel / maskId / idRows) is Node-tested.
 (function (root, factory) {
 	var api = factory();
 	if (typeof module === 'object' && module.exports) module.exports = api;
@@ -114,13 +115,27 @@
 		return (row.matched || []).map(function (m) { return names[m] || m; }).join(', ');
 	}
 
-	// Last four characters only — an ID number is never shown whole.
+	// Last four characters only: a message box never shows an ID number whole.
 	function maskId(v) {
 		var s = String(v || '');
 		return s.length > 4 ? '••' + s.slice(-4) : s;
 	}
 
-	return { summarize: summarize, stripHtml: stripHtml, dupLabel: dupLabel, maskId: maskId, escText: escText };
+	// Customer doc → [{label, value, fieldtype}] for the register's contact panel:
+	// the date of birth, then every ID document that holds a number.
+	function idRows(doc, L) {
+		L = L || id;
+		var d = doc || {}, rows = [];
+		if (d.date_of_birth) rows.push({ label: L('Date of Birth'), value: d.date_of_birth, fieldtype: 'Date' });
+		(d.customer_ids || []).forEach(function (r) {
+			var number = String(r.id_number || '').trim();
+			if (number) rows.push({ label: L(r.id_type || 'ID'), value: number, fieldtype: 'Data' });
+		});
+		return rows;
+	}
+
+	return { summarize: summarize, stripHtml: stripHtml, dupLabel: dupLabel, maskId: maskId, idRows: idRows,
+		escText: escText };
 });
 
 // Browser wiring.
@@ -298,26 +313,91 @@
 
 	function idsOn() { return !!(frappe.boot && frappe.boot.ffl_store_customer_id_numbers); }
 
-	// Promise<customer name | null>.
-	function scanForCustomer() {
-		return new Promise(function (resolve) {
-			var result = null, timer = null, picking = false, restoreScanner = function () {};
+	// Read-only, straight off the Customer (the same read permission the flags ask for).
+	function paintIds(cart) {
+		var c = cart.customer_info && cart.customer_info.customer;
+		if (!c) return;
+		frappe.db.get_doc('Customer', c).then(function (doc) {
+			var $form = cart.$customer_section.find('.customer-fields-container');
+			// Closed, or another customer picked, while the read was out.
+			if (!$form.length || !cart.customer_info || cart.customer_info.customer !== c) return;
+			$form.find('.ffl-id-field').remove();
+			api.idRows(doc, __).forEach(function (row, i) {
+				frappe.ui.form.make_control({
+					df: { fieldname: 'ffl_id_' + i, fieldtype: row.fieldtype, label: row.label, read_only: 1 },
+					parent: $('<div class="ffl-id-field"></div>').appendTo($form),
+					render_input: true,
+				}).set_value(row.value);
+			});
+		}, function () { /* the panel still shows the contact fields */ });
+	}
+
+	// Bring the customer's stored IDs and address up to the scanned ID (apply_id_scan).
+	// An ID that looks like someone else's (name, date of birth) is asked about first.
+	// Resolves to what was changed ([] when nothing, or the clerk said no); rejects when the
+	// request fails, so a caller that must go on adds its own catch.
+	function applyScan(customer, parsed, force) {
+		return frappe.call({ method: METHOD + 'apply_id_scan', args: { customer: customer, scan: parsed, force: force ? 1 : 0 } })
+			.then(function (r) {
+				var m = r.message || {};
+				if (m.mismatch) {
+					return new Promise(function (resolve) {
+						frappe.confirm(__('The ID says {0}. This customer is {1}. Update this customer from the ID?',
+							[api.escText(m.mismatch.on_id), api.escText(m.mismatch.customer)]),
+							function () { resolve(applyScan(customer, parsed, true)); }, function () { resolve([]); });
+					});
+				}
+				var changed = m.changed || [];
+				if (changed.length) {
+					delete cache[customer];
+					frappe.show_alert({ indicator: 'green', message: __('Updated from the ID: {0}',
+						[changed.map(function (x) { return __(x); }).join(', ')]) });
+				}
+				return changed;
+			});
+	}
+
+	// Promise<customer name | null>: the customer the scanned ID belongs to (`known`: the one
+	// already picked), their record brought up to that ID.
+	function scanForCustomer(known) {
+		return scanDialog(known).then(function (r) {
+			if (!r) return null;
+			var name = function () { return r.name; };
+			return applyScan(r.name, r.parsed).then(name, name);
+		});
+	}
+
+	// Promise<{name, parsed} | null>.
+	function scanDialog(known) {
+		return new Promise(function (settle) {
+			var result = null, scanned = null, timer = null, picking = false, restoreScanner = function () {};
+			var resolve = function (name) { settle(name ? { name: name, parsed: scanned } : null); };
 			var d = new frappe.ui.Dialog({
-				title: __('Find customer by ID'),
+				title: known ? __('Scan ID') : __('Find customer by ID'),
 				fields: [{ fieldtype: 'Small Text', fieldname: 'scan', label: __('Scan the barcode on the back of the licence') }],
 			});
 			var lookup = function (raw) {
 				var parsed = window.ffl && ffl.aamva && ffl.aamva.parse(raw, { ids: true });
-				if (!parsed || !parsed.idNumber) return;
+				// A licence to carry holds two numbers (aamva.js): either one finds its holder.
+				var numbers = parsed ? [parsed.idNumber, parsed.carryNumber].filter(Boolean) : [];
+				if (!numbers.length) return;
+				scanned = parsed;
 				d.set_value('scan', '');
-				frappe.call({ method: METHOD + 'find_customers_by_id_number', args: { id_number: parsed.idNumber } })
-					.then(function (r) {
-						var rows = r.message || [];
+				if (known) { result = known; d.hide(); return; }
+				var find = function (i) {
+					return frappe.call({ method: METHOD + 'find_customers_by_id_number', args: { id_number: numbers[i] } })
+						.then(function (r) {
+							var found = r.message || [];
+							return found.length || i + 1 >= numbers.length ? found : find(i + 1);
+						});
+				};
+				find(0)
+					.then(function (rows) {
 						if (rows.length === 1) { result = rows[0].name; d.hide(); return; }
 						if (!rows.length) {
 							d.hide();
 							frappe.msgprint(__('No customer has ID {0}. Add one with "Create a new Customer" and scan the licence there.',
-								[api.maskId(parsed.idNumber)]));
+								[api.maskId(numbers[0])]));
 							return;
 						}
 						var pick = new frappe.ui.Dialog({
@@ -373,13 +453,30 @@
 				var paint = function () {
 					var html = c && cache[c] ? api.stripHtml(cache[c], __) : '';
 					var $details = cart.$customer_section.find('.customer-details').first();
-					cart.$customer_section.find('.ffl-customer-flags, .ffl-agreements-btn').remove();
+					cart.$customer_section.find('.ffl-customer-flags, .ffl-agreements-btn, .ffl-scan-update').remove();
 					if (html) $details.append(html);
 					// Agreements for this customer and cart (agreement_actions.js).
 					if (c && window.ffl && ffl.agreements && ffl.agreements.forSale) {
 						$('<button class="btn btn-xs btn-default ffl-agreements-btn" style="margin-top:4px">' + __('Agreements') + '</button>')
 							.appendTo($details)
 							.on('click', function (e) { e.stopPropagation(); ffl.agreements.forSale(cart.events.get_frm()); });
+					}
+					// A renewed or replaced ID: scan it onto the customer already picked.
+					if (c && idsOn()) {
+						$('<button class="btn btn-xs btn-default ffl-scan-update" style="margin-top:4px">' + __('Scan ID') + '</button>')
+							.appendTo($details)
+							.on('click', function (e) {
+								e.stopPropagation();
+								scanDialog(c).then(function (r) {
+									return r ? applyScan(c, r.parsed) : [];
+								}).then(function (changed) {
+									if (!cart.customer_info || cart.customer_info.customer !== c) return;
+									cart.update_customer_section();
+									// The ticket holds the old address (and the tax that follows the
+									// state): have it read the customer again.
+									if (changed.indexOf('Address') >= 0) cart.events.get_frm().trigger('customer');
+								}, function () { /* the request's own error is already on screen */ });
+							});
 					}
 				};
 				paint();
@@ -392,6 +489,13 @@
 					}, function () { /* the strip is a hint */ });
 				}
 			} catch (e) { /* never break the cart */ }
+			return out;
+		};
+		// The opened contact panel (Email, Phone, Loyalty…): date of birth and ID numbers after them.
+		var toggle = proto.toggle_customer_info;
+		proto.toggle_customer_info = function (show) {
+			var out = toggle.apply(this, arguments);
+			try { if (show && idsOn()) paintIds(this); } catch (e) { /* never break the cart */ }
 			return out;
 		};
 		var make = proto.make_customer_selector;
@@ -463,7 +567,7 @@
 	else wire();
 
 	Object.assign(api, {
-		check: check, guardControl: guardControl, warn: warn, fetch: fetchFlags,
+		check: check, guardControl: guardControl, warn: warn, fetch: fetchFlags, applyScan: applyScan,
 		strip: function (flags) { return api.stripHtml(flags, __); },
 		confirmNotDuplicate: confirmNotDuplicate, scanForCustomer: scanForCustomer, patchCart: patchCart,
 	});

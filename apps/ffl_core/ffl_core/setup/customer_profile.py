@@ -1,6 +1,7 @@
 """Customer profile fields: status, alerts, ID documents, date of birth, family.
 
-One "Profile" tab on the Customer form, right after the Details tab:
+Two tabs on the Customer form, right after the Details tab: "Identification",
+then "Profile":
 
 * **Status** — ``customer_status`` (Active / Banned, default Active) and
   ``status_reason`` (shown and required for Banned; enforced
@@ -16,10 +17,10 @@ new person, so it must not inherit someone's IDs or alerts, nor silently become
 a family member; "Add family member" is the way to put one in a family. ``ensure``
 re-applies the definitions on every migrate, so a site that already has the
 fields picks the flag up.
-* **Identification** — ``date_of_birth`` and ``customer_ids`` → child doctype
-  Customer ID Document. The ID number and the date of birth are kept only when
-  FFL Settings → Store Customer ID Numbers is on (``feature_gate.
-  customer_id_numbers_enabled``); otherwise every save blanks them. The two
+* **Identification** (its own tab) — ``date_of_birth`` and
+  ``customer_ids`` → child doctype Customer ID Document. The ID number and the
+  date of birth are kept only when FFL Settings → Store Customer ID Numbers is
+  on (``feature_gate.customer_id_numbers_enabled``); otherwise every save blanks them. The two
   inputs are hidden by ``depends_on`` on the same boot flag — convenience only,
   the server rule is what holds.
 * **Family** — ``primary_customer`` / ``relationship`` (one level only, see
@@ -81,8 +82,18 @@ HAS_ALIASES = "eval:(doc.customer_aliases||[]).length"
 IDS_ON = "eval:frappe.boot.ffl_store_customer_id_numbers"
 
 FIELDS = [
-	{"fieldname": "customer_profile_tab", "fieldtype": "Tab Break", "label": "Profile",
+	# Identification first: it takes the anchor on the Details tab's last field, and
+	# Profile follows its last field (two tabs on one anchor have no defined order).
+	{"fieldname": "customer_ids_tab", "fieldtype": "Tab Break", "label": "Identification",
 		"insert_after": "loyalty_program_tier"},
+	{"fieldname": "section_customer_ids", "fieldtype": "Section Break", "label": "",
+		"insert_after": "customer_ids_tab"},
+	{"fieldname": "date_of_birth", "fieldtype": "Date", "label": "Date of Birth",
+		"no_copy": 1, "depends_on": IDS_ON, "insert_after": "section_customer_ids"},
+	{"fieldname": "customer_ids", "fieldtype": "Table", "options": "Customer ID Document",
+		"label": "ID Documents", "no_copy": 1, "insert_after": "date_of_birth"},
+	{"fieldname": "customer_profile_tab", "fieldtype": "Tab Break", "label": "Profile",
+		"insert_after": "customer_ids"},
 	{"fieldname": "section_customer_status", "fieldtype": "Section Break", "label": "Status",
 		"insert_after": "customer_profile_tab"},
 	{"fieldname": "customer_status", "fieldtype": "Select", "label": "Customer Status",
@@ -105,14 +116,8 @@ FIELDS = [
 		"insert_after": "ban_override_by"},
 	{"fieldname": "customer_alerts", "fieldtype": "Table", "options": "Customer Alert",
 		"label": "Alerts", "no_copy": 1, "insert_after": "section_customer_alerts"},
-	{"fieldname": "section_customer_ids", "fieldtype": "Section Break", "label": "Identification",
-		"insert_after": "customer_alerts"},
-	{"fieldname": "date_of_birth", "fieldtype": "Date", "label": "Date of Birth",
-		"no_copy": 1, "depends_on": IDS_ON, "insert_after": "section_customer_ids"},
-	{"fieldname": "customer_ids", "fieldtype": "Table", "options": "Customer ID Document",
-		"label": "ID Documents", "no_copy": 1, "insert_after": "date_of_birth"},
 	{"fieldname": "section_customer_family", "fieldtype": "Section Break", "label": "Family",
-		"insert_after": "customer_ids"},
+		"insert_after": "customer_alerts"},
 	{"fieldname": "primary_customer", "fieldtype": "Link", "options": "Customer",
 		"label": "Family Of", "search_index": 1, "no_copy": 1,
 		"insert_after": "section_customer_family"},
