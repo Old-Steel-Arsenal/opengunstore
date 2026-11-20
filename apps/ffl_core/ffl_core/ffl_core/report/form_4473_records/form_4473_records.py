@@ -7,6 +7,9 @@ buyer's draft) or re-run with Redo 4473, and whatever the NICS outcome.
 FastBound's API cannot list completed 4473s, which is why the POS keeps its
 own. Order Status says what became of the order since. The PDF is served by
 ffl_integrations.fastbound.pos_4473.view_4473_pdf (see the .js formatter).
+
+An extension that checks 4473s says where each record's check stands through the
+``gunshop_4473_record_checks`` hook; the Check column shows only when one answers.
 """
 from __future__ import annotations
 
@@ -17,14 +20,17 @@ from frappe import _
 from frappe.utils import getdate
 
 _ORDER_STATUS = {0: "Draft", 1: "Submitted", 2: "Cancelled"}
+RECORD_CHECKS_HOOK = "gunshop_4473_record_checks"
+_INDICATORS = ("green", "orange", "red", "gray")
 
 
 def execute(filters=None):
 	filters = frappe._dict(filters or {})
-	return _columns(), _rows(filters)
+	rows = _rows(filters)
+	return _columns(checked=any(row["check"] for row in rows)), rows
 
 
-def _columns():
+def _columns(checked: bool = False):
 	return [
 		{"label": _("Completed On"), "fieldname": "completed_on", "fieldtype": "Datetime", "width": 150},
 		{"label": _("Record"), "fieldname": "log", "fieldtype": "Link",
@@ -38,7 +44,10 @@ def _columns():
 		{"label": _("Order Status"), "fieldname": "order_status", "fieldtype": "Data", "width": 110},
 		{"label": _("4473 PDF"), "fieldname": "pdf", "fieldtype": "Data", "width": 90},
 		{"label": _("PDF Copy"), "fieldname": "pdf_status", "fieldtype": "Data", "width": 90},
+		{"label": _("Check"), "fieldname": "check", "fieldtype": "Data", "width": 130, "hidden": 0 if checked else 1},
 		{"label": _("Has PDF"), "fieldname": "has_pdf", "fieldtype": "Check", "hidden": 1},
+		{"label": _("Check Indicator"), "fieldname": "check_indicator", "fieldtype": "Data", "hidden": 1},
+		{"label": _("Check Route"), "fieldname": "check_route", "fieldtype": "Data", "hidden": 1},
 	]
 
 
@@ -64,9 +73,11 @@ def _rows(filters):
 		filters={"name": ("in", list(invoices))},
 		fields=["name", "docstatus", "fastbound_disposition_id"])} if invoices else {}
 
+	checks = _record_checks(logs)
 	out = []
 	for log in logs:
 		has_pdf = 1 if (log.form4473_id or log.pdf_file) else 0
+		check = checks.get(log.name) or {}
 		out.append({
 			"completed_on": log.completed_on,
 			"log": log.name,
@@ -79,7 +90,34 @@ def _rows(filters):
 			"pdf": _("View PDF") if has_pdf else "",
 			"pdf_status": log.pdf_status,
 			"has_pdf": has_pdf,
+			"check": check.get("label", ""),
+			"check_indicator": check.get("indicator", ""),
+			"check_route": check.get("route", ""),
 		})
+	return out
+
+
+def _record_checks(logs) -> dict:
+	"""``{log name: {"label", "indicator", "route"}}`` from ``gunshop_4473_record_checks``
+	providers; the first to answer for a record wins. A provider that fails is logged and
+	answers nothing, and an answer is cut down to what the column can safely show: a short
+	label, a known indicator colour, a route inside the desk."""
+	asked = [{"name": log.name, "pos_invoices": _invoices(log), "source": log.source} for log in logs]
+	out: dict = {}
+	for hook in frappe.get_hooks(RECORD_CHECKS_HOOK) if asked else []:
+		try:
+			answers = frappe.get_attr(hook)(asked) or {}
+		except Exception:
+			frappe.log_error(title=f"{RECORD_CHECKS_HOOK} provider failed: {hook}")
+			continue
+		for name, answer in answers.items():
+			label = str((answer or {}).get("label") or "").strip()[:40]
+			if name in out or not label:
+				continue
+			route = str(answer.get("route") or "")
+			out[name] = {"label": label,
+				"indicator": answer.get("indicator") if answer.get("indicator") in _INDICATORS else "gray",
+				"route": route if route.startswith(("/app/", "/desk/")) else ""}
 	return out
 
 

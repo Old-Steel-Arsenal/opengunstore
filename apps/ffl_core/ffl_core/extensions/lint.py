@@ -58,6 +58,7 @@ GUNSHOP_HOOKS = {
 	"gunshop_card_processors", "gunshop_crm_mail_screen", "gunshop_serial_hold_changed",
 	"gunshop_deal_hold_refusal", "gunshop_crm_reply_draft_ready", "gunshop_crm_reply_draft",
 	"gunshop_firearm_transfer_refusal", "gunshop_crm_memory_ready", "gunshop_crm_memory_update",
+	"gunshop_4473_record_checks",
 }
 # The ids first_party may be declared by, shipped with the core: the manifest's
 # own claim is not enough while packages are unsigned (lazy: an id allowlist, not a

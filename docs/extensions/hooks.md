@@ -83,6 +83,12 @@ Declare them in `hooks.py` like any Frappe hook. The value is a dotted path to a
 - **Purpose:** the reason this firearm sale must not be submitted yet, or `None`. Asked at submit of a POS / Sales Invoice with a regulated firearm, after the core's own gate has passed (4473 Completed, NICS Proceed, a committed disposition per serial); never for a draft, a sale to an FFL dealer, a shipment to a destination FFL or a consolidation invoice. The first reason stops the submit and is shown to staff as it is, so say what to do next.
 - **On failure:** logged; counts as no objection, so the sale goes on.
 
+### `gunshop_4473_record_checks`
+
+- **Signature:** `(logs) -> {log name: {"label": str, "indicator": "green" | "orange" | "red" | "gray", "route": str | None}}`. `logs` is a list of `{"name", "pos_invoices": [str], "source": "FastBound" | "Paper / override"}`, the Form 4473 Log rows the report is about to show. Leave out a record you have nothing to say about.
+- **Purpose:** the **Check** column of Compliance → 4473 Records: where your own check of that signed 4473 stands. `label` is shown as an indicator pill (40 characters at most); `route` (a path under `/app/` or `/desk/`) makes it a link to your page for that record, for example to run the check again. The column shows only when a provider answers for a listed record. Called on every run of the report for all its rows: one query, no network call. The first provider to answer for a record wins.
+- **On failure:** logged; the column stays blank for that provider.
+
 ### `gunshop_pending_queue_exclusion_fields`
 
 - **Value:** a fieldname (string): a Sales Invoice Link custom field you own.
