@@ -12,6 +12,7 @@ These pages use some system terms that counter staff never need. Every page here
 | Set the store's FFL number, alert emails, counter rules or 4473 mode | [FFL Settings](ffl-settings.md) |
 | Know what the system does overnight and where its alerts go | [What runs automatically](background-jobs.md) |
 | Fix a record FastBound refused, or check the two books agree | [FastBound](fastbound.md) |
+| Bring a new store's firearms, accessories and ammunition over from the old system | [Move your inventory in](migrate-inventory.md) |
 | Switch a distributor on, test it or change its priority | [Distributor setup](distributors.md) |
 | Understand how the web store and GunBroker stay in step | [Web store and GunBroker setup](online-channels.md) |
 

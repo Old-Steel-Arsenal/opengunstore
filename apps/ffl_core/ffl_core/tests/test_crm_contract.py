@@ -84,6 +84,16 @@ class TestCRMContract(CRMTestCase):
 		self.assertTrue({"converted", "status"} <= _fields("CRM Lead"))
 		self.assertIn("type", _fields("CRM Lead Status"))
 
+	def test_lead_conversion_entry_points(self):
+		# web_orders converts a lead as CRM's button does, and the repair marks one converted as it does.
+		from crm.fcrm.doctype.crm_lead import crm_lead
+
+		self.assertTrue({"lead", "doc", "if_converted"} <= set(inspect.signature(crm_lead.convert_to_deal).parameters))
+		self.assertEqual(list(inspect.signature(crm_lead.mark_converted).parameters), ["lead"])
+		source = inspect.getsource(crm_lead.mark_converted)
+		self.assertIn('"converted", 1', source)
+		self.assertIn("Qualified", source)
+
 	def test_deal_fields_the_pos_link_reads_and_writes(self):
 		self.assertTrue({"erpnext_customer", "deal_value", "net_total", "status", "closed_date", "status_change_log",
 			"contacts", "deal_owner", "email", "mobile_no", "phone", "first_name", "last_name", "lead_name",

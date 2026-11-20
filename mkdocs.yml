@@ -211,6 +211,7 @@ nav:
           - FFL Settings: guide/admin/ffl-settings.md
           - What runs automatically: guide/admin/background-jobs.md
           - FastBound: guide/admin/fastbound.md
+          - Move your inventory in: guide/admin/migrate-inventory.md
           - Distributor setup: guide/admin/distributors.md
           - Web store and GunBroker setup: guide/admin/online-channels.md
       - AI assistants:

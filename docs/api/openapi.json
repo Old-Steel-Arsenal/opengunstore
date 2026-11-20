@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenGunstore API",
-    "version": "1.3.1",
+    "version": "1.3.2",
     "description": "RPC API of the OpenGunstore custom apps (Frappe/ERPNext v16): ffl_core, ffl_integrations, ffl_woo_sync.\n\nAll endpoints are Frappe *whitelisted methods* invoked as `/api/method/<dotted.path>`. Unless an endpoint declares explicit HTTP verbs, it is documented here as POST (Frappe also accepts GET for read-only calls; always POST mutations). Arguments may be sent as JSON body, form data, or query string — JSON body is recommended.\n\nEvery operation carries an **Auth (derived from code)** line statically resolved from the role gate the function actually executes; the prose Permissions note adds semantics the machine can't infer.\n\nStandard CRUD on DocTypes is served by Frappe's REST layer (`/api/resource/<DocType>`) — see docs/api/frappe-rest.md; the custom DocTypes are modelled under components.schemas and listed in reference/doctypes.md."
   },
   "servers": [
@@ -2080,6 +2080,31 @@
         },
         "required": [
           "warehouse"
+        ]
+      },
+      "Inventory_Import": {
+        "type": "object",
+        "description": "Custom DocType (ffl_core); CRUD via /api/resource/Inventory%20Import — see docs/api/frappe-rest.md.",
+        "properties": {
+          "csv_file": {
+            "type": "string",
+            "description": "CSV File"
+          },
+          "warehouse": {
+            "type": "string",
+            "description": "Warehouse (Link: Warehouse)"
+          },
+          "posting_date": {
+            "type": "string",
+            "description": "Cut-over Date"
+          },
+          "last_run": {
+            "type": "string",
+            "description": "Last Run"
+          }
+        },
+        "required": [
+          "posting_date"
         ]
       },
       "Item_Image_Gallery": {
@@ -4254,6 +4279,10 @@
           "last_import_errors": {
             "type": "string",
             "description": "Import errors"
+          },
+          "last_import_result": {
+            "type": "string",
+            "description": "Last import result"
           },
           "acquire_types": {
             "type": "string",
@@ -16674,6 +16703,51 @@
         }
       }
     },
+    "/api/method/ffl_core.ffl_core.doctype.inventory_import.inventory_import.start": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Preview or import the attached CSV in the background: one catalog lookup",
+        "description": "per unknown UPC outlasts a web request on a new store's file. The result is\nsaved on the page (``last_run``) and announced with ``inventory_import_done``.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_core/ffl_core/ffl_core/doctype/inventory_import/inventory_import.py:54`",
+        "operationId": "ffl_core.ffl_core.doctype.inventory_import.inventory_import.start",
+        "responses": {
+          "200": {
+            "description": "{queued: True}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "description": "\"preview\" reads every row and writes nothing; \"import\" creates the missing items and posts the opening stock."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.firearm.available_serials_for_items": {
       "post": {
         "tags": [
@@ -22129,7 +22203,7 @@
           "ffl_integrations"
         ],
         "summary": "Import / re-sync the FastBound bound book into ERPNext.",
-        "description": "Re-running is a SYNC: already-imported guns (matched by FastBound id) are re-synced\nfrom FastBound, which stays authoritative. A corrected maker/importer re-stamps the\nSerial No; a corrected serial renames it (stock + A&D follow); a corrected\nmodel/caliber re-keys the gun onto the right Item (reverse + re-create). Every\nstructural fix is listed in `corrected`; a gun that can't be safely auto-moved\n(sold/transferred — not a clean in-stock import) is listed in `regroup_needed`.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/importer.py:97`",
+        "description": "Re-running is a SYNC: already-imported guns (matched by FastBound id) are re-synced\nfrom FastBound, which stays authoritative. A corrected maker/importer re-stamps the\nSerial No; a corrected serial renames it (stock + A&D follow); a corrected\nmodel/caliber re-keys the gun onto the right Item (reverse + re-create). Every\nstructural fix is listed in `corrected`; a gun that can't be safely auto-moved\n(sold/transferred — not a clean in-stock import) is listed in `regroup_needed`.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/importer.py:101`",
         "operationId": "ffl_integrations.fastbound.importer.import_bound_book",
         "responses": {
           "200": {
@@ -22180,6 +22254,13 @@
                     "type": "integer",
                     "description": "1 (default) imports only CURRENT INVENTORY — guns FastBound marks disposed (sold) or deleted are skipped (the importer creates acquisitions + receipts, not dispositions, so importing a sold gun would wrongly re-stock it). Pass 0 to import the entire historical book. Guns the book records with no serial (\"NONE MARKED\", \"NSN\", ...) or with the same serial as another in-stock item are each imported as their own gun under a tagged Serial No (\"<serial> (FB <item number>)\"); the serial as the book writes it is kept in Serial No.ledger_serial.",
                     "default": 1
+                  },
+                  "cutover_date": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The day the bound book's inventory is counted as of (default today). Each new gun posts as an opening entry on it: stock debited, the company's Temporary Opening account credited. A future, frozen or closed date is refused."
                   }
                 }
               }
@@ -22194,7 +22275,7 @@
           "ffl_integrations"
         ],
         "summary": "Move one in-stock firearm serial from its current Item to `target_item`,",
-        "description": "keeping the SAME Serial No and FFL Acquisition records — so the gun's price,\nphotos, condition, maker/importer/model/caliber, A&D history and FastBound\nlinkage all survive (nothing is deleted, so nothing can be dropped).\n\nERPNext ties a serial to one Item, so the stock moves with two ledger legs:\nissue the serial out of the old Item, flip the serial's item_code, then receive\nit into the target. The A&D record's `item` is re-pointed in place. FastBound is\nNOT touched — reassign is a POS-internal re-bucketing; the bound book only changes\non an explicit serial edit. A per-gun WooCommerce listing, where the gun has one,\nIS delisted: it belonged to the old Item, and leaving it live sells the same rifle\ntwice. Whitelisted for the Serial No form's \"Reassign Item\" action, for resolving\nthe sync's `regroup_needed` list, and for the Woo webhook's declared cross-Item\npick (`ffl_woo_sync.woocommerce.tasks.rebucket_and_apply_serial_task`).\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/importer.py:453`",
+        "description": "keeping the SAME Serial No and FFL Acquisition records — so the gun's price,\nphotos, condition, maker/importer/model/caliber, A&D history and FastBound\nlinkage all survive (nothing is deleted, so nothing can be dropped).\n\nERPNext ties a serial to one Item, so the stock moves with two ledger legs:\nissue the serial out of the old Item, flip the serial's item_code, then receive\nit into the target. The A&D record's `item` is re-pointed in place. FastBound is\nNOT touched — reassign is a POS-internal re-bucketing; the bound book only changes\non an explicit serial edit. A per-gun WooCommerce listing, where the gun has one,\nIS delisted: it belonged to the old Item, and leaving it live sells the same rifle\ntwice. Whitelisted for the Serial No form's \"Reassign Item\" action, for resolving\nthe sync's `regroup_needed` list, and for the Woo webhook's declared cross-Item\npick (`ffl_woo_sync.woocommerce.tasks.rebucket_and_apply_serial_task`).\n\n**Auth (derived from code):** Requires write permission on Serial No (Frappe DocType permission check).\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/importer.py:534`",
         "operationId": "ffl_integrations.fastbound.importer.reassign_serial_to_item",
         "responses": {
           "200": {
@@ -22235,6 +22316,68 @@
                   "serial",
                   "target_item"
                 ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.fastbound.importer.start_import": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "Run import_bound_book in the background (a whole book outlasts a web",
+        "description": "request). The result lands in FastBound Settings.last_import_result and is\nannounced with the ``fastbound_import_done`` event.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/fastbound/importer.py:229`",
+        "operationId": "ffl_integrations.fastbound.importer.start_import",
+        "responses": {
+          "200": {
+            "description": "{queued: True}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "page_size": {
+                    "type": "integer",
+                    "description": "FastBound page size per fetch.",
+                    "default": 100
+                  },
+                  "dry_run": {
+                    "type": "integer",
+                    "description": "1 counts and lists what would happen, writing nothing.",
+                    "default": 0
+                  },
+                  "aggregate_by": {
+                    "type": "string",
+                    "description": "\"auto\" or \"model\", as in import_bound_book."
+                  },
+                  "cutover_date": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The day the bound book is counted as of (default today)."
+                  }
+                }
               }
             }
           }
