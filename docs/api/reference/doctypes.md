@@ -1809,8 +1809,8 @@ app: `ffl_woo_sync` · module: FFL Woo Sync · single · roles: System Manager
 | field | type | label | reqd | options |
 |---|---|---|---|---|
 | `store_url` | Data | Store URL | ✓ | URL |
-| `consumer_key` | Password | Consumer key | ✓ |  |
-| `consumer_secret` | Password | Consumer secret | ✓ |  |
+| `consumer_key` | Password | Consumer key |  |  |
+| `consumer_secret` | Password | Consumer secret |  |  |
 | `webhook_secret` | Password | Webhook secret |  |  |
 | `outbound_webhook_secret` | Password | Outbound status webhook secret |  |  |
 | `send_customer_events` | Check | Send customer emails to the shop |  |  |
@@ -1818,6 +1818,7 @@ app: `ffl_woo_sync` · module: FFL Woo Sync · single · roles: System Manager
 | `reconcile_frequency` | Select | Reconcile frequency |  | Every 2 Hours, Daily, Weekly, Disabled |
 | `request_timeout_seconds` | Int | Request Timeout (s) |  |  |
 | `follow_category_tree` | Check | Follow the catalog category tree |  |  |
+| `connect_status` | Small Text | Connect |  |  |
 | `last_push_at` | Datetime | Last push |  |  |
 | `last_push_count` | Int | Items pushed |  |  |
 | `last_reconcile_at` | Datetime | Last reconcile |  |  |

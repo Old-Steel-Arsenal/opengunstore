@@ -24,6 +24,7 @@
   "follow_category_tree",
   "tab_status",
   "section_status",
+  "connect_status",
   "last_push_at",
   "last_push_count",
   "last_reconcile_at",
@@ -58,14 +59,12 @@
    "description": "WooCommerce \u2192 Settings \u2192 Advanced \u2192 REST API.",
    "fieldname": "consumer_key",
    "fieldtype": "Password",
-   "label": "Consumer key",
-   "reqd": 1
+   "label": "Consumer key"
   },
   {
    "fieldname": "consumer_secret",
    "fieldtype": "Password",
-   "label": "Consumer secret",
-   "reqd": 1
+   "label": "Consumer secret"
   },
   {
    "fieldname": "section_webhook",
@@ -147,6 +146,12 @@
    "label": "Status"
   },
   {
+   "fieldname": "connect_status",
+   "fieldtype": "Small Text",
+   "label": "Connect",
+   "read_only": 1
+  },
+  {
    "fieldname": "last_push_at",
    "fieldtype": "Datetime",
    "label": "Last push",
@@ -183,7 +188,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-07 12:00:00.000000",
+ "modified": "2026-11-20 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Woo Sync",
  "name": "WooCommerce Settings",
