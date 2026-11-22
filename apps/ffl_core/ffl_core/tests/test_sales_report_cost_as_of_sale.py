@@ -33,6 +33,7 @@ BUYER = "_Test SRAS Buyer"
 TRANSFEREE = "_Test SRAS Transferee"
 CONSIGNOR = "_Test SRAS Consignor"
 ACC_COST = 20.0
+BACK_ROOM = "SRAS Back Room"
 
 
 class CostAsOfSale(FrappeTestCase):
@@ -49,6 +50,10 @@ class CostAsOfSale(FrappeTestCase):
 		frappe.defaults.set_user_default("Company", cls.company)
 		cls.warehouse = default_stock_warehouse(cls.company)
 		cls.custody = ensure_custody_warehouse(cls.company)
+		cls.back_room = frappe.db.get_value("Warehouse", {"company": cls.company, "warehouse_name": BACK_ROOM}) \
+			or frappe.get_doc({"doctype": "Warehouse", "warehouse_name": BACK_ROOM, "company": cls.company,
+				"parent_warehouse": frappe.db.get_value("Warehouse", cls.warehouse, "parent_warehouse")}).insert(
+					ignore_permissions=True).name
 		if not frappe.db.exists("Supplier Group", "Distributor"):
 			frappe.get_doc({"doctype": "Supplier Group", "supplier_group_name": "Distributor",
 				"parent_supplier_group": "All Supplier Groups", "is_group": 0}).insert(ignore_permissions=True)
@@ -130,6 +135,14 @@ class CostAsOfSale(FrappeTestCase):
 
 	def _sell(self, serial, net, *extra_rows, warehouse=None):
 		return self._invoice([self._gun_row(serial, net, warehouse), *extra_rows])
+
+	def _bill(self, serial, net):
+		"""Invoiced now, the gun handed over later (update_stock=0): no stock moves with the sale."""
+		return self._invoice([self._gun_row(serial, net)], update_stock=0)
+
+	def _move(self, serial, src, dst):
+		from ffl_core.firearm import transfer_serial
+		return transfer_serial(GUN, serial, src, dst)
 
 	def _return(self, si, serial, update_stock=1):
 		return self._invoice([self._gun_row(serial, si.items[0].rate, qty=-1)], is_return=1,
@@ -219,6 +232,7 @@ class CostAsOfSale(FrappeTestCase):
 		self._receive(serial, 700)
 		refund = self._return(sale, serial, update_stock=0)   # money back, the gun stays sold
 		self.assertCost(refund.name, -500.0)
+		self.assertAlmostEqual(self._order_row(sale.name)["cost"] + self._order_row(refund.name)["cost"], 0.0)
 
 	def test_a_return_with_the_gun_reverses_its_sale(self):
 		serial = self._testMethodName[:40]
@@ -235,6 +249,54 @@ class CostAsOfSale(FrappeTestCase):
 		sale = self._pos_sale(serial, 990)
 		self.assertEqual(frappe.db.get_value("POS Invoice", sale.name, "consolidated_invoice"), None)
 		self.assertCost(sale.name, 640.0)
+
+	# --- moves and revaluations are not receipts ----------------------------------------------------
+
+	def test_a_transfer_gun_moved_into_custody_after_its_sale_is_no_gap(self):
+		serial = self._testMethodName[:40]
+		self._receive(serial, 0, is_ffl_transfer=1, ffl_transfer_for_customer=TRANSFEREE,
+			ffl_acquisition_type="Transfer")              # landed in sellable stock by hand
+		self.assertEqual(frappe.db.get_value("Serial No", serial, "is_transfer_gun"), 1)
+		ticket = self._bill(serial, 0)
+		self._move(serial, self.warehouse, self.custody)
+		self.assertCost(ticket.name, 0.0)
+
+	def test_the_stores_own_gun_moved_into_custody_before_its_sale_keeps_its_cost(self):
+		serial = self._testMethodName[:40]
+		self._receive(serial, 600)
+		self._move(serial, self.warehouse, self.custody)
+		sale = self._sell(serial, 950, warehouse=self.custody)
+		self.assertCost(sale.name, 600.0)
+
+	def test_a_placeholder_gun_moved_after_its_sale_still_reads_the_serials_cost(self):
+		serial = self._testMethodName[:40]
+		self._receive(serial, 0.01)
+		frappe.db.set_value("Serial No", serial, "purchase_rate", 900, update_modified=False)
+		sale = self._bill(serial, 1200)
+		self._move(serial, self.warehouse, self.back_room)
+		self.assertCost(sale.name, 900.0, placeholder=True)
+
+	def test_a_cost_correction_between_sale_and_hand_over_is_not_a_receipt(self):
+		from ffl_core.api.cost_correction import correct_serial_cost
+		serial = self._testMethodName[:40]
+		self._receive(serial, 0.01)
+		frappe.db.set_value("Serial No", serial, "purchase_rate", 600, update_modified=False)
+		sale = self._bill(serial, 1000)
+		correct_serial_cost(serial, 700, "supplier invoice found")
+		self.assertCost(sale.name, 700.0, placeholder=True)
+
+	# --- a sale made before the gun arrived ----------------------------------------------------------
+
+	def test_a_gun_invoiced_before_it_arrived_costs_its_arrival(self):
+		from ffl_core.firearm import issue_serial
+		serial = self._testMethodName[:40]
+		frappe.get_doc({"doctype": "Serial No", "serial_no": serial, "item_code": GUN,
+			"company": self.company}).insert(ignore_permissions=True)
+		order = self._bill(serial, 1100)                  # T0: invoiced, the gun still on its way
+		self._receive(serial, 620)                        # T1: it arrives
+		issue_serial(GUN, serial, self.warehouse)         # T2: handed over
+		self._receive(serial, 900)                        # T3: bought back
+		self.assertCost(order.name, 620.0)
 
 	# --- placeholders and confirmed-free guns ------------------------------------------------------
 
@@ -264,6 +326,23 @@ class CostAsOfSale(FrappeTestCase):
 		sale = self._sell(serial, 900)
 		self._receive(serial, 800)
 		self.assertCost(sale.name, 0.01, missing=True)
+
+	def test_a_confirmed_free_gun_bought_back_leaves_its_old_sale_a_gap(self):
+		serial = self._testMethodName[:40]
+		self._receive(serial, 0, row={"ffl_zero_cost_confirmed": 1, "ffl_zero_cost_reason": "Supplier gift"})
+		sale = self._sell(serial, 300)
+		self._receive(serial, 450)
+		self.assertCost(sale.name, 0.0, missing=True)
+
+	def test_an_old_placeholder_transfer_bought_back_keeps_its_placeholder(self):
+		"""A transfer gun that came in at a $10 placeholder before custody existed:
+		after the store buys it, the old ticket reads the ledger's $10."""
+		serial = self._testMethodName[:40]
+		self._receive(serial, 10, is_ffl_transfer=1, ffl_transfer_for_customer=TRANSFEREE,
+			ffl_acquisition_type="Transfer")
+		ticket = self._sell(serial, 0)
+		self._receive(serial, 800)
+		self.assertCost(ticket.name, 10.0)
 
 	def test_a_gun_confirmed_free_costs_nothing_and_is_no_gap(self):
 		serial = self._testMethodName[:40]
