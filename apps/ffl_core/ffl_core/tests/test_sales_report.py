@@ -1150,6 +1150,8 @@ class SalesReportBackCompat(FrappeTestCase):
 			"channel": "POS", "customer": "C1", "category": "Ammunition", "qty": 2.0,
 			"net_sales": 100.0, "total": 108.0, "cost": 60.0, "profit": 40.0,
 			"margin": 40.0, "missing_cost": False,
+			# Data-only: a gun costed from its Serial No over a placeholder ledger value.
+			"placeholder_cost": False,
 			"order_ref": "", "serials": "", "category_detail": "Ammunition",
 			"is_consignment": False,
 			# Data-only trade-in keys (no column) so the

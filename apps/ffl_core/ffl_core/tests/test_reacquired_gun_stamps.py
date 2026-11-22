@@ -88,8 +88,9 @@ class ReacquiredGun(FrappeTestCase):
 			base_net_amount=row.base_net_amount, consignment_commission_pct=row.get("consignment_commission_pct"))
 		lines = {si.name: [line]}
 		serial_cost, consignment, _ = sales_report._fetch_serial_facts(lines)
-		cost, missing = sales_report._line_cost(line, sales_report._fetch_item_meta(lines),
-			serial_cost, consignment)
+		meta = sales_report._fetch_item_meta(lines)
+		as_of = sales_report._fetch_cost_as_of_sale([{"name": si.name, "voucher_type": "Sales Invoice"}], lines, meta)
+		cost, missing, _ = sales_report._line_cost(line, meta, serial_cost, consignment, as_of=as_of)
 		return round(cost, 2), missing, bool(sales_report._consigned(line, [serial], consignment))
 
 	def _receive(self, supplier, serial, rate, item=ITEM, **extra):

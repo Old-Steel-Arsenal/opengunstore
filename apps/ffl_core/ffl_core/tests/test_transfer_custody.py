@@ -1043,7 +1043,7 @@ class TransferRowsCostNothingInTheSalesReport(FrappeTestCase):
 	def test_a_flagged_transfer_gun_costs_zero_despite_a_legacy_placeholder(self):
 		"""The exact incident shape: the serial still carries $10 from a receive
 		that predates the rate lock, and the report must ignore it."""
-		cost, missing = self._cost(
+		cost, missing, _ = self._cost(
 			serial="SN-XFER", net=self.NET_ZERO,
 			serial_cost={"SN-XFER": self.PLACEHOLDER_COST},
 			transfer_serials={"SN-XFER"})
@@ -1051,7 +1051,7 @@ class TransferRowsCostNothingInTheSalesReport(FrappeTestCase):
 		self.assertFalse(missing)
 
 	def test_a_flagged_transfer_gun_produces_no_negative_profit_row(self):
-		cost, _ = self._cost(
+		cost, _, _ = self._cost(
 			serial="SN-XFER", net=self.NET_ZERO,
 			serial_cost={"SN-XFER": self.PLACEHOLDER_COST},
 			transfer_serials={"SN-XFER"})
@@ -1061,7 +1061,7 @@ class TransferRowsCostNothingInTheSalesReport(FrappeTestCase):
 		"""The heuristic keyed on net == 0 and silently gave up otherwise. The
 		flag does not care what the line netted — which is what makes it a real
 		classification rather than a coincidence detector."""
-		cost, missing = self._cost(
+		cost, missing, _ = self._cost(
 			serial="SN-XFER", net=25.0,
 			serial_cost={"SN-XFER": self.PLACEHOLDER_COST},
 			transfer_serials={"SN-XFER"})
@@ -1072,13 +1072,13 @@ class TransferRowsCostNothingInTheSalesReport(FrappeTestCase):
 		"""The control that keeps the flag honest: zeroing cost for everything
 		would hide every genuine missing-cost data gap the report exists to
 		surface."""
-		_, missing = self._cost(
+		_, missing, _ = self._cost(
 			serial="SN-REAL", net=650.0, serial_cost={}, transfer_serials=set(),
 			is_ffl_transfer=False)
 		self.assertTrue(missing)
 
 	def test_an_ordinary_gun_still_reports_its_real_cost(self):
-		cost, missing = self._cost(
+		cost, missing, _ = self._cost(
 			serial="SN-REAL", net=650.0, serial_cost={"SN-REAL": 420.0},
 			transfer_serials=set(), is_ffl_transfer=False)
 		self.assertEqual(cost, 420.0)
@@ -1087,7 +1087,7 @@ class TransferRowsCostNothingInTheSalesReport(FrappeTestCase):
 	def test_a_mixed_invoice_charges_only_the_real_gun(self):
 		"""A transfer and a real sale on one ticket: the customer's gun costs
 		nothing, the store's gun costs what it cost."""
-		cost, missing = self._cost(
+		cost, missing, _ = self._cost(
 			serial="SN-XFER\nSN-REAL", net=650.0,
 			serial_cost={"SN-XFER": self.PLACEHOLDER_COST, "SN-REAL": 420.0},
 			transfer_serials={"SN-XFER"})
