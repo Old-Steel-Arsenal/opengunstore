@@ -44,7 +44,10 @@ No COGS is stored on invoice lines, so cost is computed per line:
                     invoice with no posting_time is placed at its creation. A
                     return is costed as of the sale it returns. A later
                     acquisition of the same serial (bought back, traded in)
-                    never re-costs an earlier sale. The stay's acquisition in
+                    never re-costs an earlier sale. A gun re-invoiced at $0 to
+                    the customer it was already sold to (sent back in transit,
+                    taken in again, sent out once more) costs 0, no flag: its
+                    sale carries the cost. The stay's acquisition in
                     a custody warehouse is a customer's gun: cost 0, not a gap.
                     The Serial No's own marks (purchase_rate, is_transfer_gun,
                     zero_cost_confirmed) describe the gun's LATEST stay, so
@@ -529,6 +532,79 @@ def _sale_moments(headers) -> dict:
 
 
 def _fetch_cost_as_of_sale(headers, lines_by_invoice, item_meta) -> dict:
+	"""{(invoice, SERIAL): {"rate", "missing", "placeholder"}} — each sold
+	gun's cost as it stood when THAT sale was made (_ledger_cost_as_of_sale),
+	except a gun re-invoiced at no charge after its sale (_reissued_at_no_charge):
+	that sale already carries its cost, so the re-invoice costs 0 and is no gap."""
+	out = _ledger_cost_as_of_sale(headers, lines_by_invoice, item_meta)
+	for key in _reissued_at_no_charge(headers, lines_by_invoice, item_meta):
+		out[key] = {"rate": 0.0, "missing": False, "placeholder": False}
+	return out
+
+
+def _reissued_at_no_charge(headers, lines_by_invoice, item_meta) -> set:
+	"""{(invoice, SERIAL)} — a firearm serial on a $0 line of a non-return
+	invoice that re-invoices a gun already sold to the same customer: a gun
+	sent back in transit, taken in again by hand, and sent out once more on a
+	$0 invoice. The sale is the earlier line, and only it carries the cost.
+
+	The earlier line is a priced line (base_net_amount > 0) of a submitted,
+	non-return invoice this report counts as a sale — a Sales Invoice that is
+	not a consolidation, a POS Invoice that is not a counter pickup's ticket —
+	to the same customer, made before this one (_sale_moments), whose serial no
+	credit note of that invoice took back. Its period does not matter: it may
+	fall before the report's. Serials compare upper-cased, like the ledger's."""
+	customer_of = {h["name"]: h.get("customer") for h in headers if not cint(h.get("is_return"))}
+	free = {
+		(inv, sn.upper()): customer_of[inv]
+		for inv, ls in (lines_by_invoice or {}).items() if customer_of.get(inv)
+		for l in ls
+		if flt(l.get("base_net_amount")) == 0 and (item_meta.get(l.get("item_code")) or {}).get("is_firearm")
+		for sn in split_serials(l.get("serial_no"))
+	}
+	if not free:
+		return set()
+	serials = {sn for _inv, sn in free}
+	params = {"customers": tuple(sorted(set(free.values())))}
+	likes = []
+	for i, sn in enumerate(sorted(serials)):
+		params[f"s{i}"] = "%{}%".format(sn.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_"))
+		likes.append(f"i.serial_no like %(s{i})s")
+	originals = []  # (doctype, invoice, SERIAL, customer)
+	for doctype, counted in ((_SI, "p.is_consolidated = 0"), (_POS, (
+			"coalesce(p.ffl_counter_order, '') = ''" if _has_column(_POS, "ffl_counter_order") else "1 = 1"))):
+		# doctype and counted are module constants, never caller input.
+		# lazy: one LIKE per $0 serial over the unindexed serial_no text, fine for a
+		# store's handful of $0 gun lines a period; an indexed serial→sale-line map if that grows.
+		for r in frappe.db.sql(f"""
+				select p.name, p.customer, i.serial_no
+				from `tab{doctype} Item` i join `tab{doctype}` p on p.name = i.parent
+				where p.docstatus = 1 and p.is_return = 0 and i.base_net_amount > 0 and {counted}
+					and p.customer in %(customers)s and ({" or ".join(likes)})""", params, as_dict=True):
+			originals += [(doctype, r.name, sn.upper(), r.customer)
+				for sn in split_serials(r.serial_no) if sn.upper() in serials]
+	if not originals:
+		return set()
+	returned = set()
+	for doctype in {d for d, *_rest in originals}:
+		for r in frappe.db.sql(f"""
+				select p.return_against, i.serial_no
+				from `tab{doctype} Item` i join `tab{doctype}` p on p.name = i.parent
+				where p.docstatus = 1 and p.is_return = 1 and p.return_against in %(against)s""",
+				{"against": tuple({o for d, o, *_rest in originals if d == doctype})}, as_dict=True):
+			returned.update((doctype, r.return_against, sn.upper()) for sn in split_serials(r.serial_no))
+	moments = _sale_moments([{"voucher_type": d, "name": o} for d, o, *_rest in originals]
+		+ [h for h in headers if h["name"] in {inv for inv, _sn in free}])
+	return {
+		(inv, sn) for (inv, sn), customer in free.items()
+		if moments.get(inv) and any(
+			o_sn == sn and o_customer == customer and (d, o, o_sn) not in returned
+			and moments.get(o) and moments[o] < moments[inv]
+			for d, o, o_sn, o_customer in originals)
+	}
+
+
+def _ledger_cost_as_of_sale(headers, lines_by_invoice, item_meta) -> dict:
 	"""{(invoice, SERIAL): {"rate", "missing", "placeholder"}} — each sold
 	gun's cost as it stood when THAT sale was made, for every firearm serial
 	with an acquisition in the ledger (_entry_kind).
