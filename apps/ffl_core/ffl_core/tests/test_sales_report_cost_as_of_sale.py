@@ -140,6 +140,11 @@ class CostAsOfSale(FrappeTestCase):
 		"""Invoiced now, the gun handed over later (update_stock=0): no stock moves with the sale."""
 		return self._invoice([self._gun_row(serial, net)], update_stock=0)
 
+	def _new_serial(self, serial):
+		"""A Serial No on file before its gun has arrived (the order is taken first)."""
+		frappe.get_doc({"doctype": "Serial No", "serial_no": serial, "item_code": GUN,
+			"company": self.company}).insert(ignore_permissions=True)
+
 	def _move(self, serial, src, dst):
 		from ffl_core.firearm import transfer_serial
 		return transfer_serial(GUN, serial, src, dst)
@@ -290,13 +295,63 @@ class CostAsOfSale(FrappeTestCase):
 	def test_a_gun_invoiced_before_it_arrived_costs_its_arrival(self):
 		from ffl_core.firearm import issue_serial
 		serial = self._testMethodName[:40]
-		frappe.get_doc({"doctype": "Serial No", "serial_no": serial, "item_code": GUN,
-			"company": self.company}).insert(ignore_permissions=True)
+		self._new_serial(serial)
 		order = self._bill(serial, 1100)                  # T0: invoiced, the gun still on its way
 		self._receive(serial, 620)                        # T1: it arrives
 		issue_serial(GUN, serial, self.warehouse)         # T2: handed over
 		self._receive(serial, 900)                        # T3: bought back
 		self.assertCost(order.name, 620.0)
+
+	def test_a_gun_corrected_before_hand_over_costs_what_it_was_handed_over_at(self):
+		from ffl_core.api.cost_correction import correct_serial_cost
+		from ffl_core.firearm import issue_serial
+		serial = self._testMethodName[:40]
+		self._new_serial(serial)
+		order = self._bill(serial, 1100)                  # invoiced, the gun still on its way
+		self._receive(serial, 600)                        # it arrives
+		correct_serial_cost(serial, 700, "supplier invoice found")
+		issue_serial(GUN, serial, self.warehouse)         # handed over
+		self._receive(serial, 900)                        # bought back later
+		self.assertCost(order.name, 700.0)
+
+	def test_a_gun_invoiced_before_it_arrived_and_not_handed_over_costs_its_latest_value(self):
+		from ffl_core.api.cost_correction import correct_serial_cost
+		serial = self._testMethodName[:40]
+		self._new_serial(serial)
+		order = self._bill(serial, 1100)
+		self._receive(serial, 600)
+		correct_serial_cost(serial, 700, "supplier invoice found")
+		self.assertCost(order.name, 700.0)
+
+	def test_a_gun_out_of_stock_before_its_first_receipt_is_a_gap(self):
+		"""The gun left stock before the ledger ever took it in: the receipt
+		that put it on the shelf is missing (stood in for here by striking the
+		first receipt's bundle, as for a gun received before bundles existed).
+		The first receipt after the sale is a later stay, not this sale's."""
+		serial = self._testMethodName[:40]
+		first = self._receive(serial, 500)
+		sale = self._sell(serial, 900)
+		frappe.db.sql("""update `tabSerial and Batch Bundle` set is_cancelled = 1
+			where voucher_type = 'Purchase Receipt' and voucher_no = %s""", first.name)
+		self._receive(serial, 650)
+		self.assertCost(sale.name, 650.0, missing=True)   # the Serial No's cost, flagged
+
+	def test_a_sale_with_no_posting_time_still_reports(self):
+		serial = self._testMethodName[:40]
+		self._receive(serial, 480)
+		sale = self._sell(serial, 900)
+		refund = self._return(sale, serial, update_stock=0)
+		frappe.db.sql("update `tabSales Invoice` set posting_time = null where name in %s", ((sale.name, refund.name),))
+		self.assertCost(sale.name, 480.0)
+		self.assertCost(refund.name, -480.0)
+
+	def test_a_transfer_tickets_net_zero_does_not_clear_a_ledger_gap(self):
+		serial = self._testMethodName[:40]
+		self._receive(serial, 0.01)
+		ticket = self._pos_sale(serial, 0)
+		frappe.db.set_value("POS Invoice", ticket.name, "is_ffl_transfer", 1, update_modified=False)
+		self._receive(serial, 800)                        # bought back: the marks are the new stay's
+		self.assertCost(ticket.name, 0.01, missing=True)
 
 	# --- placeholders and confirmed-free guns ------------------------------------------------------
 
