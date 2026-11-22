@@ -27,19 +27,22 @@ No COGS is stored on invoice lines, so cost is computed per line:
   - firearm line  → Σ over the line's serials of the gun's cost AS OF THIS SALE,
                     read from the stock ledger's Serial and Batch
                     Entries. An acquisition (Purchase Receipt, Material
-                    Receipt) opens a stay; a move (Material Transfer, cost
-                    correction) carries or restates its value. The sale's stay
-                    is the last acquisition at or before it, and the cost is
-                    the incoming_rate of that stay's last inward entry at or
-                    before the sale. With none before it, the first
-                    acquisition after the sale is the delivery that filled the
-                    order — costed by the stay's last inward entry before the
-                    gun was handed over (its first outward entry that is not a
-                    move), or before now while still in stock — unless the gun
+                    Receipt, a count that finds a gun not in stock) opens a
+                    stay; a move (Material Transfer, a cost correction or
+                    count with a leg each way) carries or restates its value.
+                    The sale's stay is the last acquisition at or before it,
+                    and the cost is the incoming_rate of that stay's last
+                    inward entry at or before the sale. With none before it,
+                    the gun was invoiced before it arrived and is costed the
+                    same way as of its hand-over (its first outward entry
+                    after that acquisition that is not a move's leg or a
+                    count), or as of now while still in stock — unless the gun
                     had any outward entry before that acquisition: then its
                     receipt was never recorded, and the line is costed from
-                    purchase_rate and flagged missing_cost. A return is costed
-                    as of the sale it returns. A later
+                    purchase_rate and flagged missing_cost (a customer's gun
+                    handed over at $0 on a transfer ticket: 0, no flag). An
+                    invoice with no posting_time is placed at its creation. A
+                    return is costed as of the sale it returns. A later
                     acquisition of the same serial (bought back, traded in)
                     never re-costs an earlier sale. The stay's acquisition in
                     a custody warehouse is a customer's gun: cost 0, not a gap.
@@ -465,25 +468,30 @@ def _fetch_serial_facts(lines_by_invoice) -> tuple[dict, dict, set]:
 	return serial_cost, consignment, transfer_serials
 
 
-# What an inward Serial and Batch Entry is, by its voucher. An ACQUISITION
-# starts a stay of the gun in the store (it was bought, traded in, taken in on
-# transfer or consignment); a MOVE only carries or restates that stay's value
-# (a warehouse transfer, a cost correction). Inward bundles of the sales
-# vouchers (a return, with or without the gun) are the same stay coming home at
-# the cost it left with: they are not read at all. Any other inward voucher is
+# What a Serial and Batch Entry is, by its voucher. An ACQUISITION starts a
+# stay of the gun in the store (it was bought, traded in, taken in on transfer
+# or consignment, or found in a count); a MOVE only carries or restates that
+# stay's value (a warehouse transfer, a cost correction or count that found it
+# where it was) and has a leg each way. Inward bundles of the sales vouchers (a
+# return, with or without the gun) are the same stay coming home at the cost it
+# left with: they are not read at all. Any other inward voucher is
 # unclassified: none of the POS's own paths make one for a serialized firearm.
 _ACQUISITION, _MOVE = "acquisition", "move"
 _SALES_VOUCHERS = ("Sales Invoice", "POS Invoice", "Delivery Note")
 
 
-def _inward_kind(entry) -> str | None:
-	"""_ACQUISITION, _MOVE, or None for an inward voucher this report does not classify."""
+def _entry_kind(entry, both_legs) -> str | None:
+	"""_ACQUISITION, _MOVE, or None (an inward voucher this report does not
+	classify; on the outward side, the gun leaving stock). A Stock
+	Reconciliation is a move only when it carries the serial both out and in
+	(*both_legs*): an inward leg alone took in a gun that was not in stock, an
+	outward leg alone took one out."""
 	if entry.voucher_type == "Purchase Receipt":
 		return _ACQUISITION
 	if entry.voucher_type == "Stock Entry":
 		return {"Material Receipt": _ACQUISITION, "Material Transfer": _MOVE}.get(entry.stock_entry_purpose)
 	if entry.voucher_type == "Stock Reconciliation" and entry.reconciliation_purpose == "Stock Reconciliation":
-		return _MOVE
+		return _MOVE if both_legs else _ACQUISITION if entry.type_of_transaction == "Inward" else None
 	return None
 
 
@@ -493,7 +501,7 @@ def _sale_moments(headers) -> dict:
 	returns (return_against), so it reverses exactly what that sale cost even
 	when the gun was bought back in between; a credit note with no original
 	keeps its own moment. creation breaks a tie inside one second; an invoice
-	with no posting_time is read as posted at the start of its day."""
+	with no posting_time is read as posted when it was created."""
 	names: dict[str, set] = {}
 	for h in headers:
 		names.setdefault(h["voucher_type"], set()).add(h["name"])
@@ -502,7 +510,7 @@ def _sale_moments(headers) -> dict:
 	def read(doctype, wanted):
 		# doctype is one of the two module constants, never caller input.
 		return frappe.db.sql(f"""
-			select name, timestamp(posting_date, coalesce(posting_time, '00:00:00')) as at, creation, return_against
+			select name, coalesce(timestamp(posting_date, posting_time), creation) as at, creation, return_against
 			from `tab{doctype}` where name in %(names)s""", {"names": tuple(wanted)}, as_dict=True)
 
 	for doctype, wanted in names.items():
@@ -523,7 +531,7 @@ def _sale_moments(headers) -> dict:
 def _fetch_cost_as_of_sale(headers, lines_by_invoice, item_meta) -> dict:
 	"""{(invoice, SERIAL): {"rate", "missing", "placeholder"}} — each sold
 	gun's cost as it stood when THAT sale was made, for every firearm serial
-	with an acquisition in the ledger.
+	with an acquisition in the ledger (_entry_kind).
 
 	The sale's stay is the one its last acquisition at or before the sale
 	opened; its cost is the incoming_rate of the stay's last inward entry
@@ -534,25 +542,28 @@ def _fetch_cost_as_of_sale(headers, lines_by_invoice, item_meta) -> dict:
 	never recorded. The ledger tells them apart: any outward entry before the
 	first acquisition after the sale means the gun had already left stock
 	once, so that acquisition is a later stay — the sale is costed from the
-	Serial No and flagged missing ("rate": None). Otherwise that acquisition
-	is the delivery that filled the order, and the cost is the stay's last
-	inward entry before the gun was handed over (its first outward entry that
-	is not a move), or before now while it is still in stock.
+	Serial No and flagged missing ("rate": None; _line_cost costs a customer's
+	gun handed over at $0 on a transfer ticket at 0). Otherwise the order was
+	filled from stock received later, and it is costed the same way as of the
+	hand-over instead of the sale: the gun's first outward entry after that
+	acquisition that delivers it (not a move's leg, not a count that found it
+	gone), or now while it is still in stock.
 
 	Custody is the stay's acquisition's warehouse: a customer's gun taken in
-	on transfer costs 0, wherever it was moved to later. The Serial No marks are this stay's only while no later
-	acquisition exists (moves do not count): then is_transfer_gun reads 0, and
-	a ledger value at or under _PLACEHOLDER_COST_MAX reads 0 when confirmed
-	free, else purchase_rate with placeholder set. After a later acquisition a
-	placeholder ledger value stands and is missing.
+	on transfer costs 0, wherever it was moved to later. The Serial No marks
+	are this stay's only while no later acquisition exists (moves do not
+	count): then is_transfer_gun reads 0, and a ledger value at or under
+	_PLACEHOLDER_COST_MAX reads 0 when confirmed free, else purchase_rate with
+	placeholder set. After a later acquisition a placeholder ledger value
+	stands and is missing.
 
-	A serial with no acquisition, or with an unclassified inward voucher
-	(_inward_kind), is absent: _line_cost costs it from the Serial No.
+	A serial with no acquisition, or with an unclassified inward voucher, is
+	absent: _line_cost costs it from the Serial No.
 
-	Two bulk reads — the serials' standing inward entries, the Serial No marks
-	— plus one per invoice doctype for the sale moments. Keys are upper-cased:
-	the database matches serials without regard to case, and a sale line may
-	spell one differently from its Serial No."""
+	Two bulk reads — the serials' standing entries both ways, the Serial No
+	marks — plus one per invoice doctype for the sale moments. Keys are
+	upper-cased: the database matches serials without regard to case, and a
+	sale line may spell one differently from its Serial No."""
 	sold = {
 		(inv, sn.upper())
 		for inv, ls in (lines_by_invoice or {}).items()
@@ -567,7 +578,7 @@ def _fetch_cost_as_of_sale(headers, lines_by_invoice, item_meta) -> dict:
 	outwards: dict[str, list] = {}  # every outward, whatever its voucher
 	for e in frappe.db.sql("""
 			select e.serial_no, e.incoming_rate, coalesce(nullif(e.warehouse, ''), b.warehouse) as warehouse,
-				b.posting_datetime, b.creation, b.voucher_type,
+				b.posting_datetime, b.creation, b.voucher_type, b.voucher_no,
 				se.purpose as stock_entry_purpose, sr.purpose as reconciliation_purpose, b.type_of_transaction
 			from `tabSerial and Batch Bundle` b
 			join `tabSerial and Batch Entry` e on e.parent = b.name
@@ -579,9 +590,13 @@ def _fetch_cost_as_of_sale(headers, lines_by_invoice, item_meta) -> dict:
 				and (b.type_of_transaction = 'Outward' or b.voucher_type not in %(sales)s)
 			order by b.posting_datetime, b.creation""",
 			{"serials": tuple(serials), "sales": _SALES_VOUCHERS}, as_dict=True):
-		e.kind = _inward_kind(e)
 		e.at = (e.posting_datetime, e.creation)
 		(entries if e.type_of_transaction == "Inward" else outwards).setdefault(e.serial_no.upper(), []).append(e)
+	legs = {}
+	for e in (e for seq in (*entries.values(), *outwards.values()) for e in seq):
+		legs.setdefault((e.serial_no.upper(), e.voucher_type, e.voucher_no), set()).add(e.type_of_transaction)
+	for e in (e for seq in (*entries.values(), *outwards.values()) for e in seq):
+		e.kind = _entry_kind(e, len(legs[(e.serial_no.upper(), e.voucher_type, e.voucher_no)]) == 2)
 	entries = {sn: seq for sn, seq in entries.items()
 		if all(e.kind for e in seq) and any(e.kind == _ACQUISITION for e in seq)}
 	if not entries:
@@ -600,19 +615,20 @@ def _fetch_cost_as_of_sale(headers, lines_by_invoice, item_meta) -> dict:
 		if not seq or not at:
 			continue
 		before = [e for e in seq if e.at <= at]
-		acquired = [e for e in before if e.kind == _ACQUISITION]
-		if acquired:
-			stay, entry = acquired[-1], before[-1]
-		else:
-			stay = next(e for e in seq if e.kind == _ACQUISITION)
+		if not any(e.kind == _ACQUISITION for e in before):
+			first = next(e for e in seq if e.kind == _ACQUISITION)
 			gone = outwards.get(sn, [])
-			if any(o.at < stay.at for o in gone):
+			if any(o.at < first.at for o in gone):
 				out[(inv, sn)] = {"rate": None, "missing": True, "placeholder": False}
 				continue
-			handed = next((o.at for o in gone if o.at > stay.at and o.kind != _MOVE), None)
-			stay_ends = next((e.at for e in seq if e.at > stay.at and e.kind == _ACQUISITION), None)
-			entry = [e for e in seq if stay.at <= e.at
-				and (stay_ends is None or e.at < stay_ends) and (handed is None or e.at < handed)][-1]
+			# Invoiced before it arrived: costed as of the hand-over — the first
+			# outward that delivers the gun (not a move's leg, not a count that
+			# found it gone) — or as of now while it is still here.
+			handed = next((o.at for o in gone if o.at > first.at and o.kind != _MOVE
+				and o.voucher_type != "Stock Reconciliation"), None)
+			before = [e for e in seq if handed is None or e.at < handed]
+		stay = [e for e in before if e.kind == _ACQUISITION][-1]
+		entry = before[-1]
 		rate = flt(entry.incoming_rate)
 		if stay.warehouse in custody:
 			out[(inv, sn)] = {"rate": 0.0, "missing": False, "placeholder": False}
@@ -826,18 +842,23 @@ def _line_cost(line, item_meta, serial_cost, consignment=None, is_ffl_transfer=F
 		missing = serial_missing = placeholder = False
 		total = 0.0
 		xfer = transfer_serials or set()
+		transfer_handover = bool(is_ffl_transfer) and flt(line.get("base_net_amount")) == 0
 		for sn in serials:
 			fact = (as_of or {}).get((line.get("parent"), sn.upper()))
-			if fact:
+			if fact and fact["rate"] is not None:
+				total += fact["rate"]
 				missing = missing or fact["missing"]
 				placeholder = placeholder or fact["placeholder"]
-				if fact["rate"] is not None:
-					total += fact["rate"]
+				continue
+			if fact:
+				# A receipt the ledger never recorded. Handed over at $0 on a
+				# transfer ticket, it is the customer's gun: nothing, no gap.
+				if transfer_handover:
 					continue
+				missing = True
 			# No acquisition in the ledger (a gun older than the bundles), an
-			# inward voucher the report does not classify, or a receipt the
-			# ledger never recorded (rate None, already flagged): the Serial No
-			# is all there is.
+			# inward voucher the report does not classify, or that unrecorded
+			# receipt: the Serial No is all there is.
 			#
 			# A customer's transfer gun contributes NOTHING and is not a data
 			# gap. This is the real classification — the gun's own flag —
@@ -863,7 +884,7 @@ def _line_cost(line, item_meta, serial_cost, consignment=None, is_ffl_transfer=F
 		# there is, so removing it would re-flag every historical transfer as a
 		# missing-cost error. New rows never reach it — their serials are caught
 		# above, and a gap the ledger found is never cleared by it.
-		if is_ffl_transfer and flt(line.get("base_net_amount")) == 0:
+		if transfer_handover:
 			serial_missing = False
 		return (1 if qty >= 0 else -1) * total, missing or serial_missing, placeholder
 	return qty * flt(meta.get("valuation_rate")), False, False

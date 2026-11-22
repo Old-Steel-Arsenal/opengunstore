@@ -34,6 +34,7 @@ TRANSFEREE = "_Test SRAS Transferee"
 CONSIGNOR = "_Test SRAS Consignor"
 ACC_COST = 20.0
 BACK_ROOM = "SRAS Back Room"
+COUNT_ROOM = "SRAS Count Room"   # holds one test's gun at a time: a count sets the whole warehouse's quantity
 
 
 class CostAsOfSale(FrappeTestCase):
@@ -50,10 +51,10 @@ class CostAsOfSale(FrappeTestCase):
 		frappe.defaults.set_user_default("Company", cls.company)
 		cls.warehouse = default_stock_warehouse(cls.company)
 		cls.custody = ensure_custody_warehouse(cls.company)
-		cls.back_room = frappe.db.get_value("Warehouse", {"company": cls.company, "warehouse_name": BACK_ROOM}) \
-			or frappe.get_doc({"doctype": "Warehouse", "warehouse_name": BACK_ROOM, "company": cls.company,
+		cls.back_room, cls.count_room = (frappe.db.get_value("Warehouse", {"company": cls.company, "warehouse_name": name})
+			or frappe.get_doc({"doctype": "Warehouse", "warehouse_name": name, "company": cls.company,
 				"parent_warehouse": frappe.db.get_value("Warehouse", cls.warehouse, "parent_warehouse")}).insert(
-					ignore_permissions=True).name
+					ignore_permissions=True).name for name in (BACK_ROOM, COUNT_ROOM))
 		if not frappe.db.exists("Supplier Group", "Distributor"):
 			frappe.get_doc({"doctype": "Supplier Group", "supplier_group_name": "Distributor",
 				"parent_supplier_group": "All Supplier Groups", "is_group": 0}).insert(ignore_permissions=True)
@@ -145,6 +146,19 @@ class CostAsOfSale(FrappeTestCase):
 		frappe.get_doc({"doctype": "Serial No", "serial_no": serial, "item_code": GUN,
 			"company": self.company}).insert(ignore_permissions=True)
 
+	def _count(self, serial, rate=None):
+		"""An inventory count of the count room: the gun found there at *rate*, or (no rate) not found."""
+		row = {"item_code": GUN, "warehouse": self.count_room, "qty": 1, "serial_no": serial, "valuation_rate": rate,
+			"use_serial_batch_fields": 1} if rate is not None else {
+			"item_code": GUN, "warehouse": self.count_room, "qty": 0, "valuation_rate": 0,
+			"allow_zero_valuation_rate": 1, "reconcile_all_serial_batch": 1}
+		doc = frappe.get_doc({"doctype": "Stock Reconciliation", "company": self.company,
+			"purpose": "Stock Reconciliation", "items": [row]})
+		doc.flags.ignore_permissions = True
+		doc.insert()
+		doc.submit()
+		return doc
+
 	def _move(self, serial, src, dst):
 		from ffl_core.firearm import transfer_serial
 		return transfer_serial(GUN, serial, src, dst)
@@ -170,6 +184,19 @@ class CostAsOfSale(FrappeTestCase):
 		inv.insert()
 		inv.submit()
 		return inv
+
+	def _transfer_ticket(self, serial):
+		"""A counter transfer ticket as the report reads it: the gun at $0 on an
+		is_ffl_transfer POS Invoice. Written directly, since the gun is no longer
+		in stock to put through the register."""
+		name = f"SRAS-XFER-{frappe.generate_hash(length=8)}"
+		frappe.get_doc({"doctype": "POS Invoice", "name": name, "company": self.company, "customer": TRANSFEREE,
+			"posting_date": nowdate(), "posting_time": frappe.utils.nowtime(), "docstatus": 1,
+			"is_ffl_transfer": 1, "base_net_total": 0, "grand_total": 0}).db_insert()
+		frappe.get_doc({"doctype": "POS Invoice Item", "name": frappe.generate_hash(length=10), "parent": name,
+			"parenttype": "POS Invoice", "parentfield": "items", "idx": 1, "docstatus": 1, "item_code": GUN,
+			"qty": 1, "base_net_amount": 0, "serial_no": serial}).db_insert()
+		return name
 
 	# --- the report -------------------------------------------------------------------------------
 
@@ -337,6 +364,7 @@ class CostAsOfSale(FrappeTestCase):
 		self.assertCost(sale.name, 650.0, missing=True)   # the Serial No's cost, flagged
 
 	def test_a_sale_with_no_posting_time_still_reports(self):
+		"""Read at its creation: here after the receipt, so it is that stay's sale."""
 		serial = self._testMethodName[:40]
 		self._receive(serial, 480)
 		sale = self._sell(serial, 900)
@@ -352,6 +380,45 @@ class CostAsOfSale(FrappeTestCase):
 		frappe.db.set_value("POS Invoice", ticket.name, "is_ffl_transfer", 1, update_modified=False)
 		self._receive(serial, 800)                        # bought back: the marks are the new stay's
 		self.assertCost(ticket.name, 0.01, missing=True)
+
+	def test_a_sale_with_no_posting_time_after_a_buy_back_is_the_new_stays(self):
+		serial = self._testMethodName[:40]
+		self._receive(serial, 500)
+		self._sell(serial, 900)
+		self._receive(serial, 700)                        # bought back the same day
+		second = self._sell(serial, 1000)
+		frappe.db.sql("update `tabSales Invoice` set posting_time = null where name = %s", second.name)
+		self.assertCost(second.name, 700.0)
+
+	def test_a_gun_found_in_a_count_opens_a_stay(self):
+		serial = self._testMethodName[:40]
+		self._new_serial(serial)
+		self._count(serial, 500)                          # counted in: never received otherwise
+		sale = self._sell(serial, 900, warehouse=self.count_room)
+		self._receive(serial, 650)
+		self.assertCost(sale.name, 500.0)
+
+	def test_a_gun_counted_out_and_back_in_before_hand_over_costs_its_count(self):
+		from ffl_core.firearm import issue_serial
+		serial = self._testMethodName[:40]
+		self._new_serial(serial)
+		order = self._bill(serial, 1100)                  # invoiced, the gun still on its way
+		self._receive(serial, 600, warehouse=self.count_room)
+		self._count(serial)                               # not found
+		self._count(serial, 300)                          # found again
+		issue_serial(GUN, serial, self.count_room)        # handed over
+		self.assertCost(order.name, 300.0)
+
+	def test_the_customers_gun_on_a_net_zero_transfer_with_an_unrecorded_receipt_costs_nothing(self):
+		from ffl_core.firearm import issue_serial
+		serial = self._testMethodName[:40]
+		first = self._receive(serial, 500)
+		issue_serial(GUN, serial, self.warehouse)         # handed over
+		frappe.db.sql("""update `tabSerial and Batch Bundle` set is_cancelled = 1
+			where voucher_type = 'Purchase Receipt' and voucher_no = %s""", first.name)
+		ticket = self._transfer_ticket(serial)
+		self._receive(serial, 650)
+		self.assertCost(ticket, 0.0)
 
 	# --- placeholders and confirmed-free guns ------------------------------------------------------
 
