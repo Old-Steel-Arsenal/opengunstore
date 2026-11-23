@@ -55,7 +55,7 @@ ACC_META = {"RSR-HOLO": {"is_firearm": 0, "valuation_rate": 0.0, "item_group": "
 class TestDropshipCostBranch(unittest.TestCase):
 
 	def test_fds_gun_costs_the_acknowledged_distributor_cost(self):
-		cost, missing = _line_cost(
+		cost, missing, _ = _line_cost(
 			_line(), FIREARM_META, {}, dropship_cost={("SI-1", "RSR-GLK19", "RSR"): 430.0})
 		self.assertEqual(cost, 430.0)
 		self.assertFalse(missing)
@@ -63,14 +63,14 @@ class TestDropshipCostBranch(unittest.TestCase):
 	def test_cost_is_the_ack_total_not_the_sold_quantity(self):
 		"""The map carries the DO's acknowledged total, so the branch returns it
 		directly (sign only follows qty) — it does NOT re-multiply by the SI qty."""
-		cost, _ = _line_cost(
+		cost, _, _ = _line_cost(
 			_line(qty=3, net=897.0, item="RSR-HOLO", dropship="RSR"),
 			ACC_META, {}, dropship_cost={("SI-1", "RSR-HOLO", "RSR"): 297.0})
 		self.assertEqual(cost, 297.0)
 
 	def test_margin_is_no_longer_a_phantom_hundred_percent(self):
 		"""The defect in one assertion."""
-		cost, _ = _line_cost(
+		cost, _, _ = _line_cost(
 			_line(net=699.0), FIREARM_META, {},
 			dropship_cost={("SI-1", "RSR-GLK19", "RSR"): 430.0})
 		self.assertGreater(cost, 0)
@@ -79,7 +79,7 @@ class TestDropshipCostBranch(unittest.TestCase):
 	def test_branch_beats_the_firearm_branch(self):
 		"""A drop-ship gun that somehow carries a serial must STILL be costed from
 		the distributor order — the same precedence the consignment branch needs."""
-		cost, missing = _line_cost(
+		cost, missing, _ = _line_cost(
 			_line(serial="RSRSERIAL1"), FIREARM_META, {"RSRSERIAL1": 0.0},
 			dropship_cost={("SI-1", "RSR-GLK19", "RSR"): 430.0})
 		self.assertEqual(cost, 430.0)
@@ -89,7 +89,7 @@ class TestDropshipCostBranch(unittest.TestCase):
 		"""A SKU we also stock locally: the drop-shipped unit never passed through
 		our warehouse, so our moving average is the wrong goods' cost."""
 		meta = {"RSR-HOLO": {"is_firearm": 0, "valuation_rate": 250.0, "item_group": "Optics"}}
-		cost, _ = _line_cost(
+		cost, _, _ = _line_cost(
 			_line(item="RSR-HOLO", net=299.0), meta, {},
 			dropship_cost={("SI-1", "RSR-HOLO", "RSR"): 99.0})
 		self.assertEqual(cost, 99.0)
@@ -97,12 +97,12 @@ class TestDropshipCostBranch(unittest.TestCase):
 	def test_missing_acknowledged_cost_is_a_real_data_gap(self):
 		"""Flagged — but as a genuine gap (RSR has not acked yet), not because a
 		local serial lookup failed."""
-		cost, missing = _line_cost(_line(), FIREARM_META, {}, dropship_cost={})
+		cost, missing, _ = _line_cost(_line(), FIREARM_META, {}, dropship_cost={})
 		self.assertEqual(cost, 0.0)
 		self.assertTrue(missing)
 
 	def test_a_return_reverses_the_cost(self):
-		cost, _ = _line_cost(
+		cost, _, _ = _line_cost(
 			_line(qty=-1, net=-699.0), FIREARM_META, {},
 			dropship_cost={("SI-1", "RSR-GLK19", "RSR"): 430.0})
 		self.assertEqual(cost, -430.0)
@@ -112,7 +112,7 @@ class TestDropshipCostBranch(unittest.TestCase):
 		ordinary gun keeps the serial branch even when a map is supplied."""
 		line = _line(item="GLOCK-19", serial="SN-1", dropship=None)
 		meta = {"GLOCK-19": {"is_firearm": 1, "valuation_rate": 0.0, "item_group": "Pistol"}}
-		cost, missing = _line_cost(line, meta, {"SN-1": 400.0},
+		cost, missing, _ = _line_cost(line, meta, {"SN-1": 400.0},
 			dropship_cost={("SI-1", "GLOCK-19", "RSR"): 999.0})
 		self.assertEqual(cost, 400.0)
 		self.assertFalse(missing)
@@ -122,7 +122,7 @@ class TestDropshipCostBranch(unittest.TestCase):
 		real Serial No and a real purchase_rate. Its SI line carries no
 		dropship_distributor, so the drop-ship branch must not claim it."""
 		line = _line(item="RSR-GLK19", serial="OURS-9", dropship=None)
-		cost, missing = _line_cost(line, FIREARM_META, {"OURS-9": 415.0},
+		cost, missing, _ = _line_cost(line, FIREARM_META, {"OURS-9": 415.0},
 			dropship_cost={("SI-1", "RSR-GLK19", "RSR"): 430.0})
 		self.assertEqual(cost, 415.0)
 		self.assertFalse(missing)
@@ -132,7 +132,7 @@ class TestDropshipCostBranch(unittest.TestCase):
 	def test_to_store_accessory_on_the_way_costs_the_order_line(self):
 		"""A past invoice: ship-to-store accessories never stocked before
 		read a Bin average of 0 and reported a phantom 100 % margin."""
-		cost, missing = _line_cost(
+		cost, missing, _ = _line_cost(
 			_line(item="RSR-HOLO", net=299.0, dropship=None, to_store="RSR"),
 			ACC_META, {}, dropship_cost={("SI-1", "RSR-HOLO", "RSR"): 99.0})
 		self.assertEqual(cost, 99.0)
@@ -142,14 +142,14 @@ class TestDropshipCostBranch(unittest.TestCase):
 		"""The Bin average mixes every other lot of the SKU; the order line is what
 		THESE goods cost."""
 		meta = {"RSR-HOLO": {"is_firearm": 0, "valuation_rate": 250.0, "item_group": "Optics"}}
-		cost, _ = _line_cost(
+		cost, _, _ = _line_cost(
 			_line(item="RSR-HOLO", net=299.0, dropship=None, to_store="RSR"),
 			meta, {}, dropship_cost={("SI-1", "RSR-HOLO", "RSR"): 99.0})
 		self.assertEqual(cost, 99.0)
 
 	def test_to_store_gun_on_the_way_costs_the_order_line(self):
 		"""No serial until it arrives — the firearm branch would find nothing."""
-		cost, missing = _line_cost(
+		cost, missing, _ = _line_cost(
 			_line(dropship=None, to_store="RSR"), FIREARM_META, {},
 			dropship_cost={("SI-1", "RSR-GLK19", "RSR"): 430.0})
 		self.assertEqual(cost, 430.0)
@@ -158,14 +158,14 @@ class TestDropshipCostBranch(unittest.TestCase):
 	def test_to_store_gun_that_arrived_keeps_the_firearm_branch(self):
 		"""Once hung, the serial's purchase_rate (the Purchase Receipt's
 		figure) is the cost — the order line is not consulted."""
-		cost, missing = _line_cost(
+		cost, missing, _ = _line_cost(
 			_line(serial="OURS-9", dropship=None, to_store="RSR"), FIREARM_META,
 			{"OURS-9": 415.0}, dropship_cost={("SI-1", "RSR-GLK19", "RSR"): 430.0})
 		self.assertEqual(cost, 415.0)
 		self.assertFalse(missing)
 
 	def test_to_store_without_an_ack_is_a_real_data_gap(self):
-		cost, missing = _line_cost(
+		cost, missing, _ = _line_cost(
 			_line(item="RSR-HOLO", dropship=None, to_store="RSR"), ACC_META, {},
 			dropship_cost={})
 		self.assertEqual(cost, 0.0)
@@ -336,7 +336,7 @@ class TestDropshipCostPrefetch(unittest.TestCase):
 
 	def test_short_ship_line_cost_is_the_ack_total(self):
 		"""The SI sold 3 but RSR acked 2 → cost is 2×99, matching the PI."""
-		cost, missing = _line_cost(
+		cost, missing, _ = _line_cost(
 			_line(item="RSR-HOLO", qty=3, net=897.0), ACC_META, {},
 			dropship_cost={("SI-1", "RSR-HOLO", "RSR"): 198.0})
 		self.assertEqual(cost, 198.0)

@@ -30,8 +30,8 @@ ARG CRM_REMOTE=https://github.com/frappe/crm
 # deliberately, validating in CI/dev first. FRAPPE_BRANCH above stays a branch —
 # it only tags the frappe/build + frappe/base toolchain images, which aren't
 # published per-patch-version.
-ARG FRAPPE_REF=v16.56.0
-ARG ERPNEXT_REF=v16.55.0
+ARG FRAPPE_REF=v16.60.2
+ARG ERPNEXT_REF=v16.60.0
 # Change to force a fresh clone of erpnext even if layers are cached.
 ARG CACHE_BUST=""
 
@@ -50,7 +50,7 @@ RUN : "${CACHE_BUST}" && \
   bench get-app --branch=${ERPNEXT_REF} erpnext ${ERPNEXT_REMOTE}
 
 # Its own layer, ARG declared only here: an hrms bump must not rebuild frappe + erpnext.
-ARG HRMS_REF=v16.53.2
+ARG HRMS_REF=v16.60.0
 RUN cd /home/frappe/frappe-bench && \
   bench get-app --branch=${HRMS_REF} hrms ${HRMS_REMOTE}
 

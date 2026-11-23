@@ -5088,7 +5088,7 @@ def item_tax_rates(item_codes, company: str | None = None, excise_exempt: int = 
 	"""
 	frappe.only_for(_ROLES)
 	from erpnext.stock.get_item_details import (
-		NOT_APPLICABLE_TAX, get_item_tax_map, get_item_tax_template)
+		NOT_APPLICABLE_TAX, _get_item_tax_map, get_item_tax_template)
 	from ffl_core.compliance.interstate_tax import _default_template
 	company = (str(company or "")).strip() or _default_company()
 	tmpl = _default_template(company) if company else None
@@ -5107,7 +5107,7 @@ def item_tax_rates(item_codes, company: str | None = None, excise_exempt: int = 
 		itt = get_item_tax_template(
 			{"company": company, "transaction_date": nowdate(), "tax_category": None},
 			frappe.get_cached_doc("Item", code), frappe._dict())
-		rates = get_item_tax_map(doc=base, tax_template=itt, as_json=False)
+		rates = _get_item_tax_map(doc=base, tax_template=itt, as_json=False)
 		out[code] = sum(0.0 if rates.get(r.account_head) == NOT_APPLICABLE_TAX
 			else flt(rates.get(r.account_head)) for r in rows)
 	return out

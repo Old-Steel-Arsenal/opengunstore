@@ -80,7 +80,7 @@ dev-bench-init: ## ONE-TIME: bootstrap a frappe-bench inside the container with 
 	'
 	@$(MAKE) --no-print-directory dev-site-create
 
-dev-bench-clone: ## Worktree only: clone the main checkout's frappe-bench (APFS copy-on-write, seconds) instead of bench init, then create the site
+dev-bench-clone: ## Worktree only: clone the main checkout's frappe-bench (APFS copy-on-write, seconds) instead of bench init, then create the site and bootstrap its test masters
 	@test -n "$(WORKTREE)" || { echo "dev-bench-clone is for linked worktrees; the main checkout uses make dev-bench-init"; exit 1; }
 	@if [ -e frappe-bench ]; then echo "frappe-bench already exists, skipping clone"; else \
 		src=$$(git rev-parse --path-format=absolute --git-common-dir)/../frappe-bench; \
@@ -92,6 +92,7 @@ dev-bench-clone: ## Worktree only: clone the main checkout's frappe-bench (APFS 
 	fi
 	@$(MAKE) --no-print-directory dev-site-create
 	@$(MAKE) --no-print-directory dev-install-our-apps
+	$(COMPOSE) exec -T frappe bash -lc 'cd /workspace/frappe-bench && bench --site $(SITE_NAME) execute ffl_core.setup.test_bootstrap.run'
 
 dev-site-create: ## Create the dev site and install ERPNext + HRMS + Frappe CRM; always (re-)applies allow_tests
 	$(COMPOSE) exec -T frappe bash -lc '\

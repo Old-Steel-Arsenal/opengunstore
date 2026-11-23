@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenGunstore API",
-    "version": "1.3.3",
+    "version": "1.4.0",
     "description": "RPC API of the OpenGunstore custom apps (Frappe/ERPNext v16): ffl_core, ffl_integrations, ffl_woo_sync.\n\nAll endpoints are Frappe *whitelisted methods* invoked as `/api/method/<dotted.path>`. Unless an endpoint declares explicit HTTP verbs, it is documented here as POST (Frappe also accepts GET for read-only calls; always POST mutations). Arguments may be sent as JSON body, form data, or query string — JSON body is recommended.\n\nEvery operation carries an **Auth (derived from code)** line statically resolved from the role gate the function actually executes; the prose Permissions note adds semantics the machine can't infer.\n\nStandard CRUD on DocTypes is served by Frappe's REST layer (`/api/resource/<DocType>`) — see docs/api/frappe-rest.md; the custom DocTypes are modelled under components.schemas and listed in reference/doctypes.md."
   },
   "servers": [
@@ -6526,6 +6526,10 @@
             ],
             "description": "Follow the catalog category tree"
           },
+          "connect_status": {
+            "type": "string",
+            "description": "Connect"
+          },
           "last_push_at": {
             "type": "string",
             "description": "Last push"
@@ -6548,9 +6552,7 @@
           }
         },
         "required": [
-          "store_url",
-          "consumer_key",
-          "consumer_secret"
+          "store_url"
         ]
       }
     }
@@ -14202,7 +14204,7 @@
           "ffl_core"
         ],
         "summary": "Serials held by submitted, not-yet-consolidated POS Invoices (override).",
-        "description": "Replaces ERPNext's serial_no.get_pos_reserved_serial_nos for the POS\npage's add-to-cart check. Same result as upstream, except a POS Invoice\nthat has been consolidated into a Sales Invoice no longer reserves its\nserials: the stock ledger already reflects that sale.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\n**Permissions:** Open by design: upstream's method is gateless and the POS page calls it for every serialized item a clerk adds.\n\nSource: `apps/ffl_core/ffl_core/api/pos_serial.py:23`",
+        "description": "Replaces ERPNext's serial_no.get_pos_reserved_serial_nos for the POS\npage's add-to-cart check. Same result as upstream, except a POS Invoice\nthat has been consolidated into a Sales Invoice no longer reserves its\nserials: the stock ledger already reflects that sale.\n\n**Auth (derived from code):** Requires read permission on POS Invoice (Frappe DocType permission check).\n\n**Permissions:** Same gates as upstream: POS Invoice read, and select on the warehouse.\n\nSource: `apps/ffl_core/ffl_core/api/pos_serial.py:25`",
         "operationId": "ffl_core.api.pos_serial.get_pos_reserved_serial_nos",
         "responses": {
           "200": {
@@ -28217,6 +28219,109 @@
                   "dry_run": {
                     "description": "1 builds every payload and reports what WOULD be sent, without sending (still reads the store's attribute ids).",
                     "default": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_woo_sync.woocommerce.connect.start_connect": {
+      "post": {
+        "tags": [
+          "ffl_woo_sync"
+        ],
+        "summary": "Begin a one-click connection: issue a one-time state and return the store's approval URL.",
+        "description": "The saved Store URL is used; the browser is sent to WooCommerce's\n``/wc-auth/v1/authorize`` page, which posts a new read/write REST key back to\n``wc_auth_callback`` once the store owner approves.\n\n**Auth (derived from code):** Roles: System Manager\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/connect.py:169`",
+        "operationId": "ffl_woo_sync.woocommerce.connect.start_connect",
+        "responses": {
+          "200": {
+            "description": "{\"url\": <the store's wc-auth approval URL>}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        }
+      }
+    },
+    "/api/method/ffl_woo_sync.woocommerce.connect.wc_auth_callback": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "WooCommerce wc-auth callback: receives the REST key the store owner approved.",
+        "description": "**Auth (derived from code):** Guest — no session; the endpoint verifies the caller itself (HMAC signature, HTTP Basic credentials or a one-time token).\n\n**Payload:** WooCommerce's JSON body ``{key_id, user_id, consumer_key, consumer_secret, key_permissions}``. ``user_id`` carries the one-time state from ``start_connect``.\n\nSource: `apps/ffl_woo_sync/ffl_woo_sync/woocommerce/connect.py:227`",
+        "operationId": "ffl_woo_sync.woocommerce.connect.wc_auth_callback",
+        "responses": {
+          "200": {
+            "description": "200 ``{\"ok\": true}`` once the key is stored and the rest of the connection is queued; 400 ``{\"ok\": false, \"error\"}`` for an unknown, expired or used state, a key that is not read/write, or a store that is no longer the one in Settings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "security": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "user_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The one-time state; valid for 15 minutes and spent on first use."
+                  },
+                  "consumer_key": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The new WooCommerce consumer key."
+                  },
+                  "consumer_secret": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The new WooCommerce consumer secret."
+                  },
+                  "key_permissions": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Must be ``read_write``."
+                  },
+                  "key_id": {
+                    "description": "WooCommerce's id for the key (not used)."
                   }
                 }
               }

@@ -198,7 +198,7 @@ class TwoUnitsAtFourNinetyNine(_BookedCase):
 		self.assertEqual(flt(issued), 490.0)
 		si = self.invoice(self.order)
 		line = {"item_code": MODEL, "qty": 2, "serial_no": si.items[0].serial_no}
-		cost, _missing = _line_cost(line, {MODEL: {"is_firearm": 1}},
+		cost, _missing, _ = _line_cost(line, {MODEL: {"is_firearm": 1}},
 			_fetch_serial_facts({si.name: [line]})[0])
 		self.assertEqual(flt(cost), 490.0)
 
