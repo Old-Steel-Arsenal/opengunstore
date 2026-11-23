@@ -44,7 +44,11 @@ No COGS is stored on invoice lines, so cost is computed per line:
                     invoice with no posting_time is placed at its creation. A
                     return is costed as of the sale it returns. A later
                     acquisition of the same serial (bought back, traded in)
-                    never re-costs an earlier sale. The stay's acquisition in
+                    never re-costs an earlier sale. A gun re-invoiced at $0 to
+                    the customer of its last priced sale, after coming back
+                    only on a receipt that reverses that sale's hand-over (sent
+                    back in transit), costs 0, no flag, and so does a credit
+                    note of that $0 invoice: the sale carries the cost. The stay's acquisition in
                     a custody warehouse is a customer's gun: cost 0, not a gap.
                     The Serial No's own marks (purchase_rate, is_transfer_gun,
                     zero_cost_confirmed) describe the gun's LATEST stay, so
@@ -84,6 +88,8 @@ money paid out. 565 - 5,450 + 0 = -4,885 ties Net Sales, trade_in_net, Tax and
 Total on the row.
 """
 from __future__ import annotations
+
+import re
 
 import frappe
 from frappe import _
@@ -529,6 +535,217 @@ def _sale_moments(headers) -> dict:
 
 
 def _fetch_cost_as_of_sale(headers, lines_by_invoice, item_meta) -> dict:
+	"""{(invoice, SERIAL): {"rate", "missing", "placeholder"}} — each sold
+	gun's cost as it stood when THAT sale was made (_ledger_cost_as_of_sale),
+	except a gun re-invoiced at no charge after its sale, and a credit note of
+	that re-invoice (_reissued_at_no_charge): the sale already carries its cost,
+	so these cost 0 and are no gap."""
+	out = _ledger_cost_as_of_sale(headers, lines_by_invoice, item_meta)
+	for key in _reissued_at_no_charge(headers, lines_by_invoice, item_meta):
+		out[key] = {"rate": 0.0, "missing": False, "placeholder": False}
+	return out
+
+
+def _reissued_at_no_charge(headers, lines_by_invoice, item_meta) -> set:
+	"""{(invoice, SERIAL)} of this report's lines that cost 0 because the gun's
+	sale already carries its cost: a $0 re-invoice of a gun sent back in
+	transit and sent out once more (_no_charge_reissues), and a credit note of
+	such a re-invoice, wherever the re-invoice itself falls."""
+	free = {}      # (doctype, invoice, SERIAL) -> customer: the $0 firearm lines to judge
+	notes = {}     # doctype -> {credit note: {SERIAL}}
+	for h in headers:
+		serials = {sn.upper() for l in (lines_by_invoice or {}).get(h["name"], [])
+			if (item_meta.get(l.get("item_code")) or {}).get("is_firearm")
+			and (cint(h.get("is_return")) or flt(l.get("base_net_amount")) == 0)
+			for sn in split_serials(l.get("serial_no"))}
+		if not serials:
+			continue
+		if cint(h.get("is_return")):
+			notes.setdefault(h["voucher_type"], {})[h["name"]] = serials
+		elif h.get("customer"):
+			free.update({(h["voucher_type"], h["name"], sn): h["customer"] for sn in serials})
+	credited = {}  # (doctype, re-invoice, SERIAL) -> [credit notes]
+	for doctype, by_note in notes.items():
+		against = {r.name: r.return_against for r in frappe.get_all(doctype,
+			filters={"name": ["in", list(by_note)]}, fields=["name", "return_against"]) if r.return_against}
+		if not against:
+			continue
+		for note, original in against.items():
+			for sn in by_note[note]:
+				credited.setdefault((doctype, original, sn), []).append(note)
+		# doctype is one of the two module constants, never caller input.
+		for r in frappe.db.sql(f"""
+				select p.name, p.customer, i.serial_no
+				from `tab{doctype} Item` i join `tab{doctype}` p on p.name = i.parent
+				where p.name in %(names)s and p.docstatus = 1 and p.is_return = 0 and i.base_net_amount = 0""",
+				{"names": tuple(set(against.values()))}, as_dict=True):
+			for sn in split_serials(r.serial_no):
+				if r.customer and (doctype, r.name, sn.upper()) in credited:
+					free.setdefault((doctype, r.name, sn.upper()), r.customer)
+	zeroed = _no_charge_reissues(free) if free else set()
+	ours = {h["name"] for h in headers}
+	return {(inv, sn) for _doctype, inv, sn in zeroed if inv in ours} | {
+		(note, key[2]) for key in zeroed for note in credited.get(key, ())}
+
+
+def _no_charge_reissues(free) -> set:
+	"""The keys of *free* ({(doctype, invoice, SERIAL): customer}, $0 firearm
+	lines of non-return invoices) that re-invoice a gun its sale already costs.
+
+	The sale is the serial's MOST RECENT priced sale before the $0 invoice
+	(_sale_moments): a line with base_net_amount > 0 on a submitted, non-return
+	invoice this report counts — a Sales Invoice that is not a consolidation, a
+	POS Invoice that is not a counter pickup's ticket — in any period. It must
+	be to the same customer and not taken back by a credit note of that sale;
+	otherwise nothing further back is looked at.
+
+	Between the two, the serial's inward ledger entries are either none, or
+	every one is a Material Receipt reversing the sale's hand-over: its remarks
+	name the outward voucher that issued the serial for the sale (the invoice
+	itself, a Delivery Note of it, the Material Issue that took the gun out of
+	that stay) or an FFL Disposition of the sale — linked to the invoice or its
+	web order — whose Material Issue issued it. Moves (_entry_kind) are read
+	past, both legs. A buy-back, a trade-in, any other receipt or a count that
+	takes the gun in between leaves the $0 line to the ledger. Serials compare
+	upper-cased, like the ledger lookup's."""
+	serials = {sn for _doctype, _inv, sn in free}
+	params, likes = {}, []
+	for i, sn in enumerate(sorted(serials)):
+		params[f"s{i}"] = "%{}%".format(sn.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_"))
+		likes.append(f"i.serial_no like %(s{i})s")
+	sales = []  # (doctype, invoice, SERIAL, customer, web order)
+	for doctype, counted, web in (
+			(_SI, "p.is_consolidated = 0", "p.woo_online_order" if _has_column(_SI, "woo_online_order") else "null"),
+			(_POS, "coalesce(p.ffl_counter_order, '') = ''" if _has_column(_POS, "ffl_counter_order") else "1 = 1", "null")):
+		# doctype / counted / web are module constants, never caller input.
+		# lazy: one LIKE per $0 serial over the unindexed serial_no text, fine for a
+		# store's handful of $0 gun lines a period; an indexed serial→sale-line map if that grows.
+		for r in frappe.db.sql(f"""
+				select p.name, p.customer, {web} as web_order, i.serial_no
+				from `tab{doctype} Item` i join `tab{doctype}` p on p.name = i.parent
+				where p.docstatus = 1 and p.is_return = 0 and i.base_net_amount > 0 and {counted}
+					and ({" or ".join(likes)})""", params, as_dict=True):
+			sales += [(doctype, r.name, sn.upper(), r.customer, r.web_order)
+				for sn in split_serials(r.serial_no) if sn.upper() in serials]
+	if not sales:
+		return set()
+	moments = _sale_moments([{"voucher_type": d, "name": n} for d, n, *_rest in sales]
+		+ [{"voucher_type": d, "name": n} for d, n, _sn in free])
+	returned = set()
+	for doctype in {d for d, *_rest in sales}:
+		for r in frappe.db.sql(f"""
+				select p.return_against, i.serial_no
+				from `tab{doctype} Item` i join `tab{doctype}` p on p.name = i.parent
+				where p.docstatus = 1 and p.is_return = 1 and p.return_against in %(against)s""",
+				{"against": tuple({n for d, n, *_rest in sales if d == doctype})}, as_dict=True):
+			returned.update((doctype, r.return_against, sn.upper()) for sn in split_serials(r.serial_no))
+	ledger: dict[str, list] = {}
+	for e in frappe.db.sql("""
+			select e.serial_no, b.type_of_transaction, b.voucher_type, b.voucher_no, b.posting_datetime, b.creation,
+				se.purpose as stock_entry_purpose, sr.purpose as reconciliation_purpose, se.remarks
+			from `tabSerial and Batch Bundle` b
+			join `tabSerial and Batch Entry` e on e.parent = b.name
+			left join `tabStock Entry` se on b.voucher_type = 'Stock Entry' and se.name = b.voucher_no
+			left join `tabStock Reconciliation` sr on b.voucher_type = 'Stock Reconciliation' and sr.name = b.voucher_no
+			where e.serial_no in %(serials)s and b.type_of_transaction in ('Inward', 'Outward')
+				and b.docstatus = 1 and b.is_cancelled = 0 and b.posting_datetime is not null
+			order by b.posting_datetime, b.creation""", {"serials": tuple(sorted(serials))}, as_dict=True):
+		e.at = (e.posting_datetime, e.creation)
+		ledger.setdefault(e.serial_no.upper(), []).append(e)
+	# A move (a warehouse transfer, a cost correction or count with a leg each way) only carries the
+	# stay: neither of its legs is a receipt or a hand-over, so the window below reads past both.
+	legs = {}
+	for sn, seq in ledger.items():
+		for e in seq:
+			legs.setdefault((sn, e.voucher_type, e.voucher_no), set()).add(e.type_of_transaction)
+	ledger = {sn: [e for e in seq if _entry_kind(e, len(legs[(sn, e.voucher_type, e.voucher_no)]) == 2) != _MOVE]
+		for sn, seq in ledger.items()}
+
+	last = {}  # each $0 line's key -> its serial's last priced sale, when that sale is the one to judge
+	for key, customer in free.items():
+		at, sn = moments.get(key[1]), key[2]
+		prior = [s for s in sales if s[2] == sn and at and moments.get(s[1]) and moments[s[1]] < at]
+		if prior:
+			sale = max(prior, key=lambda s: moments[s[1]])
+			if sale[3] == customer and (sale[0], sale[1], sn) not in returned:
+				last[key] = sale
+	if not last:
+		return set()
+	delivered = _sale_hand_overs(set(last.values()), ledger)
+	out = set()
+	for key, (d0, i0, sn, _customer, _web) in last.items():
+		since, until = moments[i0], moments[key[1]]
+		seq = ledger.get(sn, [])
+		back = [e for e in seq if e.type_of_transaction == "Inward" and since < e.at < until]
+		if back:
+			# The Material Issue that ended the sale's stay: the last outward before
+			# the gun came back, after the stay's last receipt at or before the sale.
+			opened = [e.at for e in seq if e.type_of_transaction == "Inward" and e.at <= since]
+			issue = [e for e in seq if e.type_of_transaction == "Outward" and e.at < back[0].at
+				and (not opened or e.at > opened[-1])]
+			tied = set(delivered.get((d0, i0, sn), ()))
+			if issue and issue[-1].voucher_type == "Stock Entry" and issue[-1].stock_entry_purpose == "Material Issue":
+				tied.add(issue[-1].voucher_no)
+			if not all(e.voucher_type == "Stock Entry" and e.stock_entry_purpose == "Material Receipt"
+					and _names_any(e.remarks, tied) for e in back):
+				continue
+		out.add(key)
+	return out
+
+
+def _sale_hand_overs(sales, ledger) -> dict:
+	"""{(doctype, invoice, SERIAL): {names}} — the vouchers that issued each
+	sale's serial out of stock and are tied to that sale (the invoice itself, a
+	Delivery Note of it, the Material Issue of an FFL Disposition of it), plus
+	those dispositions' names. *sales*: (doctype, invoice, SERIAL, customer, web
+	order); *ledger*: {SERIAL: [entries]}."""
+	issued = {sn: {e.voucher_no: e for e in seq if e.type_of_transaction == "Outward"} for sn, seq in ledger.items()}
+	invoices = {n for d, n, *_rest in sales if d == _SI}
+	deliveries: dict[str, set] = {}
+	if invoices:
+		if _has_column("Delivery Note Item", "against_sales_invoice"):
+			for r in frappe.get_all("Delivery Note Item", filters={"against_sales_invoice": ["in", list(invoices)],
+					"docstatus": 1}, fields=["parent", "against_sales_invoice"]):
+				deliveries.setdefault(r.against_sales_invoice, set()).add(r.parent)
+		if _has_column("Sales Invoice Item", "delivery_note"):
+			for r in frappe.get_all("Sales Invoice Item", filters={"parent": ["in", list(invoices)],
+					"delivery_note": ["is", "set"]}, fields=["parent", "delivery_note"]):
+				deliveries.setdefault(r.parent, set()).add(r.delivery_note)
+	links = [(field, values) for field, values in (
+		("sales_invoice", invoices),
+		("linked_pos_invoice", {n for d, n, *_rest in sales if d == _POS}),
+		("woo_online_order", {w for d, _n, _sn, _c, w in sales if w}))
+		if values and _has_column("FFL Disposition", field)]
+	dispositions = frappe.get_all("FFL Disposition", filters={"docstatus": 1},
+		or_filters=[[field, "in", list(values)] for field, values in links],
+		fields=["name", "serial", "stock_entry"] + [field for field, _values in links]) if (
+		links and _has_column("FFL Disposition", "stock_entry")) else []
+	out = {}
+	for key in sales:
+		doctype, inv, sn, _customer, web = key
+		names = {inv} | deliveries.get(inv, set())
+		mine = issued.get(sn, {})
+		tied = {v for v in names if v in mine}
+		for d in dispositions:
+			if (d.serial or "").strip().upper() != sn or not (
+					(doctype == _SI and d.get("sales_invoice") == inv)
+					or (doctype == _POS and d.get("linked_pos_invoice") == inv)
+					or (web and d.get("woo_online_order") == web)):
+				continue
+			entry = mine.get(d.stock_entry)
+			if entry is not None and entry.voucher_type == "Stock Entry" and entry.stock_entry_purpose == "Material Issue":
+				tied |= {d.stock_entry, d.name}
+		out[(doctype, inv, sn)] = tied
+	return out
+
+
+def _names_any(text, names) -> bool:
+	"""Does *text* name any of *names* as a whole word (not a longer name containing it)?"""
+	return bool(text) and any(
+		re.search(rf"(?<![\w-]){re.escape(n)}(?![\w-])", text, re.IGNORECASE) for n in names if n)
+
+
+def _ledger_cost_as_of_sale(headers, lines_by_invoice, item_meta) -> dict:
 	"""{(invoice, SERIAL): {"rate", "missing", "placeholder"}} — each sold
 	gun's cost as it stood when THAT sale was made, for every firearm serial
 	with an acquisition in the ledger (_entry_kind).
