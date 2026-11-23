@@ -8,7 +8,7 @@ Source: `apps/ffl_core/ffl_core/api/pos_serial.py` · 1 endpoint(s)
 
 `POST /api/method/ffl_core.api.pos_serial.get_pos_reserved_serial_nos`
 
-**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).
+**Auth (derived from code):** Requires read permission on POS Invoice (Frappe DocType permission check).
 
 Serials held by submitted, not-yet-consolidated POS Invoices (override).
 
@@ -23,6 +23,6 @@ serials: the stock ledger already reflects that sale.
 
 **Returns:** List of serial numbers reserved by open POS tickets, net of open return tickets.
 
-**Permissions:** Open by design: upstream's method is gateless and the POS page calls it for every serialized item a clerk adds.
+**Permissions:** Same gates as upstream: POS Invoice read, and select on the warehouse.
 
-<sub>`apps/ffl_core/ffl_core/api/pos_serial.py:23`</sub>
+<sub>`apps/ffl_core/ffl_core/api/pos_serial.py:25`</sub>

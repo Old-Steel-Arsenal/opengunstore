@@ -165,6 +165,17 @@ class InventoryImportTest(FrappeTestCase):
 		company, account = imp.check_posting(self.warehouse, frappe.utils.nowdate())
 		self.assertEqual(frappe.db.get_value("Account", account, "account_type"), "Temporary")
 
+	def test_owner_without_stock_roles_can_check_the_cut_over(self):
+		# The import is System Manager's; ERPNext 16.60's get_difference_account asks for Stock Reconciliation
+		# read, which only Stock Manager has. The opening account is looked up without it.
+		from ffl_core.tests.crm_support import user
+		frappe.set_user(user("ii-owner@example.com", "System Manager"))
+		try:
+			_company, account = imp.check_posting(self.warehouse, frappe.utils.nowdate())
+		finally:
+			frappe.set_user("Administrator")
+		self.assertEqual(frappe.db.get_value("Account", account, "account_type"), "Temporary")
+
 	def test_cost_not_below_price_warns_but_imports(self):
 		planned = self.plan(_csv(f"{self.upc(1)},Swapped,,,,1,30,20"))
 		self.assertEqual(planned[0]["outcome"], "new")

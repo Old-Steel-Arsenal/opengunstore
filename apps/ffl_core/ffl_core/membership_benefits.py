@@ -129,7 +129,7 @@ def taxed_here(item_code: str, company: str | None = None, on=None) -> bool:
 	Returns:
 	    True when some tax applies; False when every rate is 0 or the store charges no tax at all.
 	"""
-	from erpnext.stock.get_item_details import NOT_APPLICABLE_TAX, get_item_tax_map, get_item_tax_template
+	from erpnext.stock.get_item_details import NOT_APPLICABLE_TAX, _get_item_tax_map, get_item_tax_template
 
 	company = company or _default_company()
 	if not company or not item_code:
@@ -145,7 +145,7 @@ def taxed_here(item_code: str, company: str | None = None, on=None) -> bool:
 		rows = frappe.get_all("Sales Taxes and Charges", filters={"parent": sales,
 			"parenttype": "Sales Taxes and Charges Template"}, fields=["account_head", "rate"])
 		for item_template in templates:
-			rates = get_item_tax_map(doc={"company": company, "taxes": rows}, tax_template=item_template,
+			rates = _get_item_tax_map(doc={"company": company, "taxes": rows}, tax_template=item_template,
 				as_json=False)
 			if any(r != NOT_APPLICABLE_TAX and flt(r) > 0 for r in rates.values()):
 				return True
