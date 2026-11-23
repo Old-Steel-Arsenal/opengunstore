@@ -19,7 +19,7 @@ from unittest.mock import patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
-from frappe.utils import flt, nowdate
+from frappe.utils import add_days, flt, nowdate
 
 from ffl_core.ffl_core.report.sales_report import sales_report as sr
 
@@ -142,16 +142,17 @@ class CostAsOfSale(FrappeTestCase):
 		"""Invoiced now, the gun handed over later (update_stock=0): no stock moves with the sale."""
 		return self._invoice([self._gun_row(serial, net)], update_stock=0, customer=customer)
 
-	def _issue(self, serial):
+	def _issue(self, serial, warehouse=None):
 		"""The gun handed over by hand: a Material Issue, as for a billed (update_stock=0) sale."""
 		from ffl_core.firearm import issue_serial
-		return issue_serial(GUN, serial, self.warehouse)
+		return issue_serial(GUN, serial, warehouse or self.warehouse)
 
-	def _material_receipt(self, serial, rate):
+	def _material_receipt(self, serial, rate, remarks=None, warehouse=None):
 		"""The gun taken back in by hand: a Material Receipt at *rate*."""
 		from ffl_core.firearm import serialized_receipt_row
 		se = frappe.get_doc({"doctype": "Stock Entry", "stock_entry_type": "Material Receipt", "company": self.company,
-			"items": [serialized_receipt_row(item_code=GUN, qty=1, warehouse=self.warehouse, basic_rate=rate,
+			"remarks": remarks,
+			"items": [serialized_receipt_row(item_code=GUN, qty=1, warehouse=warehouse or self.warehouse, basic_rate=rate,
 				serial=serial)]})
 		se.flags.ignore_permissions = True
 		se.insert()
@@ -169,13 +170,14 @@ class CostAsOfSale(FrappeTestCase):
 			order by b.posting_datetime, b.creation""", serial)]
 
 	def _returned_in_transit_and_reissued(self, serial, customer=BUYER, credit_note=False):
-		"""Sold (billed, issued by hand), back in by Material Receipt at its cost, billed again at $0."""
+		"""Sold (billed, issued by hand), back in by a Material Receipt at its cost that names the
+		Material Issue it reverses, billed again at $0."""
 		self._receive(serial, 500)
 		sale = self._bill(serial, 900)
-		self._issue(serial)
+		issue = self._issue(serial)
 		if credit_note:
 			self._return(sale, serial, update_stock=0)
-		self._material_receipt(serial, 500)
+		self._material_receipt(serial, 500, remarks=f"Returned in transit, reverses {issue}")
 		reissue = self._bill(serial, 0, customer=customer)
 		self._issue(serial)
 		self.assertEqual(self._ledger(serial), [
@@ -558,6 +560,84 @@ class CostAsOfSale(FrappeTestCase):
 	def test_a_no_charge_invoice_to_another_customer_is_costed_as_a_sale(self):
 		sale, reissue = self._returned_in_transit_and_reissued(self._testMethodName[:40], customer=OTHER_BUYER)
 		self.assertCost(sale.name, 500.0)
+		self.assertCost(reissue.name, 500.0)
+
+	def test_a_reissue_after_a_counter_sale_costs_nothing(self):
+		serial = self._testMethodName[:40]
+		self._receive(serial, 500)
+		sale = self._pos_sale(serial, 990)
+		reissue = self._bill(serial, 0)                    # nothing came back in between
+		self.assertCost(sale.name, 500.0)
+		self.assertCost(reissue.name, 0.0)
+
+	def test_a_reissue_of_a_sale_from_an_earlier_period_costs_nothing(self):
+		# In the back room: a backdated receipt is refused where other tests' counts stand later.
+		serial, room = self._testMethodName[:40], self.back_room
+		self._receive(serial, 500, warehouse=room, posting_date=add_days(nowdate(), -2), set_posting_time=1)
+		sale = self._invoice([self._gun_row(serial, 900, room)], update_stock=0,
+			posting_date=add_days(nowdate(), -1), set_posting_time=1)
+		issue = self._issue(serial, room)
+		self._material_receipt(serial, 500, remarks=f"Returned in transit, reverses {issue}", warehouse=room)
+		reissue = self._invoice([self._gun_row(serial, 0, room)], update_stock=0)
+		self._issue(serial, room)
+		self.assertFalse(any(r.get("invoice") == sale.name for r in self._run("Order")))
+		self.assertCost(reissue.name, 0.0)
+
+	def test_a_receipt_naming_the_sales_disposition_ties_the_reissue(self):
+		serial = self._testMethodName[:40]
+		self._receive(serial, 500)
+		sale = self._bill(serial, 900)
+		issue = self._issue(serial)
+		disposition = f"SRAS-DISP-{frappe.generate_hash(length=8)}"
+		frappe.get_doc({"doctype": "FFL Disposition", "name": disposition, "company": self.company,
+			"disposition_type": "FFL Transfer", "item": GUN, "serial": serial, "customer": BUYER,
+			"sales_invoice": sale.name, "stock_entry": issue, "docstatus": 1}).db_insert()
+		self._material_receipt(serial, 500, remarks=f"Returned in transit ({disposition})")
+		reissue = self._bill(serial, 0)
+		self._issue(serial)
+		self.assertCost(reissue.name, 0.0)
+
+	def test_a_gun_bought_back_then_given_to_its_buyer_at_no_charge_is_costed_from_the_ledger(self):
+		serial = self._testMethodName[:40]
+		self._receive(serial, 500)
+		sale = self._bill(serial, 900)
+		self._issue(serial)
+		self._receive(serial, 700)                        # bought back on a Purchase Receipt
+		reissue = self._bill(serial, 0)
+		self._issue(serial)
+		self.assertCost(sale.name, 500.0)
+		self.assertCost(reissue.name, 700.0)
+
+	def test_a_receipt_not_tied_to_the_sales_hand_over_leaves_the_reissue_to_the_ledger(self):
+		serial = self._testMethodName[:40]
+		self._receive(serial, 500)
+		self._bill(serial, 900)
+		self._issue(serial)
+		self._material_receipt(serial, 650, remarks="Trade-in")
+		reissue = self._bill(serial, 0)
+		self._issue(serial)
+		self.assertCost(reissue.name, 650.0)
+
+	def test_a_credit_note_of_a_reissue_costs_nothing(self):
+		serial = self._testMethodName[:40]
+		sale, reissue = self._returned_in_transit_and_reissued(serial)
+		credit = self._return(reissue, serial, update_stock=0)
+		self.assertCost(sale.name, 500.0)
+		self.assertCost(reissue.name, 0.0)
+		self.assertCost(credit.name, 0.0)
+
+	def test_a_priced_sale_to_someone_else_in_between_leaves_the_reissue_to_the_ledger(self):
+		serial = self._testMethodName[:40]
+		self._receive(serial, 500)
+		self._bill(serial, 900)
+		issue = self._issue(serial)
+		self._material_receipt(serial, 500, remarks=f"Returned in transit, reverses {issue}")
+		other = self._bill(serial, 1000, customer=OTHER_BUYER)
+		issue = self._issue(serial)
+		self._material_receipt(serial, 500, remarks=f"Returned in transit, reverses {issue}")
+		reissue = self._bill(serial, 0)
+		self._issue(serial)
+		self.assertCost(other.name, 500.0)
 		self.assertCost(reissue.name, 500.0)
 
 	def test_a_counter_pickup_reports_as_before(self):
