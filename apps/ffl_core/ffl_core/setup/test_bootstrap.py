@@ -44,6 +44,7 @@ def run() -> dict:
 	_firearm_item_groups()
 	_stock_settings()
 	_ensure_fiscal_years()
+	_ensure_default_sales_tax()
 	company_address()
 	_desktop_tile()
 	_run_after_migrate_hooks()
@@ -57,6 +58,22 @@ def run() -> dict:
 		"firearm_groups": True,
 		"desktop_tile": True,
 	}
+
+
+def _ensure_default_sales_tax() -> None:
+	"""ERPNext's sales-tax seed for the test company ("US ST 6%" as the default), when it has no
+	default template. ERPNext seeds it only while it creates the Company's chart of accounts. A
+	narrow `bench run-tests --module ...` on a site that was never bootstrapped reaches
+	`dev_site.run()` from a `setUpClass`: the Company and its accounts are committed part-way
+	through the insert, the templates roll back with the test class, and the setup wizard above
+	then finds a Company that already has accounts and seeds nothing. Idempotent."""
+	company = frappe.db.get_value("Company", {"company_name": COMPANY}, "name")
+	if not company or frappe.db.exists(
+			"Sales Taxes and Charges Template", {"company": company, "is_default": 1}):
+		return
+	from erpnext.setup.setup_wizard.operations.taxes_setup import setup_taxes_and_charges
+
+	setup_taxes_and_charges(company, COUNTRY)
 
 
 def run_template_stage() -> dict:
