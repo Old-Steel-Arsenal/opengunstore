@@ -20,7 +20,8 @@
 # installs it on <site>. Installed already (a re-run of `make ext-test`), it migrates
 # the site instead: install-app would return at once, and the tests would run against
 # the DocTypes, fields, fixtures and patches of the previous run. Then:
-#   [1/3] bench --site <site> run-tests --app <id>     (a run that ran no test fails)
+#   [1/3] bench --site <site> run-tests --app <id>     (a run that ran no test fails; not run, and failed, when
+#         the extension is off on the site — ffl_core.extensions.effective, e.g. an unmet requires_core)
 #   [2/3] python -m ffl_core.extensions.lint <root>
 #   [3/3] scripts/generate_api_docs.py --app <root> --check   (endpoints documented; docs/api committed and fresh)
 # All three run even after a failure. Exit 1 when the wiring, the tests, the lint or the API docs failed
@@ -106,15 +107,37 @@ else
 	(cd "$BENCH" && bench --site "$SITE" install-app "$ID") || { echo "ext-test: install-app $ID failed" >&2; exit 1; }
 fi
 
+# Off on the site — most often a requires_core this core's version does not satisfy, e.g. an extension's main
+# that already needs the next core release — every endpoint refuses "<title> is turned off for this store" and
+# the tests fail by the dozen without naming why. Name it once and skip them.
+row=$(cd "$BENCH" && bench --site "$SITE" execute frappe.db.get_value --kwargs \
+	"{'doctype': 'POS Extension', 'filters': '$ID', 'fieldname': ['enabled', 'installed_on_site', 'compatible', 'incompatible_reason'], 'as_dict': 1}") \
+	|| { echo "ext-test: cannot read the POS Extension row of $ID on $SITE" >&2; exit 1; }
+off=$(printf '%s\n' "$row" | tail -n1 | (cd "$BENCH" && "$PY" -c 'import json, sys
+from ffl_core.extensions import effective
+text = sys.stdin.read().strip()
+row = json.loads(text) if text.startswith("{") else None
+if not row:
+	print("it has no POS Extension row (ffl_core.extensions.registry.sync never described it)")
+elif not effective(row):
+	print(row.get("incompatible_reason") if not row.get("compatible") else
+		"it is not installed on the site" if not row.get("installed_on_site") else "its switch is off")')) \
+	|| { echo "ext-test: cannot read the POS Extension row of $ID on $SITE" >&2; exit 1; }
+
 log=$(mktemp)
 trap 'rm -f "$log"' EXIT
 
-echo "==> [1/3] tests: bench --site $SITE run-tests --app $ID"
-(cd "$BENCH" && bench --site "$SITE" run-tests --app "$ID") 2>&1 | tee "$log"
-status=${PIPESTATUS[0]}
-ran=0                                                    # one "Ran N tests" line per test category frappe runs
-while read -r n; do ran=$((ran + n)); done < <(sed -nE 's/^Ran ([0-9]+) tests? in .*/\1/p' "$log")
-if [ "$status" -eq 0 ] && [ "$ran" -gt 0 ]; then tests="OK ($ran ran)"; else tests="FAIL (exit $status, $ran ran)"; fi
+if [ -n "$off" ]; then
+	echo "ext-test: $ID is off on $SITE — $off; its tests would only see \"turned off for this store\", so they are not run" >&2
+	tests="FAIL (not run: $off)"
+else
+	echo "==> [1/3] tests: bench --site $SITE run-tests --app $ID"
+	(cd "$BENCH" && bench --site "$SITE" run-tests --app "$ID") 2>&1 | tee "$log"
+	status=${PIPESTATUS[0]}
+	ran=0                                                # one "Ran N tests" line per test category frappe runs
+	while read -r n; do ran=$((ran + n)); done < <(sed -nE 's/^Ran ([0-9]+) tests? in .*/\1/p' "$log")
+	if [ "$status" -eq 0 ] && [ "$ran" -gt 0 ]; then tests="OK ($ran ran)"; else tests="FAIL (exit $status, $ran ran)"; fi
+fi
 
 echo "==> [2/3] lint: python -m ffl_core.extensions.lint $ROOT"
 if (cd "$BENCH" && "$PY" -m ffl_core.extensions.lint "$ROOT"); then lint=OK; else lint=FAIL; fi
