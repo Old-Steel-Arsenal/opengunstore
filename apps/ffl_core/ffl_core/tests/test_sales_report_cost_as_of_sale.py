@@ -597,6 +597,18 @@ class CostAsOfSale(FrappeTestCase):
 		self._issue(serial)
 		self.assertCost(reissue.name, 0.0)
 
+	def test_a_returned_gun_moved_before_its_reissue_still_costs_nothing(self):
+		serial = self._testMethodName[:40]
+		self._receive(serial, 500)
+		sale = self._bill(serial, 900)
+		issue = self._issue(serial)
+		self._material_receipt(serial, 500, remarks=f"Returned in transit, reverses {issue}")
+		self._move(serial, self.warehouse, self.back_room)   # a move is not a receipt
+		reissue = self._bill(serial, 0)
+		self._issue(serial, self.back_room)
+		self.assertCost(sale.name, 500.0)
+		self.assertCost(reissue.name, 0.0)
+
 	def test_a_gun_bought_back_then_given_to_its_buyer_at_no_charge_is_costed_from_the_ledger(self):
 		serial = self._testMethodName[:40]
 		self._receive(serial, 500)

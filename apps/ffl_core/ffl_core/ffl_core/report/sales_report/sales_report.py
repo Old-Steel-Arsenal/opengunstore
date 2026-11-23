@@ -604,9 +604,10 @@ def _no_charge_reissues(free) -> set:
 	name the outward voucher that issued the serial for the sale (the invoice
 	itself, a Delivery Note of it, the Material Issue that took the gun out of
 	that stay) or an FFL Disposition of the sale — linked to the invoice or its
-	web order — whose Material Issue issued it. A buy-back, a trade-in, any
-	other receipt, a count or a move in between leaves the $0 line to the
-	ledger. Serials compare upper-cased, like the ledger lookup's."""
+	web order — whose Material Issue issued it. Moves (_entry_kind) are read
+	past, both legs. A buy-back, a trade-in, any other receipt or a count that
+	takes the gun in between leaves the $0 line to the ledger. Serials compare
+	upper-cased, like the ledger lookup's."""
 	serials = {sn for _doctype, _inv, sn in free}
 	params, likes = {}, []
 	for i, sn in enumerate(sorted(serials)):
@@ -641,15 +642,24 @@ def _no_charge_reissues(free) -> set:
 	ledger: dict[str, list] = {}
 	for e in frappe.db.sql("""
 			select e.serial_no, b.type_of_transaction, b.voucher_type, b.voucher_no, b.posting_datetime, b.creation,
-				se.purpose, se.remarks
+				se.purpose as stock_entry_purpose, sr.purpose as reconciliation_purpose, se.remarks
 			from `tabSerial and Batch Bundle` b
 			join `tabSerial and Batch Entry` e on e.parent = b.name
 			left join `tabStock Entry` se on b.voucher_type = 'Stock Entry' and se.name = b.voucher_no
+			left join `tabStock Reconciliation` sr on b.voucher_type = 'Stock Reconciliation' and sr.name = b.voucher_no
 			where e.serial_no in %(serials)s and b.type_of_transaction in ('Inward', 'Outward')
 				and b.docstatus = 1 and b.is_cancelled = 0 and b.posting_datetime is not null
 			order by b.posting_datetime, b.creation""", {"serials": tuple(sorted(serials))}, as_dict=True):
 		e.at = (e.posting_datetime, e.creation)
 		ledger.setdefault(e.serial_no.upper(), []).append(e)
+	# A move (a warehouse transfer, a cost correction or count with a leg each way) only carries the
+	# stay: neither of its legs is a receipt or a hand-over, so the window below reads past both.
+	legs = {}
+	for sn, seq in ledger.items():
+		for e in seq:
+			legs.setdefault((sn, e.voucher_type, e.voucher_no), set()).add(e.type_of_transaction)
+	ledger = {sn: [e for e in seq if _entry_kind(e, len(legs[(sn, e.voucher_type, e.voucher_no)]) == 2) != _MOVE]
+		for sn, seq in ledger.items()}
 
 	last = {}  # each $0 line's key -> its serial's last priced sale, when that sale is the one to judge
 	for key, customer in free.items():
@@ -674,9 +684,9 @@ def _no_charge_reissues(free) -> set:
 			issue = [e for e in seq if e.type_of_transaction == "Outward" and e.at < back[0].at
 				and (not opened or e.at > opened[-1])]
 			tied = set(delivered.get((d0, i0, sn), ()))
-			if issue and issue[-1].voucher_type == "Stock Entry" and issue[-1].purpose == "Material Issue":
+			if issue and issue[-1].voucher_type == "Stock Entry" and issue[-1].stock_entry_purpose == "Material Issue":
 				tied.add(issue[-1].voucher_no)
-			if not all(e.voucher_type == "Stock Entry" and e.purpose == "Material Receipt"
+			if not all(e.voucher_type == "Stock Entry" and e.stock_entry_purpose == "Material Receipt"
 					and _names_any(e.remarks, tied) for e in back):
 				continue
 		out.add(key)
@@ -723,7 +733,7 @@ def _sale_hand_overs(sales, ledger) -> dict:
 					or (web and d.get("woo_online_order") == web)):
 				continue
 			entry = mine.get(d.stock_entry)
-			if entry is not None and entry.voucher_type == "Stock Entry" and entry.purpose == "Material Issue":
+			if entry is not None and entry.voucher_type == "Stock Entry" and entry.stock_entry_purpose == "Material Issue":
 				tied |= {d.stock_entry, d.name}
 		out[(doctype, inv, sn)] = tied
 	return out
