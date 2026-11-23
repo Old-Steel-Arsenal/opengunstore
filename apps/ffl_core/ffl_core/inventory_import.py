@@ -296,9 +296,9 @@ def _create_item(r: dict) -> str:
 
 def check_posting(warehouse: str, posting_date) -> tuple[str, str]:
 	"""(company, Temporary Opening account) once the cut-over date and the chart
-	of accounts allow opening stock; refuses before anything is written."""
-	from erpnext.stock.doctype.stock_reconciliation.stock_reconciliation import get_difference_account
-
+	of accounts allow opening stock; refuses before anything is written. The account is the one
+	ERPNext's opening-stock reconciliation books against (its get_difference_account, which since
+	16.60 also wants Stock Reconciliation read: the importer is System Manager's)."""
 	if not posting_date:
 		frappe.throw(_("Pick the cut-over date: the day your old system's counts are as of."))
 	posting_date = getdate(posting_date)
@@ -313,7 +313,7 @@ def check_posting(warehouse: str, posting_date) -> tuple[str, str]:
 	closed = closed[0] if closed else None
 	if closed and posting_date <= getdate(closed):
 		frappe.throw(_("The books are closed through {0}. Pick a later cut-over date.").format(closed))
-	account = get_difference_account("Opening Stock", company)
+	account = frappe.db.get_value("Account", {"is_group": 0, "company": company, "account_type": "Temporary"}, "name")
 	if not account:
 		frappe.throw(_("{0} has no Temporary Opening account. Add one to the chart of accounts first.").format(company))
 	return company, account

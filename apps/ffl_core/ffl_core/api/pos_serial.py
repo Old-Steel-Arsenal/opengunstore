@@ -9,13 +9,15 @@ return ticket) can never be sold at the register again: "Serial No: X has
 already been transacted into another POS Invoice."
 
 This override (wired via override_whitelisted_methods) is the upstream
-query plus one filter: only POS Invoices not yet consolidated reserve.
+query plus one filter: only POS Invoices not yet consolidated reserve. It keeps
+upstream's gates (ERPNext 16.60: POS Invoice read, select on the warehouse).
 """
 from __future__ import annotations
 
 import json
 
 import frappe
+from erpnext import require_permission
 from erpnext.stock.doctype.serial_no.serial_no import get_serial_nos
 
 
@@ -36,11 +38,12 @@ def get_pos_reserved_serial_nos(filters):
 	    return tickets.
 
 	Permissions:
-	    Open by design: upstream's method is gateless and the POS page calls
-	    it for every serialized item a clerk adds.
+	    Same gates as upstream: POS Invoice read, and select on the warehouse.
 	"""
+	frappe.has_permission("POS Invoice", "read", throw=True)
 	if isinstance(filters, str):
 		filters = json.loads(filters)
+	require_permission("Warehouse", filters.get("warehouse"), "select")
 
 	pi = frappe.qb.DocType("POS Invoice")
 	pii = frappe.qb.DocType("POS Invoice Item")

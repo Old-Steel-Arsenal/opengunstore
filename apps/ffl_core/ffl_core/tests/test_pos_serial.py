@@ -4,6 +4,7 @@ rung up again); an open ticket still does, net of open return tickets.
 
 Rows are written with db_insert (no controller validation): the query only
 reads POS Invoice / POS Invoice Item columns, and the class rollback drops them.
+The warehouse is a real one: the endpoint checks select on it, as upstream does.
 """
 from __future__ import annotations
 
@@ -11,9 +12,10 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from ffl_core.api.pos_serial import get_pos_reserved_serial_nos
+from ffl_core.tests.crm_support import user
 
 ITEM = "_TEST-POS-SERIAL-ITEM"
-WH = "_Test POS Serial WH"
+WH = None  # a leaf warehouse of the test company, set in setUpClass
 
 
 def _ticket(serial, *, consolidated="", is_return=0):
@@ -30,6 +32,15 @@ def _ticket(serial, *, consolidated="", is_return=0):
 
 
 class PosReservedSerials(FrappeTestCase):
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		global WH
+		WH = frappe.get_all("Warehouse", filters={"is_group": 0}, pluck="name", order_by="name", limit=1)[0]
+
+	def tearDown(self):
+		frappe.set_user("Administrator")
+
 	def reserved(self):
 		return get_pos_reserved_serial_nos({"item_code": ITEM, "warehouse": WH})
 
@@ -64,3 +75,18 @@ class PosReservedSerials(FrappeTestCase):
 		pos_js = frappe.get_app_path("erpnext", "selling", "page", "point_of_sale", "pos_controller.js")
 		with open(pos_js) as f:
 			self.assertIn(upstream, f.read())
+
+	def test_cashier_passes_the_gates(self):
+		_ticket("PRS-CLERK")
+		frappe.set_user(user("prs-clerk@example.com", "Sales User"))
+		self.assertIn("PRS-CLERK", self.reserved())
+
+	def test_needs_pos_invoice_read(self):
+		frappe.set_user(user("prs-norole@example.com"))
+		with self.assertRaises(frappe.PermissionError):
+			self.reserved()
+
+	def test_needs_an_existing_warehouse(self):
+		frappe.set_user(user("prs-clerk@example.com", "Sales User"))
+		with self.assertRaises(frappe.PermissionError):
+			get_pos_reserved_serial_nos({"item_code": ITEM, "warehouse": "_No Such Warehouse"})

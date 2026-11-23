@@ -1118,10 +1118,10 @@ def _line_taxable(line, company, sales_tax_accounts) -> bool:
 	template = line.get("item_tax_template")
 	if not template or not sales_tax_accounts:
 		return True
-	from erpnext.stock.get_item_details import NOT_APPLICABLE_TAX, get_item_tax_map
+	from erpnext.stock.get_item_details import NOT_APPLICABLE_TAX, _get_item_tax_map
 
 	# rate 1 stands in for "the ticket's rate": only what the template does to it matters (0 / not applicable).
-	tax_map = get_item_tax_map(doc={"company": company, "taxes": [{"account_head": a, "rate": 1} for a in sales_tax_accounts]},
+	tax_map = _get_item_tax_map(doc={"company": company, "taxes": [{"account_head": a, "rate": 1} for a in sales_tax_accounts]},
 		tax_template=template, as_json=False)
 	return any(tax_map.get(a) != NOT_APPLICABLE_TAX and flt(tax_map.get(a)) != 0 for a in sales_tax_accounts)
 

@@ -184,6 +184,13 @@ class PlanConfig(_Base):
 	def test_free_untaxed_service_saves(self):
 		lane = _item("LANE", 20, group=SUB_GROUP, exempt=self.exempt)
 		self.assertFalse(mb.taxed_here(lane, COMPANY))
+		# Pricing runs in the invoice's own hooks, under whatever session saves it (a webhook runs as Guest);
+		# ERPNext 16.60's whitelisted get_item_tax_map wants select on the template, the computation does not.
+		frappe.set_user("Guest")
+		try:
+			self.assertFalse(mb.taxed_here(lane, COMPANY))
+		finally:
+			frappe.set_user("Administrator")
 		plan = _plan(_benefit(mb.ON_ITEM, lane, mb.PERCENT, 100, days="mon,TUESDAY, fri"))
 		self.assertEqual(plan.benefits[0].days, "Mon, Tue, Fri")
 

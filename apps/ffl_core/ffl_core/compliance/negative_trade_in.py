@@ -63,12 +63,12 @@ def _tax_at(doc, tax, rate: float) -> float:
 	"""The tax ``tax`` would come to at ``rate``. Each line's rate as ERPNext derives it (get_item_tax_map): the row's
 	rate unless the line's Item Tax Template sets this account (an exempt service is 0%). Not the line's stored
 	``item_tax_rate``: ERPNext rebuilds that from the rows' current rates, which this hook may have set to 0."""
-	from erpnext.stock.get_item_details import NOT_APPLICABLE_TAX, get_item_tax_map
+	from erpnext.stock.get_item_details import NOT_APPLICABLE_TAX, _get_item_tax_map
 
 	at = {"company": doc.get("company"), "taxes": [{"account_head": tax.account_head, "rate": rate}]}
 	total = 0.0
 	for item in doc.get("items") or []:
-		line_rate = get_item_tax_map(doc=at, tax_template=item.get("item_tax_template"), as_json=False).get(tax.account_head)
+		line_rate = _get_item_tax_map(doc=at, tax_template=item.get("item_tax_template"), as_json=False).get(tax.account_head)
 		if line_rate != NOT_APPLICABLE_TAX:
 			total += flt(line_rate) * flt(item.get("rate")) * flt(item.get("qty")) / 100.0
 	return total
