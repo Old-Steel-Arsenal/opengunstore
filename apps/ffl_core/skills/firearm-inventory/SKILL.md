@@ -13,9 +13,9 @@ All of them are read-only and run without approval through `call_api`.
 
 | Question | Call |
 |---|---|
-| How many guns do we have? How many can we sell? | `ffl_core.firearm.firearm_stock_summary` |
-| Which units of a model are for sale, and at what price? | `ffl_core.firearm.available_serials_with_prices` with `item_codes` |
-| Stock of a non-gun item (ammo, accessories, parts) | `ffl_core.api.item_admin.get_item_stock` with `item_codes` |
+| How many guns do we have? How many can we sell? | `ffl_core.api.agent.firearm_stock_summary` |
+| Which units of a model are for sale, and at what price? | `ffl_core.api.agent.serials_for_sale` with `item_codes` |
+| Stock of a non-gun item (ammo, accessories, parts) | `ffl_core.api.agent.item_stock` with `item_codes` |
 | The full list of guns by serial, with location and source | `run_report` on `Firearms In Stock` |
 
 Find item codes first with `read_records` on `Item` (filter by `item_name` like, or `manufacturer`).

@@ -10,7 +10,13 @@ from frappe.tests.utils import FrappeTestCase
 from ffl_core.tests.test_pos_picker_lockdown import DEALER, ITEM, PickerLockdownFixtures
 
 READ_APIS = (
-	"ffl_core.firearm.firearm_stock_summary",
+	"ffl_core.api.agent.firearm_stock_summary",
+	"ffl_core.api.agent.serials_for_sale",
+	"ffl_core.api.agent.item_stock",
+)
+# The POS calls these inside its own write transactions, where @frappe.read_only() would
+# send their reads to a replica.
+POS_INTERNAL_APIS = (
 	"ffl_core.firearm.available_serials_with_prices",
 	"ffl_core.api.item_admin.get_item_stock",
 )
@@ -24,6 +30,11 @@ _ARGS = {
 class FlowCallApiRunsThemReadOnly(FrappeTestCase):
 	"""The real path: Flow's call_api tool, which opens frappe.db.read_only() for these.
 	No fixtures here, since a read-only transaction cannot start after uncommitted writes."""
+
+	def setUp(self):
+		import frappe
+
+		frappe.db.rollback()  # whatever an earlier test in this worker left open
 
 	def test_call_api_runs_each_read_api(self):
 		from frappe.flow import ToolContext
@@ -41,7 +52,8 @@ class FlowCallApiRunsThemReadOnly(FrappeTestCase):
 class FirearmStockSummary(PickerLockdownFixtures):
 	def test_counts_on_hand_and_for_sale(self):
 		import frappe
-		from ffl_core.firearm import firearm_stock_summary, transfer_serial
+		from ffl_core.api.agent import firearm_stock_summary
+		from ffl_core.firearm import transfer_serial
 		from ffl_core.warehouses import ensure_consignment_warehouse
 
 		before = firearm_stock_summary()
@@ -68,6 +80,8 @@ class FlowSeesReadOnlyApis(PickerLockdownFixtures):
 
 		for path in READ_APIS:
 			self.assertTrue(is_read_function(path), path)
+		for path in POS_INTERNAL_APIS:
+			self.assertFalse(is_read_function(path), path)
 
 	def test_read_apis_write_nothing_with_guns_on_hand(self):
 		"""Flow refuses a read API that writes (frappe.db.transaction_writes grows)."""

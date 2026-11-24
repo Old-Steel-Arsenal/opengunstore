@@ -1,6 +1,6 @@
 ---
 name: firearm-records
-description: Read before creating, updating, deleting, submitting or cancelling anything that touches a firearm, a serial number, a customer's ID, a 4473, the A&D book, a transfer, a consignment or a sale with a gun on it. Lists what an agent may not change directly and where staff do it instead.
+description: Read before showing a customer's details or any 4473, and before creating, updating, deleting, submitting or cancelling anything that touches a firearm, a serial number, a customer's ID, a 4473, the A&D book, a transfer, a consignment or a sale with a gun on it. Says which customer details never go in a reply, what an agent may not change directly, and where staff do it instead.
 ---
 
 # Firearm records are compliance records

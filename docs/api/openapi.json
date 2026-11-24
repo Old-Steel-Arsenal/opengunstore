@@ -7239,6 +7239,132 @@
         }
       }
     },
+    "/api/method/ffl_core.api.agent.firearm_stock_summary": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "How many firearms the store has on hand, and how many of them can be sold.",
+        "description": "A gun is on hand while its Serial No is Active. It is not for sale when the POS\npicker would not offer it: held on a ticket or order, reserved by a web or\nGunBroker order, consigned out, or a customer's transfer gun.\n\n**Auth (derived from code):** Roles resolved at runtime via `STOCK_READ_ROLES`.\n\nSource: `apps/ffl_core/ffl_core/api/agent.py:21`",
+        "operationId": "ffl_core.api.agent.firearm_stock_summary",
+        "responses": {
+          "200": {
+            "description": "{on_hand, for_sale, not_for_sale, antiques, by_warehouse: {warehouse: count}, by_type: {firearm_type: count}}. Antiques are counted in on_hand and are not in the A&D book.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.api.agent.item_stock": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Quantity on hand per item across all warehouses, for non-gun items.",
+        "description": "**Auth (derived from code):** Requires read permission on Item (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/api/agent.py:78`",
+        "operationId": "ffl_core.api.agent.item_stock",
+        "responses": {
+          "200": {
+            "description": "{item_code: total_actual_qty}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "item_codes": {
+                    "type": "array",
+                    "description": "Item codes — list, JSON list or comma-separated string."
+                  }
+                },
+                "required": [
+                  "item_codes"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.api.agent.serials_for_sale": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "The units of each firearm item the counter would sell now, with their price.",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/agent.py:63`",
+        "operationId": "ffl_core.api.agent.serials_for_sale",
+        "responses": {
+          "200": {
+            "description": "{item_code: [{\"serial\", \"sell_price\", \"purchase_rate\"}, ...]}, cheapest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "item_codes": {
+                    "type": "array",
+                    "description": "Item codes — list, JSON list or comma-separated string."
+                  }
+                },
+                "required": [
+                  "item_codes"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.api.atf_link.create_party_from_atf": {
       "post": {
         "tags": [
@@ -11093,7 +11219,7 @@
           "ffl_core"
         ],
         "summary": "DESTRUCTIVE: cancel referencing docs, drop links, delete Items outright.",
-        "description": "Cancels referencing submitted docs, deletes referencing drafts, wipes\nsimple linked rows (Stock Ledger, Serial No, Bin, Batch, Item Price,\nFFL Acquisition/Disposition), then deletes the Items. Cancelled-doc\nhistory rows are left alone — they're audit trail.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager only (destructive).\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:598`",
+        "description": "Cancels referencing submitted docs, deletes referencing drafts, wipes\nsimple linked rows (Stock Ledger, Serial No, Bin, Batch, Item Price,\nFFL Acquisition/Disposition), then deletes the Items. Cancelled-doc\nhistory rows are left alone — they're audit trail.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager only (destructive).\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:597`",
         "operationId": "ffl_core.api.item_admin.force_delete",
         "responses": {
           "200": {
@@ -11144,7 +11270,7 @@
           "ffl_core"
         ],
         "summary": "Return {item_code: total_actual_qty} summed across all warehouses.",
-        "description": "Reads from `tabBin` (the per-warehouse stock-on-hand cache). Items with\nno Bin row return 0. Designed for the Item list view + Item form to\nshow a stock badge without forcing the user to open Stock Balance.\n\n**Auth (derived from code):** Requires read permission on Item (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:434`",
+        "description": "Reads from `tabBin` (the per-warehouse stock-on-hand cache). Items with\nno Bin row return 0. Designed for the Item list view + Item form to\nshow a stock badge without forcing the user to open Stock Balance.\n\n**Auth (derived from code):** Requires read permission on Item (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:433`",
         "operationId": "ffl_core.api.item_admin.get_item_stock",
         "responses": {
           "200": {
@@ -11191,7 +11317,7 @@
           "ffl_core"
         ],
         "summary": "Preview a force_delete: per-doctype counts of rows that would be touched.",
-        "description": "**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:522`",
+        "description": "**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_core/ffl_core/api/item_admin.py:521`",
         "operationId": "ffl_core.api.item_admin.preview_delete",
         "responses": {
           "200": {
@@ -16822,7 +16948,7 @@
           "ffl_core"
         ],
         "summary": "Like available_serials_for_items but enriches each serial with sell_price",
-        "description": "and purchase_rate (cost), sorted by sell_price ascending so the POS picks\nthe cheapest in-stock unit by default. Used by the POS Item Details serial\npicker to render a price-first dropdown.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1386`",
+        "description": "and purchase_rate (cost), sorted by sell_price ascending so the POS picks\nthe cheapest in-stock unit by default. Used by the POS Item Details serial\npicker to render a price-first dropdown.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1385`",
         "operationId": "ffl_core.firearm.available_serials_with_prices",
         "responses": {
           "200": {
@@ -16930,43 +17056,13 @@
         }
       }
     },
-    "/api/method/ffl_core.firearm.firearm_stock_summary": {
-      "post": {
-        "tags": [
-          "ffl_core"
-        ],
-        "summary": "How many firearms the store has on hand, and how many of them can be sold.",
-        "description": "A gun is on hand while its Serial No is Active. It is not for sale when the POS\npicker would not offer it: held on a ticket or order, reserved by a web or\nGunBroker order, consigned out, or a customer's transfer gun.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1654`",
-        "operationId": "ffl_core.firearm.firearm_stock_summary",
-        "responses": {
-          "200": {
-            "description": "{on_hand, for_sale, not_for_sale, antiques, by_warehouse: {warehouse: count}, by_type: {firearm_type: count}}. Antiques are counted in on_hand and are not in the A&D book.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "message": {
-                      "type": "object"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/FrappeError"
-          }
-        }
-      }
-    },
     "/api/method/ffl_core.firearm.get_transfer_config": {
       "post": {
         "tags": [
           "ffl_core"
         ],
         "summary": "POS transfer-dialog config: the fee item + default per-firearm fee.",
-        "description": "Lazily creates the TRANSFER-FEE service item on first use — by the time the POS\nis live the site's UOM/Item-Group masters exist, unlike at install/migrate time\n(a fresh install runs hooks/patches before ERPNext's setup wizard). Mirrors\nreceive_goods.get_receive_sources for reading FFL Settings.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1528`",
+        "description": "Lazily creates the TRANSFER-FEE service item on first use — by the time the POS\nis live the site's UOM/Item-Group masters exist, unlike at install/migrate time\n(a fresh install runs hooks/patches before ERPNext's setup wizard). Mirrors\nreceive_goods.get_receive_sources for reading FFL Settings.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1527`",
         "operationId": "ffl_core.firearm.get_transfer_config",
         "responses": {
           "200": {
@@ -16996,7 +17092,7 @@
           "ffl_core"
         ],
         "summary": "Every in-stock firearm serial, for the POS customer-transfer picker.",
-        "description": "The two cart-driven pickers (available_serials_for_items, firearm_items_in)\nneed item_codes up front; a transfer starts before any gun is in the cart,\nso this returns the whole in-stock firearm set instead. Price is informational\n(picker label) — reuses the uniform/per-serial logic of\navailable_serials_with_prices; the transfer always adds the gun at $0.\n\nCustody guns are deliberately NOT excluded here (exclude_custody=False),\nunlike in the two SALE pickers. This dialog is how a customer's gun goes\nhome: hiding custody guns from it would strand every gun the custody\nwarehouse receives, which is the opposite of the point.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1587`",
+        "description": "The two cart-driven pickers (available_serials_for_items, firearm_items_in)\nneed item_codes up front; a transfer starts before any gun is in the cart,\nso this returns the whole in-stock firearm set instead. Price is informational\n(picker label) — reuses the uniform/per-serial logic of\navailable_serials_with_prices; the transfer always adds the gun at $0.\n\nCustody guns are deliberately NOT excluded here (exclude_custody=False),\nunlike in the two SALE pickers. This dialog is how a customer's gun goes\nhome: hiding custody guns from it would strand every gun the custody\nwarehouse receives, which is the opposite of the point.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1586`",
         "operationId": "ffl_core.firearm.in_stock_firearm_serials",
         "responses": {
           "200": {
@@ -17048,7 +17144,7 @@
           "ffl_core"
         ],
         "summary": "Per-item POS pricing summary — the single data source for the POS card",
-        "description": "price range, the add-to-cart rate seed, the picker's auto-pick decision and\nthe checkout gate.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1480`",
+        "description": "price range, the add-to-cart rate seed, the picker's auto-pick decision and\nthe checkout gate.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/firearm.py:1479`",
         "operationId": "ffl_core.firearm.pos_pricing_summary",
         "responses": {
           "200": {

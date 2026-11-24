@@ -430,7 +430,6 @@ def recompute_all_item_actual_qty() -> dict:
 
 
 @frappe.whitelist()
-@frappe.read_only()
 def get_item_stock(item_codes) -> dict:
 	"""Return {item_code: total_actual_qty} summed across all warehouses.
 

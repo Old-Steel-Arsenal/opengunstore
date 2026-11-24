@@ -1382,7 +1382,6 @@ def assert_transfer_declaration_unambiguous(acquisition_type,
 
 
 @frappe.whitelist()
-@frappe.read_only()
 def available_serials_with_prices(item_codes: list[str] | str,
 		exclude_unavailable: int | bool = True,
 		current_invoice: str | None = None,
@@ -1647,48 +1646,6 @@ def in_stock_firearm_serials(exclude_unavailable: int | bool = True,
 					r.sale_sell_price, r.sale_from, r.sale_to)),
 		})
 	return out
-
-
-@frappe.whitelist()
-@frappe.read_only()
-def firearm_stock_summary() -> dict:
-	"""How many firearms the store has on hand, and how many of them can be sold.
-
-	A gun is on hand while its Serial No is Active. It is not for sale when the POS
-	picker would not offer it: held on a ticket or order, reserved by a web or
-	GunBroker order, consigned out, or a customer's transfer gun.
-
-	Returns:
-	    {on_hand, for_sale, not_for_sale, antiques, by_warehouse: {warehouse: count},
-	    by_type: {firearm_type: count}}. Antiques are counted in on_hand and are not
-	    in the A&D book.
-	"""
-	frappe.only_for(COUNTER_ROLES)
-	rows = frappe.db.sql(
-		"""
-		SELECT sn.name, sn.item_code, sn.warehouse, COALESCE(i.is_antique, 0) AS is_antique,
-		       COALESCE(NULLIF(sn.firearm_type, ''), i.firearm_type) AS firearm_type
-		FROM `tabSerial No` sn
-		INNER JOIN `tabItem` i ON i.name = sn.item_code AND i.is_firearm = 1
-		WHERE sn.status = 'Active'
-		""",
-		as_dict=True,
-	)
-	not_for_sale = _pos_picker_excluded_serials({r.item_code for r in rows})
-	by_warehouse: dict[str, int] = {}
-	by_type: dict[str, int] = {}
-	for r in rows:
-		by_warehouse[r.warehouse or ""] = by_warehouse.get(r.warehouse or "", 0) + 1
-		by_type[r.firearm_type or ""] = by_type.get(r.firearm_type or "", 0) + 1
-	held = sum(1 for r in rows if r.name in not_for_sale)
-	return {
-		"on_hand": len(rows),
-		"for_sale": len(rows) - held,
-		"not_for_sale": held,
-		"antiques": sum(1 for r in rows if r.is_antique),
-		"by_warehouse": by_warehouse,
-		"by_type": by_type,
-	}
 
 
 _TYPE_TO_GROUP = {

@@ -97,11 +97,14 @@ class TestEntryGateBehavior(NoRoleFixtures):
 			{"serial": "GATES-T1", "apply_credit": 1})
 
 	def test_counter_read_endpoints_reject_roleless(self):
-		from ffl_core.firearm import available_serials_with_prices, firearm_stock_summary
+		from ffl_core.firearm import available_serials_with_prices
+		from ffl_core.api import agent
 		from ffl_core.api.receive_goods import lookup_item
 
 		self._assert_rejected_at_entry(available_serials_with_prices, ["X"])
-		self._assert_rejected_at_entry(firearm_stock_summary)
+		self._assert_rejected_at_entry(agent.firearm_stock_summary)
+		self._assert_rejected_at_entry(agent.serials_for_sale, ["X"])
+		self._assert_rejected_at_entry(agent.item_stock, ["X"])
 		self._assert_rejected_at_entry(lookup_item, "X")
 
 	def test_item_read_badge_rejects_roleless(self):
