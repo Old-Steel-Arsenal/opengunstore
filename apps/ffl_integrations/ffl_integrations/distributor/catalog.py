@@ -210,6 +210,12 @@ def _product(raw, tagged) -> dict:
 		"description": raw.get("description") or "", "image_url": raw.get("image_url") or "",
 		"long_description": raw.get("long_description") or "",
 		"content_optimized": bool(raw.get("content_optimized")),
+		# Optimized copy beyond title and description ("" until written), and the
+		# distributor's own title/description the served ones replace when optimized.
+		"short_description": raw.get("short_description") or "",
+		"meta_description": raw.get("meta_description") or "",
+		"seo_title": raw.get("seo_title") or "", "focus_keyword": raw.get("focus_keyword") or "",
+		"original": raw.get("original") or {},
 		"ffl_required": bool(raw.get("ffl_required")), "offers": offers,
 		# The catalog master (Data Service): {slug, name, path} and {is_firearm,
 		# nfa_type, is_antique}, null until the product is classified.

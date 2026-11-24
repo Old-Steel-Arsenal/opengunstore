@@ -484,6 +484,108 @@ class TestNoDealerStoreMeta(FrappeTestCase):
 
 
 # ===========================================================================
+# Short description + SEO meta: sent when set, never when empty
+# ===========================================================================
+
+class TestShortDescriptionAndSeoMeta(FrappeTestCase):
+    """The Item's short description goes out top-level and its SEO title / meta
+    description / focus keyword as ``_ffl_seo_*`` meta — each only when set. An
+    empty one is not sent at all: meta_data is an upsert, so the key keeps the
+    store's value, and the lean (machine) push lets the set ones through."""
+
+    _COPY = dict(short_description="<p>Short.</p>", seo_title="Glock 17 Gen6 9mm Pistol",
+                 seo_description="The Glock 17 Gen6 in 9mm. Ship to your FFL.",
+                 focus_keyword="glock 17 gen6")
+    _SEO = {"_ffl_seo_title": "Glock 17 Gen6 9mm Pistol",
+            "_ffl_seo_description": "The Glock 17 Gen6 in 9mm. Ship to your FFL.",
+            "_ffl_seo_focus_keyword": "glock 17 gen6"}
+
+    def _meta(self, payload):
+        return {m["key"]: m["value"] for m in payload["meta_data"]}
+
+    def _simple(self, **kwargs):
+        return build_simple_product_payload(
+            item_code="X1", item_name="X", standard_rate=100, stock_qty=1, **kwargs)
+
+    def _serial(self, **kwargs):
+        return build_serial_product_payload(
+            item_code="X1", serial_no="S1", item_name="X", sell_price=100, **kwargs)
+
+    def test_set_fields_are_sent(self):
+        p = self._simple(**self._COPY)
+        self.assertEqual(p["short_description"], "<p>Short.</p>")
+        meta = self._meta(p)
+        self.assertEqual({k: meta[k] for k in self._SEO if k in meta}, self._SEO)
+
+    def test_empty_fields_are_not_sent(self):
+        blank = dict.fromkeys(self._COPY, "  ")
+        for p in (self._simple(), self._simple(**blank)):
+            self.assertNotIn("short_description", p)
+            self.assertFalse(set(self._SEO) & set(self._meta(p)))
+
+    def test_each_field_on_its_own(self):
+        p = self._simple(seo_title="Only a title")
+        self.assertNotIn("short_description", p)
+        self.assertEqual({k: v for k, v in self._meta(p).items() if k.startswith("_ffl_seo")},
+                         {"_ffl_seo_title": "Only a title"})
+
+    def test_lean_item_push_carries_the_copy(self):
+        """A Desk edit of the short description or an SEO field reaches the store
+        on the machine push its save enqueues; name and description do not."""
+        from ffl_woo_sync.woocommerce.sync import _pos_owned_payload
+        lean = _pos_owned_payload(self._simple(**self._COPY))
+        self.assertEqual(lean["short_description"], "<p>Short.</p>")
+        self.assertEqual({k: v for k, v in self._meta(lean).items() if k in self._SEO}, self._SEO)
+        self.assertNotIn("name", lean)
+        self.assertNotIn("description", lean)
+
+    def test_serial_builder_takes_no_item_copy(self):
+        """One gun's page is its own: the Item's copy would repeat across every
+        sibling serial and overwrite per-gun SEO meta."""
+        for key in self._COPY:
+            with self.assertRaises(TypeError):
+                self._serial(**{key: "x"})
+
+    def test_serial_loader_sends_no_item_copy(self):
+        item = MagicMock()
+        item.name = item.item_code = "USED-GUN"
+        item.item_name, item.description, item.standard_rate = "Used Gun", "", 0.0
+        item.image_gallery = []
+        fields = dict(is_firearm=1, is_used=1, uniform_sell_price=0,
+            woo_short_description="<p>Item copy.</p>", woo_seo_title="Item title",
+            woo_seo_description="Item meta.", woo_focus_keyword="item kw")
+        item.get = lambda f, d=None: fields.get(f, d)
+        serial = MagicMock()
+        serial.name, serial.item_code, serial.status = "SN1", "USED-GUN", "Active"
+        serial.image_gallery = []
+        sfields = dict(sell_price=500.0, condition_grade="Good", woo_reserved=0)
+        serial.get = lambda f, d=None: sfields.get(f, d)
+        with patch("frappe.get_doc", side_effect=[serial, item]), \
+             patch("ffl_core.reservations.counter_holds", return_value={}):
+            p = serial_to_product_payload("SN1")
+        self.assertNotIn("short_description", p)
+        self.assertFalse(set(self._SEO) & set(self._meta(p)))
+
+    def test_serial_lean_push_never_carries_item_copy(self):
+        """Even a payload that had them: the serial lean filter drops the Item's copy
+        and keeps the per-gun POS-owned keys."""
+        from ffl_woo_sync.woocommerce.sync import _pos_owned_payload
+        p = self._simple(**self._COPY)
+        p["meta_data"].append({"key": "_osa_serial", "value": "S1"})
+        lean = _pos_owned_payload(p, serial=True)
+        self.assertNotIn("short_description", lean)
+        self.assertFalse(set(self._SEO) & set(self._meta(lean)))
+        self.assertIn("_osa_serial", self._meta(lean))
+        self.assertEqual(lean["stock_quantity"], 1)
+
+    def test_copy_payload(self):
+        from ffl_woo_sync.woocommerce.mapping import copy_payload
+        self.assertEqual(copy_payload(frappe._dict()), {})
+        self.assertEqual(copy_payload(frappe._dict(woo_focus_keyword="glock 17")),
+                         {"meta_data": [{"key": "_ffl_seo_focus_keyword", "value": "glock 17"}]})
+
+
+# ===========================================================================
 # Manufacturer / Model → WC attributes  +  UPC → global_unique_id (GTIN)
 # ===========================================================================
 

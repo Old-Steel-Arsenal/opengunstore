@@ -23,7 +23,7 @@ the whole serial-handling rework exists to stop.
 
 **Permissions:** Counter roles (manual path; the scheduler runs as Administrator).
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/tasks.py:1653`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/tasks.py:1655`</sub>
 
 ## `retry_stuck_serial_reservations`
 
@@ -63,4 +63,4 @@ external store:
 
 **Permissions:** Counter roles (manual path; the scheduler runs as Administrator).
 
-<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/tasks.py:1684`</sub>
+<sub>`apps/ffl_woo_sync/ffl_woo_sync/woocommerce/tasks.py:1686`</sub>
