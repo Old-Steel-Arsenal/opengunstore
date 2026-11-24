@@ -865,6 +865,10 @@ _POS_OWNED_KEYS = frozenset({
     # slug), so listing it widens nothing for them — it exists so the lean
     # `*/15` distributor drift push still delivers a shipping-class change.
     "shipping_class",
+    # The Item's short description (mapping.COPY_ITEM_FIELDS): emitted only when
+    # the Item field is set, so an empty field never touches the store's value,
+    # and a Desk edit of a set one reaches the store on the push its save enqueues.
+    "short_description",
 })
 
 # Machine-owned meta a lean update may write.  WooCommerce meta_data is an
@@ -891,6 +895,9 @@ _POS_OWNED_META_KEYS = frozenset({
     # The pre-order state (mapping.preorder_stock): the storefront's Pre-order
     # notice and checkout read it, so a lean push must be able to set and clear it.
     *mapping.PREORDER_META_KEYS,
+    # The Item's SEO title / meta description / focus keyword: emitted only when
+    # set (mapping.SEO_META_KEYS), so the store keeps whatever it has otherwise.
+    *mapping.SEO_META_KEYS,
 })
 
 

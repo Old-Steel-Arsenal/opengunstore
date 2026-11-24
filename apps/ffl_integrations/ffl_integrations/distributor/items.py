@@ -267,9 +267,12 @@ def _promote(provider, sku, spec, is_firearm) -> str:
 
 def _apply_product_copy(item_code) -> None:
 	"""Our optimized copy (the catalog service's ``content_optimized`` product) is
-	the Item's name and description wherever it exists: the distributor's feed text
-	(RSR's all-caps abbreviations) never stands in for it. Best effort — a catalog
-	outage leaves the promoted Item as it is."""
+	the Item's copy wherever it exists: the distributor's feed text (RSR's all-caps
+	abbreviations) never stands in for it. Field by field — a product optimized only
+	in part (SEO fields, say, but no title) leaves the rest of the Item alone, so the
+	name is written only when the served title differs from the distributor's own
+	(``original``), the description likewise, and the short description and SEO
+	fields when set. Best effort — a catalog outage leaves the Item as it is."""
 	from ffl_integrations.distributor import catalog
 
 	upc = frappe.db.get_value("Item", item_code, "upc") or item_code
@@ -280,12 +283,29 @@ def _apply_product_copy(item_code) -> None:
 		return
 	if not product or not product.get("content_optimized"):
 		return
-	values = {"item_name": (product.get("description") or "")[:140],
-		"description": item_html(product.get("long_description") or "")}
-	values = {k: v for k, v in values.items() if v}
+	values = product_copy_values(product)
+	if not values:
+		return
 	current = frappe.db.get_value("Item", item_code, list(values), as_dict=True) or {}
 	if any(current.get(k) != v for k, v in values.items()):
 		frappe.db.set_value("Item", item_code, values)
+
+
+def product_copy_values(product: dict) -> dict:
+	"""``{Item field: value}`` for the optimized parts of a catalog product — empty
+	values and unoptimized title/description left out."""
+	original = product.get("original") or {}
+	title = product.get("description") or ""
+	body = product.get("long_description") or ""
+	values = {
+		"item_name": title[:140] if title != original.get("description") else "",
+		"description": item_html(body) if body != original.get("long_description") else "",
+		"woo_short_description": product.get("short_description") or "",
+		"woo_seo_title": product.get("seo_title") or "",
+		"woo_seo_description": product.get("meta_description") or "",
+		"woo_focus_keyword": product.get("focus_keyword") or "",
+	}
+	return {k: v for k, v in values.items() if v}
 
 
 def item_html(html: str) -> str:

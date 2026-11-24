@@ -399,6 +399,46 @@ def _meta_data(pairs: dict) -> list[dict]:
     return [{"key": k, "value": str(v)} for k, v in pairs.items()]
 
 
+# The Item's storefront copy beyond name and description: the short description
+# (a native product field) and three SEO meta keys the storefront plugin reads for
+# the page <title>, the meta description and the focus keyword. A field is sent only
+# when set — WooCommerce meta_data is an upsert, so an omitted key keeps what the
+# store already holds (written in wp-admin or by an SEO routine), and an empty
+# short_description is simply not sent.
+COPY_ITEM_FIELDS = ("woo_short_description", "woo_seo_title", "woo_seo_description",
+    "woo_focus_keyword")
+SEO_META_KEYS = ("_ffl_seo_title", "_ffl_seo_description", "_ffl_seo_focus_keyword")
+
+
+def _item_copy_inputs(item) -> dict:
+    """Builder kwargs for the Item's short description and SEO meta."""
+    return {
+        "short_description": item.get("woo_short_description") or "",
+        "seo_title": item.get("woo_seo_title") or "",
+        "seo_description": item.get("woo_seo_description") or "",
+        "focus_keyword": item.get("woo_focus_keyword") or "",
+    }
+
+
+def _seo_meta(seo_title: str, seo_description: str, focus_keyword: str) -> dict:
+    """The SEO meta keys whose value is set (see :data:`SEO_META_KEYS`)."""
+    values = (seo_title, seo_description, focus_keyword)
+    return {k: v.strip() for k, v in zip(SEO_META_KEYS, values) if (v or "").strip()}
+
+
+def copy_payload(item) -> dict:
+    """``short_description`` and the SEO ``meta_data`` of an Item — its set fields
+    only, so ``{}`` when none is. For a copy-only update of an existing product."""
+    inputs = _item_copy_inputs(item)
+    out: dict = {}
+    if inputs["short_description"].strip():
+        out["short_description"] = inputs["short_description"].strip()
+    meta = _seo_meta(inputs["seo_title"], inputs["seo_description"], inputs["focus_keyword"])
+    if meta:
+        out["meta_data"] = _meta_data(meta)
+    return out
+
+
 # Extension-contributed product meta.  An extension owns fields core knows
 # nothing about (CA compliance flags, say) and needs them on the shop page; the
 # alternative is extensions patching the payload builders, which is exactly the
@@ -872,6 +912,10 @@ def build_simple_product_payload(
     lead_days: str | None = None,
     brand_id: int | None = None,
     shipping_class: str | None = None,
+    short_description: str = "",
+    seo_title: str = "",
+    seo_description: str = "",
+    focus_keyword: str = "",
 ) -> dict:
     """Build a WooCommerce product payload for a non-firearm or uniform-price firearm.
 
@@ -912,6 +956,10 @@ def build_simple_product_payload(
     ``shipping_class``
         Shipping-class **slug** (``dropship-handgun`` /
         ``dropship-firearm`` / ``dropship-accessory``).
+
+    ``short_description`` / ``seo_title`` / ``seo_description`` / ``focus_keyword``
+        Sent only when set (``short_description`` top-level, the rest as
+        :data:`SEO_META_KEYS`); empty leaves the store's value alone.
     """
     ammo = _is_ammo(item_group)
 
@@ -967,6 +1015,7 @@ def build_simple_product_payload(
     # longer promises; None on every other push leaves the shop's value alone.
     if lead_days is not None:
         meta["_osa_lead_days"] = str(lead_days).strip()
+    meta.update(_seo_meta(seo_title, seo_description, focus_keyword))
 
     payload: dict = {
         "name": item_name or item_code,
@@ -1004,6 +1053,8 @@ def build_simple_product_payload(
     slug = (shipping_class or "").strip().lower()
     if slug:
         payload["shipping_class"] = slug
+    if short_description.strip():
+        payload["short_description"] = short_description.strip()
 
     return payload
 
@@ -1038,6 +1089,10 @@ def build_serial_product_payload(
     clear_sold: bool = False,
     image_srcs: list[str] | None = None,
     attr_ids: dict[str, int] | None = None,
+    short_description: str = "",
+    seo_title: str = "",
+    seo_description: str = "",
+    focus_keyword: str = "",
 ) -> dict:
     """Build a WooCommerce product payload for one physical (per-serial) firearm.
 
@@ -1112,6 +1167,10 @@ def build_serial_product_payload(
         Shipment"); the gun keeps its ``pa_*`` attributes and ``_osa_serial``.
 
     ``attr_ids`` — optional ``{slug: id}`` map of global WC taxonomy IDs.
+
+    ``short_description`` / ``seo_title`` / ``seo_description`` / ``focus_keyword``
+        The parent Item's copy, sent only when set (see
+        :func:`build_simple_product_payload`).
     """
     condition = _pa_condition(condition_grade, is_used, is_antique)
     stock_qty = 0 if (
@@ -1145,6 +1204,7 @@ def build_serial_product_payload(
     if clear_sold:
         meta["_osa_sold_at"] = ""
         meta["_osa_sold_price"] = ""
+    meta.update(_seo_meta(seo_title, seo_description, focus_keyword))
 
     attributes: list[tuple[str, str, str]] = []
     if caliber:
@@ -1179,6 +1239,8 @@ def build_serial_product_payload(
     images = _build_images(image_srcs or [])
     if images:
         payload["images"] = images
+    if short_description.strip():
+        payload["short_description"] = short_description.strip()
 
     return payload
 
@@ -1912,6 +1974,7 @@ def item_to_product_payload(
         lead_days=_listing_lead_days(item_code, src) if listing else None,
         brand_id=brand_id,
         shipping_class=shipping_class,
+        **_item_copy_inputs(item),
     )
     if listing and src is None:
         # The store ships it (automatic sourcing sells its own stock): the drop-ship
@@ -2180,6 +2243,7 @@ def serial_to_product_payload(
         sale_from=sale_from,
         sale_to=sale_to,
         **_serial_attribute_inputs(serial, item),
+        **_item_copy_inputs(item),
         upc=(item.get("upc") or ""),
         woo_reserved=bool(serial.get("woo_reserved")),
         # ANOTHER channel's hold — resolved through the one predicate rather

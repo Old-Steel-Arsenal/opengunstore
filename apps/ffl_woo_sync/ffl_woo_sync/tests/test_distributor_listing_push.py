@@ -352,6 +352,27 @@ class TestDistributorListingPush(FrappeTestCase):
         client.update_product.assert_called_once_with(
             "555", {"name": "Magpul PMAG 30", "description": "<p>30 rounds.</p>"})
 
+    def test_copy_mode_sends_short_description_and_seo_meta_when_set(self):
+        """The Item's short description and SEO fields ride the copy push — each
+        only when set, so an empty one leaves the store's value (an SEO routine's,
+        or wp-admin's) where it is."""
+        from ffl_woo_sync.woocommerce import tasks
+        client = MagicMock()
+        row = frappe._dict(item_name="Magpul PMAG 30", description="<p>30 rounds.</p>",
+            woo_product_id="555", woo_short_description="<p>Thirty rounds.</p>",
+            woo_seo_title="Magpul PMAG 30 Gen M3 Magazine", woo_seo_description="",
+            woo_focus_keyword="magpul pmag 30")
+        with patch("frappe.db.get_value", return_value=row), \
+             patch("ffl_woo_sync.woocommerce.client.WooCommerceClient.from_settings",
+                   return_value=client):
+            tasks.push_copy_task("RSR-ACC-1")
+        client.update_product.assert_called_once_with("555", {
+            "name": "Magpul PMAG 30", "description": "<p>30 rounds.</p>",
+            "short_description": "<p>Thirty rounds.</p>",
+            "meta_data": [
+                {"key": "_ffl_seo_title", "value": "Magpul PMAG 30 Gen M3 Magazine"},
+                {"key": "_ffl_seo_focus_keyword", "value": "magpul pmag 30"}]})
+
     def test_mode_is_case_insensitive(self):
         with patch("frappe.enqueue") as mock_enqueue:
             distributor_listing_push("RSR-ACC-1", _payload(mode=" Stock "))

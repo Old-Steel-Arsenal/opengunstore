@@ -32,7 +32,7 @@ from __future__ import annotations
 import frappe
 
 from ffl_core.firearm import _is_firearm_row, is_firearm_item
-from ffl_woo_sync.woocommerce.mapping import MAP_ITEM_FIELDS
+from ffl_woo_sync.woocommerce.mapping import COPY_ITEM_FIELDS, MAP_ITEM_FIELDS
 
 # ---------------------------------------------------------------------------
 # WooCommerce-relevant fields per doctype
@@ -70,6 +70,9 @@ _ITEM_WOO_FIELDS = (
 	# pre-orders on the Item change the stock and the Pre-order meta the store shows.
 	"ffl_preorder_available",
 	"ffl_preorder_eta",
+	# Short description + SEO meta — POS-owned once set, so the lean push a
+	# change here enqueues delivers them (sync._POS_OWNED_KEYS / _META_KEYS).
+	*COPY_ITEM_FIELDS,
 )
 
 # Item fields behind the retail-only MAP meta (mapping.map_meta): the MAP, the
