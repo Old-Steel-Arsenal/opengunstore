@@ -1,18 +1,27 @@
 """Price Hub — what the buyer reads before ordering a product: each enabled
-distributor's cost over time, and what this store paid and holds.
+distributor's cost over time, what this store paid, holds, has on order and sells,
+and the cost drops and thinning stock the distributors' feeds show.
 
 The page's search and offers are ``distributor.api.search``; this module adds the
-two reads that one does not carry."""
+reads that one does not carry."""
 from __future__ import annotations
 
 import frappe
-from frappe.utils import cint, flt
+from frappe.utils import add_days, cint, flt, nowdate
 
 from ffl_integrations.distributor import remote_catalog
 from ffl_integrations.distributor.api import ORDER_ROLES
 from ffl_integrations.distributor.items import local_item
 
 RECEIPTS = 5
+SIGNAL_LISTS = ("cost_drop", "stockout", "fast_depletion")
+SIGNAL_ROWS = 15
+# A stock movement out through one of these is a sale (a return comes back in on the same).
+_SALES_VOUCHERS = ("Sales Invoice", "POS Invoice", "Delivery Note")
+# Store-bound orders that can still bring units in (receive_bridge._INCOMING_ORDER_TYPES),
+# drafts and queued ones included: the buyer must see what is already asked for.
+_STORE_BOUND = ("Stocking", "Procure To Store")
+_ORDER_OVER = ("Cancelled", "Error", "Complete")
 
 
 @frappe.whitelist()
@@ -27,11 +36,11 @@ def detail(upc: str | None = None, sku: str | None = None, distributor: str | No
 	    days: History window in days; 0 is everything the service keeps.
 
 	Returns:
-	    {trend: {window_start, server_time, series: [{distributor, sku, segments:
-	    [[{at, cost}]], last_cost, low_cost, high_cost}]} or null (no history, or
-	    the service is down), store: {item_code, on_hand, price, receipts:
-	    [{posting_date, supplier, qty, rate}]} or null (no Item here)}. Only
-	    enabled Distributors have a series.
+	    {trend: {window_start, server_time, series: [{distributor, sku, state,
+	    segments: [[{at, cost}]], last_cost, low_cost, high_cost}]} or null (no
+	    history, or the service is down), store: {item_code, on_hand, on_order,
+	    sold_30, sold_90, price, receipts: [{posting_date, supplier, qty, rate}]} or
+	    null (no Item here)}. Only enabled Distributors have a series.
 	"""
 	frappe.only_for(ORDER_ROLES)
 	upc, sku = (upc or "").strip(), (sku or "").strip()
@@ -40,24 +49,72 @@ def detail(upc: str | None = None, sku: str | None = None, distributor: str | No
 	return {"trend": _trend(upc, sku, distributor, cint(days)), "store": _store(upc, sku)}
 
 
-def _trend(upc, sku, distributor, days):
-	houses = {}   # house code -> the first enabled Distributor buying through it
+@frappe.whitelist()
+def signals(days: int = 7) -> dict:
+	"""What the enabled distributors' feeds showed lately: costs that fell, stock
+	about to run out, and stock that went fast after a restock.
+
+	Args:
+	    days: Window in days, 1 to 30.
+
+	Returns:
+	    {cost_drop, stockout, fast_depletion}: each a list of {distributor, sku, upc,
+	    name, current_value, reference_value, amount, score}, the strongest first.
+	    cost_drop: the cost now and before, the fall in dollars and percent.
+	    stockout: units left, and score the days of cover. fast_depletion: units
+	    left, units gone, and the percent gone. Observations of the feed, not sales.
+	    Empty lists when the service keeps no history or is down.
+	"""
+	frappe.only_for(ORDER_ROLES)
+	days = min(max(cint(days) or 7, 1), 30)
+	out = {name: [] for name in SIGNAL_LISTS}
+	for code, house in _houses().items():
+		try:
+			raw = remote_catalog.signals(code, days, SIGNAL_ROWS) or {}
+		except Exception:  # noqa: BLE001 — one house down leaves the others' lists
+			_log(f"Inventory signals read failed ({code})")
+			continue
+		for name in SIGNAL_LISTS:
+			out[name] += [{"distributor": house, **{k: row.get(k) for k in (
+				"sku", "upc", "name", "current_value", "reference_value", "amount", "score")}}
+				for row in raw.get(name) or []]
+	# Cover days: the fewest first. Percent fallen or gone: the most first.
+	out["stockout"].sort(key=lambda r: flt(r["score"]))
+	for name in ("cost_drop", "fast_depletion"):
+		out[name].sort(key=lambda r: -flt(r["score"]))
+	return {name: rows[:SIGNAL_ROWS] for name, rows in out.items()}
+
+
+def _houses() -> dict:
+	"""``{house code: the first enabled Distributor buying through it}``, priority order."""
+	houses = {}
 	for d in frappe.get_all("Distributor", filters={"enabled": 1},
 			fields=["name", "provider"], order_by="priority asc, modified asc"):
 		houses.setdefault(d.provider, d.name)
+	return houses
+
+
+def _log(title) -> None:
+	from ffl_integrations.notifications import safe_log_error
+
+	safe_log_error(title, frappe.get_traceback())
+
+
+def _trend(upc, sku, distributor, days):
+	houses = _houses()
 	code = next((c for c, name in houses.items() if name == distributor), None)
 	try:
 		raw = (remote_catalog.cost_trend(upc=upc, days=days) if upc
 			else remote_catalog.cost_trend(distributor=code, sku=sku, days=days) if code else None)
 	except Exception:  # noqa: BLE001 — the page shows the offers without a chart
-		from ffl_integrations.notifications import safe_log_error
-
-		safe_log_error(f"Cost history read failed ({upc or sku})", frappe.get_traceback())
+		_log(f"Cost history read failed ({upc or sku})")
 		raw = None
 	if not raw:
 		return None
 	return {"window_start": raw.get("window_start"), "server_time": raw.get("server_time"),
 		"series": [{"distributor": houses[s["distributor"]], "sku": s.get("sku"),
+				# fresh / stale / incomplete / no_data: whether the last sample is current
+				"state": s.get("state") or "",
 				"segments": [seg.get("points") or [] for seg in s.get("segments") or []],
 				"last_cost": s.get("last_cost"), "low_cost": s.get("low_cost"),
 				"high_cost": s.get("high_cost")}
@@ -78,4 +135,40 @@ def _store(upc, sku):
 		.orderby(pr.posting_date, pr.creation, order=frappe.qb.desc).limit(RECEIPTS)).run(as_dict=True)
 	return {"item_code": item_code,
 		"on_hand": flt((get_item_stock([item_code]) or {}).get(item_code)),
+		"on_order": _on_order(item_code),
+		"sold_30": _sold(item_code, 30), "sold_90": _sold(item_code, 90),
 		"price": flt(counter_list_price(item_code)), "receipts": receipts}
+
+
+def _on_order(item_code) -> int:
+	"""Units of the Item on open store-bound distributor orders that have not come
+	in: what the house said it is sending (the larger of acked and invoiced), or
+	what was asked for while it has not answered, less what was received or covered
+	from the shelf. A killed line sends nothing."""
+	orders = frappe.get_all("Distributor Order", pluck="name", filters={
+		"order_type": ("in", _STORE_BOUND), "status": ("not in", _ORDER_OVER)})
+	if not orders:
+		return 0
+	total = 0
+	for l in frappe.get_all("Distributor Order Line",
+			filters={"parent": ("in", orders), "item_code": item_code},
+			fields=["wish_qty", "ack_qty", "invoiced_qty", "received_qty", "substituted_qty", "line_status"]):
+		if (l.line_status or "") == "Killed":
+			continue
+		coming = max(cint(l.ack_qty), cint(l.invoiced_qty)) or cint(l.wish_qty)
+		total += max(0, coming - cint(l.received_qty) - cint(l.substituted_qty))
+	return total
+
+
+def _sold(item_code, days) -> float:
+	"""Units sold in the last ``days`` days, returns taken off: the stock that left
+	on sales vouchers, read from the stock ledger so each sale counts once however
+	it was rung up."""
+	sle = frappe.qb.DocType("Stock Ledger Entry")
+	from frappe.query_builder.functions import Sum
+
+	out = (frappe.qb.from_(sle).select(Sum(sle.actual_qty))
+		.where((sle.item_code == item_code) & (sle.is_cancelled == 0)
+			& sle.voucher_type.isin(_SALES_VOUCHERS)
+			& (sle.posting_date >= add_days(nowdate(), -days)))).run()
+	return max(0.0, -flt(out[0][0] if out else 0))

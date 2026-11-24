@@ -222,6 +222,19 @@ def cost_trend(*, upc=None, distributor=None, sku=None, days=90):
 		raise
 
 
+def signals(distributor: str, days: int = 7, limit: int = 25):
+	"""One house's observed inventory signals (``/v1/catalog/inventory/signals``):
+	``{cost_drop, stockout, fast_depletion}``, each a list of ``{sku, upc, name,
+	current_value, amount, score, reference_value}`` — what the house's feed showed,
+	not sales. None when the catalog is this site's own, which keeps no history."""
+	backend = _backend(distributor)
+	if backend is not None:
+		read = getattr(backend, "signals", None)
+		return read(distributor, days, limit) if read else None
+	return client.get("/v1/catalog/inventory/signals",
+		{"distributor": distributor, "days": int(days), "limit": int(limit)}, distributor=distributor)
+
+
 def parse_service_ts(value):
 	"""Service ISO timestamp (UTC) → naive datetime on the SITE's clock,
 	comparable with ``frappe.utils.now_datetime()``.

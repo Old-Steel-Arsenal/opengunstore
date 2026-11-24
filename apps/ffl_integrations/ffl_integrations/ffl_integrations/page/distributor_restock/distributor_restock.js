@@ -223,7 +223,8 @@ class DistributorOrdersApp {
 			return `<tr data-i="${i}">
 				<td>${img}</td>
 				<td><b>${frappe.utils.escape_html(row.item_name || '')}</b> ${ffl}<br>
-					<span class="muted">${frappe.utils.escape_html(row.upc || row.offers[0].sku || '')}</span></td>
+					<span class="muted">${frappe.utils.escape_html(row.upc || row.offers[0].sku || '')}</span>
+					· <a class="muted" href="/app/price-hub/${encodeURIComponent(ffl_integrations.cart.keyOf(row))}">${__('Price history')}</a></td>
 				<td>${offers}</td>
 				<td class="num map">${fmt_money(row.map)}</td>
 				<td class="num muted">${fmt_money(row.msrp)}</td>
