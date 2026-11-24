@@ -129,6 +129,11 @@ ffl_membership_card_chargeable = ["ffl_integrations.payments.saved_cards.card_ch
 
 # include js in page
 # page_js = {"page" : "public/js/file.js"}
+# The distributor order cart both pages fill (public/js/distributor_cart.js).
+page_js = {
+	"distributor-restock": "public/js/distributor_cart.js",
+	"price-hub": "public/js/distributor_cart.js",
+}
 
 # include js in doctype views
 doctype_js = {

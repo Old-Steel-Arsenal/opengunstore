@@ -21717,6 +21717,73 @@
         }
       }
     },
+    "/api/method/ffl_integrations.distributor.price_hub.detail": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "One product's cost history and this store's own record of it.",
+        "description": "**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/price_hub.py:19`",
+        "operationId": "ffl_integrations.distributor.price_hub.detail",
+        "responses": {
+          "200": {
+            "description": "{trend: {window_start, server_time, series: [{distributor, sku, segments: [[{at, cost}]], last_cost, low_cost, high_cost}]} or null (no history, or the service is down), store: {item_code, on_hand, price, receipts: [{posting_date, supplier, qty, rate}]} or null (no Item here)}. Only enabled Distributors have a series.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "upc": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The product's UPC."
+                  },
+                  "sku": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "A distributor SKU — names the product when it has no UPC."
+                  },
+                  "distributor": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The Distributor that SKU belongs to."
+                  },
+                  "days": {
+                    "type": "integer",
+                    "description": "History window in days; 0 is everything the service keeps.",
+                    "default": 90
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_integrations.distributor.receive_bridge.build_receive_payload": {
       "post": {
         "tags": [

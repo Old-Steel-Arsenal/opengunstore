@@ -16,7 +16,12 @@ frappe.pages['distributor-restock'].on_page_load = function (wrapper) {
 		title: __('Distributor Orders'),
 		single_column: true,
 	});
-	new DistributorOrdersApp(page);
+	wrapper.app = new DistributorOrdersApp(page);
+};
+
+// Back from the Price Hub: the cart may have gained lines there.
+frappe.pages['distributor-restock'].on_page_show = function (wrapper) {
+	if (wrapper.app) wrapper.app.reloadCart();
 };
 
 const ORDER_TYPES = ['Stocking', 'Dropship Accessory', 'Dropship Firearm', 'Procure To Store'];
@@ -30,7 +35,8 @@ class DistributorOrdersApp {
 		this.page = page;
 		// {key, upc, item_name, item_code, map, msrp, ffl_required, is_firearm, qty,
 		//  offers: [{distributor, sku, cost, qty}], pick: distributor, manual: bool}
-		this.cart = [];
+		// Kept in the browser and shared with the Price Hub (public/js/distributor_cart.js).
+		this.cart = ffl_integrations.cart.load();
 		this.$body = $(`
 			<div class="dist-restock">
 				<style>
@@ -238,23 +244,17 @@ class DistributorOrdersApp {
 	}
 
 	addToCart(row, qty) {
-		const key = row.upc || `${row.offers[0].distributor}:${row.offers[0].sku}`;
-		const existing = this.cart.find((c) => c.key === key);
-		if (existing) {
-			existing.qty += qty;
-			if (!existing.manual) existing.pick = pickBest(existing.offers, existing.qty).distributor;
-		} else {
-			this.cart.push({
-				key, upc: row.upc, item_name: row.item_name, item_code: row.item_code || '',
-				map: row.map, msrp: row.msrp, ffl_required: row.ffl_required,
-				is_firearm: row.is_firearm, qty, offers: row.offers,
-				pick: pickBest(row.offers, qty).distributor, manual: false,
-			});
-		}
+		ffl_integrations.cart.add(this.cart, row, qty);
+		this.renderCart();
+	}
+
+	reloadCart() {
+		this.cart = ffl_integrations.cart.load();
 		this.renderCart();
 	}
 
 	renderCart() {
+		ffl_integrations.cart.save(this.cart);
 		const $c = this.$body.find('.cart');
 		this.$body.find('.cart-count').text(this.cart.length ? `(${this.cart.length})` : '');
 		if (!this.cart.length) {
@@ -621,11 +621,8 @@ function normalizeRow(row) {
 	return row;
 }
 
-// The house to buy from: the first offer that fills the qty, else the first. The
-// server sends offers already ranked (offers.buy_order, then house priority), so
-// the page never re-ranks them itself.
 function pickBest(offers, want) {
-	return offers.find((o) => (parseInt(o.qty, 10) || 0) >= want) || offers[0];
+	return ffl_integrations.cart.pickBest(offers, want);
 }
 
 function availCell(c) {

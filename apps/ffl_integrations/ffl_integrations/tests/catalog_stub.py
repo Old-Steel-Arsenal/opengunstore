@@ -143,6 +143,7 @@ class CatalogStub:
 		self.seq = 0
 		self.change_seq: dict[tuple, int] = {}
 		self.restr: dict[tuple, list] = {}
+		self.trends: dict = {}                    # upc | (house, sku) -> cost-trend body
 		self.health_overrides: dict[str, dict] = {}
 		# product key -> optimized copy {title, description} (the Data Service's optimized-copy tables)
 		self.optimized: dict[str, dict] = {}
@@ -227,6 +228,11 @@ class CatalogStub:
 		`heartbeat_ts()`. See that function for why a bare string is a bug in the
 		test rather than a convenience."""
 		self.health_overrides.setdefault(distributor, {}).update(overrides)
+
+	def cost_trend(self, *, upc=None, distributor=None, sku=None, days=90):
+		"""``/v1/catalog/inventory/cost-trend``: what a test put in ``self.trends``
+		under the UPC (else ``(house, sku)``); None is the service's 404."""
+		return self.trends.get(upc or (distributor, sku))
 
 	def item_by_upc(self, upc):
 		if not upc:  # None/"" would otherwise match every orphan (upc=None) row

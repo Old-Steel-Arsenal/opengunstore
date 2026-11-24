@@ -495,6 +495,21 @@
    "open_in_new_tab": 0,
    "show_arrow": 0,
    "type": "Link",
+   "label": "Price hub",
+   "link_type": "Page",
+   "link_to": "price-hub"
+  },
+  {
+   "added": 0,
+   "child": 1,
+   "collapsible": 1,
+   "hidden": 0,
+   "indent": 0,
+   "is_default_module": 1,
+   "keep_closed": 0,
+   "open_in_new_tab": 0,
+   "show_arrow": 0,
+   "type": "Link",
    "label": "Distributor orders",
    "link_type": "Page",
    "link_to": "distributor-restock"
@@ -590,7 +605,7 @@
    "icon": "settings"
   }
  ],
- "modified": "2026-11-14 12:00:00.000000",
+ "modified": "2026-11-24 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Gun Shop",

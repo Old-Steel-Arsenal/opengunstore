@@ -201,6 +201,27 @@ def item_by_upc(upc: str):
 		raise
 
 
+def cost_trend(*, upc=None, distributor=None, sku=None, days=90):
+	"""The service's cost curves for one product (``/v1/catalog/inventory/cost-trend``):
+	``{series: [{distributor (house code), sku, segments: [{points: [{at, cost}]}],
+	first_cost, last_cost, low_cost, high_cost, ...}], window_start, server_time}``,
+	or None when the service has no history for it — or the catalog is this site's
+	own, which keeps none. ``distributor`` (a house code) and ``sku`` narrow the
+	product, or name it when it has no UPC. ``days`` 0 is all retained history."""
+	backend = _backend()
+	if backend is not None:
+		read = getattr(backend, "cost_trend", None)
+		return read(upc=upc, distributor=distributor, sku=sku, days=days) if read else None
+	params = {k: v for k, v in (("upc", upc), ("distributor", distributor), ("sku", sku)) if v}
+	params["days"] = int(days)
+	try:
+		return client.get("/v1/catalog/inventory/cost-trend", params)
+	except DataServiceUnavailable as exc:
+		if "404" in str(exc):
+			return None
+		raise
+
+
 def parse_service_ts(value):
 	"""Service ISO timestamp (UTC) → naive datetime on the SITE's clock,
 	comparable with ``frappe.utils.now_datetime()``.

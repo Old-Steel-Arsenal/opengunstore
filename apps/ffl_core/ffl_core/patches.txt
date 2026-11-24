@@ -107,3 +107,5 @@ ffl_core.patches.close_finished_crm_assignments
 ffl_core.patches.fill_received_mail_recipients
 # Inventory Import: the link (opening stock from a CSV) in the Settings workspace.
 ffl_core.patches.add_inventory_import_workspace_entry
+# Price Hub: the link in the Gun Shop workspace's Buying card.
+ffl_core.patches.add_price_hub_workspace_entry
