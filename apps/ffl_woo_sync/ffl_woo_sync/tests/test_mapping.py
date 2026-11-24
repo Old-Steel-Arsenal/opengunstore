@@ -529,10 +529,12 @@ class TestShortDescriptionAndSeoMeta(FrappeTestCase):
         self.assertEqual({k: v for k, v in self._meta(p).items() if k.startswith("_ffl_seo")},
                          {"_ffl_seo_title": "Only a title"})
 
-    def test_lean_push_keeps_them(self):
+    def test_lean_push_keeps_the_seo_meta_not_the_copy(self):
+        """A Desk edit of an SEO field reaches the store on the machine push its
+        save enqueues; the short description is content, like the name."""
         from ffl_woo_sync.woocommerce.sync import _pos_owned_payload
         lean = _pos_owned_payload(self._simple(**self._COPY))
-        self.assertEqual(lean["short_description"], "<p>Short.</p>")
+        self.assertNotIn("short_description", lean)
         self.assertEqual({k: v for k, v in self._meta(lean).items() if k in self._SEO}, self._SEO)
         self.assertNotIn("name", lean)
         self.assertNotIn("description", lean)

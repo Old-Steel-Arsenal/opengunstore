@@ -70,8 +70,9 @@ _ITEM_WOO_FIELDS = (
 	# pre-orders on the Item change the stock and the Pre-order meta the store shows.
 	"ffl_preorder_available",
 	"ffl_preorder_eta",
-	# Short description + SEO meta — POS-owned once set, so the lean push a
-	# change here enqueues delivers them (sync._POS_OWNED_KEYS / _META_KEYS).
+	# Short description + SEO meta. The SEO meta keys are POS-owned once set, so
+	# the lean push a change here enqueues delivers them; the short description is
+	# content like item_name (full and copy pushes only).
 	*COPY_ITEM_FIELDS,
 )
 

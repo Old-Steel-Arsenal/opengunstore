@@ -865,10 +865,6 @@ _POS_OWNED_KEYS = frozenset({
     # slug), so listing it widens nothing for them — it exists so the lean
     # `*/15` distributor drift push still delivers a shipping-class change.
     "shipping_class",
-    # The Item's short description (mapping.COPY_ITEM_FIELDS): emitted only when
-    # the Item field is set, so an empty field never touches the store's value,
-    # and a Desk edit of a set one reaches the store on the push its save enqueues.
-    "short_description",
 })
 
 # Machine-owned meta a lean update may write.  WooCommerce meta_data is an
