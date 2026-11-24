@@ -1089,10 +1089,6 @@ def build_serial_product_payload(
     clear_sold: bool = False,
     image_srcs: list[str] | None = None,
     attr_ids: dict[str, int] | None = None,
-    short_description: str = "",
-    seo_title: str = "",
-    seo_description: str = "",
-    focus_keyword: str = "",
 ) -> dict:
     """Build a WooCommerce product payload for one physical (per-serial) firearm.
 
@@ -1168,9 +1164,8 @@ def build_serial_product_payload(
 
     ``attr_ids`` — optional ``{slug: id}`` map of global WC taxonomy IDs.
 
-    ``short_description`` / ``seo_title`` / ``seo_description`` / ``focus_keyword``
-        The parent Item's copy, sent only when set (see
-        :func:`build_simple_product_payload`).
+    No short description or SEO meta: those are the Item's copy, and each gun's
+    page keeps its own (see ``sync._ITEM_ONLY_KEYS``).
     """
     condition = _pa_condition(condition_grade, is_used, is_antique)
     stock_qty = 0 if (
@@ -1204,7 +1199,6 @@ def build_serial_product_payload(
     if clear_sold:
         meta["_osa_sold_at"] = ""
         meta["_osa_sold_price"] = ""
-    meta.update(_seo_meta(seo_title, seo_description, focus_keyword))
 
     attributes: list[tuple[str, str, str]] = []
     if caliber:
@@ -1239,8 +1233,6 @@ def build_serial_product_payload(
     images = _build_images(image_srcs or [])
     if images:
         payload["images"] = images
-    if short_description.strip():
-        payload["short_description"] = short_description.strip()
 
     return payload
 
@@ -2243,7 +2235,6 @@ def serial_to_product_payload(
         sale_from=sale_from,
         sale_to=sale_to,
         **_serial_attribute_inputs(serial, item),
-        **_item_copy_inputs(item),
         upc=(item.get("upc") or ""),
         woo_reserved=bool(serial.get("woo_reserved")),
         # ANOTHER channel's hold — resolved through the one predicate rather

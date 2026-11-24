@@ -865,13 +865,22 @@ _POS_OWNED_KEYS = frozenset({
     # slug), so listing it widens nothing for them — it exists so the lean
     # `*/15` distributor drift push still delivers a shipping-class change.
     "shipping_class",
+    # The Item's short description (mapping.COPY_ITEM_FIELDS): emitted only when the
+    # Item field is set, so an empty field leaves the store's value alone, and a Desk
+    # edit of a set one reaches the store on the push its save enqueues. Item-level
+    # products only — see _ITEM_ONLY_KEYS.
+    "short_description",
 })
 
 # Machine-owned meta a lean update may write.  WooCommerce meta_data is an
 # upsert, so keys filtered out here keep their stored values on the shop —
-# which is exactly the protection for hand-curated meta (SEO plugins etc.).
-# Every key the payload BUILDERS emit is POS/machine-derived — none is
-# wp-admin-curated content — so the whole builder set is listed:
+# which is exactly the protection for hand-curated meta (another SEO plugin's
+# keys, say).  Every key the payload BUILDERS emit is POS-owned, so the whole
+# builder set is listed:
+#   * SEO meta (_ffl_seo_title / _description / _focus_keyword): POS-owned once
+#     the Item field is set — the builders emit a key only then, so an empty
+#     field still leaves the store's value (wp-admin's, an SEO routine's) alone.
+#     Item-level products only (_ITEM_ONLY_KEYS);
 #   * sold lifecycle: must stay writable so a machine relist of a returned gun
 #     can blank the SOLD banner (clear_sold);
 #   * compliance/ops flags (_firearm_product / _ammunition_product /
@@ -891,13 +900,18 @@ _POS_OWNED_META_KEYS = frozenset({
     # The pre-order state (mapping.preorder_stock): the storefront's Pre-order
     # notice and checkout read it, so a lean push must be able to set and clear it.
     *mapping.PREORDER_META_KEYS,
-    # The Item's SEO title / meta description / focus keyword: emitted only when
-    # set (mapping.SEO_META_KEYS), so the store keeps whatever it has otherwise.
+    # The Item's SEO title / meta description / focus keyword (see above).
     *mapping.SEO_META_KEYS,
 })
 
+# The Item's own copy describes the Item's product. A per-serial product is one
+# gun with its own page (year, condition): the Item's text would repeat across
+# every sibling gun and overwrite per-gun SEO meta, so a serial lean push never
+# carries these even if a payload did.
+_ITEM_ONLY_KEYS = frozenset({"short_description", *mapping.SEO_META_KEYS})
 
-def _pos_owned_payload(payload: dict) -> dict:
+
+def _pos_owned_payload(payload: dict, *, serial: bool = False) -> dict:
     """Reduce a full product payload to its POS-owned fields.
 
     Applied by :func:`push_item` / :func:`push_serial` when a machine-triggered
@@ -906,11 +920,12 @@ def _pos_owned_payload(payload: dict) -> dict:
     so every derivation (stock math, SOLD flags, MAP meta) stays in one
     place and a filtered push can never disagree with a full one.
     """
-    lean = {k: v for k, v in payload.items() if k in _POS_OWNED_KEYS}
+    drop = _ITEM_ONLY_KEYS if serial else frozenset()
+    lean = {k: v for k, v in payload.items() if k in _POS_OWNED_KEYS and k not in drop}
     # Extension keys are machine-derived too (mapping.extension_product_meta),
     # so they ride along — otherwise an extension's flag would survive a full
     # push and silently revert on the next lean one.
-    allowed = _POS_OWNED_META_KEYS | mapping.extension_meta_keys()
+    allowed = (_POS_OWNED_META_KEYS | mapping.extension_meta_keys()) - drop
     meta = [
         m for m in payload.get("meta_data") or []
         if m.get("key") in allowed
@@ -1388,7 +1403,7 @@ def push_serial(
         # product carries Woo-owned content to protect.
         lean = pos_fields_only and bool(woo_id)
         if lean:
-            payload = _pos_owned_payload(payload)
+            payload = _pos_owned_payload(payload, serial=True)
         else:
             item_code = _sn.get("item_code")
             if item_code:
