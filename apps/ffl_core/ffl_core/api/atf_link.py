@@ -52,7 +52,7 @@ def _create_party_from_atf(record: str, party_type: str, display_name: str | Non
 		frappe.throw(_("party_type must be Customer or Supplier."))
 	rec = frappe.db.get_value(
 		"ATF FFL Record", record,
-		["ffl_number", "licensee_name", "licensee_dba"], as_dict=True)
+		["ffl_number", "licensee_name", "licensee_dba", "cfd_number"], as_dict=True)
 	if not rec:
 		frappe.throw(_("ATF FFL Record {0} not found.").format(record))
 
@@ -61,7 +61,8 @@ def _create_party_from_atf(record: str, party_type: str, display_name: str | Non
 	if existing:
 		# Heal the link on the way out, but don't duplicate the party.
 		if not frappe.db.get_value(party_type, existing, "atf_ffl_record"):
-			frappe.db.set_value(party_type, existing, "atf_ffl_record", record,
+			frappe.db.set_value(party_type, existing,
+				{"atf_ffl_record": record, "cfd_number": rec.cfd_number},
 				update_modified=False)
 		return {"name": existing, "created": False}
 
