@@ -25,7 +25,7 @@ make ext-test ID=<id> DIR=<extension folder>
 
 It unpacks a copy of the folder and checks it before it replaces `frappe-bench/apps-ext/<id>` (a refused folder changes nothing), wires it the way a store's replay does (an `apps/<id>` symlink, a `.pth`, a line in `sites/apps.txt`), installs it on `dev.localhost` (or runs `bench migrate` when it is installed already, so changed DocTypes, fields, fixtures and patches land), then runs `scripts/ci/ext_test.sh`:
 
-1. `bench --site <site> run-tests --app <id>` (a run that ran no test fails)
+1. `bench --site <site> run-tests --app <id>` (a run that ran no test fails). Skipped, and failed, when the extension is off on the site: most often a `requires_core` this core's version does not satisfy. The line reads `tests FAIL (not run: needs core >=X, this store runs Y)`.
 2. `python -m ffl_core.extensions.lint <root>`
 3. `scripts/generate_api_docs.py --app <root> --check`
 
@@ -34,7 +34,7 @@ All three run even after a failure. The last line is `ext-test <id>: tests â€¦ Â
 | Exit | Meaning |
 |---|---|
 | 0 | All three passed. |
-| 1 | Wiring, install or migrate failed; or the tests, the lint, or the API docs failed: an endpoint without its docstring, `Args` or `Returns`, a parity failure, or a `Permissions` section whose role list contradicts a gate built from your own roles (`CONFORMANCE FAIL` / `PARITY FAIL` in the log). |
+| 1 | Wiring, install or migrate failed; the extension is off on the site; or the tests, the lint, or the API docs failed: an endpoint without its docstring, `Args` or `Returns`, a parity failure, or a `Permissions` section whose role list contradicts a gate built from your own roles (`CONFORMANCE FAIL` / `PARITY FAIL` in the log). |
 | 2 | The folder was refused before anything ran: not an extension id or a core app's id, no `<id>/hooks.py`, a `wheels/` folder (bundled wheels are not installed by this script yet), or an `apps/<id>` the script did not make. |
 | 3 | Only the docs drifted from this core (`docs STALE`): a stale `docs/api/`, or a hand-written `Permissions` role list that differs from what a gate resolved through the core derives (`PERMISSIONS DRIFT`). Regenerate with `python3 scripts/generate_api_docs.py --app <folder>` and drop hand-written role lists. |
 

@@ -146,18 +146,20 @@ def push_new_variations_task(template: str, site: str = "retail") -> None:
 
 @_for_a_running_store
 def push_copy_task(item_code: str, site: str = "retail") -> None:
-    """The Item's name and description onto its existing product, nothing else —
-    a listing's optimized copy loaded after it was listed (``mode="copy"`` on
+    """The Item's copy onto its existing product, nothing else — name, description,
+    and the short description and SEO meta where set (``mapping.copy_payload``): a
+    listing's optimized copy loaded after it was listed (``mode="copy"`` on
     ``distributor_listing_push``). Errors are logged like :func:`push_item_task`."""
-    from ffl_woo_sync.woocommerce import sync
+    from ffl_woo_sync.woocommerce import mapping, sync
     from ffl_woo_sync.woocommerce.client import WooCommerceClient
     try:
         field = sync._f(site, "product_id")
-        row = frappe.db.get_value("Item", item_code, ["item_name", "description", field],
-                                  as_dict=True) or {}
+        row = frappe.db.get_value("Item", item_code,
+            ["item_name", "description", field, *mapping.COPY_ITEM_FIELDS], as_dict=True) or {}
         if row.get(field):
-            WooCommerceClient.from_settings(site).update_product(
-                row[field], {"name": row.item_name, "description": row.description or ""})
+            WooCommerceClient.from_settings(site).update_product(row[field], {
+                "name": row.item_name, "description": row.description or "",
+                **mapping.copy_payload(row)})
     except Exception:
         frappe.log_error(title=f"Woo push_copy_task failed: {item_code}",
                          message=frappe.get_traceback())
