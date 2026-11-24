@@ -36,7 +36,7 @@ curio or relic. Nothing is changed on a refusal.
 
 **Permissions:** Counter roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1023`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1027`</sub>
 
 ## `correct_payment_details`
 
@@ -69,7 +69,7 @@ accounting correction rather than an edit.
 
 **Permissions:** System Manager.
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:730`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:734`</sub>
 
 ## `dispose_gb_order`
 
@@ -101,7 +101,7 @@ dispositions — create_gb_invoice_now retries.
 
 **Permissions:** Counter roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1205`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1209`</sub>
 
 ## `enter_gb_tracking`
 
@@ -126,7 +126,7 @@ then sent the same way the poll sends one.
 
 **Permissions:** Counter roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1747`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1751`</sub>
 
 ## `get_dispose_stock_lines`
 
@@ -144,7 +144,7 @@ taken from, for the "where did these come from?" step of Dispose.
 
 **Returns:** [{line, item_code, item_name, qty, locations: [{location, label, qty}], unassigned, chosen}] -- one per item-level line (ammunition, optics, parts). ``line`` is the GunBroker item id the dispose call keys its picks by; ``chosen`` is the sole place the item can only have come from (exactly one holds it, none is unassigned).
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1181`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1185`</sub>
 
 ## `list_pending_gb_orders`
 
@@ -196,7 +196,7 @@ it). ``refunded=0`` undoes the mark.
 
 **Permissions:** Counter roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1132`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1136`</sub>
 
 ## `mark_payment_received`
 
@@ -229,7 +229,7 @@ the account of the Mode of Payment recorded.
 
 **Permissions:** Counter roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:463`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:467`</sub>
 
 ## `push_gb_shipment`
 
@@ -259,7 +259,7 @@ Tracking still goes back to GunBroker only after Dispose.
 
 **Permissions:** Counter roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1798`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1802`</sub>
 
 ## `push_tracking_now`
 
@@ -280,7 +280,7 @@ operator who has just bought the label and wants the buyer to see it.
 
 **Permissions:** Counter roles.
 
-<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1723`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1727`</sub>
 
 ## `reserved_gb_serials`
 
