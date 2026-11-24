@@ -41,6 +41,9 @@ class PriceHubApp {
 					.price-hub { max-width: 1100px; margin: 0 auto; padding: 4px 16px 80px; }
 					.price-hub .cols { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 20px; margin-top: 14px; }
 					@media (max-width: 800px) { .price-hub .cols { grid-template-columns: minmax(0, 1fr); } }
+					/* The only result, opened: nothing to choose between, the product takes the row. */
+					.price-hub .cols.solo { grid-template-columns: minmax(0, 1fr); }
+					.price-hub .cols.solo .hits { display: none; }
 					.price-hub .hit { display: flex; gap: 10px; align-items: center; padding: 7px 8px;
 						border-radius: 6px; cursor: pointer; font-size: 13px; }
 					.price-hub .hit:hover, .price-hub .hit.at { background: var(--bg-light-gray); }
@@ -204,8 +207,11 @@ class PriceHubApp {
 
 	renderHits() {
 		const $h = this.$body.find('.hits');
-		if (!this.rows.length) { $h.html(`<div class="muted">${__('No matches.')}</div>`); return; }
 		const key = this.row && ffl_integrations.cart.keyOf(this.row);
+		// By its key, not the object: a search that comes back with the open product is new rows.
+		this.$body.find('.cols').toggleClass('solo',
+			this.rows.length === 1 && ffl_integrations.cart.keyOf(this.rows[0]) === key);
+		if (!this.rows.length) { $h.html(`<div class="muted">${__('No matches.')}</div>`); return; }
 		$h.html(this.rows.map((row, i) => {
 			const inStock = row.offers.some((o) => o.qty > 0);
 			return `<div class="hit ${ffl_integrations.cart.keyOf(row) === key ? 'on' : ''} ${i === this.at ? 'at' : ''}
@@ -284,7 +290,9 @@ class PriceHubApp {
 		}).join('');
 		const periods = PERIODS.map(([days, label]) => `<button class="btn btn-xs ${days === this.days
 			? 'btn-primary' : 'btn-default'} btn-period" data-days="${days}">${__(label)}</button>`).join(' ');
-		const plot = this.detail ? chart(series, color) : null;
+		// Drawn at the width it is shown at, so its text is not scaled with it.
+		const width = Math.max(480, Math.round(this.$body.find('.product').width()) || 720);
+		const plot = this.detail ? chart(series, color, width) : null;
 		this.$body.find('.product').html(`
 			<div class="head">
 				${image(row.image_url, 'photo')}
@@ -385,12 +393,12 @@ function costAt(s, t) {
 // Step lines, one per distributor: a cost holds until the next sample; a break
 // between segments is time the service did not observe. {html, bind($svg, $readout)}:
 // bind makes the pointer read out the day and each distributor's cost on it.
-function chart(series, color) {
+function chart(series, color, W) {
 	const lines = series.map((s) => ({ distributor: s.distributor,
 		segments: s.segments.map((seg) => seg.map((p) => ({ t: new Date(p.at).getTime(), cost: p.cost }))) }));
 	const points = lines.flatMap((s) => s.segments.flat());
 	if (!points.length) return { html: `<div class="muted">${__('No cost history yet.')}</div>` };
-	const W = 720, H = 190, L = 56, R = 8, T = 10, B = 24;
+	const H = 190, L = 56, R = 8, T = 10, B = 24;
 	const t0 = Math.min(...points.map((p) => p.t));
 	const t1 = Math.max(...points.map((p) => p.t), t0 + 1);
 	const marks = ticks(Math.min(...points.map((p) => p.cost)), Math.max(...points.map((p) => p.cost)));
