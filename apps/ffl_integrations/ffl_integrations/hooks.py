@@ -571,6 +571,8 @@ scheduler_events = {
 		# bound-book exit is never rolled back — which also means nothing
 		# objects afterwards unless something reads the wreckage daily.
 		"ffl_integrations.gunbroker.audit.daily_gb_audit",
+		# A dealer lookup lost to an eZ Check outage, retried while the order is open.
+		"ffl_integrations.gunbroker.orders.lookup_missing_dealers",
 		# Card charges voided/refunded on the terminal or Payroc portal never
 		# reach the POS; read the last week's captures back from the gateway.
 		# The gate only queues the run on the long queue (one gateway read per charge).

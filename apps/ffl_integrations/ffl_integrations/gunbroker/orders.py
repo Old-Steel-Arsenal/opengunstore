@@ -525,12 +525,14 @@ def _ingest_order(client: GunBrokerClient, row: dict) -> str:
 	order.flags.ignore_permissions = True
 	order.save()
 
-	_queue_dealer_lookup(order)
 	_warn_on_layaway(order)
 	reserve_order_serials(order)
 	_acknowledge(client, order)
 	_detect_unwound(order)
 	_announce_commitment_changes(committed_before, _owed_to_other_channels(order))
+	# Last, so a step above that raises (and rolls this order back to its
+	# savepoint) leaves no lookup queued behind it.
+	_queue_dealer_lookup(order)
 	return order.name
 
 
@@ -706,18 +708,54 @@ def _queue_dealer_lookup(order) -> None:
 def cache_dealer_licence(ffl_number: str) -> None:
 	"""Background body of ``_queue_dealer_lookup``: eZ Check writes the record.
 
-	A provider outage is left for the next poll, which queues the lookup again
-	while the record is still missing. A licence eZ Check does not list writes
-	nothing, and Dispose still refuses it.
+	A provider outage is retried by ``lookup_missing_dealers``. A licence eZ
+	Check does not list writes nothing, and Dispose still refuses it.
 	"""
 	from ffl_integrations.atf.ez_check import EZCheckUnavailable, verify
 
-	# lazy: a licence eZ Check never lists is looked up again each time its open
-	# order is re-polled; add a backoff if that ever shows up in volume.
+	# lazy: a licence eZ Check never lists is looked up again once a day while
+	# its order is open; add a backoff if that ever shows up in volume.
 	try:
 		verify(ffl_number)
 	except EZCheckUnavailable:
 		pass
+
+
+def lookup_missing_dealers() -> None:
+	"""Daily: queue the lookup for every open order whose dealer has no record.
+
+	The poll only re-reads an order GunBroker has changed, so a lookup lost to
+	an eZ Check outage, or an order synced before lookups existed, would
+	otherwise wait for Dispose.
+	"""
+	if not gunbroker_enabled():
+		return
+	rows = frappe.db.sql(
+		"""
+		SELECT DISTINCT o.ffl_number, o.atf_ffl_record
+		FROM `tabGunBroker Order` o
+		LEFT JOIN `tabATF FFL Record` r ON r.name = o.ffl_number
+		WHERE o.order_status = 'Pending Fulfillment'
+		  AND IFNULL(o.ffl_number, '') != ''
+		  AND IFNULL(o.atf_ffl_record, '') = ''
+		  AND r.name IS NULL
+		""", as_dict=True)
+	for row in rows:
+		_queue_dealer_lookup(row)
+
+
+def licence_as_sent(order) -> bool:
+	"""True while the order's licence is still the one GunBroker sent.
+
+	Staff may correct the licence; after that, the ship-to name GunBroker sent
+	belongs to a different dealer and must not be shown against the new number.
+	"""
+	try:
+		sent = frappe.parse_json(order.raw_payload or "{}") or {}
+	except ValueError:
+		return False
+	want = normalize_licence(_text(get_field(sent, "fflNumber")))
+	return bool(want) and _fits_masked(want, normalize_licence(order.ffl_number))
 
 
 def _fits_masked(want: str, have: str) -> bool:

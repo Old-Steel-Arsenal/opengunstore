@@ -139,3 +139,22 @@ class TestANewDealerIsLookedUpOnTheSync(FrappeTestCase):
 		with patch("ffl_integrations.atf.ez_check.get_provider", return_value=provider):
 			orders.cache_dealer_licence(self.DEALER)
 		self.assertFalse(frappe.db.exists("ATF FFL Record", self.DEALER))
+
+	def test_the_daily_sweep_queues_only_open_orders_missing_a_record(self):
+		frappe.db.delete("ATF FFL Record", self.DEALER)
+		names = []
+		for status, number in (("Pending Fulfillment", self.DEALER),
+				("Transferred", "7-77-321-01-8E-22222")):
+			order = frappe.new_doc("GunBroker Order")
+			order.update({"gb_order_id": frappe.generate_hash(length=10),
+				"order_status": status, "ffl_number": number})
+			order.flags.ignore_permissions = True
+			order.flags.ignore_mandatory = True
+			order.insert()
+			names.append(order.name)
+		with patch.object(orders, "gunbroker_enabled", return_value=True), \
+				patch("frappe.enqueue") as enqueue:
+			orders.lookup_missing_dealers()
+		queued = [c.kwargs["ffl_number"] for c in enqueue.call_args_list]
+		self.assertIn(self.DEALER, queued)
+		self.assertNotIn("7-77-321-01-8E-22222", queued)
