@@ -146,5 +146,6 @@ function fflFillFromRecord(frm) {
 		frm.set_value('licensee_address', [rec.street, rec.street2, rec.city,
 			[rec.state, rec.zip].filter(Boolean).join(' ')].filter(Boolean).join(', '));
 		if (rec.expiry_date) frm.set_value('ffl_expiry_date', rec.expiry_date);
+		frm.set_value('cfd_number', rec.cfd_number || '');
 	});
 }
