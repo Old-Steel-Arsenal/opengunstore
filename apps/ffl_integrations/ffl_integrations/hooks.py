@@ -141,7 +141,8 @@ doctype_js = {
 	# GunBroker item-level listings (ammunition, optics, parts). Three apps
 	# register handlers for Item and none can see the others, so this block
 	# gates itself independently — same arrangement as Serial No.
-	"Item": "public/js/item.js",
+	# The Price Hub link is a file of its own: the GunBroker one has its own test harness.
+	"Item": ["public/js/item.js", "public/js/item_price_hub.js"],
 	# Card on file (payments/saved_cards.py): the customer's saved cards, and Charge saved card.
 	"Customer": "public/js/customer_saved_cards.js",
 	# Card refund (payments/si_reversal.py): void / refund a card charge on the invoice.
