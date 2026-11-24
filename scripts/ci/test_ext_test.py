@@ -19,28 +19,33 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SCRIPT = HERE / "ext_test.sh"
 LINT = HERE.parent.parent / "apps" / "ffl_core" / "ffl_core" / "extensions" / "lint.py"
+EXTENSIONS = LINT.parent / "__init__.py"
 MAKEFILE = HERE.parent.parent / "Makefile"
 
 BENCH_SHIM = """#!/bin/sh
 echo "bench $*" >> "$SHIM_LOG"
 case "$*" in
 	*"execute frappe.get_installed_apps"*) echo "$SHIM_INSTALLED"; exit "$SHIM_INSTALLED_EXIT" ;;
+	*"execute frappe.db.get_value"*) [ -n "$SHIM_ROW" ] && echo "$SHIM_ROW"; exit "$SHIM_ROW_EXIT" ;;
 	*" migrate") exit "$SHIM_MIGRATE_EXIT" ;;
 	*install-app*) exit "$SHIM_INSTALL_EXIT" ;;
 	*run-tests*) printf '%b' "$SHIM_TESTS_OUT"; exit "$SHIM_TESTS_EXIT" ;;
 esac
 """
 # -c sysconfig: the purelib the .pth goes to · -c …lint…: the real id rule, through a stub package
-# holding lint.py's ID_RE and CORE_APPS · -m …lint / generate_api_docs.py: steps 2 and 3
+# holding lint.py's ID_RE and CORE_APPS · -c …effective…: the real switch rule, the stub package holding
+# ffl_core.extensions.effective · -m …lint / generate_api_docs.py: steps 2 and 3
 PYTHON_SHIM = """#!/bin/sh
 case "$1 $2" in
 	"-c "*sysconfig*) echo "$SHIM_PURELIB" ;;
-	"-c "*ffl_core.extensions.lint*) PYTHONPATH="$SHIM_STUBS" exec python3 "$@" ;;
+	"-c "*ffl_core.extensions.lint*|"-c "*"ffl_core.extensions import effective"*) PYTHONPATH="$SHIM_STUBS" exec python3 "$@" ;;
 	"-m ffl_core.extensions.lint") echo "lint $3" >> "$SHIM_LOG"; exit "$SHIM_LINT_EXIT" ;;
 	*generate_api_docs.py*) echo "docs $*" >> "$SHIM_LOG"; exit "$SHIM_DOCS_EXIT" ;;
 	*) echo "unexpected: python $*" >&2; exit 99 ;;
 esac
 """
+# The POS Extension row as `bench execute frappe.db.get_value … as_dict` prints it.
+ON = '{"enabled": 1, "installed_on_site": 1, "compatible": 1, "incompatible_reason": null}'
 TWO_CATEGORIES = "Ran 2 tests in 0.1s\\n\\nOK\\nRan 3 tests in 0.2s\\n\\nOK\\n"
 # $(COMPOSE) for `make ext-test`: `exec -T frappe bash -c` (unpack, check, replace) runs here against the test's
 # bench and this checkout's scripts/; `exec -T frappe bash -lc` (install and test on the site) is only logged.
@@ -86,7 +91,9 @@ class ExtTest(unittest.TestCase):
 		stub = tmp / "stubs" / "ffl_core" / "extensions"
 		stub.mkdir(parents=True)
 		(stub.parent / "__init__.py").write_text("")
-		(stub / "__init__.py").write_text("")
+		ext = EXTENSIONS.read_text()
+		(stub / "__init__.py").write_text("".join(ast.get_source_segment(ext, n) + "\n"
+			for n in ast.parse(ext).body if isinstance(n, ast.FunctionDef) and n.name == "effective"))
 		(stub / "lint.py").write_text("import re\n" + "".join(ast.get_source_segment(lint, n) + "\n"
 			for n in ast.parse(lint).body if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") in names))
 		self.root = tmp / "acme-hello"
@@ -99,18 +106,20 @@ class ExtTest(unittest.TestCase):
 		self._tmp.cleanup()
 
 	def run_script(self, *args, installed='["frappe", "erpnext"]', tests_out=TWO_CATEGORIES, installed_exit=0,
-			migrate_exit=0, install_exit=0, tests_exit=0, lint_exit=0, docs_exit=0):
+			migrate_exit=0, install_exit=0, tests_exit=0, lint_exit=0, docs_exit=0, row=ON, row_exit=0):
 		self.log.write_text("")
 		env = dict(self.env, SHIM_INSTALLED=installed, SHIM_TESTS_OUT=tests_out, SHIM_TESTS_EXIT=str(tests_exit),
+			SHIM_ROW=row, SHIM_ROW_EXIT=str(row_exit),
 			SHIM_INSTALLED_EXIT=str(installed_exit), SHIM_MIGRATE_EXIT=str(migrate_exit),
 			SHIM_INSTALL_EXIT=str(install_exit), SHIM_LINT_EXIT=str(lint_exit), SHIM_DOCS_EXIT=str(docs_exit))
 		args = args or (str(self.bench), "dev.localhost", "acme_hello", str(self.root))
 		return subprocess.run([str(SCRIPT), *args], env=env, capture_output=True, text=True)
 
 	def steps(self):
-		"""What the shims were asked to do, in order (reading the installed apps left out)."""
+		"""What the shims were asked to do, in order (reading the installed apps and the registry row left out)."""
 		calls = [line.split() for line in self.log.read_text().splitlines()]
-		return [c[3] if c[0] == "bench" else c[0] for c in calls if "frappe.get_installed_apps" not in c]
+		return [c[3] if c[0] == "bench" else c[0] for c in calls
+			if "frappe.get_installed_apps" not in c and "frappe.db.get_value" not in c]
 
 	def apps_txt(self):
 		return (self.bench / "sites" / "apps.txt").read_text().split()
@@ -160,6 +169,28 @@ class ExtTest(unittest.TestCase):
 			self.assertEqual((r.returncode, self.steps()[-3:]), (status, ["run-tests", "lint", "docs"]),
 				(tests_exit, lint_exit, docs_exit, r.stdout, r.stderr))
 			self.assertIn(f"· docs {docs}\n", r.stdout, (tests_exit, lint_exit, docs_exit))
+
+	def test_an_extension_that_is_off_on_the_site_fails_naming_why_and_its_tests_do_not_run(self):
+		# off, every endpoint refuses "<title> is turned off for this store": its tests would fail by the dozen
+		# without saying why (an extension's main needing a core release this checkout is not on yet)
+		too_new = '{"enabled": 0, "installed_on_site": 1, "compatible": 0, "incompatible_reason": "needs core >=1.3.3,<2, this store runs 1.3.2"}'
+		for name, row, reason in (
+			("incompatible", too_new, "needs core >=1.3.3,<2, this store runs 1.3.2"),
+			("switched off", '{"enabled": 0, "installed_on_site": 1, "compatible": 1, "incompatible_reason": null}', "its switch is off"),
+			("not installed", '{"enabled": 1, "installed_on_site": 0, "compatible": 1, "incompatible_reason": null}', "it is not installed on the site"),
+			("no row", "", "it has no POS Extension row"),
+		):
+			r = self.run_script(row=row)
+			self.assertEqual((r.returncode, self.steps()), (1, ["clear-cache", "install-app", "lint", "docs"]),
+				(name, r.stdout, r.stderr))
+			self.assertIn(f"ext-test acme_hello: tests FAIL (not run: {reason}", r.stdout, name)
+			self.assertIn(f"acme_hello is off on dev.localhost — {reason}", r.stderr, name)
+
+	def test_a_registry_row_that_cannot_be_read_ends_the_run_with_1(self):
+		r = self.run_script(row="", row_exit=1)
+		self.assertEqual((r.returncode, self.steps()), (1, ["clear-cache", "install-app"]), r.stdout + r.stderr)
+		self.assertIn("cannot read the POS Extension row of acme_hello", r.stderr)
+		self.assertNotIn("ext-test acme_hello:", r.stdout)
 
 	def test_refusals_touch_nothing(self):
 		other = self.root.parent / "other"
