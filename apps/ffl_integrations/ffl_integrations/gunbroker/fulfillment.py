@@ -267,7 +267,10 @@ def _pending_row(order, *, ss_enabled: bool, limit_days: int = 7, today=None,
 		"pickup_invoice": None,
 		"ships_direct": direct,
 		"destination_ffl": "" if direct else (order.atf_ffl_record or order.ffl_number or ""),
+		# The dealer's name as GunBroker spelled it stands in until the ATF
+		# record exists; the record is looked up on the poll that brought it in.
 		"destination_ffl_name": "" if direct else (ffl.get("licensee_name")
+			or (order.ship_to_name or "").strip()
 			or order.atf_ffl_record or order.ffl_number or ""),
 		"ffl_expiry_date": None if direct else expiry,
 		"ffl_expired": False if direct else expired,

@@ -850,6 +850,18 @@ class TestPendingRow(_FulfillmentCase):
 				row = fulfillment._pending_row(order, ss_enabled=True)
 			self.assertIs(row["sales_invoice_posted"], posted)
 
+	def test_an_unrecorded_dealer_shows_the_name_gunbroker_gave(self):
+		order = self._order(payment_mode_used="GunBroker Check",
+			ffl_number="9-99-123-01-8E-54321", ship_to_name="RIVERBEND ARMS")
+		row = self._row(order)
+		self.assertEqual(row["destination_ffl"], "9-99-123-01-8E-54321")
+		self.assertEqual(row["destination_ffl_name"], "RIVERBEND ARMS")
+
+	def test_with_no_name_at_all_the_licence_number_is_shown(self):
+		order = self._order(payment_mode_used="GunBroker Check",
+			ffl_number="9-99-123-01-8E-54321", ship_to_name="")
+		self.assertEqual(self._row(order)["destination_ffl_name"], "9-99-123-01-8E-54321")
+
 	def test_a_gunbroker_row_never_claims_to_be_a_pickup_or_a_web_order(self):
 		row = self._row(self._order(payment_mode_used="GunBroker Check"))
 		self.assertEqual(row["source"], "gunbroker")
