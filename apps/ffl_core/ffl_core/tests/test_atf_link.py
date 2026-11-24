@@ -140,6 +140,32 @@ class CfdNumber(AtfLinkFixtures):
 		r.save(ignore_permissions=True)
 		self.assertEqual(frappe.db.get_value("Customer", c.name, "cfd_number"), "CFD-333")
 
+	def test_record_edit_reaches_linked_supplier(self):
+		rec = self._ca_rec("70104")
+		name = "_Test CFD Supplier"
+		if frappe.db.exists("Supplier", name):
+			s = frappe.get_doc("Supplier", name)
+		else:
+			s = frappe.get_doc({"doctype": "Supplier", "supplier_name": name})
+			s.flags.ignore_permissions = True
+			s.insert()
+		s.update({"is_ffl_dealer": 1, "atf_ffl_record": rec, "ffl_number": "", "cfd_number": None})
+		s.flags.ignore_permissions = True
+		s.save()
+		r = frappe.get_doc("ATF FFL Record", rec)
+		r.cfd_number = "CFD-444"
+		r.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("Supplier", name, "cfd_number"), "CFD-444")
+
+	def test_heal_link_copies_cfd(self):
+		from ffl_core.api.atf_link import _create_party_from_atf
+		rec = self._ca_rec("70105")
+		frappe.db.set_value("ATF FFL Record", rec, "cfd_number", "CFD-555")
+		c = self._customer("_Test CFD Heal", is_ffl_dealer=0, ffl_number=rec)
+		out = _create_party_from_atf(rec, "Customer")
+		self.assertEqual(out["name"], c.name)
+		self.assertEqual(frappe.db.get_value("Customer", c.name, "cfd_number"), "CFD-555")
+
 
 class CreateFromRecord(AtfLinkFixtures):
 	def test_create_customer_from_atf(self):
