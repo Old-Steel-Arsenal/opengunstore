@@ -81,6 +81,10 @@
             "type": "string",
             "description": "Expiry Date"
           },
+          "cfd_number": {
+            "type": "string",
+            "description": "CFD Number"
+          },
           "street": {
             "type": "string",
             "description": "Street"
