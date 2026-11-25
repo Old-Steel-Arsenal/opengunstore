@@ -253,7 +253,8 @@ def product_search(query: str, limit: int) -> list:
 
 	Row shape keeps the legacy keys (sku/cost/qty from the best offer) so the
 	picker renders it unchanged, plus ``upc``, ``sources`` (house names) and
-	``offers`` ([{distributor, sku, cost, qty}]) for the pending card."""
+	``offers`` ([{distributor, sku, cost, qty, case_cost, units_per_case}]) for the
+	pending card and the Price Hub."""
 	from ffl_integrations.data_service import CATALOG, is_off
 	from ffl_integrations.distributor import remote_catalog
 
@@ -303,7 +304,10 @@ def product_search(query: str, limit: int) -> list:
 			"distributor": "",
 			"sources": [houses[o["distributor"]] for o in offers],
 			"offers": [{"distributor": houses[o["distributor"]], "sku": o.get("sku"),
-				"cost": o.get("cost"), "qty": int(o.get("qty") or 0)} for o in offers],
+				"cost": o.get("cost"), "qty": int(o.get("qty") or 0),
+				# The full-case price per unit and the case size (RSR): 0 when none.
+				"case_cost": flt(o.get("case_cost")), "units_per_case": cint(o.get("units_per_case"))}
+				for o in offers],
 		})
 	return rows[:limit]
 

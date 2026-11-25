@@ -117,7 +117,7 @@ class TestShippedSidebar(FrappeTestCase):
 			"Customers": ["Customers", "Memberships", "Agreements", "Agreement templates", "Signing tablets", "Marketing contacts"],
 			"Compliance": ["4473 records", "Acquisitions", "Dispositions", "Transfer pickups", "Firearms in stock"],
 			"Inventory": ["Items", "Serial numbers", "Stock on hand", "Inventory count", "Storage locations"],
-			"Purchasing": ["Distributor orders", "Receive goods", "Suppliers"],
+			"Purchasing": ["Price hub", "Distributor orders", "Receive goods", "Suppliers"],
 			"Online": ["Web orders", "GunBroker orders"],
 		})
 
