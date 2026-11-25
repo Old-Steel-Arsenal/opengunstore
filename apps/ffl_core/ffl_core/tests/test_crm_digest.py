@@ -175,6 +175,37 @@ class TestQueue(DigestCase):
 		(row,) = [r for r in digest.build() if r["name"] == lead]
 		self.assertEqual(row["messages"], 2)
 
+	def _converted(self) -> tuple[str, str]:
+		"""A lead that became a deal, as CRM's conversion leaves them: the mail stays on the lead."""
+		lead = _lead()
+		deal = _deal(owner=None)
+		frappe.db.set_value("CRM Lead", lead, "converted", 1)
+		frappe.db.set_value("CRM Deal", deal.name, "lead", lead)
+		return lead, deal.name
+
+	def test_a_deal_counts_the_mail_its_lead_got_before_it_was_converted(self):
+		lead, deal = self._converted()
+		_mail("CRM Lead", lead, ago=4, subject="Still available?")
+		_task("CRM Lead", lead, "Check the safe")
+		rows = {r["name"]: r for r in digest.build()}
+		self.assertNotIn(lead, rows)
+		self.assertEqual((rows[deal]["subject"], rows[deal]["messages"], rows[deal]["days"], rows[deal]["tasks"]),
+			("Still available?", 1, 4, ["Check the safe"]))
+
+	def test_a_reply_sent_on_the_lead_before_conversion_answers_the_deal(self):
+		lead, deal = self._converted()
+		_mail("CRM Lead", lead, received=True, ago=4)
+		_mail("CRM Lead", lead, received=False, ago=3)
+		self.assertNotIn(deal, _names(digest.build()))
+
+	def test_a_new_customer_mail_on_the_deal_after_a_reply_on_the_lead_waits_alone(self):
+		lead, deal = self._converted()
+		_mail("CRM Lead", lead, received=True, ago=4)
+		_mail("CRM Lead", lead, received=False, ago=3)
+		_mail("CRM Deal", deal, received=True, ago=1)
+		(row,) = [r for r in digest.build() if r["name"] == deal]
+		self.assertEqual((row["messages"], row["days"]), (1, 1))
+
 	def test_a_website_inquiry_counts_as_a_message_waiting(self):
 		from ffl_core.crm import inquiries
 

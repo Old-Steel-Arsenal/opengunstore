@@ -3,7 +3,9 @@ waiting first. No AI call.
 
 The queue (:func:`build`): every CRM Lead (not converted, not Other mail) and CRM Deal whose status is of
 type Open or Ongoing, where the newest email on the record is a Received one from a sender that is not
-automated (``crm.mail.is_automated``), plus any such record with an open CRM Task. A website inquiry is
+automated (``crm.mail.is_automated``), plus any such record with an open CRM Task. A deal that came from a
+lead counts the lead's mail and open tasks as its own (CRM leaves them on the lead, and the deal's page shows
+them), merged newest first. A website inquiry is
 also a Received mail on its record (``crm.inquiries._file_mail``), so it counts. The queue is read from
 the records' own mail and tasks and is never stored. What it carries is put through
 ``crm.sensitive.redact`` first (the subject, the task titles and the record's summary).
@@ -108,7 +110,7 @@ def _candidates(doctype: str, user: str | None) -> list[frappe._dict]:
 	meta = frappe.get_meta(doctype)
 	owner = OWNER_FIELD[doctype]
 	fields = ["name", "status", "lead_name", "email", "organization", owner]
-	fields += [f for f in ("first_name", "last_name", "erpnext_customer") if meta.has_field(f)]
+	fields += [f for f in ("first_name", "last_name", "erpnext_customer", "lead") if meta.has_field(f)]
 	if frappe.db.has_column(doctype, memory.SUMMARY):
 		fields.append(memory.SUMMARY)
 	filters = {"status": ["in", _open_statuses(LEAD_STATUS if doctype == LEAD else DEAL_STATUS) or [""]]}
@@ -186,6 +188,15 @@ def build(user: str | None = None) -> list[dict]:
 		recs = _candidates(doctype, user)
 		names = [r.name for r in recs]
 		mails, tasks = _mail_by_record(doctype, names), _tasks_by_record(doctype, names)
+		if doctype == DEAL:
+			# A deal's page shows its lead's mail and tasks too, and CRM leaves them on the lead when it converts.
+			leads = sorted({r.lead for r in recs if r.get("lead")})
+			lead_mails, lead_tasks = _mail_by_record(LEAD, leads), _tasks_by_record(LEAD, leads)
+			for r in recs:
+				if r.get("lead"):
+					mails[r.name] = sorted(mails.get(r.name, []) + lead_mails.get(r.lead, []), reverse=True,
+						key=lambda m: (get_datetime(m.communication_date or m.creation), get_datetime(m.creation)))
+					tasks[r.name] = sorted(tasks.get(r.name, []) + lead_tasks.get(r.lead, []), key=lambda t: get_datetime(t.creation))
 		rows += filter(None, (_row(doctype, r, mails.get(r.name, []), tasks.get(r.name, [])) for r in recs))
 	rows.sort(key=lambda r: (r["received"] is None, r["received"] or r["_task_since"], r["name"]))
 	for r in rows:
