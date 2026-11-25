@@ -10,6 +10,14 @@ that is open, and moves the want to Matched. No email goes to the customer and n
 
 A customer's gun in for transfer is not the store's to sell and never alerts (``custody``).
 
+From what the customer said (Lead Mail Settings › crm_wants_from_memory): a ``want`` row the customer's
+mail put into customer memory (``crm.memory.apply``) becomes a CRM Want when nothing in stock fits it
+(:func:`from_memory`). One want per memory row, found by ``memory_row``: while the want is Open a changed
+row changes it, and a row the provider removed closes it. A want staff edited or closed, or one that
+matched, is left alone. A lead has no Contact to hold a want, so its rows become wants when it becomes a
+deal (``memory.deal_inserted``). A want from memory has the record's owner, or none: whoever owns the deal
+when the arrival comes gets the task, else the Sales Managers (:func:`_assignees`).
+
 Nothing here can fail the stock document: the hook only queues, the job runs after the commit, and a
 failure on one want is rolled back, logged, and leaves the others alone. The state is in the database
 (the want and its task), not in Redis, so a deploy that clears the cache loses nothing.
@@ -23,13 +31,13 @@ from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.utils import escape_html, fmt_money, get_url_to_form, now_datetime, strip_html
+from frappe.utils import cint, escape_html, flt, fmt_money, get_datetime, get_url_to_form, now_datetime, strip_html
 
 from ffl_core.crm import TITLE, installed
 from ffl_core.crm.deals import DEAL, is_closed, new_task
 from ffl_core.custody import is_custody_serial
 from ffl_core.serials import serials_for_line
-from ffl_core.utils import commit
+from ffl_core.utils import commit, single_flag
 
 WANT = "CRM Want"
 TASK = "CRM Task"
@@ -37,6 +45,9 @@ ACTIVE = ["Open", "Matched"]
 _TASK_OPEN = ("Backlog", "Todo", "In Progress")
 JOB = "ffl_core.crm.wants.match_arrival"
 _SAVEPOINT = "ffl_crm_want"
+SETTINGS = "Lead Mail Settings"
+SWITCH = "crm_wants_from_memory"
+_MEMORY_SAVEPOINT = "ffl_crm_want_memory"
 
 
 def _word(text: str) -> str:
@@ -142,13 +153,29 @@ def _alert(name: str, found: list[Arrival]) -> None:
 	if task and task.status in _TASK_OPEN:
 		frappe.db.set_value(TASK, task.name, "description", (task.description or "") + lines)
 	else:
-		want.arrival_task = new_task(_title(want, found[0]), _intro(want) + lines, want.want_owner,
-			_open_deal(want.deal), priority="High", due_date=now_datetime())
+		deal = _open_deal(want.deal)
+		want.arrival_task = new_task(_title(want, found[0]), _intro(want) + lines, _assignees(want, deal), deal,
+			priority="High", due_date=now_datetime())
 	last = found[-1]
 	want.status = "Matched"
 	want.matched_item, want.matched_serial, want.matched_on = last.item_code, last.serial, now_datetime()
 	want.flags.ignore_permissions = True   # the system's write: the owner may be a clerk with no write right
 	want.save()
+
+
+def _assignees(want, deal: str | None) -> str | list[str] | None:
+	"""Who gets the arrival task: the want's owner, else the open deal's owner (a want from memory has
+	none until someone owns the deal: the first mail a staff member sends on it), else every Sales Manager
+	(the people who can open a record nobody owns)."""
+	owner = want.want_owner or (deal and frappe.db.get_value(DEAL, deal, "deal_owner"))
+	return owner or _managers() or None
+
+
+def _managers() -> list[str]:
+	users = set(frappe.get_all("Has Role", filters={"parenttype": "User", "role": "Sales Manager"}, pluck="parent"))
+	users -= {"Administrator", "Guest"}
+	return frappe.get_all("User", filters={"name": ["in", sorted(users)], "enabled": 1, "user_type": "System User"},
+		pluck="name", order_by="name asc") if users else []
 
 
 def _open_deal(deal: str | None) -> str | None:
@@ -184,3 +211,112 @@ def _intro(want) -> str:
 		parts.append(want.notes)
 	html = "".join(f"<p>{escape_html(p)}</p>" for p in parts)
 	return html + f'<p><a href="{escape_html(get_url_to_form(WANT, want.name))}">{escape_html(want.name)}</a></p>'
+
+
+# ── wants from what the customer said (crm.memory) ──
+
+def from_memory_on() -> bool:
+	return installed() and single_flag(SETTINGS, SWITCH, default=0)
+
+
+def from_memory(doc, memory, rows: list | None = None, gone=()) -> None:
+	"""Keep the wants made from *memory*'s rows in step with it, after a write to it (never raises: a
+	failure is rolled back to its own savepoint and logged, the memory write stands).
+
+	* *gone*: names of rows that left the memory; an Open want made from one is closed.
+	* every Open want made from a row still there takes the row's keywords and text, and the memory's budget.
+	* *rows*: the rows the customer just said or said again, for *doc*, a CRM Deal: each without a want
+	  gets one when nothing in stock fits it. None (a lead just became *doc*): the rows said on that lead.
+
+	A lead (*doc* is a CRM Lead) makes none: a want needs a Contact. A want staff edited, closed or that
+	matched is left as it is."""
+	if not memory or not from_memory_on() or not frappe.db.has_column(WANT, "memory_row"):
+		return
+	frappe.db.savepoint(_MEMORY_SAVEPOINT)
+	try:
+		_from_memory(doc, memory, rows, tuple(gone))
+	except Exception:
+		frappe.db.rollback(save_point=_MEMORY_SAVEPOINT)
+		frappe.log_error(title=f"[{TITLE}] Wants from memory failed: {doc.doctype} {doc.name}", message=frappe.get_traceback())
+
+
+def _ours(want) -> bool:
+	"""An Open want nobody has touched since memory wrote it."""
+	return want.status == "Open" and bool(want.memory_synced) and get_datetime(want.modified) == get_datetime(want.memory_synced)
+
+
+def _write(want) -> None:
+	want.flags.ignore_permissions = True
+	want.flags.ffl_owner_at_arrival = True
+	if want.name:
+		want.save()
+	else:
+		want.insert()
+	frappe.db.set_value(WANT, want.name, "memory_synced", want.modified, update_modified=False)
+
+
+def _from_memory(doc, memory, rows, gone) -> None:
+	from ffl_core.crm.customer import _primary_contact
+	from ffl_core.crm.mail import LEAD
+	from ffl_core.crm.memory import _source_record
+	from ffl_core.crm.reply_draft import in_stock_items
+
+	kept = {r.name: r for r in memory.items if r.name}
+	budget = next((flt(r.amount) for r in memory.items if r.kind == "budget" and flt(r.amount) > 0), None)
+	if gone:
+		for name in frappe.get_all(WANT, filters={"memory_row": ["in", list(gone)], "status": "Open"}, pluck="name"):
+			want = frappe.get_doc(WANT, name, for_update=True)
+			if _ours(want):
+				want.status = "Closed"
+				want.flags.ignore_permissions = True
+				want.save()
+	linked = {}
+	for name in frappe.get_all(WANT, filters={"memory_row": ["in", list(kept)]}, pluck="name") if kept else []:
+		want = frappe.get_doc(WANT, name, for_update=True)
+		linked[want.memory_row] = want
+		row = kept[want.memory_row]
+		if not _ours(want) or row.said != "Customer" or cint(row.locked):
+			continue
+		values = {"keywords": row.keywords, "notes": row.text, "budget": budget}
+		if any((want.get(k) or None) != (v or None) for k, v in values.items()):
+			want.update(values)
+			_write(want)
+	if doc.doctype != DEAL:
+		return
+	contact = _primary_contact(doc)
+	if not contact:
+		return
+	if rows is None:
+		here = {(LEAD, doc.get("lead")), (DEAL, doc.name)}
+		rows = [r for r in memory.items if _source_record(r) in here]
+	stock = None
+	for row in rows:
+		if row.kind != "want" or row.said != "Customer" or cint(row.locked) or not row.name or row.name in linked \
+				or row.name not in kept:
+			continue
+		stock = in_stock_items() if stock is None else stock
+		if any(_fits(frappe._dict(item=None, keywords=row.keywords), a) for a in stock):
+			continue
+		_write(frappe.get_doc({"doctype": WANT, "contact": contact, "deal": doc.name, "keywords": row.keywords,
+			"customer": doc.get("erpnext_customer") or None, "notes": row.text, "budget": budget,
+			"want_owner": doc.get("deal_owner") or None, "source_doctype": row.source_doctype,
+			"source_name": row.source_name, "memory_row": row.name}))
+
+
+def carry(source, target) -> None:
+	"""Memory *source* is being merged into *target* (``memory._merge``): a want made from one of
+	*source*'s rows follows the same thing said in *target*, so the row keeps its one want. Never raises."""
+	if not from_memory_on() or not frappe.db.has_column(WANT, "memory_row"):
+		return
+	from ffl_core.crm.memory import _norm
+
+	frappe.db.savepoint(_MEMORY_SAVEPOINT)
+	try:
+		for row in source.items:
+			want = row.kind == "want" and frappe.db.get_value(WANT, {"memory_row": row.name}, "name")
+			twin = want and next((t for t in target.items if t.kind == "want" and t.name and _norm(t.text) == _norm(row.text)), None)
+			if twin and not frappe.db.exists(WANT, {"memory_row": twin.name}):
+				frappe.db.set_value(WANT, want, "memory_row", twin.name, update_modified=False)
+	except Exception:
+		frappe.db.rollback(save_point=_MEMORY_SAVEPOINT)
+		frappe.log_error(title=f"[{TITLE}] Wants not carried to merged memory: {target.name}", message=frappe.get_traceback())

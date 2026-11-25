@@ -14,6 +14,7 @@ class CRMWant(Document):
 		self.keywords = (self.keywords or "").strip()
 		if not self.item and not keyword_tokens(self.keywords):
 			frappe.throw(_("Fill in keywords with at least one letter or digit, an item, or both."), title=_("What do they want?"))
-		self.want_owner = self.want_owner or frappe.session.user
+		if self.is_new() and not self.want_owner and not self.flags.get("ffl_owner_at_arrival"):
+			self.want_owner = frappe.session.user
 		if not self.customer:
 			self.customer = customer_of(self.contact)
