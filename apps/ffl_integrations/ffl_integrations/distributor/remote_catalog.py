@@ -22,6 +22,8 @@ import frappe
 from ffl_integrations.data_service import client
 from ffl_integrations.data_service.client import (  # noqa: F401 — re-export
 	DataServiceForbidden,
+	DataServiceNotFound,
+	DataServiceRejected,
 	DataServiceUnavailable,
 )
 
@@ -195,10 +197,8 @@ def item_by_upc(upc: str):
 		# equals the path actually sent for any UPC value — an unescaped "/" or
 		# "%" would otherwise change the request path out from under the signature.
 		return client.get(f"/v1/catalog/item/{quote(str(upc), safe='')}")
-	except DataServiceUnavailable as exc:
-		if "404" in str(exc):
-			return None
-		raise
+	except DataServiceNotFound:
+		return None
 
 
 def cost_trend(*, upc=None, distributor=None, sku=None, days=90):
@@ -207,7 +207,9 @@ def cost_trend(*, upc=None, distributor=None, sku=None, days=90):
 	first_cost, last_cost, low_cost, high_cost, ...}], window_start, server_time}``,
 	or None when the service has no history for it — or the catalog is this site's
 	own, which keeps none. ``distributor`` (a house code) and ``sku`` narrow the
-	product, or name it when it has no UPC. ``days`` 0 is all retained history."""
+	product, or name it when it has no UPC. ``days`` 0 is all retained history;
+	``DataServiceRejected`` when that is more than the service returns whole (or the
+	key is not one it reads)."""
 	backend = _backend()
 	if backend is not None:
 		read = getattr(backend, "cost_trend", None)
@@ -216,10 +218,8 @@ def cost_trend(*, upc=None, distributor=None, sku=None, days=90):
 	params["days"] = int(days)
 	try:
 		return client.get("/v1/catalog/inventory/cost-trend", params)
-	except DataServiceUnavailable as exc:
-		if "404" in str(exc):
-			return None
-		raise
+	except DataServiceNotFound:
+		return None
 
 
 def signals(distributor: str, days: int = 7, limit: int = 25):
@@ -231,8 +231,11 @@ def signals(distributor: str, days: int = 7, limit: int = 25):
 	if backend is not None:
 		read = getattr(backend, "signals", None)
 		return read(distributor, days, limit) if read else None
-	return client.get("/v1/catalog/inventory/signals",
-		{"distributor": distributor, "days": int(days), "limit": int(limit)}, distributor=distributor)
+	try:
+		return client.get("/v1/catalog/inventory/signals",
+			{"distributor": distributor, "days": int(days), "limit": int(limit)}, distributor=distributor)
+	except DataServiceNotFound:   # a house on its own catalog service that keeps none
+		return None
 
 
 def parse_service_ts(value):

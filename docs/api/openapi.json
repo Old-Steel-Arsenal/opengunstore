@@ -21723,11 +21723,11 @@
           "ffl_integrations"
         ],
         "summary": "One product's cost history and this store's own record of it.",
-        "description": "**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/price_hub.py:28`",
+        "description": "**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/price_hub.py:32`",
         "operationId": "ffl_integrations.distributor.price_hub.detail",
         "responses": {
           "200": {
-            "description": "{trend: {window_start, server_time, series: [{distributor, sku, state, segments: [[{at, cost}]], last_cost, low_cost, high_cost}]} or null (no history, or the service is down), store: {item_code, on_hand, on_order, sold_30, sold_90, price, receipts: [{posting_date, supplier, qty, rate}]} or null (no Item here)}. Only enabled Distributors have a series.",
+            "description": "{trend: {days, window_start, server_time, series: [{distributor, sku, state, segments: [[{at, cost}]], last_cost, low_cost, high_cost}]} or null (no history, or the service is down), store: {item_code, on_hand, on_order, sold_30, sold_90, price, receipts: [{posting_date, supplier, qty, rate}]} or null (no Item here)}. Only enabled Distributors have a series. ``trend.days`` is the window read: a year when everything kept was asked for and is too much to return.",
             "content": {
               "application/json": {
                 "schema": {
@@ -21790,7 +21790,7 @@
           "ffl_integrations"
         ],
         "summary": "What the enabled distributors' feeds showed lately: costs that fell, stock",
-        "description": "about to run out, and stock that went fast after a restock.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/price_hub.py:53`",
+        "description": "about to run out, and stock that went fast after a restock.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/price_hub.py:59`",
         "operationId": "ffl_integrations.distributor.price_hub.signals",
         "responses": {
           "200": {

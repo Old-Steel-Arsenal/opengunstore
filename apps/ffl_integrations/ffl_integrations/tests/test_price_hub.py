@@ -68,6 +68,13 @@ class PriceHubDetail(_Base):
 		self._do([{**line, "wish_qty": 7}], status="Cancelled")
 		self.assertEqual(price_hub.detail(upc=UPC)["store"]["on_order"], before + 5 + 2)
 
+	def test_a_line_the_house_answered_with_none_is_not_on_order(self):
+		before = price_hub.detail(upc=UPC)["store"]["on_order"]
+		line = {"sku": "DC-UPC-ACC", "item_code": UPC, "wish_qty": 6}
+		self._do([line], status="Acknowledged")      # answered, and this line got none
+		self._do([line], status="Placed")            # not answered yet: still what was asked
+		self.assertEqual(price_hub.detail(upc=UPC)["store"]["on_order"], before + 6)
+
 	def test_sold_is_stock_out_on_sales_less_returns_inside_the_window(self):
 		before = price_hub.detail(upc=UPC)["store"]
 		for qty, days_ago, voucher in ((-3, 10, "POS Invoice"), (1, 5, "POS Invoice"),
@@ -95,6 +102,61 @@ class PriceHubDetail(_Base):
 	def test_a_series_says_whether_its_last_sample_is_current(self):
 		self.stub.trends[UPC]["series"][0]["state"] = "stale"
 		self.assertEqual(price_hub.detail(upc=UPC)["trend"]["series"][0]["state"], "stale")
+
+	def test_everything_kept_being_too_much_reads_a_year_instead(self):
+		from ffl_integrations.distributor.remote_catalog import DataServiceRejected
+
+		asked = []
+
+		def cost_trend(*, days, **_key):
+			asked.append(days)
+			if not days:
+				raise DataServiceRejected("too many points")
+			return self.stub.trends[UPC]
+
+		self.stub.cost_trend = cost_trend
+		self.addCleanup(lambda: self.stub.__dict__.pop("cost_trend"))
+		trend = price_hub.detail(upc=UPC, days=0)["trend"]
+		self.assertEqual(asked, [0, price_hub.LONGEST_WINDOW_DAYS])
+		self.assertEqual(trend["days"], price_hub.LONGEST_WINDOW_DAYS)
+		self.assertEqual(price_hub.detail(upc=UPC, days=90)["trend"]["days"], 90)
+
+	def test_a_key_the_service_does_not_read_has_no_history_and_logs_nothing(self):
+		from ffl_integrations.distributor.remote_catalog import DataServiceRejected
+
+		def rejected(**_kw):
+			raise DataServiceRejected("Invalid UPC/EAN")
+
+		self.stub.cost_trend = rejected
+		self.addCleanup(lambda: self.stub.__dict__.pop("cost_trend"))
+		before = frappe.db.count("Error Log")
+		self.assertIsNone(price_hub.detail(upc=UPC, days=90)["trend"])
+		self.assertIsNone(price_hub.detail(upc=UPC, days=0)["trend"])
+		self.assertEqual(frappe.db.count("Error Log"), before)
+
+	def test_no_catalog_lists_nothing_and_logs_nothing(self):
+		from ffl_integrations.data_service import CapabilityOff
+
+		def off(*_a):
+			raise CapabilityOff("not set up", capability="catalog")
+
+		self.stub.signals = off
+		self.addCleanup(lambda: self.stub.__dict__.pop("signals"))
+		before = frappe.db.count("Error Log")
+		self.assertEqual(price_hub.signals(), {"cost_drop": [], "stockout": [], "fast_depletion": []})
+		self.assertEqual(frappe.db.count("Error Log"), before)
+
+	def test_the_client_names_not_found_and_rejected(self):
+		from types import SimpleNamespace
+
+		from ffl_integrations.data_service import client
+
+		for status, kind in ((404, client.DataServiceNotFound), (422, client.DataServiceRejected)):
+			with self.assertRaises(kind):
+				client._raise_for_status(SimpleNamespace(status_code=status), "/v1/x")
+		with self.assertRaises(client.DataServiceUnavailable) as other:
+			client._raise_for_status(SimpleNamespace(status_code=500), "/v1/x")
+		self.assertIs(type(other.exception), client.DataServiceUnavailable)
 
 	def test_signals_merge_the_enabled_houses_strongest_first(self):
 		row = lambda sku, score: {"sku": sku, "upc": "1", "name": sku, "current_value": 5,  # noqa: E731

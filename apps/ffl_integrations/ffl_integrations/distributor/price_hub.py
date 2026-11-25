@@ -14,6 +14,8 @@ from ffl_integrations.distributor.api import ORDER_ROLES
 from ffl_integrations.distributor.items import local_item
 
 RECEIPTS = 5
+# The window drawn when everything the service keeps is too much to return whole.
+LONGEST_WINDOW_DAYS = 365
 SIGNAL_LISTS = ("cost_drop", "stockout", "fast_depletion")
 SIGNAL_ROWS = 15
 # A stock movement out through one of these is a sale (a return comes back in on the same).
@@ -22,6 +24,8 @@ _SALES_VOUCHERS = ("Sales Invoice", "POS Invoice", "Delivery Note")
 # drafts and queued ones included: the buyer must see what is already asked for.
 _STORE_BOUND = ("Stocking", "Procure To Store")
 _ORDER_OVER = ("Cancelled", "Error", "Complete")
+# The house has not answered these yet: a line's acked quantity of 0 means "not told", not "none".
+_ORDER_UNANSWERED = ("Draft", "Queued", "Placed")
 
 
 @frappe.whitelist()
@@ -36,11 +40,13 @@ def detail(upc: str | None = None, sku: str | None = None, distributor: str | No
 	    days: History window in days; 0 is everything the service keeps.
 
 	Returns:
-	    {trend: {window_start, server_time, series: [{distributor, sku, state,
+	    {trend: {days, window_start, server_time, series: [{distributor, sku, state,
 	    segments: [[{at, cost}]], last_cost, low_cost, high_cost}]} or null (no
 	    history, or the service is down), store: {item_code, on_hand, on_order,
 	    sold_30, sold_90, price, receipts: [{posting_date, supplier, qty, rate}]} or
-	    null (no Item here)}. Only enabled Distributors have a series.
+	    null (no Item here)}. Only enabled Distributors have a series. ``trend.days``
+	    is the window read: a year when everything kept was asked for and is too
+	    much to return.
 	"""
 	frappe.only_for(ORDER_ROLES)
 	upc, sku = (upc or "").strip(), (sku or "").strip()
@@ -68,9 +74,13 @@ def signals(days: int = 7) -> dict:
 	frappe.only_for(ORDER_ROLES)
 	days = min(max(cint(days) or 7, 1), 30)
 	out = {name: [] for name in SIGNAL_LISTS}
+	from ffl_integrations.data_service import CapabilityOff
+
 	for code, house in _houses().items():
 		try:
 			raw = remote_catalog.signals(code, days, SIGNAL_ROWS) or {}
+		except CapabilityOff:   # no catalog set up for this house: nothing to list, nothing wrong
+			continue
 		except Exception:  # noqa: BLE001 — one house down leaves the others' lists
 			_log(f"Inventory signals read failed ({code})")
 			continue
@@ -103,15 +113,26 @@ def _log(title) -> None:
 def _trend(upc, sku, distributor, days):
 	houses = _houses()
 	code = next((c for c, name in houses.items() if name == distributor), None)
+	key = {"upc": upc} if upc else {"distributor": code, "sku": sku} if code else None
+	raw = None
 	try:
-		raw = (remote_catalog.cost_trend(upc=upc, days=days) if upc
-			else remote_catalog.cost_trend(distributor=code, sku=sku, days=days) if code else None)
+		if key:
+			try:
+				raw = remote_catalog.cost_trend(**key, days=days)
+			except remote_catalog.DataServiceRejected:
+				# Everything kept is too much to return whole: the longest window that is not.
+				# A key the service does not read is rejected at any window, and has no history.
+				if days and days <= LONGEST_WINDOW_DAYS:
+					return None
+				days = LONGEST_WINDOW_DAYS
+				raw = remote_catalog.cost_trend(**key, days=days)
+	except remote_catalog.DataServiceRejected:
+		return None
 	except Exception:  # noqa: BLE001 — the page shows the offers without a chart
 		_log(f"Cost history read failed ({upc or sku})")
-		raw = None
 	if not raw:
 		return None
-	return {"window_start": raw.get("window_start"), "server_time": raw.get("server_time"),
+	return {"days": days, "window_start": raw.get("window_start"), "server_time": raw.get("server_time"),
 		"series": [{"distributor": houses[s["distributor"]], "sku": s.get("sku"),
 				# fresh / stale / incomplete / no_data: whether the last sample is current
 				"state": s.get("state") or "",
@@ -142,20 +163,24 @@ def _store(upc, sku):
 
 def _on_order(item_code) -> int:
 	"""Units of the Item on open store-bound distributor orders that have not come
-	in: what the house said it is sending (the larger of acked and invoiced), or
-	what was asked for while it has not answered, less what was received or covered
-	from the shelf. A killed line sends nothing."""
-	orders = frappe.get_all("Distributor Order", pluck="name", filters={
-		"order_type": ("in", _STORE_BOUND), "status": ("not in", _ORDER_OVER)})
+	in: what the house said it is sending (the larger of acked and invoiced) — or,
+	on an order it has not answered yet, what was asked for — less what was received
+	or covered from the shelf. A killed line sends nothing, and so does a line the
+	house answered with none."""
+	orders = dict(frappe.get_all("Distributor Order", fields=["name", "status"], as_list=True, filters={
+		"order_type": ("in", _STORE_BOUND), "status": ("not in", _ORDER_OVER)}))
 	if not orders:
 		return 0
 	total = 0
 	for l in frappe.get_all("Distributor Order Line",
-			filters={"parent": ("in", orders), "item_code": item_code},
-			fields=["wish_qty", "ack_qty", "invoiced_qty", "received_qty", "substituted_qty", "line_status"]):
+			filters={"parent": ("in", list(orders)), "item_code": item_code},
+			fields=["parent", "wish_qty", "ack_qty", "invoiced_qty", "received_qty", "substituted_qty",
+				"line_status"]):
 		if (l.line_status or "") == "Killed":
 			continue
-		coming = max(cint(l.ack_qty), cint(l.invoiced_qty)) or cint(l.wish_qty)
+		coming = max(cint(l.ack_qty), cint(l.invoiced_qty))
+		if not coming and orders[l.parent] in _ORDER_UNANSWERED:
+			coming = cint(l.wish_qty)
 		total += max(0, coming - cint(l.received_qty) - cint(l.substituted_qty))
 	return total
 

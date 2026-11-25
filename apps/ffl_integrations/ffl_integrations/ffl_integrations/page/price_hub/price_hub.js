@@ -35,6 +35,7 @@ class PriceHubApp {
 		this.detail = null;   // price_hub.detail for it
 		this.days = 90;
 		this.cart = ffl_integrations.cart.load();
+		ffl_integrations.cart.watch(() => this.reloadCart());
 		this.$body = $(`
 			<div class="price-hub">
 				<style>
@@ -103,6 +104,12 @@ class PriceHubApp {
 		return true;
 	}
 
+	reloadCart() {
+		this.cart = ffl_integrations.cart.load();
+		this.renderCartButton();
+		if (this.row) this.renderProduct();
+	}
+
 	shown() {
 		this.cart = ffl_integrations.cart.load();
 		this.renderCartButton();
@@ -126,6 +133,12 @@ class PriceHubApp {
 	}
 
 	addToCart(distributor, qty) {
+		const was = this.cart.find((c) => c.key === ffl_integrations.cart.keyOf(this.row));
+		if (qty > 0 && was && was.pick !== distributor) {
+			// One line a product: adding from another distributor moves what was there.
+			frappe.show_alert({ indicator: 'orange', message: __('Moved {0} from {1} to {2}',
+				[was.qty, esc(was.pick), esc(distributor)]) });
+		}
 		ffl_integrations.cart.add(this.cart, this.row, qty, qty > 0 ? distributor : null);
 		ffl_integrations.cart.save(this.cart);
 		this.renderCartButton();
@@ -168,7 +181,11 @@ class PriceHubApp {
 		const q = (this.$box.val() || '').trim();
 		if (this._catalogNotice()) return;
 		const seq = this._searchSeq = (this._searchSeq || 0) + 1;
+		// Kept until a search comes back: the keystrokes before Enter leave a debounced
+		// search behind, and it is that one's answer which arrives.
+		if (open) this._openNext = true;
 		if (q.length < 2) {
+			this._openNext = false;
 			this.rows = [];
 			this.row = null;
 			this.$body.find('.hits, .product').empty();
@@ -185,8 +202,9 @@ class PriceHubApp {
 				this.at = -1;
 				this.renderSignals();
 				this.renderHits();
-				if (this.rows.length && (open || this._openNext)) this.select(this.rows[0]);
+				const opening = this._openNext;
 				this._openNext = false;
+				if (this.rows.length && opening) this.select(this.rows[0]);
 			},
 		});
 	}
@@ -229,6 +247,7 @@ class PriceHubApp {
 	select(row) {
 		this.row = row;
 		this.detail = null;
+		this.shortened = false;
 		this.qty = {};
 		this.setRoute(ffl_integrations.cart.keyOf(row));
 		this.renderSignals();
@@ -244,12 +263,19 @@ class PriceHubApp {
 	loadDetail() {
 		const row = this.row;
 		const first = row.offers[0];
+		const asked = this.days;
+		const seq = this._detailSeq = (this._detailSeq || 0) + 1;
 		frappe.call({
 			method: 'ffl_integrations.distributor.price_hub.detail',
-			args: { upc: row.upc, sku: first.sku, distributor: first.distributor, days: this.days },
+			args: { upc: row.upc, sku: first.sku, distributor: first.distributor, days: asked },
 			callback: (r) => {
-				if (row !== this.row) return;   // another product was picked meanwhile
+				// Another product, or another period, was asked for meanwhile.
+				if (row !== this.row || seq !== this._detailSeq) return;
 				this.detail = r.message || {};
+				// Everything kept was too much to return: the server read a year instead.
+				const read = this.detail.trend ? this.detail.trend.days : asked;
+				this.shortened = read !== asked;
+				this.days = read;
 				this.renderProduct();
 			},
 		});
@@ -305,7 +331,8 @@ class PriceHubApp {
 			<table><thead><tr><th>${__('Distributor')}</th><th class="num">${__('Cost')}</th>
 				<th class="num">${__('At MAP')}</th><th class="num">${__('Stock')}</th><th></th></tr></thead>
 				<tbody>${offers}</tbody></table>
-			<div class="bar"><span class="muted">${__('Cost history')}</span><span>${periods}</span></div>
+			<div class="bar"><span class="muted">${__('Cost history')}${this.shortened
+				? ` · ${__('All is too long to draw, showing 1y')}` : ''}</span><span>${periods}</span></div>
 			<div class="chart">${plot ? plot.html : ''}</div>
 			<div class="readout muted"></div>
 			${store(d.store)}`);
@@ -321,6 +348,7 @@ class PriceHubApp {
 		$p.find('.btn-undo').on('click', () => this.addToCart(null, -line.qty));
 		$p.find('.btn-period').on('click', (e) => {
 			this.days = $(e.currentTarget).data('days');
+			this.shortened = false;
 			this.detail = Object.assign({}, this.detail, { trend: null });
 			this.renderProduct();
 			this.loadDetail();

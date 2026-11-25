@@ -37,6 +37,7 @@ class DistributorOrdersApp {
 		//  offers: [{distributor, sku, cost, qty}], pick: distributor, manual: bool}
 		// Kept in the browser and shared with the Price Hub (public/js/distributor_cart.js).
 		this.cart = ffl_integrations.cart.load();
+		ffl_integrations.cart.watch(() => this.reloadCart());
 		this.$body = $(`
 			<div class="dist-restock">
 				<style>

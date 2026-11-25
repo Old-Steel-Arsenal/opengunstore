@@ -34,6 +34,20 @@ test('a line follows the best offer until the buyer picks a house', () => {
 	assert.deepStrictEqual([lines[0].qty, lines[0].pick, lines[0].manual], [9, 'A', true]);
 });
 
+test('adding again brings the line the offers of today', () => {
+	const cart = load();
+	const lines = [];
+	cart.add(lines, { upc: '0001', offers: [{ distributor: 'A', sku: 'A-1', cost: 5, qty: 9 },
+		{ distributor: 'C', sku: 'C-1', cost: 7, qty: 9 }] }, 1);
+	// Later: A costs less, B carries it now, and this search did not name C.
+	const now = { upc: '0001', map: 11, offers: [{ distributor: 'B', sku: 'B-1', cost: 4, qty: 9 },
+		{ distributor: 'A', sku: 'A-1', cost: 4.5, qty: 9 }] };
+	cart.add(lines, now, 1, 'B');
+	assert.deepStrictEqual(lines[0].offers.map((o) => [o.distributor, o.cost]), [['B', 4], ['A', 4.5], ['C', 7]]);
+	assert.strictEqual(lines[0].offers.find((o) => o.distributor === lines[0].pick).sku, 'B-1');
+	assert.strictEqual(lines[0].map, 11);
+});
+
 test('taking the last one back removes the line', () => {
 	const cart = load();
 	const lines = [];
@@ -78,5 +92,7 @@ test('both pages get the cart and keep it in step', () => {
 		assert.match(src, /ffl_integrations\.cart\.load\(\)/);
 		assert.match(src, /ffl_integrations\.cart\.save\(this\.cart\)/);
 		assert.match(src, /on_page_show/);
+		// A page that is already open hears of a change made in another tab.
+		assert.match(src, /ffl_integrations\.cart\.watch\(\(\) => this\.reloadCart\(\)\)/);
 	}
 });

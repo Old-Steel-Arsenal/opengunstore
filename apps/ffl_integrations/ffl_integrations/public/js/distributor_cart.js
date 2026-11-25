@@ -24,6 +24,12 @@ ffl_integrations.cart = {
 		try { localStorage.setItem(this._key(), JSON.stringify(lines)); } catch (e) { /* storage off: the cart lasts the visit */ }
 	},
 
+	// Call fn when another tab or window changed the cart, so a page never writes
+	// its own older copy over it.
+	watch(fn) {
+		window.addEventListener('storage', (e) => { if (e.key === this._key()) fn(); });
+	},
+
 	keyOf(row) { return row.upc || `${row.offers[0].distributor}:${row.offers[0].sku}`; },
 
 	// The house to buy from: the first offer that fills the qty, else the first. The
@@ -48,6 +54,14 @@ ffl_integrations.cart = {
 		}
 		line.qty += qty;
 		if (line.qty <= 0) { lines.splice(lines.indexOf(line), 1); return; }
+		if (qty > 0 && line.offers !== row.offers) {
+			// The row is the catalog now, the line may be days old: its offers replace the
+			// line's own for the same house (ranked first), and a house it does not name stays.
+			const fresh = new Set(row.offers.map((o) => o.distributor));
+			line.offers = row.offers.concat(line.offers.filter((o) => !fresh.has(o.distributor)));
+			line.map = row.map;
+			line.msrp = row.msrp;
+		}
 		if (pick) { line.pick = pick; line.manual = true; }
 		if (!line.manual) line.pick = this.pickBest(line.offers, line.qty).distributor;
 	},

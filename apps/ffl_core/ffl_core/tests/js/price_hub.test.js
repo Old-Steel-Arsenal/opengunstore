@@ -37,3 +37,14 @@ test('at its low only when the window saw the cost move', () => {
 	assert.strictEqual(atLow({ last_cost: 9, low_cost: 9, high_cost: 9 }), false);
 	assert.strictEqual(atLow({ last_cost: null, low_cost: null, high_cost: null }), false);
 });
+
+// Read as text (the page needs a desk to run): the two races the page guards against.
+test('an Enter or a scan still opens the product when a typed search answers instead', () => {
+	assert.match(src, /if \(open\) this\._openNext = true;/);
+	assert.match(src, /const opening = this\._openNext;\s+this\._openNext = false;\s+if \(this\.rows\.length && opening\) this\.select/);
+});
+
+test('only the latest period asked for is drawn', () => {
+	assert.match(src, /const seq = this\._detailSeq = \(this\._detailSeq \|\| 0\) \+ 1;/);
+	assert.match(src, /if \(row !== this\.row \|\| seq !== this\._detailSeq\) return;/);
+});
