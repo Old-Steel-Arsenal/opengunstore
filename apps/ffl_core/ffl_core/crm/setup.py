@@ -230,7 +230,7 @@ _DEAL_SCRIPT_TEMPLATE = """class CRMDeal {
 		} catch (e) {
 			return this.fflError(e)
 		}
-		if (!info.guns.length) return toast.error(__("Pick the gun on the deal's product line first."))
+		if (!info.guns.length && !info.enabled) return toast.error(__("Holding guns for deals is off. A manager can turn it on in Lead Mail Settings."))
 		const esc = (s) => this.fflEsc(s)
 		const fields = [], defaults = {}, free = [], mine = []
 		info.guns.forEach((g, i) => {
@@ -249,6 +249,15 @@ _DEAL_SCRIPT_TEMPLATE = """class CRMDeal {
 				defaults[key] = 1
 			}
 		})
+		// A gun not on the deal yet is picked here: holding it puts it on a product line too.
+		if (info.enabled) fields.push({ fieldname: "ffl_new_gun", fieldtype: "Link", options: "Serial No",
+			label: info.guns.length ? __("Another gun") : __("Gun"), filters: { status: "Active" } })
+		if (free.length || info.enabled) {
+			fields.push({ fieldname: "ffl_hours", fieldtype: "Select", label: __("For"), options: [
+				{ label: __("24 hours"), value: "24" }, { label: __("48 hours"), value: "48" },
+				{ label: __("3 days"), value: "72" }, { label: __("7 days"), value: "168" }] })
+			defaults.ffl_hours = "48"
+		}
 		const run = (fn) => async (ctx) => {
 			try {
 				await fn(ctx)
@@ -257,16 +266,30 @@ _DEAL_SCRIPT_TEMPLATE = """class CRMDeal {
 			}
 		}
 		const actions = []
-		if (free.length) {
-			actions.push({ label: __("Hold for 48 hours"), variant: "solid", onClick: run(async ({ data, close }) => {
+		if (free.length || info.enabled) {
+			actions.push({ label: __("Hold"), variant: "solid", onClick: run(async ({ data, close }) => {
 				const picked = free.filter(([, key]) => data[key]).map(([g]) => g)
-				if (!picked.length) return toast.error(__("Pick a gun to hold."))
+				const added = data.ffl_new_gun && !info.guns.some((g) => g.serial === data.ffl_new_gun) ? data.ffl_new_gun : null
+				if (!picked.length && !added) return toast.error(__("Pick a gun to hold."))
 				const auth = picked.some((g) => g.needs_manager) ? await this.fflManager(info) : {}
 				if (!auth) return
-				const res = await call("ffl_core.api.crm.hold_guns", { deal: this.doc.name, serials: picked.map((g) => g.serial), ...auth })
+				const serials = picked.map((g) => g.serial).concat(added ? [added] : [])
+				const hours = data.ffl_hours || "48"
+				let res = await call("ffl_core.api.crm.hold_guns", { deal: this.doc.name, serials, hours, ...auth })
+				// A gun picked here may need a manager too; the page only learns it from the refusal.
+				const needs = res.refused.filter((r) => r.needs_manager)
+				if (needs.length && !auth.approver && !info.self_approves) {
+					const manager = await this.fflManager(info)
+					if (manager) {
+						const again = await call("ffl_core.api.crm.hold_guns", { deal: this.doc.name, serials: needs.map((r) => r.serial), hours, ...manager })
+						res = { held: res.held.concat(again.held), refused: res.refused.filter((r) => !r.needs_manager).concat(again.refused) }
+					}
+				}
 				close()
 				res.refused.forEach((r) => toast.error(r.reason))
 				if (res.held.length) toast.success(__("Held until {0}.", [res.held[0].expires_label]))
+				// Only a gun that was held is on a new product line; a reload would wipe a refusal's reason.
+				if (added && res.held.some((h) => h.serial === added)) return window.location.reload()
 				this.fflLoadCard()
 			}) })
 		}

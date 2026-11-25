@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import frappe
 
-from ffl_core.crm import inquiries, mail, setup
+from ffl_core.crm import inquiries, mail, reply_draft, setup, team
 from ffl_core.tests.crm_support import AMMO, PER_GUN, CRMTestCase, product_of
 from ffl_core.tests.test_crm_deal import _gun
 from ffl_core.tests.test_crm_team_mail import _assignees, _customer_contact
@@ -131,6 +131,39 @@ class TestInquiryFiling(CRMTestCase):
 		self.assertEqual((again["doctype"], again["name"], again["created"]), ("CRM Lead", first["name"], False))
 		self.assertEqual((frappe.db.count("CRM Lead"), frappe.db.count("FCRM Note")), (leads, notes))
 		self.assertEqual(len(_rows("CRM Lead", first["name"])), 1)
+
+	def test_the_inquiry_is_also_a_received_mail_waiting_for_an_answer(self):
+		frappe.db.set_single_value("FCRM Settings", "auto_reopen_on_new_communication", 1)
+		serial = _gun("_T-CRM-INQ-7", 899)
+		email = _email()
+		args = {"kind": "ask", "event_id": f"evt-mail-{frappe.generate_hash(length=6)}", "email": email,
+			"full_name": "Pat Buyer", "message": "Does it ship to <WA>?", "sku": f"{PER_GUN}::{serial}"}
+		lead = inquiries.file_inquiry(**args)["name"]
+		where = {"reference_doctype": "CRM Lead", "reference_name": lead}
+		(sent,) = frappe.get_all("Communication", filters=where, fields=["sender", "sender_full_name", "subject",
+			"content", "sent_or_received", "communication_medium", "communication_type", "email_account",
+			"recipients", "message_id"])
+		self.assertEqual((sent.recipients, sent.message_id), (team.primary() or None, args["event_id"]))
+		self.assertEqual([m.kind for m in reply_draft._messages(frappe.get_doc("CRM Lead", lead))], ["in"],
+			"the note of the same inquiry is not read as a second message")
+		self.assertEqual((sent.sender, sent.sender_full_name, sent.sent_or_received, sent.communication_medium,
+			sent.communication_type, sent.email_account), (email, "Pat Buyer", "Received", "Email", "Communication", None))
+		self.assertEqual(sent.subject, "Website question: " + frappe.db.get_value("Item", PER_GUN, "item_name"))
+		self.assertIn("Does it ship to &lt;WA&gt;?", sent.content)
+		self.assertEqual(frappe.db.get_value("CRM Lead", lead, "communication_status"), "Open")
+		inquiries.file_inquiry(**args)
+		self.assertEqual(frappe.db.count("Communication", where), 1, "a repeat adds no mail")
+		plain = _file(email=email, kind="map_price")   # no gun: the subject is the kind alone
+		self.assertEqual(plain["name"], lead)
+		self.assertEqual(sorted(frappe.get_all("Communication", filters=where, pluck="subject")),
+			["Website price request", sent.subject])
+
+	def test_a_mail_that_cannot_be_filed_leaves_the_note(self):
+		with patch("ffl_core.crm.team.primary", side_effect=RuntimeError("boom")):
+			out = _file()
+		self.assertEqual(len(_notes("CRM Lead", out["name"])), 1)
+		self.assertFalse(frappe.db.exists("Communication", {"reference_doctype": "CRM Lead", "reference_name": out["name"]}))
+		self.assertEqual([m.kind for m in reply_draft._messages(frappe.get_doc("CRM Lead", out["name"]))], ["note"])
 
 	def test_an_unknown_sku_is_only_noted(self):
 		out = _file(sku="NO-SUCH-ITEM::SN-1")

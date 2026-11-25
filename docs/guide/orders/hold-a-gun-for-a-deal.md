@@ -2,12 +2,11 @@
 
 For sales staff, when a customer on a CRM deal wants a gun kept for them for a couple of days.
 
-A hold keeps one gun for one deal for 48 hours. While it lasts, only the deal's customer can buy that gun at the register or on Create Order, and the website shows it out of stock. A hold takes no money. To take a deposit, [build the order](build-an-order.md) instead.
+A hold keeps one gun for one deal for a set time: 24 hours, 48 hours, 3 days or 7 days. While it lasts, only the deal's customer can buy that gun at the register or on Create Order, and the website shows it out of stock. A hold takes no money. To take a deposit, [build the order](build-an-order.md) instead.
 
 ## Before you start
 
 - A manager turns on **Hold guns for deals** in [Lead Mail Settings](../manager/settings.md#lead-mail-settings). It needs **Link deals to POS orders** on too. Turned off, it stops new holds; holds already placed run to their end.
-- The gun is on one of the deal's product lines with its serial number.
 - Only a gun priced one by one can be held. A model sold as one product for all its guns cannot.
 
 ## Steps
@@ -15,7 +14,9 @@ A hold keeps one gun for one deal for 48 hours. While it lasts, only the deal's 
 1. Open the deal. Open the three-dot menu at the top and click **Hold gun**.
 2. If the deal has no customer yet, the **Who is the buyer?** box opens first. Pick the customer, or click **Create customer**.
 3. The **Hold guns** box lists each gun on the deal. A gun that can be held is ticked. A gun that cannot shows why under its name.
-4. Click **Hold for 48 hours**.
+4. For a gun that is not on the deal yet, pick it in **Gun** by its serial number. Holding it puts it on the deal too.
+5. Pick how long in **For**. It starts at 48 hours.
+6. Click **Hold**.
 
 The customer card on the deal shows **Held:** with the serial number and the time the hold ends. The deal's timeline gets a note.
 

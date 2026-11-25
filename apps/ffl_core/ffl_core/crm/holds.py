@@ -58,6 +58,8 @@ END_TAKEN = "Taken by another order"
 
 # ---------------------------------------------------------------- the owner's rules, one place each
 HOLD_HOURS = 48
+# What a new hold may be placed for (the dialog's choices); an extension is always HOLD_HOURS.
+HOLD_CHOICES = (24, 48, 72, 168)
 # The person who placed a hold may extend it this many times; after that a manager does.
 EXTENSIONS_WITHOUT_MANAGER = 1
 # Q1: a uniform-price gun (one product for all its guns) cannot be held.
@@ -430,9 +432,10 @@ def _serial_items(serials) -> dict:
 
 
 def hold_guns(deal, serials, approver: str | None = None, pin: str | None = None,
-		password: str | None = None) -> dict:
+		password: str | None = None, hours: int | None = None) -> dict:
 	"""Hold each gun for *deal* (a CRM Deal document, read and permission-checked by the caller) for
-	:data:`HOLD_HOURS`. Each gun on its own: ``{"held": [hold], "refused": [{"serial", "reason"}]}``."""
+	*hours* (one of :data:`HOLD_CHOICES`; :data:`HOLD_HOURS` when not given). Each gun on its own:
+	``{"held": [hold], "refused": [{"serial", "reason"}]}``."""
 	from ffl_core.crm.customer import linked_customer
 	from ffl_core.crm.deal import SERIAL_FIELD
 	from ffl_core.reservations import shelf_state_columns
@@ -445,6 +448,10 @@ def hold_guns(deal, serials, approver: str | None = None, pin: str | None = None
 			title=_("Turned off"))
 	if not linked_customer(deal):
 		frappe.throw(_("Pick the customer first."), title=_("No customer"))
+	hours = HOLD_HOURS if hours in (None, "") else hours
+	if not str(hours).isdigit() or int(hours) not in HOLD_CHOICES:
+		frappe.throw(_("A hold is for {0} hours.").format(", ".join(str(h) for h in HOLD_CHOICES)))
+	hours = int(hours)
 	serials = [str(s).strip() for s in dict.fromkeys(serials or ()) if str(s or "").strip()]
 	if not serials:
 		frappe.throw(_("Pick a gun to hold."))
@@ -468,7 +475,7 @@ def hold_guns(deal, serials, approver: str | None = None, pin: str | None = None
 	manager = _approval(approver, pin, password) if needs else None
 	columns = shelf_state_columns()
 	for serial in sorted(todo, key=lambda s: (items[s], s)):
-		out = _after_commit(lambda serial=serial: _hold_one(deal.name, serial, items[serial], columns, manager))
+		out = _after_commit(lambda serial=serial: _hold_one(deal.name, serial, items[serial], columns, manager, hours))
 		(held if "name" in out else refused).append(out)
 	return {"held": held, "refused": refused}
 
@@ -478,7 +485,8 @@ def _expired_here(deal: str, serial: str) -> bool:
 		"expires_at": ["<=", now_datetime()]}))
 
 
-def _hold_one(deal: str, serial: str, item_code: str, columns: list[str], manager: str | None) -> dict:
+def _hold_one(deal: str, serial: str, item_code: str, columns: list[str], manager: str | None,
+		hours: int = HOLD_HOURS) -> dict:
 	savepoint = "ffl_deal_hold"
 	try:
 		row, active = _lock(item_code, serial, columns)
@@ -502,7 +510,7 @@ def _hold_one(deal: str, serial: str, item_code: str, columns: list[str], manage
 			return {"serial": serial, "reason": reason}
 		user = frappe.session.user
 		doc = frappe.get_doc({"doctype": HOLD, "serial_no": serial, "item_code": item_code, "deal": deal,
-			"status": ACTIVE, "held_by": user, "held_at": now, "expires_at": now + timedelta(hours=HOLD_HOURS),
+			"status": ACTIVE, "held_by": user, "held_at": now, "expires_at": now + timedelta(hours=hours),
 			"extensions": 0, "active_serial": serial, "approved_by": manager if (was_ours or _held_before(deal, serial)) else None})
 		doc.insert(ignore_permissions=True)
 		_comment(deal, _("Held {0} until {1}.").format(serial, expires_label(doc.expires_at)))

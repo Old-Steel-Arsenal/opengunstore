@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.utils import cint
+from frappe.utils import cint, flt
 
 from ffl_core.crm import customer as deal_customer
 from ffl_core.crm import deals, holds, mail, pos_link_on, sell_requests
@@ -326,6 +326,44 @@ def _serial_list(serials) -> list[str]:
 	return [str(s) for s in (value or []) if isinstance(s, (str, int)) and str(s).strip()][:50]
 
 
+def _with_guns(deal, serials: list[str]) -> tuple:
+	"""(*deal* with a product line for each of *serials* it had none for, the serials that got one, why
+	each of the others did not). Only a gun in stock gets a line (``deal.add_product_row``); a serial
+	nobody has on file is left for ``holds.hold_guns`` to refuse by name."""
+	from ffl_core.crm.deal import SERIAL_FIELD, add_product_row
+
+	on_deal = {r.get(SERIAL_FIELD) for r in deal.get("products") or []}
+	added, why = [], {}
+	for serial in dict.fromkeys(serials):
+		gun = serial not in on_deal and frappe.db.get_value("Serial No", serial, ["item_code", "status"], as_dict=True)
+		if not gun or not gun.item_code:
+			continue
+		if gun.status != "Active":
+			why[serial] = _("{0} is not in stock.").format(serial)
+		elif add_product_row(deal.doctype, deal.name, gun.item_code, serial):
+			added.append(serial)
+		else:
+			why[serial] = _("{0} could not be added to the deal.").format(serial)
+	return (frappe.get_doc(deal.doctype, deal.name) if added else deal), added, why
+
+
+def _without_guns(deal: str, serials: list[str]) -> None:
+	"""Take off *deal* the lines :func:`_with_guns` just added for guns that were then not held. Never
+	raises: a failure is rolled back and logged, and the line stays."""
+	from ffl_core.crm.deal import SERIAL_FIELD
+
+	frappe.db.savepoint("ffl_crm_hold_lines")
+	try:
+		doc = frappe.get_doc(deals.DEAL, deal)
+		kept = [r for r in doc.get("products") or [] if r.get(SERIAL_FIELD) not in serials]
+		doc.set("products", kept)
+		doc.total = doc.net_total = flt(sum(flt(r.amount) for r in kept))   # a deal prices itself again on save
+		doc.save(ignore_permissions=True)   # the caller's write on the deal was checked
+	except Exception:
+		frappe.db.rollback(save_point="ffl_crm_hold_lines")
+		frappe.log_error(title=f"[CRM] Line of a gun not held was not removed: {deal}", message=frappe.get_traceback())
+
+
 def _hold_deal(hold: str, ptype: str):
 	deal = isinstance(hold, str) and frappe.db.get_value(holds.HOLD, hold, "deal")
 	if not deal:
@@ -354,16 +392,18 @@ def deal_holds(deal: str) -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def hold_guns(deal: str, serials, approver: str | None = None, pin: str | None = None,
-		password: str | None = None) -> dict:
-	"""Hold guns on a deal for 48 hours: only the deal's customer can buy them meanwhile, at the
+		password: str | None = None, hours: int | None = None) -> dict:
+	"""Hold guns on a deal (for 48 hours unless told otherwise): only the deal's customer can buy them meanwhile, at the
 	counter and on the website. Each gun is judged on its own.
 
 	Args:
 	    deal: The CRM Deal's name. It needs its POS customer.
-	    serials: The guns' serial numbers (a list, or JSON), each on one of the deal's lines.
+	    serials: The guns' serial numbers (a list, or JSON). One that is not on the deal's lines yet
+	        and is in stock goes on a line of its own first.
 	    approver: The manager approving, when a gun needs one (held for this deal before).
 	    pin: The approver's counter PIN.
 	    password: Or their password.
+	    hours: How long: 24, 48, 72 or 168. 48 when not given.
 
 	Returns:
 	    dict: {"held": [{"name", "serial", "deal", "status", "expires_at", "expires_label", "held_by",
@@ -371,8 +411,15 @@ def hold_guns(deal: str, serials, approver: str | None = None, pin: str | None =
 	    while Hold guns for deals is off.
 	"""
 	frappe.only_for(CRM_ROLES)
-	return holds.hold_guns(_deal_for_pos_link(deal, "write"), _serial_list(serials), approver=approver or None,
-		pin=pin or None, password=password or None)
+	wanted = _serial_list(serials)
+	doc, added, why = _with_guns(_deal_for_pos_link(deal, "write"), wanted)
+	out = holds.hold_guns(doc, wanted, approver=approver or None, pin=pin or None, password=password or None, hours=hours)
+	for r in out["refused"]:
+		r["reason"] = why.get(r["serial"], r["reason"])
+	back = [r["serial"] for r in out["refused"] if r["serial"] in added]
+	if back:   # a gun that was not held does not stay on the deal
+		_without_guns(doc.name, back)
+	return out
 
 
 @frappe.whitelist(methods=["POST"])

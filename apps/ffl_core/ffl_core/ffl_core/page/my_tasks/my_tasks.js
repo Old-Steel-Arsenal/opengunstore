@@ -52,7 +52,7 @@ class MyTasksPage {
 		const esc = (s) => frappe.utils.escape_html(s == null ? '' : String(s));
 		this.$list.html(rows.map((r) => {
 			const doc = r.reference_type && r.reference_name
-				? `<div><a href="/app/${esc(frappe.router.slug(r.reference_type))}/${esc(encodeURIComponent(r.reference_name))}">${esc(__(r.reference_type))}: ${esc(r.title || r.reference_name)}</a></div>`
+				? `<div><a href="${esc(r.url || `/app/${frappe.router.slug(r.reference_type)}/${encodeURIComponent(r.reference_name)}`)}">${esc(__(r.reference_type))}: ${esc(r.title || r.reference_name)}</a></div>`
 				: '';
 			const seen = r.seen_on
 				? `<span class="text-muted">· ${esc(__('Seen {0}', [frappe.datetime.prettyDate(r.seen_on)]))}</span>`
