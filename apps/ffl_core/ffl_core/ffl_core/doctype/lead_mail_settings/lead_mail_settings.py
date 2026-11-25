@@ -40,6 +40,9 @@ class LeadMailSettings(Document):
 		self.primary_team_address = (self.primary_team_address or "").strip().lower()
 		if self.primary_team_address and self.primary_team_address not in seen:
 			frappe.throw(_("The Reply-To address must be one of the team addresses."))
+		from ffl_core.crm.digest import check_settings
+
+		check_settings(self)
 
 	def on_update(self):
 		from ffl_core.crm.setup import apply_pos_link

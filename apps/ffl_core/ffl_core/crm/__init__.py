@@ -11,6 +11,7 @@ Frappe CRM (app ``crm``) is installed, unmodified, on every site next to ffl_cor
 * incoming staff mail goes on the customer's open deal or becomes a lead (``mail``, ``deals``);
 * a website inquiry becomes a note, and the gun asked about a product line, on the customer's deal or a lead
   (``inquiries``); a GunBroker member's question is one lead per conversation (``gunbroker``, ``mail``);
+* a daily email lists the customers waiting for a reply, longest first (``digest``);
 * a deal links to a POS customer and opens as a Create Order draft (``customer``), and the
   invoices made from it write back to the deal (``orders``), behind one switch (:func:`pos_link_on`);
 * install / migrate plumbing, ERPNext CRM Settings written field by field (``setup``).

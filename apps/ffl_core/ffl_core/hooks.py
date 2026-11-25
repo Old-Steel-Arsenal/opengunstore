@@ -1231,6 +1231,10 @@ scheduler_events = {
 		"0 7 * * *": [
 			"ffl_core.membership.schedule_renewals",
 		],
+		# The daily "who to answer" email, when Lead Mail Settings has it on (crm/digest.py).
+		"0 8 * * *": [
+			"ffl_core.crm.digest.send",
+		],
 		# Team mailboxes are pulled every minute; Frappe's own 10-minute pull of every Email Account
 		# (staff mailboxes included) is left as is (crm/mail.py).
 		"* * * * *": [
