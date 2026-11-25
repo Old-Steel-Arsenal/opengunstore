@@ -68,6 +68,14 @@ When stock that fits arrives, through a receipt or a trade-in, whoever added the
 
 To close a want that is no longer needed, open it in the **CRM Want** list (search for it with ++ctrl+k++) and set **Status** to **Closed**.
 
+### Wants from what the customer said
+
+When your manager turns on **Add wants from customer memory**, a gun or product the customer asks for in a message becomes a want by itself, if nothing in stock fits it. The want carries the budget the customer gave, and its **Customer message** field links the message it came from. Nothing is made from a line staff wrote in the memory.
+
+While the want is **Open**, it follows the customer's memory: a changed line changes the want, and a line the assistant takes out closes it. A want you edited, closed or that has matched stays as it is.
+
+A lead has no contact yet, so its wants appear when you convert it to a deal. The task for a matching arrival goes to the deal's owner. A deal nobody owns sends it to every Sales Manager, until someone answers the customer and becomes the owner.
+
 ## Web orders on the deal
 
 While the link is on, a customer's web orders leave notes on their open deal, on the deal's **Notes** tab: placed, shipped or picked up, cancelled, and refunded, each with its amount. A customer with no open deal and no open lead gets no note and no new deal.

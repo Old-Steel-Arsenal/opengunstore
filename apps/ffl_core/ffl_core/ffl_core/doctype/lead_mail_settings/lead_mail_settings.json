@@ -19,7 +19,8 @@
   "crm_pos_link",
   "crm_deal_holds",
   "crm_daily_digest",
-  "crm_digest_recipients"
+  "crm_digest_recipients",
+  "crm_wants_from_memory"
  ],
  "fields": [
   {
@@ -110,11 +111,17 @@
    "fieldname": "crm_digest_recipients",
    "fieldtype": "Small Text",
    "label": "Send it to everyone at"
+  },
+  {
+   "default": "0",
+   "fieldname": "crm_wants_from_memory",
+   "fieldtype": "Check",
+   "label": "Add wants from customer memory"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-25 08:00:00.000000",
+ "modified": "2026-11-25 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Lead Mail Settings",

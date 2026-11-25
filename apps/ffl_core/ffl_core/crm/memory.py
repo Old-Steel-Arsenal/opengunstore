@@ -19,7 +19,8 @@ for three minutes; several mails in a row are one call. :func:`run` reads the me
 watermark, blanks what must not leave (``crm.sensitive``), asks the providers, and writes the answer
 under one lock. A due that moved while it ran is left for the next round, so no mail is lost.
 
-Rows staff wrote or changed are locked: the provider may neither change nor remove them.
+Rows staff wrote or changed are locked: the provider may neither change nor remove them. A ``want`` row the
+customer said becomes a CRM Want when a store switch is on (``crm.wants.from_memory``, after each write).
 
 On the page: the Lead and Deal side panels' Memory card (:func:`card`), each customer row linking the
 message it came from (:func:`source`), and Edit / Update / Clear memory (:func:`save`, :func:`update_now`,
@@ -38,7 +39,7 @@ from frappe.core.utils import html_to_plain_text
 from frappe.utils import add_days, add_to_date, cint, escape_html, flt, fmt_money, get_datetime, getdate, now_datetime, nowdate
 from frappe.utils.synchronization import filelock
 
-from ffl_core.crm import TITLE, installed, sensitive
+from ffl_core.crm import TITLE, installed, sensitive, wants
 from ffl_core.crm.deals import DEAL, STATUS, is_closed
 from ffl_core.crm.mail import LEAD, OTHER_MAIL, is_automated
 from ffl_core.utils import commit
@@ -649,6 +650,7 @@ def _merge(source, target) -> None:
 			target.set(key, source.get(key))
 	_trim(target)
 	_save(target)
+	wants.carry(source, target)
 	frappe.delete_doc(MEMORY, source.name, ignore_permissions=True, force=True)
 
 
@@ -699,7 +701,11 @@ def deal_inserted(doc, method=None) -> None:
 	"""CRM Deal after_insert: a deal converted from a lead takes the lead's memory, with the deal's
 	contact and customer as keys; one the contact already had is merged in."""
 	if doc.get("lead"):
-		_guarded(f"lead {doc.lead} to deal {doc.name}", lambda: memory_for(doc, write=True, create=False))
+		found = []
+		_guarded(f"lead {doc.lead} to deal {doc.name}", lambda: found.append(memory_for(doc, write=True, create=False)))
+		# The lead's wants have no Contact to hang on until now.
+		if found and found[0]:
+			wants.from_memory(doc, found[0])
 
 
 def _merge_key(key: str, value: str) -> None:
@@ -782,6 +788,8 @@ def apply(doc, memory, batch: Batch, answer: dict) -> dict:
 	is not one of the batch's messages, an unknown kind, a state that is not one, a budget without an
 	amount, a want without keywords, ID numbers, eligibility details, prices or stock. Returns counts."""
 	counts = {"added": 0, "updated": 0, "removed": 0, "dropped": 0}
+	named = {r.name for r in memory.items if r.name}
+	said = []   # the rows the customer just said, or said again: wants may be made from them
 	rows = {ref: next((r for r in memory.items if r.name == n), None) for ref, n in batch.rows.items()}
 	answer = answer if isinstance(answer, dict) else {}
 
@@ -842,6 +850,7 @@ def apply(doc, memory, batch: Batch, answer: dict) -> dict:
 			for r in current:
 				memory.remove(r)
 		row = memory.append("items", {"kind": kind, "text": text, "keywords": keywords, "amount": amount, **source})
+		said.append(row)
 		counts["added"] += 1
 		if row in _trim(memory):
 			counts["added"] -= 1
@@ -849,6 +858,8 @@ def apply(doc, memory, batch: Batch, answer: dict) -> dict:
 	_trim(memory)
 	_save(memory)
 	counts["dropped"] += cint(memory.flags.get("ffl_rows_dropped"))
+	# Removed, trimmed or dropped by validate alike: the rows that were here and are not now.
+	wants.from_memory(doc, memory, [r for r in said if r in memory.items], named - {r.name for r in memory.items})
 
 	summary = answer.get("summary")
 	if isinstance(summary, str):
