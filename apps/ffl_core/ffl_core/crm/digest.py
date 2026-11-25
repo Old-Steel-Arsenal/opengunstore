@@ -45,7 +45,7 @@ from frappe.utils import date_diff, escape_html, formatdate, get_datetime, get_f
 
 from ffl_core.crm import TITLE, installed, memory, sensitive, team
 from ffl_core.crm.deals import DEAL, STATUS as DEAL_STATUS, person_name
-from ffl_core.crm.mail import LEAD, OTHER_MAIL, OWNER_FIELD, is_automated
+from ffl_core.crm.mail import LEAD, OTHER_MAIL, OWNER_FIELD, _store_address, is_automated
 from ffl_core.utils import single_flag, single_raw
 
 SETTINGS = "Lead Mail Settings"
@@ -155,15 +155,21 @@ def _customer(doctype: str, rec) -> str:
 	return person_name(contact, rec.get("erpnext_customer"), rec.email, rec.organization)["lead_name"] or rec.lead_name or rec.name
 
 
+def _ours(mail) -> bool:
+	"""A mail the store sent: a Sent one, or a Received one from one of the store's own addresses (a team
+	mailbox pulls the copy of a reply sent from another)."""
+	return mail.sent_or_received == "Sent" or _store_address(_address(mail.sender))
+
+
 def _row(doctype: str, rec, mails: list, tasks: list) -> dict | None:
 	"""This record's row in the queue, or None when nobody waits on it and no task is open."""
 	newest = mails[0] if mails else None
-	waiting = bool(newest) and newest.sent_or_received == "Received" and not is_automated(_address(newest.sender))
+	waiting = bool(newest) and not _ours(newest) and not is_automated(_address(newest.sender))
 	if not waiting and not tasks:
 		return None
 	since_sent = 0
 	for m in mails:   # the customer's messages after the store's last mail
-		if m.sent_or_received == "Sent":
+		if _ours(m):
 			break
 		since_sent += not is_automated(_address(m.sender))
 	received = get_datetime(newest.communication_date or newest.creation) if waiting else None
@@ -206,7 +212,11 @@ def build(user: str | None = None) -> list[dict]:
 
 # ── the mail ──
 
-def _subject(count: int) -> str:
+def _subject(rows: list[dict]) -> str:
+	"""Counts the customers who wait; a list of open tasks only says so."""
+	count = sum(1 for r in rows if r["received"])
+	if not count:
+		return _("{0} open CRM tasks").format(len(rows))
 	return _("1 customer waiting for a reply") if count == 1 else _("{0} customers waiting for a reply").format(count)
 
 
@@ -252,7 +262,7 @@ def send() -> int:
 	sent = 0
 	for address, rows in _plan(build()).items():
 		try:
-			frappe.sendmail(recipients=[address], subject=_subject(len(rows)), message=table(rows), delayed=True,
+			frappe.sendmail(recipients=[address], subject=_subject(rows), message=table(rows), delayed=True,
 				email_headers=MACHINE_HEADERS)
 			sent += 1
 		except Exception:

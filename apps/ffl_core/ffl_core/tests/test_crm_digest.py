@@ -337,8 +337,20 @@ class TestTheMail(DigestCase):
 		for raw in ("<script>", "<i>", "<b>call", "<u>"):
 			self.assertNotIn(raw, html)
 		self.assertIn("&lt;script&gt;x&lt;/script&gt; &amp; more", html)
-		self.assertEqual(digest._subject(1), "1 customer waiting for a reply")
-		self.assertEqual(digest._subject(7), "7 customers waiting for a reply")
+		waiting, task_only = {"received": now_datetime()}, {"received": None}
+		self.assertEqual(digest._subject([waiting, task_only]), "1 customer waiting for a reply")
+		self.assertEqual(digest._subject([waiting] * 7), "7 customers waiting for a reply")
+		self.assertEqual(digest._subject([task_only] * 2), "2 open CRM tasks")
+
+	def test_a_reply_from_one_of_the_stores_own_addresses_filed_as_received_is_an_answer(self):
+		_settings(own_domains="ourstore.example")
+		lead = _lead()
+		_mail("CRM Lead", lead, ago=2)
+		_mail("CRM Lead", lead, ago=1, sender="info@ourstore.example", subject="Re: Is it in stock?")
+		self.assertNotIn(lead, [r["name"] for r in digest.build()])
+		_mail("CRM Lead", lead)   # the customer writes again
+		(row,) = [r for r in digest.build() if r["name"] == lead]
+		self.assertEqual(row["messages"], 1)
 
 	def test_it_is_queued_from_the_default_outgoing_account_with_the_count_in_the_subject(self):
 		leads = [_lead() for _i in range(3)]
