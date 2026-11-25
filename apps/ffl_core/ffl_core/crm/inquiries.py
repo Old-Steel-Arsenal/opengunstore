@@ -5,7 +5,9 @@ on the newest open deal a contact with that email is on; with none, a Contact of
 deal, and anyone else goes on their existing CRM Lead (not converted, not other mail), or a new one. What a new lead or deal makes is shared with the
 team (``share_with_team``); an existing record keeps its owner, status and sharing. The inquiry is an
 FCRM Note, and the gun asked about (a SKU of an Item the POS knows) a line of the record's products.
-Nothing is emailed to the customer.
+The same text is also a received mail from the customer on the record (a Communication with no Email
+Account, so the mail rules leave it alone): it shows with the record's mail, Reply answers the customer,
+and CRM counts it as a message waiting for an answer. Nothing is emailed to the customer.
 
 A sell-your-gun request is the exception: it always makes a deal of its own (``crm.sell_requests``), the
 form's known fields on it and the rest in its note, titled with the reference the seller was shown.
@@ -126,12 +128,18 @@ def file_inquiry(kind: str, event_id: str, email: str, full_name: str = "", phon
 		else:
 			doctype, name, created = _target(address, name_)
 			title = f"Website {KINDS[kind]}"
+		content = _note_html(phone, _text(message, "message"), sku,
+			url if url.startswith(("http://", "https://")) else "", details, [] if sell else photos)
 		frappe.get_doc({"doctype": NOTE, "title": title if keyed else legacy, EVENT_FIELD: event_id,
-			"reference_doctype": doctype, "reference_docname": name,
-			"content": _note_html(phone, _text(message, "message"), sku,
-				url if url.startswith(("http://", "https://")) else "", details, [] if sell else photos)
+			"reference_doctype": doctype, "reference_docname": name, "content": content,
 			}).insert(ignore_permissions=True)
 		item, serial = _gun_of(sku)
+		gun = item and frappe.db.get_value("Item", item, "item_name")
+		frappe.get_doc({"doctype": "Communication", "communication_type": "Communication",
+			"communication_medium": "Email", "sent_or_received": "Received", "sender": address,
+			"sender_full_name": name_ or None, "subject": f"{title}: {gun}" if gun else title,
+			"content": content, "reference_doctype": doctype, "reference_name": name,
+			}).insert(ignore_permissions=True)
 		if item and not sell:   # a gun of the store's on the store buying one would be a sale
 			add_product_row(doctype, name, item, serial)
 		if sell and photos:

@@ -226,8 +226,8 @@ sends the events again later.
 File a website form submission in CRM: a price request, a sell-your-gun form or a question.
 
 The email decides where it goes, as for incoming mail: a customer's open deal (one is opened when
-they have none), else their existing lead, else a new lead. The text goes on it as a note, and the
-gun asked about as a product line. A sell-your-gun request always makes a deal of its own, its
+they have none), else their existing lead, else a new lead. The text goes on it as a note and as a
+received mail from the customer (staff answer it with Reply), and the gun asked about as a product line. A sell-your-gun request always makes a deal of its own, its
 known fields on the deal and its photos (links on the store's website) copied in later. Nothing is
 emailed to the customer. A repeat of the same ``event_id`` files nothing more. Does nothing when
 CRM is not installed.
