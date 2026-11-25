@@ -196,6 +196,8 @@ class PriceHubApp {
 		frappe.call({
 			method: 'ffl_integrations.distributor.api.search',
 			args: { query: q, limit: 15 },
+			// No answer is coming for this one: what is typed next opens nothing by itself.
+			error: () => { this._openNext = false; },
 			callback: (r) => {
 				if (seq !== this._searchSeq) return;   // a newer query is on its way
 				this.rows = (r.message || []).filter((row) => row.offers && row.offers.length);

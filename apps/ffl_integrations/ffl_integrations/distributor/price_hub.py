@@ -24,8 +24,10 @@ _SALES_VOUCHERS = ("Sales Invoice", "POS Invoice", "Delivery Note")
 # drafts and queued ones included: the buyer must see what is already asked for.
 _STORE_BOUND = ("Stocking", "Procure To Store")
 _ORDER_OVER = ("Cancelled", "Error", "Complete")
-# The house has not answered these yet: a line's acked quantity of 0 means "not told", not "none".
-_ORDER_UNANSWERED = ("Draft", "Queued", "Placed")
+# The house may not have answered these yet: a line's acked quantity of 0 means "not told",
+# not "none". Hold can come before any answer, and counting an order twice costs less than
+# missing one.
+_ORDER_UNANSWERED = ("Draft", "Queued", "Placed", "Hold")
 
 
 @frappe.whitelist()

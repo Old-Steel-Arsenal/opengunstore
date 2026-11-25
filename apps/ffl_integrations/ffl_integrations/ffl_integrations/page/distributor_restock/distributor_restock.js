@@ -365,7 +365,7 @@ class DistributorOrdersApp {
 		if (!this.cart.length) { frappe.msgprint(__('Cart is empty.')); return; }
 		const groups = this.byHouse();
 		const created = [];
-		const failed = [];
+		const sent = new Set();   // keys of the lines an order was created for
 		frappe.dom.freeze(__('Planning + creating draft order(s)…'));
 		try {
 			for (const [house, lines] of Object.entries(groups)) {
@@ -379,16 +379,17 @@ class DistributorOrdersApp {
 				});
 				if (r && r.length) {
 					r.forEach((o) => created.push(Object.assign({ distributor: house }, o)));
-				} else {
-					if (r) frappe.msgprint(__('No order was created for {0}.', [frappe.utils.escape_html(house)]));
-					failed.push(house);
+					lines.forEach((c) => sent.add(c.key));
+				} else if (r) {
+					frappe.msgprint(__('No order was created for {0}.', [frappe.utils.escape_html(house)]));
 				}
 			}
 		} finally {
 			frappe.dom.unfreeze();
 		}
-		// Keep the lines of a house that failed so staff can fix and retry them.
-		this.cart = this.cart.filter((c) => failed.includes(c.pick));
+		// Keep what was not ordered: the lines of a house that failed, so staff can fix and
+		// retry them, and a line that arrived from another tab meanwhile.
+		this.cart = this.cart.filter((c) => !sent.has(c.key));
 		this.renderCart();
 		if (created.length) this.renderCreated(created);
 	}

@@ -12,16 +12,19 @@ ffl_integrations.cart = {
 	load() {
 		try {
 			const lines = JSON.parse(localStorage.getItem(this._key()) || '[]');
-			// A live check belongs to the visit that ran it.
-			lines.forEach((c) => { c.switched_from = ''; c.offers.forEach((o) => { delete o.checked; }); });
+			lines.forEach((c) => c.offers.length);   // not a cart: read as empty
 			return lines;
 		} catch (e) {
 			return [];
 		}
 	},
 
+	// A live check (offers[].checked, switched_from) belongs to the page that ran it and is
+	// not stored: what is stored then changes only when the cart does, so a page that
+	// reloads on `watch` and saves again does not set the other pages reloading in turn.
 	save(lines) {
-		try { localStorage.setItem(this._key(), JSON.stringify(lines)); } catch (e) { /* storage off: the cart lasts the visit */ }
+		const text = JSON.stringify(lines, (k, v) => (k === 'checked' || k === 'switched_from' ? undefined : v));
+		try { localStorage.setItem(this._key(), text); } catch (e) { /* storage off: the cart lasts the visit */ }
 	},
 
 	// Call fn when another tab or window changed the cart, so a page never writes

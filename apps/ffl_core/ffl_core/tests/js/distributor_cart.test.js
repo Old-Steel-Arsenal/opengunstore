@@ -71,14 +71,21 @@ test('the cart is kept per user and a live check does not outlive the visit', ()
 	lines[0].offers[0].checked = true;
 	lines[0].switched_from = 'B';
 	cart.save(lines);
+	const stored = store['ffl_distributor_cart:one@example.com'];
 	const back = cart.load();
 	assert.strictEqual(back[0].qty, 1);
 	assert.strictEqual(back[0].offers[0].checked, undefined);
-	assert.strictEqual(back[0].switched_from, '');
+	assert.strictEqual(back[0].switched_from, undefined);
+	// The page that ran the check keeps its marks; a page that reloads and saves again
+	// stores the same text, so no other page is told the cart changed.
+	assert.strictEqual(lines[0].offers[0].checked, true);
+	cart.save(back);
+	assert.strictEqual(store['ffl_distributor_cart:one@example.com'], stored);
 	assert.strictEqual(load('two@example.com', store).load().length, 0);
 });
 
 test('unreadable storage reads as an empty cart', () => {
+	assert.strictEqual(load('y', { 'ffl_distributor_cart:y': '[{"key":"k"}]' }).load().length, 0);
 	assert.strictEqual(load('x', { 'ffl_distributor_cart:x': '{not json' }).load().length, 0);
 });
 

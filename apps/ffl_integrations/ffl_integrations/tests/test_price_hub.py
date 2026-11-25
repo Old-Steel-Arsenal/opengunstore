@@ -73,7 +73,8 @@ class PriceHubDetail(_Base):
 		line = {"sku": "DC-UPC-ACC", "item_code": UPC, "wish_qty": 6}
 		self._do([line], status="Acknowledged")      # answered, and this line got none
 		self._do([line], status="Placed")            # not answered yet: still what was asked
-		self.assertEqual(price_hub.detail(upc=UPC)["store"]["on_order"], before + 6)
+		self._do([line], status="Hold")              # held before any answer: the same
+		self.assertEqual(price_hub.detail(upc=UPC)["store"]["on_order"], before + 12)
 
 	def test_sold_is_stock_out_on_sales_less_returns_inside_the_window(self):
 		before = price_hub.detail(upc=UPC)["store"]

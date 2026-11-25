@@ -41,6 +41,7 @@ test('at its low only when the window saw the cost move', () => {
 // Read as text (the page needs a desk to run): the two races the page guards against.
 test('an Enter or a scan still opens the product when a typed search answers instead', () => {
 	assert.match(src, /if \(open\) this\._openNext = true;/);
+	assert.match(src, /error: \(\) => \{ this\._openNext = false; \},/);
 	assert.match(src, /const opening = this\._openNext;\s+this\._openNext = false;\s+if \(this\.rows\.length && opening\) this\.select/);
 });
 
