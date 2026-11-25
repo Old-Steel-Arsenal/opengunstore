@@ -645,6 +645,25 @@ def memory_card(doctype: str, name: str) -> dict:
 
 
 @frappe.whitelist()
+def matches_card(doctype: str, name: str) -> dict:
+	"""The Matches card of a Lead or Deal page: what the store has for this customer, priced as the
+	register prices it now.
+
+	Args:
+	    doctype: "CRM Lead" or "CRM Deal".
+	    name: The record's name.
+
+	Returns:
+	    dict: {"shown": there is something to show, "html", "guns": on a deal, the matched guns not on it
+	    yet that can be held now ([{"serial", "label"}])}.
+	"""
+	frappe.only_for(CRM_ROLES)
+	from ffl_core.crm import matches
+
+	return matches.card(_memory_record(doctype, name, "read"))
+
+
+@frappe.whitelist()
 def memory_source(doctype: str, name: str, row: str) -> dict:
 	"""The customer message a row of the Memory card came from (its "said" link).
 
