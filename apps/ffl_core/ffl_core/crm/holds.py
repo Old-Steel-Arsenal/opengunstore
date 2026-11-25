@@ -448,9 +448,10 @@ def hold_guns(deal, serials, approver: str | None = None, pin: str | None = None
 			title=_("Turned off"))
 	if not linked_customer(deal):
 		frappe.throw(_("Pick the customer first."), title=_("No customer"))
-	hours = cint(hours) or HOLD_HOURS
-	if hours not in HOLD_CHOICES:
+	hours = HOLD_HOURS if hours in (None, "") else hours
+	if not str(hours).isdigit() or int(hours) not in HOLD_CHOICES:
 		frappe.throw(_("A hold is for {0} hours.").format(", ".join(str(h) for h in HOLD_CHOICES)))
+	hours = int(hours)
 	serials = [str(s).strip() for s in dict.fromkeys(serials or ()) if str(s or "").strip()]
 	if not serials:
 		frappe.throw(_("Pick a gun to hold."))

@@ -40,7 +40,7 @@ sale's.
 
 **Returns:** dict: {"blocked": [{"serial", "hold", "deal", "customer", "customer_name", "expires_at", "expires_label", "held_by", "held_by_name", "message"}], "self_approves": the caller is a manager, "approvers": [{"user", "full_name", "has_pin", "pin_off"}] when something is blocked}.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:461`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:492`</sub>
 
 ## `connect_my_mailbox`
 
@@ -118,7 +118,7 @@ Answers while Hold guns for deals is off too, so holds still running stay in vie
 
 **Returns:** dict: {"guns": [{"serial", "item_code", "item_name", "hold": None or {"name", "expires_at", "expires_label", "held_by", "held_by_name", "extensions", "extend_needs_manager", "release_needs_manager"}, "blocked": why it cannot be held or None, "needs_manager": holding it takes a manager}], "enabled": whether new holds are on, "self_approves": the caller is a manager, "approvers": [{"user", "full_name", "has_pin", "pin_off"}] otherwise}.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:352`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:376`</sub>
 
 ## `deals_use_no_quotes`
 
@@ -153,7 +153,7 @@ arrived while that still holds. Nothing is sent or saved.
 
 **Returns:** dict: {"native_ok": 1 when the draft goes into that composer, "to", "subject", "sender", "in_reply_to": the Communication answered, "channel": "email" or "gunbroker", "content_html", "signature_html", "handoff": what needs a person, or None}. The envelope fields are for the page's own dialog when the composer is not used. Refused when the record has nothing from the customer to answer, or with the extension's own reason.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:531`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:562`</sub>
 
 ## `ensure_deal_customer`
 
@@ -192,7 +192,7 @@ else, a manager does (signed in, or picked with their PIN).
 
 **Returns:** dict: The hold: {"name", "serial", "deal", "status", "expires_at", "expires_label", "held_by", "extensions", "end_reason"}.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:396`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:427`</sub>
 
 ## `hold_guns`
 
@@ -215,7 +215,7 @@ counter and on the website. Each gun is judged on its own.
 
 **Returns:** dict: {"held": [{"name", "serial", "deal", "status", "expires_at", "expires_label", "held_by", "extensions", "end_reason"}], "refused": [{"serial", "reason", "needs_manager"?}]}. Refused while Hold guns for deals is off.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:371`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:395`</sub>
 
 ## `make_lead_from_mail`
 
@@ -270,7 +270,7 @@ The Memory card of a Lead or Deal page: what the customer told the store, and th
 
 **Returns:** dict: {"html", "shown": the page shows the card (memory is on, or something is kept), "ready": an extension updates memory (Update memory shows), "can_edit": you may change this record, "has_content", "values": {"want", "trade_in", "preference", "question" (one row a line), "budget", "state", "auto_update"} for Edit memory}.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:597`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:628`</sub>
 
 ## `memory_clear`
 
@@ -289,7 +289,7 @@ leads and deals you may change. On a lead that became a deal, the deal's rights 
 
 **Returns:** dict: The new card, as memory_card returns it, with "summaries_cleared" and "summaries_kept" (the person's other leads and deals you may not change keep theirs).
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:657`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:688`</sub>
 
 ## `memory_save`
 
@@ -309,7 +309,7 @@ it alone.
 
 **Returns:** dict: The new card, as memory_card returns it. Refused with ID numbers, eligibility details, prices or stock in a row, a state that is not a US state, or more lines than a kind keeps.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:636`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:667`</sub>
 
 ## `memory_source`
 
@@ -327,7 +327,7 @@ The customer message a row of the Memory card came from (its "said" link).
 
 **Returns:** dict: {"subject", "at", "text": plain text, 2000 characters at most}. Refused for a row that is not this customer's, or a message on a record you may not read.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:617`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:648`</sub>
 
 ## `memory_update_now`
 
@@ -344,7 +344,7 @@ Update memory: have the extension read the record's latest customer messages now
 
 **Returns:** dict: The new card, as memory_card returns it. Refused while memory is off, with the extension's own reason (for example a spending limit), or when nothing could be updated.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:676`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:707`</sub>
 
 ## `open_deal`
 
@@ -399,7 +399,7 @@ counter PIN (or password).
 
 **Returns:** dict: {"released": the hold, now Released, or None when nothing held the gun, "task": the CRM Task given to the deal owner, or None}.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:487`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:518`</sub>
 
 ## `price_options`
 
@@ -416,7 +416,7 @@ The products Insert price offers on a Lead or Deal, most relevant first, at the 
 
 **Returns:** dict: {"options": [{"item_code", "serial_no", "label"}] (15 at most), "default": 0}.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:555`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:586`</sub>
 
 ## `price_text`
 
@@ -435,7 +435,7 @@ The line Insert price puts in the reply, priced now.
 
 **Returns:** dict: {"text": "{product} — ${price}"}. Refused when the Item has no price.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:572`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:603`</sub>
 
 ## `release_hold`
 
@@ -457,7 +457,7 @@ anyone else with a manager's PIN.
 
 **Returns:** dict: The hold, now Released: {"name", "serial", "deal", "status", "expires_at", "expires_label", "held_by", "extensions", "end_reason"}.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:417`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:448`</sub>
 
 ## `reply_draft_ready`
 
@@ -474,7 +474,7 @@ Which of a Lead or Deal page's Draft reply and Insert price buttons show. No net
 
 **Returns:** dict: {"ready": an extension drafts replies, "insert_price": linking deals to POS orders is on, "draft_ready": a reply drafted when the mail arrived is waiting for the caller}. All false on a sell request.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:512`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:543`</sub>
 
 ## `reply_queue`
 
@@ -488,7 +488,7 @@ The same rows as the daily reply list, for the records you own.
 
 **Returns:** list: One dict per record: "doctype", "name", "link" (the CRM page's path), "customer", "owner", "subject" and "received" of the waiting message, "days" waiting, "messages" from the customer since the store's last mail, "tasks" (open task titles) and "summary". A record kept in the list only by an open task has no "subject", "received" or "days".
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:694`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:725`</sub>
 
 ## `sell_gun_intake`
 
@@ -556,4 +556,4 @@ The live deal hold on one gun, for the counter. Carries no ID, 4473 or NICS data
 
 **Returns:** dict: {"hold": None or {"serial", "hold", "deal", "customer", "customer_name", "expires_at", "expires_label", "held_by", "held_by_name", "message"}, "self_approves": the caller is a manager, "approvers": [{"user", "full_name", "has_pin", "pin_off"}] otherwise}.
 
-<sub>`apps/ffl_core/ffl_core/api/crm.py:440`</sub>
+<sub>`apps/ffl_core/ffl_core/api/crm.py:471`</sub>
