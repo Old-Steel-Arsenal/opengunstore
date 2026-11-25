@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenGunstore API",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "description": "RPC API of the OpenGunstore custom apps (Frappe/ERPNext v16): ffl_core, ffl_integrations, ffl_woo_sync.\n\nAll endpoints are Frappe *whitelisted methods* invoked as `/api/method/<dotted.path>`. Unless an endpoint declares explicit HTTP verbs, it is documented here as POST (Frappe also accepts GET for read-only calls; always POST mutations). Arguments may be sent as JSON body, form data, or query string — JSON body is recommended.\n\nEvery operation carries an **Auth (derived from code)** line statically resolved from the role gate the function actually executes; the prose Permissions note adds semantics the machine can't infer.\n\nStandard CRUD on DocTypes is served by Frappe's REST layer (`/api/resource/<DocType>`) — see docs/api/frappe-rest.md; the custom DocTypes are modelled under components.schemas and listed in reference/doctypes.md."
   },
   "servers": [
@@ -80,6 +80,10 @@
           "expiry_date": {
             "type": "string",
             "description": "Expiry Date"
+          },
+          "cfd_number": {
+            "type": "string",
+            "description": "CFD Number"
           },
           "street": {
             "type": "string",
@@ -7233,6 +7237,132 @@
                     "description": "Rows returned, 1 to 100 (default 25)."
                   }
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.api.agent.firearm_stock_summary": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "How many firearms the store has on hand, and how many of them can be sold.",
+        "description": "A gun is on hand while its Serial No is Active. It is not for sale when the POS\npicker would not offer it: held on a ticket or order, reserved by a web or\nGunBroker order, consigned out, or a customer's transfer gun.\n\n**Auth (derived from code):** Roles resolved at runtime via `STOCK_READ_ROLES`.\n\nSource: `apps/ffl_core/ffl_core/api/agent.py:21`",
+        "operationId": "ffl_core.api.agent.firearm_stock_summary",
+        "responses": {
+          "200": {
+            "description": "{on_hand, for_sale, not_for_sale, antiques, by_warehouse: {warehouse: count}, by_type: {firearm_type: count}}. Antiques are counted in on_hand and are not in the A&D book.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.api.agent.item_stock": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Quantity on hand per item across all warehouses, for non-gun items.",
+        "description": "**Auth (derived from code):** Requires read permission on Item (Frappe DocType permission check).\n\nSource: `apps/ffl_core/ffl_core/api/agent.py:78`",
+        "operationId": "ffl_core.api.agent.item_stock",
+        "responses": {
+          "200": {
+            "description": "{item_code: total_actual_qty}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "item_codes": {
+                    "type": "array",
+                    "description": "Item codes — list, JSON list or comma-separated string."
+                  }
+                },
+                "required": [
+                  "item_codes"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_core.api.agent.serials_for_sale": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "The units of each firearm item the counter would sell now, with their price.",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/agent.py:63`",
+        "operationId": "ffl_core.api.agent.serials_for_sale",
+        "responses": {
+          "200": {
+            "description": "{item_code: [{\"serial\", \"sell_price\", \"purchase_rate\"}, ...]}, cheapest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "item_codes": {
+                    "type": "array",
+                    "description": "Item codes — list, JSON list or comma-separated string."
+                  }
+                },
+                "required": [
+                  "item_codes"
+                ]
               }
             }
           }
@@ -20487,7 +20617,7 @@
           "ffl_integrations"
         ],
         "summary": "Cancel a Distributor Order here (alerts ops when it is still live at the house).",
-        "description": "Cancelling never reaches the distributor, so an order that is live there\n(Placed+) has to be cancelled with the house by phone or email.\nLeft unconfirmed, ops are alerted to arrange that; ``confirmed`` records\nthat the house has already agreed and skips the alert.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1126`",
+        "description": "Cancelling never reaches the distributor, so an order that is live there\n(Placed+) has to be cancelled with the house by phone or email.\nLeft unconfirmed, ops are alerted to arrange that; ``confirmed`` records\nthat the house has already agreed and skips the alert.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1130`",
         "operationId": "ffl_integrations.distributor.api.cancel_order",
         "responses": {
           "200": {
@@ -20594,7 +20724,7 @@
           "ffl_integrations"
         ],
         "summary": "Live qty/price second-confirm before a Draft order is placed.",
-        "description": "Open read (no only_for) by design — see ``search``; the console depends on it\nand the counter uses it. Do not add a gate.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\n**Permissions:** Open by design — any authenticated desk user; see `search`.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:312`",
+        "description": "Open read (no only_for) by design — see ``search``; the console depends on it\nand the counter uses it. Do not add a gate.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\n**Permissions:** Open by design — any authenticated desk user; see `search`.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:316`",
         "operationId": "ffl_integrations.distributor.api.check_availability",
         "responses": {
           "200": {
@@ -20648,7 +20778,7 @@
           "ffl_integrations"
         ],
         "summary": "Confirm a Draft Distributor Order: Draft → Queued + enqueue placement.",
-        "description": "Human confirmation (the v1 queue gate); the placement worker is\nidempotent. A counter-sourced drop-ship DO must be fully paid first\n(placement_payment_block); a ship-to-store leg may be placed on a deposit.\nA web order's DO is refused once the Woo order is no longer paid.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1089`",
+        "description": "Human confirmation (the v1 queue gate); the placement worker is\nidempotent. A counter-sourced drop-ship DO must be fully paid first\n(placement_payment_block); a ship-to-store leg may be placed on a deposit.\nA web order's DO is refused once the Woo order is no longer paid.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1093`",
         "operationId": "ffl_integrations.distributor.api.confirm_order",
         "responses": {
           "200": {
@@ -20696,7 +20826,7 @@
           "ffl_integrations"
         ],
         "summary": "Plan + create the Draft Distributor Order(s) for a cart.",
-        "description": "`plan_fulfillment` may split one cart into several orders (no\nfirearm/accessory mixing / H4 >400) — each becomes its own Draft DO. A\nclassification divergence raises (order held for a human). Never\nplaces anything: v1 is a human-confirmed queue.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\n**Permissions:** Distributor order roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:774`",
+        "description": "`plan_fulfillment` may split one cart into several orders (no\nfirearm/accessory mixing / H4 >400) — each becomes its own Draft DO. A\nclassification divergence raises (order held for a human). Never\nplaces anything: v1 is a human-confirmed queue.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\n**Permissions:** Distributor order roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:778`",
         "operationId": "ffl_integrations.distributor.api.create_orders",
         "responses": {
           "200": {
@@ -20751,7 +20881,7 @@
           "ffl_integrations"
         ],
         "summary": "Counter Create Order seam: make sure this catalog SKU has a local Item that",
-        "description": "can carry a drop-ship line — dual-source guard → idempotent promote →\n``dropship_distributor`` stamp — WITHOUT a web listing (that stays Flow B's\n``create_listing``). Closes the gap where an un-promoted SKU produced a\ncounter line with no item_code that ``_validate_items`` then refused.\n\nA WRITE (Item insert + stamp), so unlike search/quote it is role-gated — to\nthe same roles that may ring the counter order itself (manual_order._ROLES).\nAn Item already stamped by ANOTHER distributor is returned as it is, never\nre-homed: the counter line orders from the house it names, while the stamp\nkeeps driving the web listing, web-order routing and stock publishing.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (Sales User / Sales Manager / Stock Manager / System Manager).\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:481`",
+        "description": "can carry a drop-ship line — dual-source guard → idempotent promote →\n``dropship_distributor`` stamp — WITHOUT a web listing (that stays Flow B's\n``create_listing``). Closes the gap where an un-promoted SKU produced a\ncounter line with no item_code that ``_validate_items`` then refused.\n\nA WRITE (Item insert + stamp), so unlike search/quote it is role-gated — to\nthe same roles that may ring the counter order itself (manual_order._ROLES).\nAn Item already stamped by ANOTHER distributor is returned as it is, never\nre-homed: the counter line orders from the house it names, while the stamp\nkeeps driving the web listing, web-order routing and stock publishing.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles (Sales User / Sales Manager / Stock Manager / System Manager).\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:485`",
         "operationId": "ffl_integrations.distributor.api.ensure_dropship_item",
         "responses": {
           "200": {
@@ -20810,7 +20940,7 @@
           "ffl_integrations"
         ],
         "summary": "Estimated distributor freight for the Fulfillment planner's CURRENT choice.",
-        "description": "The planner re-asks on every selection change. Lines are grouped exactly as\nthe counter hook will order them — by (distributor, lane) and then the\nprovider's own split (firearms and accessories never share an order) — and\neach resulting order is priced by the provider's freight rules, so a mixed\ndrop-ship + ship-to-store cart is the sum of its real orders. Nothing is\nread from the catalog: the matrix already sent cost / department /\nffl_required, and this is a display estimate (the invoiced freight wins).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles — the planner belongs to Create Order.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:737`",
+        "description": "The planner re-asks on every selection change. Lines are grouped exactly as\nthe counter hook will order them — by (distributor, lane) and then the\nprovider's own split (firearms and accessories never share an order) — and\neach resulting order is priced by the provider's freight rules, so a mixed\ndrop-ship + ship-to-store cart is the sum of its real orders. Nothing is\nread from the catalog: the matrix already sent cost / department /\nffl_required, and this is a display estimate (the invoiced freight wins).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles — the planner belongs to Create Order.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:741`",
         "operationId": "ffl_integrations.distributor.api.fulfillment_freight",
         "responses": {
           "200": {
@@ -20860,7 +20990,7 @@
           "ffl_integrations"
         ],
         "summary": "One-shot batch quote for the Create Order Fulfillment planner.",
-        "description": "Every line × (local stock + each\nenabled distributor). Open read (like search/quote). Column-level\ndegradation — one failing house only greys out its own column; the\nlocal column and the rest render normally.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\n**Permissions:** Open by design — any authenticated desk user; see `search`.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:563`",
+        "description": "Every line × (local stock + each\nenabled distributor). Open read (like search/quote). Column-level\ndegradation — one failing house only greys out its own column; the\nlocal column and the rest render normally.\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\n**Permissions:** Open by design — any authenticated desk user; see `search`.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:567`",
         "operationId": "ffl_integrations.distributor.api.fulfillment_matrix",
         "responses": {
           "200": {
@@ -20907,7 +21037,7 @@
           "ffl_integrations"
         ],
         "summary": "List Distributor Orders, newest-modified first — every house and every",
-        "description": "order type in one list (the Distributor Orders page's tracking tab).\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1190`",
+        "description": "order type in one list (the Distributor Orders page's tracking tab).\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1194`",
         "operationId": "ffl_integrations.distributor.api.list_orders",
         "responses": {
           "200": {
@@ -20982,7 +21112,7 @@
           "ffl_integrations"
         ],
         "summary": "Per-item drop-ship quote for the Create Order panel and the counter",
-        "description": "server-side eligibility check.\n\n       ``fulfillment_mode`` is the RESOLVED judgement (Direct / To Store)\n       through the canonical chain — consumers judging drop-shippability read IT,\n       not the raw flags. ``restricted_states`` = states where the distributor's\n       own restriction feed blocks drop-ship of this SKU — display only, and\n       NOT the operator's ``Item.restricted_states`` compliance field.\n       ``suggested_price`` is the SAME chain the listing\n       pipeline prices with (``listing_price.price_for``) — never a second pricing path —\n       as the COUNTER price: the website's MAP floor does not apply at the counter\nso it can sit below the listing's website price. Reads the\n       provider's LOCAL catalog (no HTTP), so it is cheap enough per keystroke; the\n       real-time RSR re-confirm stays at placement (``place_order_job``).\n\n       A read — open to any signed-in desk user (like ``search`` / ``check_availability``).\n       This openness is load-bearing: it is WHY the counter register can quote without\n       the console role. Do not add only_for here (the one effect is to break\n       Create Order, with no security gain since catalog data has no PII).\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\n**Permissions:** Open by design — any authenticated desk user; catalog data carries no PII and the counter panel depends on it.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:335`",
+        "description": "server-side eligibility check.\n\n       ``fulfillment_mode`` is the RESOLVED judgement (Direct / To Store)\n       through the canonical chain — consumers judging drop-shippability read IT,\n       not the raw flags. ``restricted_states`` = states where the distributor's\n       own restriction feed blocks drop-ship of this SKU — display only, and\n       NOT the operator's ``Item.restricted_states`` compliance field.\n       ``suggested_price`` is the SAME chain the listing\n       pipeline prices with (``listing_price.price_for``) — never a second pricing path —\n       as the COUNTER price: the website's MAP floor does not apply at the counter\nso it can sit below the listing's website price. Reads the\n       provider's LOCAL catalog (no HTTP), so it is cheap enough per keystroke; the\n       real-time RSR re-confirm stays at placement (``place_order_job``).\n\n       A read — open to any signed-in desk user (like ``search`` / ``check_availability``).\n       This openness is load-bearing: it is WHY the counter register can quote without\n       the console role. Do not add only_for here (the one effect is to break\n       Create Order, with no security gain since catalog data has no PII).\n\n**Auth (derived from code):** Any authenticated user — no explicit role gate at function entry (deliberate open reads document this in Permissions).\n\n**Permissions:** Open by design — any authenticated desk user; catalog data carries no PII and the counter panel depends on it.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:339`",
         "operationId": "ffl_integrations.distributor.api.quote",
         "responses": {
           "200": {
@@ -21092,7 +21222,7 @@
           "ffl_integrations"
         ],
         "summary": "Choose the carrier service for a Draft Distributor Order.",
-        "description": "Only a Draft order may change (Queued and later are at or past the\ndistributor); the code must be one the provider offers for this order.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1008`",
+        "description": "Only a Draft order may change (Queued and later are at or past the\ndistributor); the code must be one the provider offers for this order.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1012`",
         "operationId": "ffl_integrations.distributor.api.set_shipping_service",
         "responses": {
           "200": {
@@ -21145,7 +21275,7 @@
           "ffl_integrations"
         ],
         "summary": "Carrier services the distributor offers for this order, with the",
-        "description": "flat-rate estimate, so the operator can choose before Confirm.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:983`",
+        "description": "flat-rate estimate, so the operator can choose before Confirm.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager / Distributor Console\n\n**Permissions:** Distributor order/console roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:987`",
         "operationId": "ffl_integrations.distributor.api.shipping_options",
         "responses": {
           "200": {
@@ -21193,7 +21323,7 @@
           "ffl_integrations"
         ],
         "summary": "Generic ops state transition for a Distributor Order.",
-        "description": "The DO state machine still enforces transition legality.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\n**Permissions:** Distributor order roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1167`",
+        "description": "The DO state machine still enforces transition legality.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\n**Permissions:** Distributor order roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/api.py:1171`",
         "operationId": "ffl_integrations.distributor.api.transition_order",
         "responses": {
           "200": {
@@ -21583,6 +21713,119 @@
           },
           "default": {
             "$ref": "#/components/responses/FrappeError"
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.distributor.price_hub.detail": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "One product's cost history and this store's own record of it.",
+        "description": "**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/price_hub.py:34`",
+        "operationId": "ffl_integrations.distributor.price_hub.detail",
+        "responses": {
+          "200": {
+            "description": "{trend: {days, window_start, server_time, series: [{distributor, sku, state, segments: [[{at, cost}]], last_cost, low_cost, high_cost}]} or null (no history, or the service is down), store: {item_code, on_hand, on_order, sold_30, sold_90, price, receipts: [{posting_date, supplier, qty, rate}]} or null (no Item here)}. Only enabled Distributors have a series. ``trend.days`` is the window read: a year when everything kept was asked for and is too much to return.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "upc": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The product's UPC."
+                  },
+                  "sku": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "A distributor SKU — names the product when it has no UPC."
+                  },
+                  "distributor": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The Distributor that SKU belongs to."
+                  },
+                  "days": {
+                    "type": "integer",
+                    "description": "History window in days; 0 is everything the service keeps.",
+                    "default": 90
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/ffl_integrations.distributor.price_hub.signals": {
+      "post": {
+        "tags": [
+          "ffl_integrations"
+        ],
+        "summary": "What the enabled distributors' feeds showed lately: costs that fell, stock",
+        "description": "about to run out, and stock that went fast after a restock.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/price_hub.py:61`",
+        "operationId": "ffl_integrations.distributor.price_hub.signals",
+        "responses": {
+          "200": {
+            "description": "{cost_drop, stockout, fast_depletion}: each a list of {distributor, sku, upc, name, current_value, reference_value, amount, score}, the strongest first. cost_drop: the cost now and before, the fall in dollars and percent. stockout: units left, and score the days of cover. fast_depletion: units left, units gone, and the percent gone. Observations of the feed, not sales. Empty lists when the service keeps no history or is down.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "days": {
+                    "type": "integer",
+                    "description": "Window in days, 1 to 30.",
+                    "default": 7
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -24303,7 +24546,7 @@
           "ffl_integrations"
         ],
         "summary": "Name the gun that fills one unit of a model-level GunBroker order.",
-        "description": "Reserves the gun for the order (the claim becomes a hold), tells the other\nstorefronts it is gone, and records who assigned it and when. Naming a\ndifferent gun for a unit that already has one swaps them: the old gun is\nreleased only if this order holds it. An empty ``serial_no`` unassigns the\nunit, which makes it an open claim again. Calling it again with the gun the\nunit already has changes nothing.\n\nRefused: a gun of another model (a model pooled under this one must be filed\nunder it first), a customer's consignment or transfer gun, one in custody,\none the order already holds for another unit, one that is not free (held by a\ncounter order or another channel, out on consignment, possibly already sold on\nGunBroker), and, on a Type 03 collector order, a gun not old enough to be a\ncurio or relic. Nothing is changed on a refusal.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1023`",
+        "description": "Reserves the gun for the order (the claim becomes a hold), tells the other\nstorefronts it is gone, and records who assigned it and when. Naming a\ndifferent gun for a unit that already has one swaps them: the old gun is\nreleased only if this order holds it. An empty ``serial_no`` unassigns the\nunit, which makes it an open claim again. Calling it again with the gun the\nunit already has changes nothing.\n\nRefused: a gun of another model (a model pooled under this one must be filed\nunder it first), a customer's consignment or transfer gun, one in custody,\none the order already holds for another unit, one that is not free (held by a\ncounter order or another channel, out on consignment, possibly already sold on\nGunBroker), and, on a Type 03 collector order, a gun not old enough to be a\ncurio or relic. Nothing is changed on a refusal.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1027`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.assign_gb_unit_serial",
         "responses": {
           "200": {
@@ -24361,7 +24604,7 @@
           "ffl_integrations"
         ],
         "summary": "Repair the deposit date (and cheque number) recorded on a GunBroker order.",
-        "description": "For the row that cannot otherwise be fixed. The four payment fields are\nread-only on the form — they are a record of what was banked, not something\nto retype — and the document refuses to save when a mode is recorded with no\ndeposit date. A row in that state (a direct database write, an import, a\nhalf-finished edit) is reported by the daily audit and then cannot be\ncorrected through the Desk at all: the field will not accept typing and\nopening the form and saving throws.\n\nDeliberately narrow: the date and the reference number, nothing else. The\namount, the mode and whether the order is paid are what was banked — those\nare mark_payment_received's, and once a receipt is posted they are an\naccounting correction rather than an edit.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:730`",
+        "description": "For the row that cannot otherwise be fixed. The four payment fields are\nread-only on the form — they are a record of what was banked, not something\nto retype — and the document refuses to save when a mode is recorded with no\ndeposit date. A row in that state (a direct database write, an import, a\nhalf-finished edit) is reported by the daily audit and then cannot be\ncorrected through the Desk at all: the field will not accept typing and\nopening the form and saving throws.\n\nDeliberately narrow: the date and the reference number, nothing else. The\namount, the mode and whether the order is paid are what was banked — those\nare mark_payment_received's, and once a receipt is posted they are an\naccounting correction rather than an edit.\n\n**Auth (derived from code):** Roles: System Manager\n\n**Permissions:** System Manager.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:734`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.correct_payment_details",
         "responses": {
           "200": {
@@ -24421,7 +24664,7 @@
           "ffl_integrations"
         ],
         "summary": "Book the bound-book exit for a paid GunBroker order (the Dispose action).",
-        "description": "One submitted \"FFL Transfer\" disposition per regulated gun, each of which\nissues its own stock-out and queues its own FastBound push. Idempotent on\n{serial, gunbroker_order}. An ANTIQUE on the order gets no disposition —\nit is GCA-exempt, so it is issued straight out of stock instead\n(``_retire_antique_units``). Whether a dealer is involved at all is\n``needs_dealer``: an order that is all antiques and names no licence ships\nto the buyer, and that decision is written to ``ships_direct`` for the\ninvoice and the card to read. A serialized unit that is neither a\nregulated firearm nor an antique is refused outright. The revenue invoice\nis raised at the end and a failure there does not roll back the\ndispositions — create_gb_invoice_now retries.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1205`",
+        "description": "One submitted \"FFL Transfer\" disposition per regulated gun, each of which\nissues its own stock-out and queues its own FastBound push. Idempotent on\n{serial, gunbroker_order}. An ANTIQUE on the order gets no disposition —\nit is GCA-exempt, so it is issued straight out of stock instead\n(``_retire_antique_units``). Whether a dealer is involved at all is\n``needs_dealer``: an order that is all antiques and names no licence ships\nto the buyer, and that decision is written to ``ships_direct`` for the\ninvoice and the card to read. A serialized unit that is neither a\nregulated firearm nor an antique is refused outright. The revenue invoice\nis raised at the end and a failure there does not roll back the\ndispositions — create_gb_invoice_now retries.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1209`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.dispose_gb_order",
         "responses": {
           "200": {
@@ -24475,7 +24718,7 @@
           "ffl_integrations"
         ],
         "summary": "Send GunBroker the tracking number of a label bought outside the POS shipment.",
-        "description": "For a label bought on an order staff built in ShipStation by hand: the\nPOS's own shipment has no label, so the poll has nothing to find. The\nnumber must belong to a live (not voided) ShipStation label — that is\nstill the \"a label was bought\" fact the write-back waits for — and it is\nthen sent the same way the poll sends one.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1747`",
+        "description": "For a label bought on an order staff built in ShipStation by hand: the\nPOS's own shipment has no label, so the poll has nothing to find. The\nnumber must belong to a live (not voided) ShipStation label — that is\nstill the \"a label was bought\" fact the write-back waits for — and it is\nthen sent the same way the poll sends one.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1751`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.enter_gb_tracking",
         "responses": {
           "200": {
@@ -24528,7 +24771,7 @@
           "ffl_integrations"
         ],
         "summary": "The loose-stock lines of a GunBroker order and where in the store each can be",
-        "description": "taken from, for the \"where did these come from?\" step of Dispose.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1181`",
+        "description": "taken from, for the \"where did these come from?\" step of Dispose.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1185`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.get_dispose_stock_lines",
         "responses": {
           "200": {
@@ -24606,7 +24849,7 @@
           "ffl_integrations"
         ],
         "summary": "Mark one unit of a model-level order as refunded on GunBroker.",
-        "description": "For an oversold order: the buyer paid for N, only N-1 guns exist, and the\nbuyer is refunded for the missing one on GunBroker's side. A unit marked\nrefunded stops counting as a claim, gets no gun, no bound-book entry and no\ninvoice line; the seller fee is still accrued on the whole GunBroker line,\nbecause GunBroker does not reduce it for a refund. The invoice then no longer\nagrees with what GunBroker charged and stays in Draft for a person to check\nthe refund against the statement.\n\nMarking a unit that already has a gun releases the gun (if this order holds\nit). ``refunded=0`` undoes the mark.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1132`",
+        "description": "For an oversold order: the buyer paid for N, only N-1 guns exist, and the\nbuyer is refunded for the missing one on GunBroker's side. A unit marked\nrefunded stops counting as a claim, gets no gun, no bound-book entry and no\ninvoice line; the seller fee is still accrued on the whole GunBroker line,\nbecause GunBroker does not reduce it for a refund. The invoice then no longer\nagrees with what GunBroker charged and stays in Draft for a person to check\nthe refund against the statement.\n\nMarking a unit that already has a gun releases the gun (if this order holds\nit). ``refunded=0`` undoes the mark.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1136`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.mark_gb_unit_refunded",
         "responses": {
           "200": {
@@ -24664,7 +24907,7 @@
           "ffl_integrations"
         ],
         "summary": "Record that a GunBroker buyer's payment has been banked.",
-        "description": "This is the fact the Dispose gate opens on, and it is deliberately not\nGunBroker's own \"payment received\" flag: that flag is a click on their\nwebsite, and a gun must not leave the building on the strength of it.\n\nNo Payment Entry is created here. GunBroker orders are paid before they are\ninvoiced, and the invoice does not exist until the guns are disposed — so\nthere is nothing to book the receipt against yet. The values recorded here\nare replayed onto a Payment Entry the moment the invoice is raised, against\nthe account of the Mode of Payment recorded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:463`",
+        "description": "This is the fact the Dispose gate opens on, and it is deliberately not\nGunBroker's own \"payment received\" flag: that flag is a click on their\nwebsite, and a gun must not leave the building on the strength of it.\n\nNo Payment Entry is created here. GunBroker orders are paid before they are\ninvoiced, and the invoice does not exist until the guns are disposed — so\nthere is nothing to book the receipt against yet. The values recorded here\nare replayed onto a Payment Entry the moment the invoice is raised, against\nthe account of the Mode of Payment recorded.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:467`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.mark_payment_received",
         "responses": {
           "200": {
@@ -24741,7 +24984,7 @@
           "ffl_integrations"
         ],
         "summary": "Push a paid GunBroker order to ShipStation (the Pending Order Ship action).",
-        "description": "Same as a counter or web order: Ship does not wait for Dispose. Before\nDispose there is no invoice, so the shipment is built off the order itself\nand its id is kept on the order; revenue copies it onto the invoice when\nDispose raises one, which is where the tracking write-back reads it. After\nDispose this is the invoice's own push_shipment.\n\nThe gates are Dispose's (paid, FFL received, every unit named, no\nunresolved line) plus a valid destination, so nothing reaches ShipStation\nthat Dispose would then refuse. A C&R licence is only verified in the\nDispose dialog, so a C&R order not yet verified must Dispose first.\nTracking still goes back to GunBroker only after Dispose.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1798`",
+        "description": "Same as a counter or web order: Ship does not wait for Dispose. Before\nDispose there is no invoice, so the shipment is built off the order itself\nand its id is kept on the order; revenue copies it onto the invoice when\nDispose raises one, which is where the tracking write-back reads it. After\nDispose this is the invoice's own push_shipment.\n\nThe gates are Dispose's (paid, FFL received, every unit named, no\nunresolved line) plus a valid destination, so nothing reaches ShipStation\nthat Dispose would then refuse. A C&R licence is only verified in the\nDispose dialog, so a C&R order not yet verified must Dispose first.\nTracking still goes back to GunBroker only after Dispose.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1802`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.push_gb_shipment",
         "responses": {
           "200": {
@@ -24789,7 +25032,7 @@
           "ffl_integrations"
         ],
         "summary": "Write this order's tracking number back to GunBroker now.",
-        "description": "The scheduled poll does this on its own every ten minutes; this is for the\noperator who has just bought the label and wants the buyer to see it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1723`",
+        "description": "The scheduled poll does this on its own every ten minutes; this is for the\noperator who has just bought the label and wants the buyer to see it.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Counter roles.\n\nSource: `apps/ffl_integrations/ffl_integrations/gunbroker/fulfillment.py:1727`",
         "operationId": "ffl_integrations.gunbroker.fulfillment.push_tracking_now",
         "responses": {
           "200": {

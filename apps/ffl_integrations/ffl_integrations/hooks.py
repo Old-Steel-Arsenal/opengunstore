@@ -129,6 +129,11 @@ ffl_membership_card_chargeable = ["ffl_integrations.payments.saved_cards.card_ch
 
 # include js in page
 # page_js = {"page" : "public/js/file.js"}
+# The distributor order cart both pages fill (public/js/distributor_cart.js).
+page_js = {
+	"distributor-restock": "public/js/distributor_cart.js",
+	"price-hub": "public/js/distributor_cart.js",
+}
 
 # include js in doctype views
 doctype_js = {
@@ -136,7 +141,8 @@ doctype_js = {
 	# GunBroker item-level listings (ammunition, optics, parts). Three apps
 	# register handlers for Item and none can see the others, so this block
 	# gates itself independently — same arrangement as Serial No.
-	"Item": "public/js/item.js",
+	# The Price Hub link is a file of its own: the GunBroker one has its own test harness.
+	"Item": ["public/js/item.js", "public/js/item_price_hub.js"],
 	# Card on file (payments/saved_cards.py): the customer's saved cards, and Charge saved card.
 	"Customer": "public/js/customer_saved_cards.js",
 	# Card refund (payments/si_reversal.py): void / refund a card charge on the invoice.
@@ -571,6 +577,8 @@ scheduler_events = {
 		# bound-book exit is never rolled back — which also means nothing
 		# objects afterwards unless something reads the wreckage daily.
 		"ffl_integrations.gunbroker.audit.daily_gb_audit",
+		# A dealer lookup lost to an eZ Check outage, retried while the order is open.
+		"ffl_integrations.gunbroker.orders.lookup_missing_dealers",
 		# Card charges voided/refunded on the terminal or Payroc portal never
 		# reach the POS; read the last week's captures back from the gateway.
 		# The gate only queues the run on the long queue (one gateway read per charge).

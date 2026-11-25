@@ -23,6 +23,16 @@ class DataServiceBudgetExhausted(DataServiceUnavailable):
 	"""429 — a shared server-side budget is exhausted."""
 
 
+class DataServiceNotFound(DataServiceUnavailable):
+	"""404 — the service does not have what was asked for (an unknown UPC, a product
+	with no history). The same subclass trick: an answer, not an outage."""
+
+
+class DataServiceRejected(DataServiceUnavailable):
+	"""422 — the service will not answer this request as asked (a malformed key, a
+	window too large to return whole). Asking again the same way fails the same way."""
+
+
 class DataServiceForbidden(DataServiceUnavailable):
 	"""403 — this client's credential is valid but lacks the scope for the path.
 
@@ -127,9 +137,12 @@ def _raise_for_status(response, path: str) -> None:
 	if response.status_code == 403:
 		# Message shape deliberately identical to the generic branch below — only
 		# the TYPE carries the extra meaning, so no caller can start matching on
-		# prose (the `"404" in str(exc)` sniff in remote_catalog.item_by_upc is
-		# the cautionary tale).
+		# prose. Same for the 404 and 422 below.
 		raise DataServiceForbidden(f"Data Service returned 403 for {path}")
+	if response.status_code == 404:
+		raise DataServiceNotFound(f"Data Service returned 404 for {path}")
+	if response.status_code == 422:
+		raise DataServiceRejected(f"Data Service returned 422 for {path}")
 	if response.status_code != 200:
 		raise DataServiceUnavailable(f"Data Service returned {response.status_code} for {path}")
 

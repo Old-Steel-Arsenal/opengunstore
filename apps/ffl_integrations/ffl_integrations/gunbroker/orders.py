@@ -42,6 +42,7 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime
 
+from ffl_core.compliance.ffl_number import is_cr_license
 from ffl_core.compliance.ffl_number import normalize as normalize_licence
 from ffl_core.marketplace_accounts import refund_remarks_rule
 from ffl_core.reservations import (
@@ -529,6 +530,9 @@ def _ingest_order(client: GunBrokerClient, row: dict) -> str:
 	_acknowledge(client, order)
 	_detect_unwound(order)
 	_announce_commitment_changes(committed_before, _owed_to_other_channels(order))
+	# Last, so a step above that raises (and rolls this order back to its
+	# savepoint) leaves no lookup queued behind it.
+	_queue_dealer_lookup(order)
 	return order.name
 
 
@@ -679,6 +683,79 @@ def unmask_licence(masked: str, ship_to_zip: str | None) -> str:
 	fits = {row["ffl_number"] for row in rows
 		if _fits_masked(want, normalize_licence(row.get("ffl_number")))}
 	return fits.pop() if len(fits) == 1 else masked
+
+
+def _queue_dealer_lookup(order) -> None:
+	"""Look up a dealer this store has never shipped to, so the card names it.
+
+	Without an ATF FFL Record the card can only show the licence number, and
+	until now the record was first written at Dispose. The lookup runs in its
+	own job after this poll commits: eZ Check is a network call, and caching
+	its answer commits, which must not happen while the poll holds the order's
+	row lock. A masked licence has nothing to look up yet, and a collector
+	(Type 03) is never listed in eZ Check.
+	"""
+	number = (order.ffl_number or "").strip()
+	if (not number or (order.atf_ffl_record or "").strip()
+			or is_masked_licence(number) or is_cr_license(number)
+			or frappe.db.exists("ATF FFL Record", number)):
+		return
+	frappe.enqueue("ffl_integrations.gunbroker.orders.cache_dealer_licence",
+		queue="short", job_id=f"gb-ffl-lookup:{number}", deduplicate=True,
+		enqueue_after_commit=True, ffl_number=number)
+
+
+def cache_dealer_licence(ffl_number: str) -> None:
+	"""Background body of ``_queue_dealer_lookup``: eZ Check writes the record.
+
+	A provider outage is retried by ``lookup_missing_dealers``. A licence eZ
+	Check does not list writes nothing, and Dispose still refuses it.
+	"""
+	from ffl_integrations.atf.ez_check import EZCheckUnavailable, verify
+
+	# lazy: a licence eZ Check never lists is looked up again once a day while
+	# its order is open; add a backoff if that ever shows up in volume.
+	try:
+		verify(ffl_number)
+	except EZCheckUnavailable:
+		pass
+
+
+def lookup_missing_dealers() -> None:
+	"""Daily: queue the lookup for every open order whose dealer has no record.
+
+	The poll only re-reads an order GunBroker has changed, so a lookup lost to
+	an eZ Check outage, or an order synced before lookups existed, would
+	otherwise wait for Dispose.
+	"""
+	if not gunbroker_enabled():
+		return
+	rows = frappe.db.sql(
+		"""
+		SELECT DISTINCT o.ffl_number, o.atf_ffl_record
+		FROM `tabGunBroker Order` o
+		LEFT JOIN `tabATF FFL Record` r ON r.name = o.ffl_number
+		WHERE o.order_status = 'Pending Fulfillment'
+		  AND IFNULL(o.ffl_number, '') != ''
+		  AND IFNULL(o.atf_ffl_record, '') = ''
+		  AND r.name IS NULL
+		""", as_dict=True)
+	for row in rows:
+		_queue_dealer_lookup(row)
+
+
+def licence_as_sent(order) -> bool:
+	"""True while the order's licence is still the one GunBroker sent.
+
+	Staff may correct the licence; after that, the ship-to name GunBroker sent
+	belongs to a different dealer and must not be shown against the new number.
+	"""
+	try:
+		sent = frappe.parse_json(order.raw_payload or "{}") or {}
+	except ValueError:
+		return False
+	want = normalize_licence(_text(get_field(sent, "fflNumber")))
+	return bool(want) and _fits_masked(want, normalize_licence(order.ffl_number))
 
 
 def _fits_masked(want: str, have: str) -> bool:

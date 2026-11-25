@@ -53,7 +53,7 @@ class AtfLinkFixtures(FrappeTestCase):
 		if frappe.db.exists("Customer", name):
 			frappe.db.set_value("Customer", name, {
 				"atf_ffl_record": None, "ffl_number": None,
-				"licensee_name": None, "ffl_expiry_date": None,
+				"licensee_name": None, "ffl_expiry_date": None, "cfd_number": None,
 			}, update_modified=False)
 			doc = frappe.get_doc("Customer", name)
 		else:
@@ -101,6 +101,70 @@ class LinkSync(AtfLinkFixtures):
 		rec = self._rec("70004")
 		c = self._customer("_Test ATF Link E", is_ffl_dealer=0, ffl_number=rec)
 		self.assertFalse(c.atf_ffl_record)
+
+
+class CfdNumber(AtfLinkFixtures):
+	"""CA CFD number: typed by hand, one value per FFL, mirrored on linked parties."""
+
+	def _ca_rec(self, suffix: str) -> str:
+		number = self._rec(suffix)
+		frappe.db.set_value("ATF FFL Record", number, {"state": "CA", "cfd_number": None})
+		return number
+
+	def test_party_edit_writes_record(self):
+		rec = self._ca_rec("70101")
+		c = self._customer("_Test CFD A", atf_ffl_record=rec, cfd_number=" CFD-111 ")
+		self.assertEqual(c.cfd_number, "CFD-111")
+		self.assertEqual(frappe.db.get_value("ATF FFL Record", rec, "cfd_number"), "CFD-111")
+		# A later save that doesn't touch the CFD keeps it.
+		c.reload()
+		c.flags.ignore_permissions = True
+		c.save()
+		self.assertEqual(frappe.db.get_value("ATF FFL Record", rec, "cfd_number"), "CFD-111")
+		# Clearing it on the party clears the record.
+		c.cfd_number = ""
+		c.save()
+		self.assertIsNone(frappe.db.get_value("ATF FFL Record", rec, "cfd_number"))
+
+	def test_new_party_takes_record_value(self):
+		rec = self._ca_rec("70102")
+		frappe.db.set_value("ATF FFL Record", rec, "cfd_number", "CFD-222")
+		c = self._customer("_Test CFD B", atf_ffl_record=rec)
+		self.assertEqual(c.cfd_number, "CFD-222")
+
+	def test_record_edit_reaches_linked_parties(self):
+		rec = self._ca_rec("70103")
+		c = self._customer("_Test CFD C", atf_ffl_record=rec)
+		r = frappe.get_doc("ATF FFL Record", rec)
+		r.cfd_number = "CFD-333"
+		r.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("Customer", c.name, "cfd_number"), "CFD-333")
+
+	def test_record_edit_reaches_linked_supplier(self):
+		rec = self._ca_rec("70104")
+		name = "_Test CFD Supplier"
+		if frappe.db.exists("Supplier", name):
+			s = frappe.get_doc("Supplier", name)
+		else:
+			s = frappe.get_doc({"doctype": "Supplier", "supplier_name": name})
+			s.flags.ignore_permissions = True
+			s.insert()
+		s.update({"is_ffl_dealer": 1, "atf_ffl_record": rec, "ffl_number": "", "cfd_number": None})
+		s.flags.ignore_permissions = True
+		s.save()
+		r = frappe.get_doc("ATF FFL Record", rec)
+		r.cfd_number = "CFD-444"
+		r.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("Supplier", name, "cfd_number"), "CFD-444")
+
+	def test_heal_link_copies_cfd(self):
+		from ffl_core.api.atf_link import _create_party_from_atf
+		rec = self._ca_rec("70105")
+		frappe.db.set_value("ATF FFL Record", rec, "cfd_number", "CFD-555")
+		c = self._customer("_Test CFD Heal", is_ffl_dealer=0, ffl_number=rec)
+		out = _create_party_from_atf(rec, "Customer")
+		self.assertEqual(out["name"], c.name)
+		self.assertEqual(frappe.db.get_value("Customer", c.name, "cfd_number"), "CFD-555")
 
 
 class CreateFromRecord(AtfLinkFixtures):

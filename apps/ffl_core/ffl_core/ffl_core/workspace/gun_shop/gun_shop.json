@@ -27,6 +27,16 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "Price Hub",
+   "link_count": 0,
+   "link_to": "price-hub",
+   "link_type": "Page",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Distributor Orders",
    "link_count": 0,
    "link_to": "distributor-restock",

@@ -1,0 +1,25 @@
+{
+ "content": null,
+ "creation": "2026-11-24 12:00:00",
+ "docstatus": 0,
+ "doctype": "Page",
+ "icon": "octicon octicon-graph",
+ "idx": 0,
+ "modified": "2026-11-24 12:00:00",
+ "modified_by": "Administrator",
+ "module": "FFL Integrations",
+ "name": "price-hub",
+ "owner": "Administrator",
+ "page_name": "price-hub",
+ "roles": [
+  {"role": "System Manager"},
+  {"role": "Purchase Manager"},
+  {"role": "Purchase User"},
+  {"role": "Stock Manager"}
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Price Hub"
+}

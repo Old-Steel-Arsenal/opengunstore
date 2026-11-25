@@ -16,6 +16,7 @@ app: `ffl_core` · module: FFL Core · roles: Purchase User, Stock User, System 
 | `licensee_dba` | Data | Doing Business As |  |  |
 | `phone` | Data | Phone |  |  |
 | `expiry_date` | Date | Expiry Date |  |  |
+| `cfd_number` | Data | CFD Number |  |  |
 | `street` | Data | Street |  |  |
 | `street2` | Data | Street Address 2 |  |  |
 | `city` | Data | City |  |  |
