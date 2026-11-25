@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import frappe
 
-from ffl_core.crm import inquiries, mail, setup
+from ffl_core.crm import inquiries, mail, reply_draft, setup, team
 from ffl_core.tests.crm_support import AMMO, PER_GUN, CRMTestCase, product_of
 from ffl_core.tests.test_crm_deal import _gun
 from ffl_core.tests.test_crm_team_mail import _assignees, _customer_contact
@@ -141,7 +141,11 @@ class TestInquiryFiling(CRMTestCase):
 		lead = inquiries.file_inquiry(**args)["name"]
 		where = {"reference_doctype": "CRM Lead", "reference_name": lead}
 		(sent,) = frappe.get_all("Communication", filters=where, fields=["sender", "sender_full_name", "subject",
-			"content", "sent_or_received", "communication_medium", "communication_type", "email_account"])
+			"content", "sent_or_received", "communication_medium", "communication_type", "email_account",
+			"recipients", "message_id"])
+		self.assertEqual((sent.recipients, sent.message_id), (team.primary() or None, args["event_id"]))
+		self.assertEqual([m.kind for m in reply_draft._messages(frappe.get_doc("CRM Lead", lead))], ["in"],
+			"the note of the same inquiry is not read as a second message")
 		self.assertEqual((sent.sender, sent.sender_full_name, sent.sent_or_received, sent.communication_medium,
 			sent.communication_type, sent.email_account), (email, "Pat Buyer", "Received", "Email", "Communication", None))
 		self.assertEqual(sent.subject, "Website question: " + frappe.db.get_value("Item", PER_GUN, "item_name"))
@@ -153,6 +157,13 @@ class TestInquiryFiling(CRMTestCase):
 		self.assertEqual(plain["name"], lead)
 		self.assertEqual(sorted(frappe.get_all("Communication", filters=where, pluck="subject")),
 			["Website price request", sent.subject])
+
+	def test_a_mail_that_cannot_be_filed_leaves_the_note(self):
+		with patch("ffl_core.crm.team.primary", side_effect=RuntimeError("boom")):
+			out = _file()
+		self.assertEqual(len(_notes("CRM Lead", out["name"])), 1)
+		self.assertFalse(frappe.db.exists("Communication", {"reference_doctype": "CRM Lead", "reference_name": out["name"]}))
+		self.assertEqual([m.kind for m in reply_draft._messages(frappe.get_doc("CRM Lead", out["name"]))], ["note"])
 
 	def test_an_unknown_sku_is_only_noted(self):
 		out = _file(sku="NO-SUCH-ITEM::SN-1")

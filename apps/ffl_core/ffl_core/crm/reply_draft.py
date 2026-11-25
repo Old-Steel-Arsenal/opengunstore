@@ -89,15 +89,19 @@ def _messages(doc) -> list[frappe._dict]:
 	("in", "out" or "note"), ``at``, ``creation``, ``subject`` and ``html``."""
 	out = []
 	for doctype, name in _timeline(doc):
+		mailed = set()   # inquiries that are a mail too (inquiries._file_mail): their note would say it twice
 		for c in frappe.get_all("Communication", filters={"reference_doctype": doctype, "reference_name": name,
 				"communication_type": "Communication", "communication_medium": "Email"},
 				fields=["name", "sender", "recipients", "cc", "bcc", "subject", "content", "communication_date",
-					"sent_or_received", "email_account", "creation"]):
+					"sent_or_received", "email_account", "creation", "message_id"]):
+			mailed.add(c.message_id)
 			out.append(frappe._dict(c, kind="in" if c.sent_or_received == "Received" else "out",
 				at=get_datetime(c.communication_date), html=c.content or ""))
 		if frappe.db.has_column(NOTE, EVENT_FIELD):
 			for n in frappe.get_all(NOTE, filters={"reference_doctype": doctype, "reference_docname": name,
-					EVENT_FIELD: ["is", "set"]}, fields=["name", "title", "content", "creation"]):
+					EVENT_FIELD: ["is", "set"]}, fields=["name", "title", "content", "creation", EVENT_FIELD]):
+				if n.get(EVENT_FIELD) in mailed:
+					continue
 				out.append(frappe._dict(name=n.name, kind="note", at=get_datetime(n.creation), subject=n.title or "",
 					html=n.content or ""))
 	out.sort(key=lambda m: (m.at, m.name), reverse=True)
