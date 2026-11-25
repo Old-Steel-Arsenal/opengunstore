@@ -62,7 +62,7 @@
 		var when = o.when || function (r) { return r.creation; };
 		return (rows || []).map(function (r) {
 			var doc = r.reference_type && r.reference_name
-				? '<div><a href="/app/' + esc(slug(r.reference_type)) + '/' + esc(encodeURIComponent(r.reference_name))
+				? '<div><a href="' + esc(r.url || '/app/' + slug(r.reference_type) + '/' + encodeURIComponent(r.reference_name))
 					+ '" target="_blank" rel="noopener">' + esc(t(r.reference_type)) + ': ' + esc(r.title || r.reference_name) + '</a></div>'
 				: '';
 			return '<div class="ffl-assignment" data-name="' + esc(r.name) + '" style="padding:10px 0; border-bottom:1px solid var(--border-color)">'
