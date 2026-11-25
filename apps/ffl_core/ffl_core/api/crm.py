@@ -326,6 +326,20 @@ def _serial_list(serials) -> list[str]:
 	return [str(s) for s in (value or []) if isinstance(s, (str, int)) and str(s).strip()][:50]
 
 
+def _with_guns(deal, serials: list[str]):
+	"""*deal* with a product line for each of *serials* it had none for (``deal.add_product_row``: only
+	a gun in stock gets one). What still has no line, ``holds.hold_guns`` refuses by name."""
+	from ffl_core.crm.deal import SERIAL_FIELD, add_product_row
+
+	on_deal = {r.get(SERIAL_FIELD) for r in deal.get("products") or []}
+	added = False
+	for serial in serials:
+		item = serial not in on_deal and frappe.db.get_value("Serial No", serial, "item_code")
+		if item:
+			added = add_product_row(deal.doctype, deal.name, item, serial) or added
+	return frappe.get_doc(deal.doctype, deal.name) if added else deal
+
+
 def _hold_deal(hold: str, ptype: str):
 	deal = isinstance(hold, str) and frappe.db.get_value(holds.HOLD, hold, "deal")
 	if not deal:
@@ -360,7 +374,8 @@ def hold_guns(deal: str, serials, approver: str | None = None, pin: str | None =
 
 	Args:
 	    deal: The CRM Deal's name. It needs its POS customer.
-	    serials: The guns' serial numbers (a list, or JSON), each on one of the deal's lines.
+	    serials: The guns' serial numbers (a list, or JSON). One that is not on the deal's lines yet
+	        and is in stock goes on a line of its own first.
 	    approver: The manager approving, when a gun needs one (held for this deal before).
 	    pin: The approver's counter PIN.
 	    password: Or their password.
@@ -371,8 +386,8 @@ def hold_guns(deal: str, serials, approver: str | None = None, pin: str | None =
 	    while Hold guns for deals is off.
 	"""
 	frappe.only_for(CRM_ROLES)
-	return holds.hold_guns(_deal_for_pos_link(deal, "write"), _serial_list(serials), approver=approver or None,
-		pin=pin or None, password=password or None)
+	return holds.hold_guns(_with_guns(_deal_for_pos_link(deal, "write"), _serial_list(serials)), _serial_list(serials),
+		approver=approver or None, pin=pin or None, password=password or None)
 
 
 @frappe.whitelist(methods=["POST"])

@@ -230,7 +230,7 @@ _DEAL_SCRIPT_TEMPLATE = """class CRMDeal {
 		} catch (e) {
 			return this.fflError(e)
 		}
-		if (!info.guns.length) return toast.error(__("Pick the gun on the deal's product line first."))
+		if (!info.guns.length && !info.enabled) return toast.error(__("Holding guns for deals is off. A manager can turn it on in Lead Mail Settings."))
 		const esc = (s) => this.fflEsc(s)
 		const fields = [], defaults = {}, free = [], mine = []
 		info.guns.forEach((g, i) => {
@@ -249,6 +249,9 @@ _DEAL_SCRIPT_TEMPLATE = """class CRMDeal {
 				defaults[key] = 1
 			}
 		})
+		// A gun not on the deal yet is picked here: holding it puts it on a product line too.
+		if (info.enabled) fields.push({ fieldname: "ffl_new_gun", fieldtype: "Link", options: "Serial No",
+			label: info.guns.length ? __("Another gun") : __("Gun"), filters: { status: "Active" } })
 		const run = (fn) => async (ctx) => {
 			try {
 				await fn(ctx)
@@ -257,16 +260,19 @@ _DEAL_SCRIPT_TEMPLATE = """class CRMDeal {
 			}
 		}
 		const actions = []
-		if (free.length) {
+		if (free.length || info.enabled) {
 			actions.push({ label: __("Hold for 48 hours"), variant: "solid", onClick: run(async ({ data, close }) => {
 				const picked = free.filter(([, key]) => data[key]).map(([g]) => g)
-				if (!picked.length) return toast.error(__("Pick a gun to hold."))
+				const added = data.ffl_new_gun && !info.guns.some((g) => g.serial === data.ffl_new_gun) ? data.ffl_new_gun : null
+				if (!picked.length && !added) return toast.error(__("Pick a gun to hold."))
 				const auth = picked.some((g) => g.needs_manager) ? await this.fflManager(info) : {}
 				if (!auth) return
-				const res = await call("ffl_core.api.crm.hold_guns", { deal: this.doc.name, serials: picked.map((g) => g.serial), ...auth })
+				const serials = picked.map((g) => g.serial).concat(added ? [added] : [])
+				const res = await call("ffl_core.api.crm.hold_guns", { deal: this.doc.name, serials, ...auth })
 				close()
 				res.refused.forEach((r) => toast.error(r.reason))
 				if (res.held.length) toast.success(__("Held until {0}.", [res.held[0].expires_label]))
+				if (added) return window.location.reload()   // the deal has a new product line
 				this.fflLoadCard()
 			}) })
 		}

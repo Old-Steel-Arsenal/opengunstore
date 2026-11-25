@@ -148,9 +148,8 @@ class TestPlacing(DealHoldCase):
 		self._invoice(sold, _customer(), submit=True)
 		self.assertIn("On Sales Invoice", refused(sold))
 
-		loose = self._gun()
-		self.assertEqual(refused(loose, deal=self._deal(self._gun(), customer=deal_customer)),
-			f"{loose} is not on this deal.")
+		self.assertEqual(refused("NO-SUCH-GUN", deal=self._deal(self._gun(), customer=deal_customer)),
+			"NO-SUCH-GUN is not on this deal.")
 
 		frappe.db.set_value("Item", GUN, "uniform_sell_price", 1, update_modified=False)
 		frappe.clear_document_cache("Item", GUN)
@@ -613,6 +612,26 @@ class TestDealEvents(DealHoldCase):
 		for needle in (menu, "ffl_core.api.crm.deal_holds", "ffl_core.api.crm.hold_guns",
 				"ffl_core.api.crm.extend_hold", "ffl_core.api.crm.release_hold", "Hold for 48 hours"):
 			self.assertIn(needle, script)
+
+
+class TestHoldAGunNotOnTheDealYet(DealHoldCase):
+	def test_it_goes_on_a_line_and_is_held(self):
+		on_it, loose = self._gun(), self._gun()
+		for deal in (self._deal(), self._deal(on_it)):   # a deal with no lines, and one with another gun
+			out = self._hold(deal, loose)
+			self.assertEqual(([h["serial"] for h in out["held"]], out["refused"]), ([loose], []))
+			doc = frappe.get_doc("CRM Deal", deal)
+			self.assertEqual([r.ffl_serial_no for r in doc.products][-1], loose)
+			self.assertEqual(doc.products[-1].product_code, self.product)
+			holds.release(out["held"][0]["name"])
+
+	def test_a_gun_that_cannot_be_held_is_refused_by_name(self):
+		sold = self._gun()
+		self._invoice(sold, _customer(), submit=True)
+		deal = self._deal()
+		out = self._hold(deal, sold)
+		self.assertEqual(out["held"], [])
+		self.assertEqual([r["serial"] for r in out["refused"]], [sold])
 
 
 class TestSweepCatches(DealHoldCase):
