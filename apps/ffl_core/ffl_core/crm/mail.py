@@ -574,9 +574,10 @@ def route(doc, decision=None, screened: bool = False) -> tuple[str, str] | None:
 		_link(doc, *target)
 	if row:
 		_share_team_mail(*target)
-	from ffl_core.crm import memory
+	from ffl_core.crm import arrival_draft, memory
 
 	memory.mail_routed(doc, target)   # the customer memory reads it a few minutes from now; never raises
+	arrival_draft.mail_routed(doc, target)   # a reply is drafted after the memory has read it; never raises
 	return target if decision[0] != "keep" else None
 
 

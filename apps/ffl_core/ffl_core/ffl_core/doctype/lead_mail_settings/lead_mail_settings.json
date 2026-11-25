@@ -17,7 +17,8 @@
   "spam_folder",
   "pos_section",
   "crm_pos_link",
-  "crm_deal_holds"
+  "crm_deal_holds",
+  "crm_draft_on_arrival"
  ],
  "fields": [
   {
@@ -96,11 +97,17 @@
    "fieldname": "crm_deal_holds",
    "fieldtype": "Check",
    "label": "Hold guns for deals"
+  },
+  {
+   "default": "0",
+   "fieldname": "crm_draft_on_arrival",
+   "fieldtype": "Check",
+   "label": "Draft replies as mail arrives"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-13 12:00:00.000000",
+ "modified": "2026-11-25 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Lead Mail Settings",

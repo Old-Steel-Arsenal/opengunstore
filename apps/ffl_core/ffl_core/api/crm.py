@@ -516,8 +516,9 @@ def reply_draft_ready(doctype: str, name: str) -> dict:
 	    name: The record's name.
 
 	Returns:
-	    dict: {"ready": an extension drafts replies, "insert_price": linking deals to POS orders is on}.
-	    Both false on a sell request.
+	    dict: {"ready": an extension drafts replies, "insert_price": linking deals to POS orders is on,
+	    "draft_ready": a reply drafted when the mail arrived is waiting for the caller}. All false on a
+	    sell request.
 	"""
 	from ffl_core.crm import reply_draft
 
@@ -527,7 +528,8 @@ def reply_draft_ready(doctype: str, name: str) -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def draft_reply(doctype: str, name: str, quote_text: str = "", composer: int = 0) -> dict:
-	"""A draft reply to the customer's message, written by an extension. Nothing is sent or saved.
+	"""A draft reply to the customer's message, written by an extension, or the one it wrote when the mail
+	arrived while that still holds. Nothing is sent or saved.
 
 	Args:
 	    doctype: "CRM Lead" or "CRM Deal".
