@@ -1287,11 +1287,13 @@ _BULK_PRECEDENCE = frozenset({"bulk", "list", "junk", "auto_reply"})
 
 
 def _machine_written(headers) -> bool:
-	"""A mail its headers mark automated (Auto-Submitted other than "no", RFC 3834) or bulk (Precedence
+	"""A mail its headers mark automated (Auto-Submitted other than "no", RFC 3834; also as X-Auto-Submitted,
+	which is how Frappe writes the header of the mail it queues) or bulk (Precedence
 	bulk / list / junk / auto_reply, or a mailing list's List-Id / List-Unsubscribe)."""
-	auto = (headers.get("Auto-Submitted") or "").strip().lower()
-	if headers.get("Auto-Submitted") is not None and auto.split(";", 1)[0].strip() != "no":
-		return True
+	for name in ("Auto-Submitted", "X-Auto-Submitted"):
+		auto = headers.get(name)
+		if auto is not None and auto.strip().lower().split(";", 1)[0].strip() != "no":
+			return True
 	if (headers.get("Precedence") or "").strip().lower() in _BULK_PRECEDENCE:
 		return True
 	return headers.get("List-Id") is not None or headers.get("List-Unsubscribe") is not None

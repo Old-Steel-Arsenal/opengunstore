@@ -17,7 +17,9 @@
   "spam_folder",
   "pos_section",
   "crm_pos_link",
-  "crm_deal_holds"
+  "crm_deal_holds",
+  "crm_daily_digest",
+  "crm_digest_recipients"
  ],
  "fields": [
   {
@@ -96,11 +98,23 @@
    "fieldname": "crm_deal_holds",
    "fieldtype": "Check",
    "label": "Hold guns for deals"
+  },
+  {
+   "default": "0",
+   "fieldname": "crm_daily_digest",
+   "fieldtype": "Check",
+   "label": "Daily reply list"
+  },
+  {
+   "depends_on": "crm_daily_digest",
+   "fieldname": "crm_digest_recipients",
+   "fieldtype": "Small Text",
+   "label": "Send it to everyone at"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-13 12:00:00.000000",
+ "modified": "2026-11-25 08:00:00.000000",
  "modified_by": "Administrator",
  "module": "FFL Core",
  "name": "Lead Mail Settings",
