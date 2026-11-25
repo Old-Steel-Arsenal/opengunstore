@@ -8523,7 +8523,7 @@
           "ffl_core"
         ],
         "summary": "Before a POS / Sales Invoice is saved: the guns on it held for a deal whose customer is not this",
-        "description": "sale's.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:459`",
+        "description": "sale's.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager / Accounts User / Accounts Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:460`",
         "operationId": "ffl_core.api.crm.check_sale",
         "responses": {
           "200": {
@@ -8781,7 +8781,7 @@
           "ffl_core"
         ],
         "summary": "A draft reply to the customer's message, written by an extension. Nothing is sent or saved.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:528`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:529`",
         "operationId": "ffl_core.api.crm.draft_reply",
         "responses": {
           "200": {
@@ -8904,7 +8904,7 @@
           "ffl_core"
         ],
         "summary": "Another 48 hours on a hold. The person who placed it extends it once; after that, or for anyone",
-        "description": "else, a manager does (signed in, or picked with their PIN).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:394`",
+        "description": "else, a manager does (signed in, or picked with their PIN).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:395`",
         "operationId": "ffl_core.api.crm.extend_hold",
         "responses": {
           "200": {
@@ -8972,7 +8972,7 @@
         "tags": [
           "ffl_core"
         ],
-        "summary": "Hold guns on a deal for 48 hours: only the deal's customer can buy them meanwhile, at the",
+        "summary": "Hold guns on a deal (for 48 hours unless told otherwise): only the deal's customer can buy them meanwhile, at the",
         "description": "counter and on the website. Each gun is judged on its own.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:370`",
         "operationId": "ffl_core.api.crm.hold_guns",
         "responses": {
@@ -9028,6 +9028,13 @@
                       "null"
                     ],
                     "description": "Or their password."
+                  },
+                  "hours": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "description": "How long: 24, 48, 72 or 168. 48 when not given."
                   }
                 },
                 "required": [
@@ -9147,7 +9154,7 @@
           "ffl_core"
         ],
         "summary": "The Memory card of a Lead or Deal page: what the customer told the store, and the record's summary.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:593`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:594`",
         "operationId": "ffl_core.api.crm.memory_card",
         "responses": {
           "200": {
@@ -9200,7 +9207,7 @@
           "ffl_core"
         ],
         "summary": "Clear memory: every row of the customer's memory you can see goes, and the summary of each of their",
-        "description": "leads and deals you may change. On a lead that became a deal, the deal's rights apply.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:653`",
+        "description": "leads and deals you may change. On a lead that became a deal, the deal's rights apply.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:654`",
         "operationId": "ffl_core.api.crm.memory_clear",
         "responses": {
           "200": {
@@ -9253,7 +9260,7 @@
           "ffl_core"
         ],
         "summary": "Edit memory: save what the customer's memory says. A new or changed row is yours and the AI leaves",
-        "description": "it alone.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:632`",
+        "description": "it alone.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:633`",
         "operationId": "ffl_core.api.crm.memory_save",
         "responses": {
           "200": {
@@ -9310,7 +9317,7 @@
           "ffl_core"
         ],
         "summary": "The customer message a row of the Memory card came from (its \"said\" link).",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:613`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:614`",
         "operationId": "ffl_core.api.crm.memory_source",
         "responses": {
           "200": {
@@ -9368,7 +9375,7 @@
           "ffl_core"
         ],
         "summary": "Update memory: have the extension read the record's latest customer messages now.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:672`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:673`",
         "operationId": "ffl_core.api.crm.memory_update_now",
         "responses": {
           "200": {
@@ -9517,7 +9524,7 @@
           "ffl_core"
         ],
         "summary": "A manager ends a deal's hold at the counter so the gun can be sold to someone else; the deal's",
-        "description": "owner gets a task. A manager signed in approves their own; anyone else names one, who types their\ncounter PIN (or password).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:485`",
+        "description": "owner gets a task. A manager signed in approves their own; anyone else names one, who types their\ncounter PIN (or password).\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:486`",
         "operationId": "ffl_core.api.crm.override_hold",
         "responses": {
           "200": {
@@ -9591,7 +9598,7 @@
           "ffl_core"
         ],
         "summary": "The products Insert price offers on a Lead or Deal, most relevant first, at the register's price.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:551`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:552`",
         "operationId": "ffl_core.api.crm.price_options",
         "responses": {
           "200": {
@@ -9644,7 +9651,7 @@
           "ffl_core"
         ],
         "summary": "The line Insert price puts in the reply, priced now.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:568`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:569`",
         "operationId": "ffl_core.api.crm.price_text",
         "responses": {
           "200": {
@@ -9709,7 +9716,7 @@
           "ffl_core"
         ],
         "summary": "End a hold: the gun is for sale to anyone again. Whoever placed it, the deal owner or a manager;",
-        "description": "anyone else with a manager's PIN.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:415`",
+        "description": "anyone else with a manager's PIN.\n\n**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:416`",
         "operationId": "ffl_core.api.crm.release_hold",
         "responses": {
           "200": {
@@ -9785,7 +9792,7 @@
           "ffl_core"
         ],
         "summary": "Which of a Lead or Deal page's Draft reply and Insert price buttons show. No network call.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:510`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:511`",
         "operationId": "ffl_core.api.crm.reply_draft_ready",
         "responses": {
           "200": {
@@ -9982,7 +9989,7 @@
           "ffl_core"
         ],
         "summary": "The live deal hold on one gun, for the counter. Carries no ID, 4473 or NICS data.",
-        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:438`",
+        "description": "**Auth (derived from code):** Roles: Sales User / Sales Manager / Stock Manager / System Manager\n\nSource: `apps/ffl_core/ffl_core/api/crm.py:439`",
         "operationId": "ffl_core.api.crm.serial_hold",
         "responses": {
           "200": {

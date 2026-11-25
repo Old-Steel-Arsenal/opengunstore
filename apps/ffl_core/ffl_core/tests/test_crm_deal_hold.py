@@ -610,7 +610,7 @@ class TestDealEvents(DealHoldCase):
 		setup.apply_pos_link()
 		script = frappe.db.get_value("CRM Form Script", setup.DEAL_SCRIPT, "script")
 		for needle in (menu, "ffl_core.api.crm.deal_holds", "ffl_core.api.crm.hold_guns",
-				"ffl_core.api.crm.extend_hold", "ffl_core.api.crm.release_hold", "Hold for 48 hours"):
+				"ffl_core.api.crm.extend_hold", "ffl_core.api.crm.release_hold", "ffl_new_gun", "ffl_hours"):
 			self.assertIn(needle, script)
 
 
@@ -624,6 +624,14 @@ class TestHoldAGunNotOnTheDealYet(DealHoldCase):
 			self.assertEqual([r.ffl_serial_no for r in doc.products][-1], loose)
 			self.assertEqual(doc.products[-1].product_code, self.product)
 			holds.release(out["held"][0]["name"])
+
+	def test_a_hold_is_for_the_hours_picked(self):
+		for hours, expect in ((None, 48), (24, 24), ("168", 168)):
+			out = self._hold(self._deal(), self._gun(), **({"hours": hours} if hours else {}))
+			hold = frappe.get_doc(holds.HOLD, out["held"][0]["name"])
+			self.assertEqual(round((hold.expires_at - hold.held_at).total_seconds() / 3600), expect)
+		with self.assertRaises(frappe.ValidationError):
+			self._hold(self._deal(), self._gun(), hours=500)
 
 	def test_a_gun_that_cannot_be_held_is_refused_by_name(self):
 		sold = self._gun()

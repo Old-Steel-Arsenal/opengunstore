@@ -368,8 +368,8 @@ def deal_holds(deal: str) -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def hold_guns(deal: str, serials, approver: str | None = None, pin: str | None = None,
-		password: str | None = None) -> dict:
-	"""Hold guns on a deal for 48 hours: only the deal's customer can buy them meanwhile, at the
+		password: str | None = None, hours: int | None = None) -> dict:
+	"""Hold guns on a deal (for 48 hours unless told otherwise): only the deal's customer can buy them meanwhile, at the
 	counter and on the website. Each gun is judged on its own.
 
 	Args:
@@ -379,6 +379,7 @@ def hold_guns(deal: str, serials, approver: str | None = None, pin: str | None =
 	    approver: The manager approving, when a gun needs one (held for this deal before).
 	    pin: The approver's counter PIN.
 	    password: Or their password.
+	    hours: How long: 24, 48, 72 or 168. 48 when not given.
 
 	Returns:
 	    dict: {"held": [{"name", "serial", "deal", "status", "expires_at", "expires_label", "held_by",
@@ -387,7 +388,7 @@ def hold_guns(deal: str, serials, approver: str | None = None, pin: str | None =
 	"""
 	frappe.only_for(CRM_ROLES)
 	return holds.hold_guns(_with_guns(_deal_for_pos_link(deal, "write"), _serial_list(serials)), _serial_list(serials),
-		approver=approver or None, pin=pin or None, password=password or None)
+		approver=approver or None, pin=pin or None, password=password or None, hours=hours)
 
 
 @frappe.whitelist(methods=["POST"])

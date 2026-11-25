@@ -252,6 +252,12 @@ _DEAL_SCRIPT_TEMPLATE = """class CRMDeal {
 		// A gun not on the deal yet is picked here: holding it puts it on a product line too.
 		if (info.enabled) fields.push({ fieldname: "ffl_new_gun", fieldtype: "Link", options: "Serial No",
 			label: info.guns.length ? __("Another gun") : __("Gun"), filters: { status: "Active" } })
+		if (free.length || info.enabled) {
+			fields.push({ fieldname: "ffl_hours", fieldtype: "Select", label: __("For"), options: [
+				{ label: __("24 hours"), value: "24" }, { label: __("48 hours"), value: "48" },
+				{ label: __("3 days"), value: "72" }, { label: __("7 days"), value: "168" }] })
+			defaults.ffl_hours = "48"
+		}
 		const run = (fn) => async (ctx) => {
 			try {
 				await fn(ctx)
@@ -261,14 +267,14 @@ _DEAL_SCRIPT_TEMPLATE = """class CRMDeal {
 		}
 		const actions = []
 		if (free.length || info.enabled) {
-			actions.push({ label: __("Hold for 48 hours"), variant: "solid", onClick: run(async ({ data, close }) => {
+			actions.push({ label: __("Hold"), variant: "solid", onClick: run(async ({ data, close }) => {
 				const picked = free.filter(([, key]) => data[key]).map(([g]) => g)
 				const added = data.ffl_new_gun && !info.guns.some((g) => g.serial === data.ffl_new_gun) ? data.ffl_new_gun : null
 				if (!picked.length && !added) return toast.error(__("Pick a gun to hold."))
 				const auth = picked.some((g) => g.needs_manager) ? await this.fflManager(info) : {}
 				if (!auth) return
 				const serials = picked.map((g) => g.serial).concat(added ? [added] : [])
-				const res = await call("ffl_core.api.crm.hold_guns", { deal: this.doc.name, serials, ...auth })
+				const res = await call("ffl_core.api.crm.hold_guns", { deal: this.doc.name, serials, hours: data.ffl_hours || "48", ...auth })
 				close()
 				res.refused.forEach((r) => toast.error(r.reason))
 				if (res.held.length) toast.success(__("Held until {0}.", [res.held[0].expires_label]))
