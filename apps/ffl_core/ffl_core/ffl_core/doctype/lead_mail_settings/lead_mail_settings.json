@@ -20,7 +20,8 @@
   "crm_deal_holds",
   "crm_daily_digest",
   "crm_digest_recipients",
-  "crm_wants_from_memory"
+  "crm_wants_from_memory",
+  "crm_draft_on_arrival"
  ],
  "fields": [
   {
@@ -117,6 +118,12 @@
    "fieldname": "crm_wants_from_memory",
    "fieldtype": "Check",
    "label": "Add wants from customer memory"
+  },
+  {
+   "default": "0",
+   "fieldname": "crm_draft_on_arrival",
+   "fieldtype": "Check",
+   "label": "Draft replies as mail arrives"
   }
  ],
  "issingle": 1,

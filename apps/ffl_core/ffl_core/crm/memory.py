@@ -258,7 +258,8 @@ def sweep() -> list[tuple[str, str]]:
 	rows = []
 	for doctype in DOCTYPES:
 		rows += [(get_datetime(due), doctype, name) for name, due in frappe.get_all(doctype,
-			filters={DUE: ["<=", cutoff]}, fields=["name", DUE], order_by=f"{DUE} asc", limit=BATCH, as_list=True)]
+			filters=[[DUE, "is", "set"], [DUE, "<=", cutoff]],   # "<=" alone matches an empty one (IFNULL)
+			fields=["name", DUE], order_by=f"{DUE} asc", limit=BATCH, as_list=True)]
 	rows.sort()
 	queued = []
 	for _due, doctype, name in rows[:BATCH]:

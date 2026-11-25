@@ -35,6 +35,7 @@ from ffl_core.crm.gunbroker import MORE_MSGIDS_FIELD, MSGID_FIELD
 from ffl_core.crm.inquiries import EVENT_FIELD
 from ffl_core.crm.mail import AUTO_LEAD, CATEGORY, CATEGORY_FIELD, LEAD, OTHER_MAIL, SETTINGS
 from ffl_core.crm import memory
+from ffl_core.crm import arrival_draft
 from ffl_core.crm.orders import DEAL_FIELD
 from ffl_core.crm import sell_requests
 from ffl_core.crm.web_orders import ORDER as WEB_ORDER, WON_BY
@@ -334,7 +335,8 @@ _REPLY_SCRIPT_TEMPLATE = """class %(cls)s {
 		call("ffl_core.api.crm.reply_draft_ready", { doctype: "%(dt)s", name: this.doc.name })
 			.then((shown) => {
 				const add = []
-				if (shown.ready) add.push({ label: __("Draft reply"), onClick: () => this.fflDraftReply() })
+				if (shown.ready) add.push({ label: shown.draft_ready ? __("Draft ready") : __("Draft reply"),
+					onClick: () => this.fflDraftReply() })
 				if (shown.insert_price) add.push({ label: __("Insert price"), onClick: () => this.fflInsertPrice() })
 				this.actions.unshift(...add)
 			})
@@ -611,6 +613,36 @@ MEMORY_FIELDS = [{
 	"no_copy": 1,
 }]
 
+# A reply drafted when the customer's mail arrived (crm.arrival_draft). Permission level 1, which no role
+# has: the stored text is read only by the draft endpoints, never through the record's own reads. CRM's
+# conversion copies these onto the deal; arrival_draft.deal_inserted drops the copied draft.
+DRAFT_FIELDS = [{"read_only": 1, "hidden": 1, "no_copy": 1, "permlevel": 1, **field} for field in ({
+	"fieldname": arrival_draft.DUE,
+	"fieldtype": "Datetime",
+	"label": "Draft due",
+	"search_index": 1,
+}, {
+	"fieldname": arrival_draft.HTML,
+	"fieldtype": "Long Text",
+	"label": "Draft",
+}, {
+	"fieldname": arrival_draft.HANDOFF,
+	"fieldtype": "Small Text",
+	"label": "Draft handoff",
+}, {
+	"fieldname": arrival_draft.FOR,
+	"fieldtype": "Data",
+	"label": "Draft answers",
+}, {
+	"fieldname": arrival_draft.AT,
+	"fieldtype": "Datetime",
+	"label": "Draft written",
+}, {
+	"fieldname": arrival_draft.PRINT,
+	"fieldtype": "Long Text",
+	"label": "Draft fingerprint",
+})]
+
 CUSTOM_FIELDS = {
 	"CRM Deal": [*map(dict, MEMORY_FIELDS), {
 		# Won since the last memory update: the next one is told what was bought.
@@ -635,7 +667,7 @@ CUSTOM_FIELDS = {
 		"no_copy": 1,
 		"search_index": 1,
 		"insert_after": "lead",
-	}, *sell_requests.DEAL_FIELDS],
+	}, *sell_requests.DEAL_FIELDS, *map(dict, DRAFT_FIELDS)],
 	# The website event an inquiry note was filed for (crm.inquiries): a repeat of it files nothing.
 	"FCRM Note": [{
 		"fieldname": EVENT_FIELD,
@@ -691,7 +723,7 @@ CUSTOM_FIELDS = {
 		"hidden": 1,
 		"no_copy": 1,
 		"insert_after": MSGID_FIELD,
-	}, *map(dict, MEMORY_FIELDS)],
+	}, *map(dict, MEMORY_FIELDS), *map(dict, DRAFT_FIELDS)],
 	"Email Account": [{
 		"fieldname": AUTO_LEAD,
 		"fieldtype": "Check",

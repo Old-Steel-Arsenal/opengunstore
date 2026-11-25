@@ -336,8 +336,9 @@ doc_events = {
 		# A deal converted from a lead the team shares stays shared (ffl_core.crm.mail); a deal whose
 		# email is one customer's is linked to it once it commits (ffl_core.crm.customer).
 		# A deal converted from a lead takes the lead's customer memory (ffl_core.crm.memory).
+		# The lead's reply drafted ahead is not kept on the deal (ffl_core.crm.arrival_draft).
 		"after_insert": ["ffl_core.crm.mail.share_converted_deal", "ffl_core.crm.customer.deal_inserted",
-			"ffl_core.crm.memory.deal_inserted"],
+			"ffl_core.crm.memory.deal_inserted", "ffl_core.crm.arrival_draft.deal_inserted"],
 		# A gun held for the deal (crm/holds.py): Won / Lost, a gun off its lines, deleted or renamed
 		# ends or follows its holds. Won marks the customer memory for an update (ffl_core.crm.memory).
 		"on_update": ["ffl_core.crm.holds.on_deal_update", "ffl_core.crm.memory.deal_updated"],
@@ -369,7 +370,9 @@ doc_events = {
 		"before_insert": ["ffl_core.crm.mail.skip_unwanted", "ffl_core.crm.mail.fill_recipients"],
 		# A received mail's body as CRM can show it: plain text keeps its lines, links open in a new tab.
 		"validate": "ffl_core.crm.mail.tidy_received_mail",
-		"after_insert": ["ffl_core.crm.mail.on_incoming", "ffl_core.crm.mail.claim_on_reply"],
+		# A mail the store sends on a lead or deal drops the reply drafted ahead (ffl_core.crm.arrival_draft).
+		"after_insert": ["ffl_core.crm.mail.on_incoming", "ffl_core.crm.mail.claim_on_reply",
+			"ffl_core.crm.arrival_draft.mail_sent"],
 		"onload": "ffl_core.crm.mail.mark_screened_out",   # Make lead button (public/js/communication_form.js)
 	},
 	"Serial No": {
@@ -1252,6 +1255,8 @@ scheduler_events = {
 			"ffl_core.crm.holds.sweep",
 			# Customer memory: records quiet for three minutes since their last customer message (crm/memory.py).
 			"ffl_core.crm.memory.sweep",
+			# Replies drafted ahead, for records the memory has read (crm/arrival_draft.py).
+			"ffl_core.crm.arrival_draft.sweep",
 		],
 	},
 	"hourly": [

@@ -271,6 +271,12 @@ class TestSweepAndRun(MemoryCase):
 			get_datetime(frappe.db.get_value("Communication", second, "creation")))
 		self.assertTrue(first)
 
+	def test_a_record_never_marked_is_not_swept(self):
+		_msg(_lead(), "Looking for a Garand.", minutes_ago=30)
+		with remembering():
+			swept = memory.sweep()
+		self.assertTrue(all(frappe.db.get_value(doctype, name, memory.DUE) for doctype, name in swept), swept)
+
 	def test_a_mail_during_the_run_is_not_lost(self):
 		lead = _lead()
 		_msg(lead, "Looking for a Garand.", minutes_ago=10)
