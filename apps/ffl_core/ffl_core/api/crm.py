@@ -327,36 +327,67 @@ def _serial_list(serials) -> list[str]:
 	return [str(s) for s in (value or []) if isinstance(s, (str, int)) and str(s).strip()][:50]
 
 
+def _name_gun(deal, item_code: str, serial: str) -> bool:
+	"""Put *serial* on the deal's line for its Item that names no gun yet (qty 1), so a gun picked for an
+	item the deal already lists does not count it twice. True when a line took it. Never raises: a save
+	that fails is rolled back and logged."""
+	from ffl_core.crm.deal import SERIAL_FIELD
+	from ffl_core.crm.item import PRODUCT
+
+	product = frappe.db.get_value(PRODUCT, {"erpnext_item_code": item_code}, "name")
+	doc = frappe.get_doc(deal.doctype, deal.name)
+	row = product and next((r for r in doc.get("products") or []
+		if r.product_code == product and not r.get(SERIAL_FIELD) and flt(r.qty) == 1), None)
+	if not row:
+		return False
+	frappe.db.savepoint("ffl_crm_name_gun")
+	try:
+		row.set(SERIAL_FIELD, serial)
+		doc.save(ignore_permissions=True)   # the caller's write on the deal was checked; the deal prices the line
+	except Exception:
+		frappe.db.rollback(save_point="ffl_crm_name_gun")
+		frappe.log_error(title=f"[CRM] Gun not put on its line: {deal.name}", message=frappe.get_traceback())
+		return False
+	return True
+
+
 def _with_guns(deal, serials: list[str]) -> tuple:
-	"""(*deal* with a product line for each of *serials* it had none for, the serials that got one, why
-	each of the others did not). Only a gun in stock gets a line (``deal.add_product_row``); a serial
-	nobody has on file is left for ``holds.hold_guns`` to refuse by name."""
+	"""(*deal* with each of *serials* it had no line for on one, {serial: whether it got a line of its
+	own}, why each of the others did not). A gun of an item the deal lists with no gun named goes on that
+	line (False); any other gets a line of its own (True). Only a gun in stock goes on
+	(``deal.add_product_row``); a serial nobody has on file is left for ``holds.hold_guns`` to refuse by name."""
 	from ffl_core.crm.deal import SERIAL_FIELD, add_product_row
 
 	on_deal = {r.get(SERIAL_FIELD) for r in deal.get("products") or []}
-	added, why = [], {}
+	added, why = {}, {}
 	for serial in dict.fromkeys(serials):
 		gun = serial not in on_deal and frappe.db.get_value("Serial No", serial, ["item_code", "status"], as_dict=True)
 		if not gun or not gun.item_code:
 			continue
 		if gun.status != "Active":
 			why[serial] = _("{0} is not in stock.").format(serial)
+		elif _name_gun(deal, gun.item_code, serial):
+			added[serial] = False
 		elif add_product_row(deal.doctype, deal.name, gun.item_code, serial):
-			added.append(serial)
+			added[serial] = True
 		else:
 			why[serial] = _("{0} could not be added to the deal.").format(serial)
 	return (frappe.get_doc(deal.doctype, deal.name) if added else deal), added, why
 
 
-def _without_guns(deal: str, serials: list[str]) -> None:
-	"""Take off *deal* the lines :func:`_with_guns` just added for guns that were then not held. Never
-	raises: a failure is rolled back and logged, and the line stays."""
+def _without_guns(deal: str, serials: dict) -> None:
+	"""Undo on *deal* what :func:`_with_guns` did for guns that were then not held ({serial: whether it
+	got a line of its own}): that line comes off, and a line that only took the gun's serial names no gun
+	again. Never raises: a failure is rolled back and logged, and the line stays."""
 	from ffl_core.crm.deal import SERIAL_FIELD
 
 	frappe.db.savepoint("ffl_crm_hold_lines")
 	try:
 		doc = frappe.get_doc(deals.DEAL, deal)
-		kept = [r for r in doc.get("products") or [] if r.get(SERIAL_FIELD) not in serials]
+		kept = [r for r in doc.get("products") or [] if not serials.get(r.get(SERIAL_FIELD))]
+		for r in kept:
+			if r.get(SERIAL_FIELD) in serials:
+				r.set(SERIAL_FIELD, None)
 		doc.set("products", kept)
 		doc.total = doc.net_total = flt(sum(flt(r.amount) for r in kept))   # a deal prices itself again on save
 		doc.save(ignore_permissions=True)   # the caller's write on the deal was checked
@@ -400,7 +431,7 @@ def hold_guns(deal: str, serials, approver: str | None = None, pin: str | None =
 	Args:
 	    deal: The CRM Deal's name. It needs its POS customer.
 	    serials: The guns' serial numbers (a list, or JSON). One that is not on the deal's lines yet
-	        and is in stock goes on a line of its own first.
+	        and is in stock goes on first: on the line of its item that names no gun, else on a line of its own.
 	    approver: The manager approving, when a gun needs one (held for this deal before).
 	    pin: The approver's counter PIN.
 	    password: Or their password.
@@ -417,7 +448,7 @@ def hold_guns(deal: str, serials, approver: str | None = None, pin: str | None =
 	out = holds.hold_guns(doc, wanted, approver=approver or None, pin=pin or None, password=password or None, hours=hours)
 	for r in out["refused"]:
 		r["reason"] = why.get(r["serial"], r["reason"])
-	back = [r["serial"] for r in out["refused"] if r["serial"] in added]
+	back = {r["serial"]: added[r["serial"]] for r in out["refused"] if r["serial"] in added}
 	if back:   # a gun that was not held does not stay on the deal
 		_without_guns(doc.name, back)
 	return out

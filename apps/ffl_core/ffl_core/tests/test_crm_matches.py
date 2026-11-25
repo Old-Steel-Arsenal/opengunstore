@@ -92,6 +92,46 @@ class TestMatches(M.MemoryCase):
 		frappe.db.set_value("Serial No", gun, "status", "Delivered", update_modified=False)
 		self.assertFalse(self._card(deal)["shown"])
 
+	def test_a_line_that_names_a_gun_shows_that_gun(self):
+		code, (asked, cheaper) = _item(f"{WORD} mauser", 900, 550)
+		deal = M._deal()
+		add_product_row(deal.doctype, deal.name, code, asked)
+		found = matches.rows(frappe.get_doc(deal.doctype, deal.name))
+		self.assertEqual([(r["name"], r["price"], r["available"]) for r in found],
+			[(f"{WORD} mauser · {asked}", 900, 1), (f"{WORD} mauser", 550, 1)])
+		self.assertEqual([g["serial"] for g in self._card(deal)["guns"]], [cheaper])
+		# Sold: the gun asked about says so, whatever else the item has.
+		frappe.db.set_value("Serial No", asked, "status", "Delivered", update_modified=False)
+		found = matches.rows(frappe.get_doc(deal.doctype, deal.name))
+		self.assertEqual((found[0]["available"], found[0]["price"]), (0, 0))
+		self.assertIn("Out of stock", self._card(deal)["html"])
+		# The last one gone too: the gun asked about still shows.
+		frappe.db.set_value("Serial No", cheaper, "status", "Delivered", update_modified=False)
+		self.assertEqual([r["name"] for r in matches.rows(frappe.get_doc(deal.doctype, deal.name))],
+			[f"{WORD} mauser · {asked}"])
+
+	def test_a_model_sold_at_one_price_offers_no_gun_to_hold(self):
+		code, _guns = _item(f"{WORD} glock", 500, 500)
+		frappe.db.set_value("Item", code, "uniform_sell_price", 1)
+		frappe.clear_document_cache("Item", code)
+		deal = M._deal()
+		_wants(deal, f"{WORD} glock")
+		card = self._card(deal)
+		self.assertTrue(card["shown"])
+		self.assertEqual(card["guns"], [])
+
+	def test_not_shown_on_a_closed_deal_or_a_sell_request(self):
+		from ffl_core.crm.sell_requests import SELL
+
+		code, _guns = _item(f"{WORD} rifle", 700)
+		deal = M._deal()
+		add_product_row(deal.doctype, deal.name, code)
+		self.assertTrue(self._card(deal)["shown"])
+		frappe.db.set_value(deal.doctype, deal.name, SELL, 1, update_modified=False)
+		self.assertFalse(self._card(deal)["shown"])
+		frappe.db.set_value(deal.doctype, deal.name, {SELL: 0, "status": "Lost"}, update_modified=False)
+		self.assertFalse(self._card(deal)["shown"])
+
 	def test_nothing_to_show_hides_the_card(self):
 		_item(f"{WORD} rifle", 700)
 		self.assertEqual(self._card(M._deal()), {"shown": False, "html": "", "guns": []})
@@ -135,5 +175,13 @@ class TestMatches(M.MemoryCase):
 		self.assertTrue(matches.place(True))
 		self.assertEqual(has(), [True, True])
 		self.assertFalse(matches.place(True))
+		# A section a manager took out stays out until the link is switched off and on.
+		layout = frappe.get_doc("CRM Fields Layout", f"{matches.DOCTYPES[0]}-Side Panel")
+		layout.layout = json.dumps([s for s in json.loads(layout.layout) if s.get("name") != matches.SECTION])
+		layout.save(ignore_permissions=True)
+		self.assertFalse(matches.place(True))
+		self.assertEqual(has(), [False, True])
 		matches.place(False)
 		self.assertEqual(has(), [False, False])
+		matches.place(True)
+		self.assertEqual(has(), [True, True])

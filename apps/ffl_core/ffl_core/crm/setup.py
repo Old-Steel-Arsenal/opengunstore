@@ -303,6 +303,7 @@ _DEAL_SCRIPT_TEMPLATE = """class CRMDeal {
 				// Only a gun that was held is on a new product line; a reload would wipe a refusal's reason.
 				if (res.held.some((h) => added.includes(h.serial))) return window.location.reload()
 				this.fflLoadCard()
+				window.fflLoadMatches?.()
 			}) })
 		}
 		mine.forEach((g) => {
@@ -364,6 +365,11 @@ _REPLY_SCRIPT_TEMPLATE = """class %(cls)s {
 			})
 			.catch((e) => console.warn("[OpenGunstore] reply buttons", e))
 		this.fflLoadMemory()
+		// The deal script's Hold gun asks for it again after a hold (one page, two scripts).
+		window.fflLoadMatches = () => this.fflLoadMatches()
+		this.fflLoadMatches()
+	}
+	fflLoadMatches() {
 		call("ffl_core.api.crm.matches_card", { doctype: "%(dt)s", name: this.doc.name })
 			.then((card) => {
 				this.setFieldProperty("%(matches)s", "hidden", !card.shown)
@@ -377,6 +383,7 @@ _REPLY_SCRIPT_TEMPLATE = """class %(cls)s {
 			.catch((e) => console.warn("[OpenGunstore] memory card", e))
 	}
 	fflShowMemory(card) {
+		if (this.fflMemory) this.fflLoadMatches()   // the memory changed: so may what fits it
 		this.fflMemory = card
 		const at = this.actions.findIndex((a) => a.fflMemory)
 		if (at > -1) this.actions.splice(at, 1)

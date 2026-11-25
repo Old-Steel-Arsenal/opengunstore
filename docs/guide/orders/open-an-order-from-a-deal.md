@@ -27,10 +27,12 @@ It never shows an ID number, a date of birth, a 4473 or a background check. Befo
 The **Matches** section on the side panel of a deal or a lead lists what is in stock for this customer:
 
 - The items on the record. A question sent from a product page on the website puts that gun there.
-- What fits the customer's open wants
+- On a deal, what fits the customer's open wants
 - What fits what they said they are looking for, when the store keeps customer memory. With a budget on file, the nearest prices come first.
 
-Each line shows the price the register charges now and how many can be sold now. A gun priced one by one shows its lowest price. An item on the record with none left shows **Out of stock**; a gun priced one by one that has sold is no longer listed. The list is worked out each time the page opens. With nothing to show, the section is not there.
+Each line shows the price the register charges now and how many can be sold now. A line that names a gun shows that gun with its serial number and its own price, or **Out of stock** once it is gone. An item's other guns priced one by one show under it with their lowest price.
+
+The list is worked out each time the page opens. With nothing to show, the section is not there. A deal that is won or lost and a sell request show none.
 
 To keep one of those guns for the customer, see [Hold a gun for a deal](hold-a-gun-for-a-deal.md).
 
