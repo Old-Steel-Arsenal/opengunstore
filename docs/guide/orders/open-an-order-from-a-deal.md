@@ -6,7 +6,7 @@ A deal never sells anything by itself. **Open order** fills in the [Create Order
 
 ## Before you start
 
-- A manager turns the link on in [Lead Mail Settings](../manager/settings.md#lead-mail-settings). While it is off, a deal shows no **Open order** button and no **Customer** section.
+- A manager turns the link on in [Lead Mail Settings](../manager/settings.md#lead-mail-settings). While it is off, a deal shows no **Open order** button and no **Customer** section, and a deal or lead shows no **Matches** section.
 - You see only the deals your CRM access lets you see.
 - A deal's page is titled with the person's name. To find a deal, type the name in the **Full Name** filter at the top of the Deals list.
 
@@ -21,6 +21,20 @@ The **Customer** section on the deal's side panel shows who the deal is with:
 - **Last orders**: their most recent sales and returns
 
 It never shows an ID number, a date of birth, a 4473 or a background check. Before the deal has a customer, it lists the customers whose email or phone match.
+
+## See what the store has for them
+
+The **Matches** section on the side panel of a deal or a lead lists what is in stock for this customer:
+
+- The items on the record. A question sent from a product page on the website puts that gun there.
+- On a deal, what fits the customer's open wants
+- What fits what they said they are looking for, when the store keeps customer memory. With a budget on file, the nearest prices come first.
+
+Each line shows the price the register charges now and how many can be sold now. A line that names a gun shows that gun with its serial number and its own price, or **Out of stock** once it is gone. An item's other guns priced one by one show under it with their lowest price.
+
+The list is worked out each time the page opens. With nothing to show, the section is not there. A deal that is won or lost and a sell request show none.
+
+To keep one of those guns for the customer, see [Hold a gun for a deal](hold-a-gun-for-a-deal.md).
 
 ## Steps
 

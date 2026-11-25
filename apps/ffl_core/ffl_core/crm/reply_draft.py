@@ -375,6 +375,7 @@ class Facts:
 	def __init__(self):
 		self.items: list[str] = []
 		self.facts: list[dict] = []
+		self.kept: list[str] = []   # the item code of each fact, in step with ``facts``
 
 	def add(self, item_code: str) -> bool:
 		if item_code in self.items or len(self.facts) >= FACT_LIMIT:
@@ -383,6 +384,7 @@ class Facts:
 		found = fact(item_code, f"F{len(self.facts) + 1}")
 		if found:
 			self.facts.append(found)
+			self.kept.append(item_code)
 		return bool(found)
 
 	def find_stock(self, asked) -> list[dict]:

@@ -14,9 +14,10 @@ A hold keeps one gun for one deal for a set time: 24 hours, 48 hours, 3 days or 
 1. Open the deal. Open the three-dot menu at the top and click **Hold gun**.
 2. If the deal has no customer yet, the **Who is the buyer?** box opens first. Pick the customer, or click **Create customer**.
 3. The **Hold guns** box lists each gun on the deal. A gun that can be held is ticked. A gun that cannot shows why under its name.
-4. For a gun that is not on the deal yet, pick it in **Gun** by its serial number. Holding it puts it on the deal too.
-5. Pick how long in **For**. It starts at 48 hours.
-6. Click **Hold**.
+4. Guns in stock that fit what the customer asked for are listed under them, with the price. Tick one to hold it. A model sold as one product for all its guns is not listed.
+5. For any other gun that is not on the deal yet, pick it in **Another gun** by its serial number. With no gun listed above it, the field is named **Gun**. Holding a gun puts it on the deal: on the line of its item when that line names no gun, else on a line of its own.
+6. Pick how long in **For**. It starts at 48 hours.
+7. Click **Hold**.
 
 The customer card on the deal shows **Held:** with the serial number and the time the hold ends. The deal's timeline gets a note.
 
