@@ -96,19 +96,21 @@ def open_deal_for(contact: str, owner: str | None = None, title: str | None = No
 	return deal.name
 
 
-def new_task(title: str, description: str, assignee: str | None = None, deal: str | None = None, **fields) -> str:
-	"""A CRM Task (Todo unless *fields* say otherwise), on *deal* when given, assigned to *assignee* when
-	given. Returns its name. For a mail, a web order or a stock arrival the system reacts to: the caller
-	need hold no CRM rights."""
+def new_task(title: str, description: str, assignee: str | list[str] | None = None, deal: str | None = None,
+		**fields) -> str:
+	"""A CRM Task (Todo unless *fields* say otherwise), on *deal* when given, assigned to *assignee* (one
+	user or several) when given. Returns its name. For a mail, a web order or a stock arrival the system
+	reacts to: the caller need hold no CRM rights."""
 	if deal:
 		fields.update(reference_doctype=DEAL, reference_docname=deal)
 	task = frappe.get_doc({"doctype": "CRM Task", "title": title, "description": description,
 		"status": "Todo", **fields}).insert(ignore_permissions=True)
 	# Not by assigned_to on the insert: CRM's after_insert checks the session user's rights on the
 	# task, and a Stock Manager cancelling an order has none.
-	if assignee:
+	assign_to = [assignee] if isinstance(assignee, str) else list(assignee or [])
+	if assign_to:
 		# Marked a follow-up: assignment_notice.FOLLOW_UPS_ASK decides whether it pops.
 		with marked(FOLLOW_UP):
-			assign({"assign_to": [assignee], "doctype": "CRM Task", "name": task.name, "description": title},
+			assign({"assign_to": assign_to, "doctype": "CRM Task", "name": task.name, "description": title},
 				ignore_permissions=True)
 	return task.name

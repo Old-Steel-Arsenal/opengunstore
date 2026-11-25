@@ -133,6 +133,10 @@ A customer who wants a gun or product the store does not have in stock. A matchi
 | `item` | Link | Item |  | Item |
 | `budget` | Currency | Budget |  |  |
 | `notes` | Small Text | Notes |  |  |
+| `source_doctype` | Link | Source type |  | DocType |
+| `source_name` | Dynamic Link | Customer message |  | source_doctype |
+| `memory_row` | Data | Memory row |  |  |
+| `memory_synced` | Datetime | Memory synced |  |  |
 | `matched_item` | Link | Matched item |  | Item |
 | `matched_serial` | Data | Matched serial |  |  |
 | `matched_on` | Datetime | Matched on |  |  |
@@ -642,6 +646,10 @@ Which incoming staff mail goes into CRM: the store's team addresses, and the dom
 | `spam_folder` | Data | Spam folder |  |  |
 | `crm_pos_link` | Check | Link deals to POS orders |  |  |
 | `crm_deal_holds` | Check | Hold guns for deals |  |  |
+| `crm_daily_digest` | Check | Daily reply list |  |  |
+| `crm_digest_recipients` | Small Text | Send it to everyone at |  |  |
+| `crm_wants_from_memory` | Check | Add wants from customer memory |  |  |
+| `crm_draft_on_arrival` | Check | Draft replies as mail arrives |  |  |
 
 ## MCP Settings
 

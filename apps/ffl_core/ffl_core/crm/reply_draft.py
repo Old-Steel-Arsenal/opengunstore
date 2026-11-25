@@ -6,7 +6,8 @@ The core writes no reply itself. An extension registers two hooks (docs/extensio
 the envelope a reply to it has, gathers the context the provider gets, and turns the provider's plain
 text into the HTML the composer takes. Nothing is written to the database and nothing is sent: the
 employee sends from CRM's own composer, or from the fallback dialog through the same endpoint CRM's
-composer calls (``crm.setup`` holds the page script).
+composer calls (``crm.setup`` holds the page script). A draft written when the mail arrived
+(``crm.arrival_draft``) is given instead of a new one while it still holds.
 
 Which message: the employee opened CRM's composer with Reply on a mail, and the composer quotes it.
 The page sends the quote's text; the received mail whose text starts the same way is the one being
@@ -496,28 +497,43 @@ def signature_html() -> str:
 		return ""
 
 
-def draft(doctype: str, name: str, quote_text: str = "") -> dict:
-	"""The Draft reply button: a draft of the reply, and where it goes."""
-	doc = record(doctype, name, "write")
-	if not ready():
-		frappe.throw(_(FAILED), title=_("No draft"))
-	quote_text = str(quote_text or "")[:QUOTE_LIMIT]
+def prepare(doc, quote_text: str = "") -> frappe._dict:
+	"""What a draft of the reply on *doc* is written from, as the current user would have it: ``latest``
+	(the message answered), ``native`` (the draft can go into CRM's composer), ``envelope``, ``context``
+	(what the provider is given) and ``facts``."""
 	latest, native = target(doc, quote_text)
 	env = envelope(doc, latest)
 	remembered = memory.kept_rows(doc)
-	ctx = context(doc, latest, _messages(doc), gather_facts(doc, remembered), env["channel"],
-		memory.draft_context(doc, remembered))
-	answer = _ask(ctx)
-	handoff = answer.get("handoff")
-	return {"native_ok": 1 if native else 0, **env, "content_html": to_html(answer["body"]),
-		"signature_html": signature_html(), "handoff": str(handoff) if handoff else None}
+	facts = gather_facts(doc, remembered)
+	ctx = context(doc, latest, _messages(doc), facts, env["channel"], memory.draft_context(doc, remembered))
+	return frappe._dict(latest=latest, native=native, envelope=env, context=ctx, facts=facts)
+
+
+def draft(doctype: str, name: str, quote_text: str = "") -> dict:
+	"""The Draft reply button: a draft of the reply, and where it goes. The one written when the mail
+	arrived (``crm.arrival_draft``) when it still holds for this user, else the provider's now."""
+	from ffl_core.crm import arrival_draft
+
+	doc = record(doctype, name, "write")
+	if not ready():
+		frappe.throw(_(FAILED), title=_("No draft"))
+	prepared = prepare(doc, str(quote_text or "")[:QUOTE_LIMIT])
+	written = arrival_draft.stored(doc, prepared)
+	if not written:
+		answer = _ask(prepared.context)
+		handoff = answer.get("handoff")
+		written = {"content_html": to_html(answer["body"]), "handoff": str(handoff) if handoff else None}
+	return {"native_ok": 1 if prepared.native else 0, **prepared.envelope, **written,
+		"signature_html": signature_html()}
 
 
 def buttons(doctype: str, name: str) -> dict:
-	"""{"ready", "insert_price"}: which of Draft reply and Insert price the page shows."""
-	from ffl_core.crm import pos_link_on
+	"""{"ready", "insert_price", "draft_ready"}: which of Draft reply and Insert price the page shows, and
+	whether Draft reply has a draft waiting (``crm.arrival_draft.ready_for``)."""
+	from ffl_core.crm import arrival_draft, pos_link_on
 
 	doc = record(doctype, name, "read")
 	if doctype == DEAL and cint(doc.get(sell_requests.SELL)):
-		return {"ready": False, "insert_price": False}   # a gun offered to the store: nothing to sell
-	return {"ready": ready(), "insert_price": pos_link_on()}
+		return {"ready": False, "insert_price": False, "draft_ready": False}   # a gun offered to the store: nothing to sell
+	shown = ready()
+	return {"ready": shown, "insert_price": pos_link_on(), "draft_ready": shown and arrival_draft.ready_for(doc)}

@@ -7,7 +7,8 @@ files a mail the AI screening left without a lead; the Deal page's customer card
 **Make offer**, **Seller accepted** and **Receive gun** (``ffl_core.crm.sell_requests``), behind the same switch; guns held for a deal (the Deal page's
 **Hold gun**, and the counter's check and manager override, ``ffl_core.crm.holds``); the stand-ins that take quotes off the Deal page and other mail off the Leads list; **Draft reply** and
 **Insert price** on the Lead and Deal pages (``ffl_core.crm.reply_draft``, ``ffl_core.crm.price_insert``); the Lead and
-Deal pages' Memory card, **Edit memory**, **Update memory** and **Clear memory** (``ffl_core.crm.memory``)."""
+Deal pages' Memory card, **Edit memory**, **Update memory** and **Clear memory** (``ffl_core.crm.memory``); the reply queue,
+the rows of the daily reply list (``ffl_core.crm.digest``)."""
 from __future__ import annotations
 
 import frappe
@@ -547,8 +548,9 @@ def reply_draft_ready(doctype: str, name: str) -> dict:
 	    name: The record's name.
 
 	Returns:
-	    dict: {"ready": an extension drafts replies, "insert_price": linking deals to POS orders is on}.
-	    Both false on a sell request.
+	    dict: {"ready": an extension drafts replies, "insert_price": linking deals to POS orders is on,
+	    "draft_ready": a reply drafted when the mail arrived is waiting for the caller}. All false on a
+	    sell request.
 	"""
 	from ffl_core.crm import reply_draft
 
@@ -558,7 +560,8 @@ def reply_draft_ready(doctype: str, name: str) -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def draft_reply(doctype: str, name: str, quote_text: str = "", composer: int = 0) -> dict:
-	"""A draft reply to the customer's message, written by an extension. Nothing is sent or saved.
+	"""A draft reply to the customer's message, written by an extension, or the one it wrote when the mail
+	arrived while that still holds. Nothing is sent or saved.
 
 	Args:
 	    doctype: "CRM Lead" or "CRM Deal".
@@ -716,3 +719,21 @@ def memory_update_now(doctype: str, name: str) -> dict:
 	from ffl_core.crm import memory
 
 	return memory.update_now(_memory_record(doctype, name, "write"))
+
+
+@frappe.whitelist()
+def reply_queue() -> list[dict]:
+	"""Your own reply queue: the customers on your CRM leads and deals who wait for an answer, longest first.
+
+	The same rows as the daily reply list, for the records you own.
+
+	Returns:
+	    list: One dict per record: "doctype", "name", "link" (the CRM page's path), "customer", "owner",
+	    "subject" and "received" of the waiting message, "days" waiting, "messages" from the customer
+	    since the store's last mail, "tasks" (open task titles) and "summary". A record kept in the list
+	    only by an open task has no "subject", "received" or "days".
+	"""
+	from ffl_core.crm import digest
+
+	frappe.only_for(CRM_ROLES)
+	return digest.build(user=frappe.session.user)
