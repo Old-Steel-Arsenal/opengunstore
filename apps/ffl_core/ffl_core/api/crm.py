@@ -7,12 +7,13 @@ files a mail the AI screening left without a lead; the Deal page's customer card
 **Make offer**, **Seller accepted** and **Receive gun** (``ffl_core.crm.sell_requests``), behind the same switch; guns held for a deal (the Deal page's
 **Hold gun**, and the counter's check and manager override, ``ffl_core.crm.holds``); the stand-ins that take quotes off the Deal page and other mail off the Leads list; **Draft reply** and
 **Insert price** on the Lead and Deal pages (``ffl_core.crm.reply_draft``, ``ffl_core.crm.price_insert``); the Lead and
-Deal pages' Memory card, **Edit memory**, **Update memory** and **Clear memory** (``ffl_core.crm.memory``)."""
+Deal pages' Memory card, **Edit memory**, **Update memory** and **Clear memory** (``ffl_core.crm.memory``); the reply queue,
+the rows of the daily reply list (``ffl_core.crm.digest``)."""
 from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.utils import cint
+from frappe.utils import cint, flt
 
 from ffl_core.crm import customer as deal_customer
 from ffl_core.crm import deals, holds, mail, pos_link_on, sell_requests
@@ -326,6 +327,75 @@ def _serial_list(serials) -> list[str]:
 	return [str(s) for s in (value or []) if isinstance(s, (str, int)) and str(s).strip()][:50]
 
 
+def _name_gun(deal, item_code: str, serial: str) -> bool:
+	"""Put *serial* on the deal's line for its Item that names no gun yet (qty 1), so a gun picked for an
+	item the deal already lists does not count it twice. True when a line took it. Never raises: a save
+	that fails is rolled back and logged."""
+	from ffl_core.crm.deal import SERIAL_FIELD
+	from ffl_core.crm.item import PRODUCT
+
+	product = frappe.db.get_value(PRODUCT, {"erpnext_item_code": item_code}, "name")
+	doc = frappe.get_doc(deal.doctype, deal.name)
+	row = product and next((r for r in doc.get("products") or []
+		if r.product_code == product and not r.get(SERIAL_FIELD) and flt(r.qty) == 1), None)
+	if not row:
+		return False
+	frappe.db.savepoint("ffl_crm_name_gun")
+	try:
+		row.set(SERIAL_FIELD, serial)
+		doc.save(ignore_permissions=True)   # the caller's write on the deal was checked; the deal prices the line
+	except Exception:
+		frappe.db.rollback(save_point="ffl_crm_name_gun")
+		frappe.log_error(title=f"[CRM] Gun not put on its line: {deal.name}", message=frappe.get_traceback())
+		return False
+	return True
+
+
+def _with_guns(deal, serials: list[str]) -> tuple:
+	"""(*deal* with each of *serials* it had no line for on one, {serial: whether it got a line of its
+	own}, why each of the others did not). A gun of an item the deal lists with no gun named goes on that
+	line (False); any other gets a line of its own (True). Only a gun in stock goes on
+	(``deal.add_product_row``); a serial nobody has on file is left for ``holds.hold_guns`` to refuse by name."""
+	from ffl_core.crm.deal import SERIAL_FIELD, add_product_row
+
+	on_deal = {r.get(SERIAL_FIELD) for r in deal.get("products") or []}
+	added, why = {}, {}
+	for serial in dict.fromkeys(serials):
+		gun = serial not in on_deal and frappe.db.get_value("Serial No", serial, ["item_code", "status"], as_dict=True)
+		if not gun or not gun.item_code:
+			continue
+		if gun.status != "Active":
+			why[serial] = _("{0} is not in stock.").format(serial)
+		elif _name_gun(deal, gun.item_code, serial):
+			added[serial] = False
+		elif add_product_row(deal.doctype, deal.name, gun.item_code, serial):
+			added[serial] = True
+		else:
+			why[serial] = _("{0} could not be added to the deal.").format(serial)
+	return (frappe.get_doc(deal.doctype, deal.name) if added else deal), added, why
+
+
+def _without_guns(deal: str, serials: dict) -> None:
+	"""Undo on *deal* what :func:`_with_guns` did for guns that were then not held ({serial: whether it
+	got a line of its own}): that line comes off, and a line that only took the gun's serial names no gun
+	again. Never raises: a failure is rolled back and logged, and the line stays."""
+	from ffl_core.crm.deal import SERIAL_FIELD
+
+	frappe.db.savepoint("ffl_crm_hold_lines")
+	try:
+		doc = frappe.get_doc(deals.DEAL, deal)
+		kept = [r for r in doc.get("products") or [] if not serials.get(r.get(SERIAL_FIELD))]
+		for r in kept:
+			if r.get(SERIAL_FIELD) in serials:
+				r.set(SERIAL_FIELD, None)
+		doc.set("products", kept)
+		doc.total = doc.net_total = flt(sum(flt(r.amount) for r in kept))   # a deal prices itself again on save
+		doc.save(ignore_permissions=True)   # the caller's write on the deal was checked
+	except Exception:
+		frappe.db.rollback(save_point="ffl_crm_hold_lines")
+		frappe.log_error(title=f"[CRM] Line of a gun not held was not removed: {deal}", message=frappe.get_traceback())
+
+
 def _hold_deal(hold: str, ptype: str):
 	deal = isinstance(hold, str) and frappe.db.get_value(holds.HOLD, hold, "deal")
 	if not deal:
@@ -354,16 +424,18 @@ def deal_holds(deal: str) -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def hold_guns(deal: str, serials, approver: str | None = None, pin: str | None = None,
-		password: str | None = None) -> dict:
-	"""Hold guns on a deal for 48 hours: only the deal's customer can buy them meanwhile, at the
+		password: str | None = None, hours: int | None = None) -> dict:
+	"""Hold guns on a deal (for 48 hours unless told otherwise): only the deal's customer can buy them meanwhile, at the
 	counter and on the website. Each gun is judged on its own.
 
 	Args:
 	    deal: The CRM Deal's name. It needs its POS customer.
-	    serials: The guns' serial numbers (a list, or JSON), each on one of the deal's lines.
+	    serials: The guns' serial numbers (a list, or JSON). One that is not on the deal's lines yet
+	        and is in stock goes on first: on the line of its item that names no gun, else on a line of its own.
 	    approver: The manager approving, when a gun needs one (held for this deal before).
 	    pin: The approver's counter PIN.
 	    password: Or their password.
+	    hours: How long: 24, 48, 72 or 168. 48 when not given.
 
 	Returns:
 	    dict: {"held": [{"name", "serial", "deal", "status", "expires_at", "expires_label", "held_by",
@@ -371,8 +443,15 @@ def hold_guns(deal: str, serials, approver: str | None = None, pin: str | None =
 	    while Hold guns for deals is off.
 	"""
 	frappe.only_for(CRM_ROLES)
-	return holds.hold_guns(_deal_for_pos_link(deal, "write"), _serial_list(serials), approver=approver or None,
-		pin=pin or None, password=password or None)
+	wanted = _serial_list(serials)
+	doc, added, why = _with_guns(_deal_for_pos_link(deal, "write"), wanted)
+	out = holds.hold_guns(doc, wanted, approver=approver or None, pin=pin or None, password=password or None, hours=hours)
+	for r in out["refused"]:
+		r["reason"] = why.get(r["serial"], r["reason"])
+	back = {r["serial"]: added[r["serial"]] for r in out["refused"] if r["serial"] in added}
+	if back:   # a gun that was not held does not stay on the deal
+		_without_guns(doc.name, back)
+	return out
 
 
 @frappe.whitelist(methods=["POST"])
@@ -500,8 +579,9 @@ def reply_draft_ready(doctype: str, name: str) -> dict:
 	    name: The record's name.
 
 	Returns:
-	    dict: {"ready": an extension drafts replies, "insert_price": linking deals to POS orders is on}.
-	    Both false on a sell request.
+	    dict: {"ready": an extension drafts replies, "insert_price": linking deals to POS orders is on,
+	    "draft_ready": a reply drafted when the mail arrived is waiting for the caller}. All false on a
+	    sell request.
 	"""
 	from ffl_core.crm import reply_draft
 
@@ -511,7 +591,8 @@ def reply_draft_ready(doctype: str, name: str) -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def draft_reply(doctype: str, name: str, quote_text: str = "", composer: int = 0) -> dict:
-	"""A draft reply to the customer's message, written by an extension. Nothing is sent or saved.
+	"""A draft reply to the customer's message, written by an extension, or the one it wrote when the mail
+	arrived while that still holds. Nothing is sent or saved.
 
 	Args:
 	    doctype: "CRM Lead" or "CRM Deal".
@@ -595,6 +676,25 @@ def memory_card(doctype: str, name: str) -> dict:
 
 
 @frappe.whitelist()
+def matches_card(doctype: str, name: str) -> dict:
+	"""The Matches card of a Lead or Deal page: what the store has for this customer, priced as the
+	register prices it now.
+
+	Args:
+	    doctype: "CRM Lead" or "CRM Deal".
+	    name: The record's name.
+
+	Returns:
+	    dict: {"shown": there is something to show, "html", "guns": on a deal, the matched guns not on it
+	    yet that can be held now ([{"serial", "label"}])}.
+	"""
+	frappe.only_for(CRM_ROLES)
+	from ffl_core.crm import matches
+
+	return matches.card(_memory_record(doctype, name, "read"))
+
+
+@frappe.whitelist()
 def memory_source(doctype: str, name: str, row: str) -> dict:
 	"""The customer message a row of the Memory card came from (its "said" link).
 
@@ -669,3 +769,21 @@ def memory_update_now(doctype: str, name: str) -> dict:
 	from ffl_core.crm import memory
 
 	return memory.update_now(_memory_record(doctype, name, "write"))
+
+
+@frappe.whitelist()
+def reply_queue() -> list[dict]:
+	"""Your own reply queue: the customers on your CRM leads and deals who wait for an answer, longest first.
+
+	The same rows as the daily reply list, for the records you own.
+
+	Returns:
+	    list: One dict per record: "doctype", "name", "link" (the CRM page's path), "customer", "owner",
+	    "subject" and "received" of the waiting message, "days" waiting, "messages" from the customer
+	    since the store's last mail, "tasks" (open task titles) and "summary". A record kept in the list
+	    only by an open task has no "subject", "received" or "days".
+	"""
+	from ffl_core.crm import digest
+
+	frappe.only_for(CRM_ROLES)
+	return digest.build(user=frappe.session.user)

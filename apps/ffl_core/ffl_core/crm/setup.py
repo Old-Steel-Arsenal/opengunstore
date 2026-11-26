@@ -35,6 +35,8 @@ from ffl_core.crm.gunbroker import MORE_MSGIDS_FIELD, MSGID_FIELD
 from ffl_core.crm.inquiries import EVENT_FIELD
 from ffl_core.crm.mail import AUTO_LEAD, CATEGORY, CATEGORY_FIELD, LEAD, OTHER_MAIL, SETTINGS
 from ffl_core.crm import memory
+from ffl_core.crm import arrival_draft
+from ffl_core.crm import matches
 from ffl_core.crm.orders import DEAL_FIELD
 from ffl_core.crm import sell_requests
 from ffl_core.crm.web_orders import ORDER as WEB_ORDER, WON_BY
@@ -230,7 +232,7 @@ _DEAL_SCRIPT_TEMPLATE = """class CRMDeal {
 		} catch (e) {
 			return this.fflError(e)
 		}
-		if (!info.guns.length) return toast.error(__("Pick the gun on the deal's product line first."))
+		if (!info.guns.length && !info.enabled) return toast.error(__("Holding guns for deals is off. A manager can turn it on in Lead Mail Settings."))
 		const esc = (s) => this.fflEsc(s)
 		const fields = [], defaults = {}, free = [], mine = []
 		info.guns.forEach((g, i) => {
@@ -249,6 +251,24 @@ _DEAL_SCRIPT_TEMPLATE = """class CRMDeal {
 				defaults[key] = 1
 			}
 		})
+		// A gun not on the deal yet is picked here: holding it puts it on a product line too.
+		// First the ones in stock that fit what the customer wants (crm/matches.py), one tick each.
+		const matched = []
+		if (info.enabled) {
+			const card = await call("ffl_core.api.crm.matches_card", { doctype: "CRM Deal", name: this.doc.name }).catch(() => ({ guns: [] }))
+			card.guns.filter((m) => !info.guns.some((g) => g.serial === m.serial)).forEach((m, i) => {
+				matched.push([m.serial, "ffl_match_" + i])
+				fields.push({ fieldname: "ffl_match_" + i, fieldtype: "Check", label: m.label })
+			})
+		}
+		if (info.enabled) fields.push({ fieldname: "ffl_new_gun", fieldtype: "Link", options: "Serial No",
+			label: info.guns.length || matched.length ? __("Another gun") : __("Gun"), filters: { status: "Active" } })
+		if (free.length || info.enabled) {
+			fields.push({ fieldname: "ffl_hours", fieldtype: "Select", label: __("For"), options: [
+				{ label: __("24 hours"), value: "24" }, { label: __("48 hours"), value: "48" },
+				{ label: __("3 days"), value: "72" }, { label: __("7 days"), value: "168" }] })
+			defaults.ffl_hours = "48"
+		}
 		const run = (fn) => async (ctx) => {
 			try {
 				await fn(ctx)
@@ -257,17 +277,33 @@ _DEAL_SCRIPT_TEMPLATE = """class CRMDeal {
 			}
 		}
 		const actions = []
-		if (free.length) {
-			actions.push({ label: __("Hold for 48 hours"), variant: "solid", onClick: run(async ({ data, close }) => {
+		if (free.length || info.enabled) {
+			actions.push({ label: __("Hold"), variant: "solid", onClick: run(async ({ data, close }) => {
 				const picked = free.filter(([, key]) => data[key]).map(([g]) => g)
-				if (!picked.length) return toast.error(__("Pick a gun to hold."))
+				const added = matched.filter(([, key]) => data[key]).map(([serial]) => serial)
+				if (data.ffl_new_gun && !added.includes(data.ffl_new_gun) && !info.guns.some((g) => g.serial === data.ffl_new_gun)) added.push(data.ffl_new_gun)
+				if (!picked.length && !added.length) return toast.error(__("Pick a gun to hold."))
 				const auth = picked.some((g) => g.needs_manager) ? await this.fflManager(info) : {}
 				if (!auth) return
-				const res = await call("ffl_core.api.crm.hold_guns", { deal: this.doc.name, serials: picked.map((g) => g.serial), ...auth })
+				const serials = picked.map((g) => g.serial).concat(added)
+				const hours = data.ffl_hours || "48"
+				let res = await call("ffl_core.api.crm.hold_guns", { deal: this.doc.name, serials, hours, ...auth })
+				// A gun picked here may need a manager too; the page only learns it from the refusal.
+				const needs = res.refused.filter((r) => r.needs_manager)
+				if (needs.length && !auth.approver && !info.self_approves) {
+					const manager = await this.fflManager(info)
+					if (manager) {
+						const again = await call("ffl_core.api.crm.hold_guns", { deal: this.doc.name, serials: needs.map((r) => r.serial), hours, ...manager })
+						res = { held: res.held.concat(again.held), refused: res.refused.filter((r) => !r.needs_manager).concat(again.refused) }
+					}
+				}
 				close()
 				res.refused.forEach((r) => toast.error(r.reason))
 				if (res.held.length) toast.success(__("Held until {0}.", [res.held[0].expires_label]))
+				// Only a gun that was held is on a new product line; a reload would wipe a refusal's reason.
+				if (res.held.some((h) => added.includes(h.serial))) return window.location.reload()
 				this.fflLoadCard()
+				window.fflLoadMatches?.()
 			}) })
 		}
 		mine.forEach((g) => {
@@ -322,12 +358,24 @@ _REPLY_SCRIPT_TEMPLATE = """class %(cls)s {
 		call("ffl_core.api.crm.reply_draft_ready", { doctype: "%(dt)s", name: this.doc.name })
 			.then((shown) => {
 				const add = []
-				if (shown.ready) add.push({ label: __("Draft reply"), onClick: () => this.fflDraftReply() })
+				if (shown.ready) add.push({ label: shown.draft_ready ? __("Draft ready") : __("Draft reply"),
+					onClick: () => this.fflDraftReply() })
 				if (shown.insert_price) add.push({ label: __("Insert price"), onClick: () => this.fflInsertPrice() })
 				this.actions.unshift(...add)
 			})
 			.catch((e) => console.warn("[OpenGunstore] reply buttons", e))
 		this.fflLoadMemory()
+		// The deal script's Hold gun asks for it again after a hold (one page, two scripts).
+		window.fflLoadMatches = () => this.fflLoadMatches()
+		this.fflLoadMatches()
+	}
+	fflLoadMatches() {
+		call("ffl_core.api.crm.matches_card", { doctype: "%(dt)s", name: this.doc.name })
+			.then((card) => {
+				this.setFieldProperty("%(matches)s", "hidden", !card.shown)
+				if (card.shown) this.setFieldHtml("%(matches)s", card.html)
+			})
+			.catch((e) => console.warn("[OpenGunstore] matches card", e))
 	}
 	fflLoadMemory() {
 		call("ffl_core.api.crm.memory_card", { doctype: "%(dt)s", name: this.doc.name })
@@ -335,6 +383,7 @@ _REPLY_SCRIPT_TEMPLATE = """class %(cls)s {
 			.catch((e) => console.warn("[OpenGunstore] memory card", e))
 	}
 	fflShowMemory(card) {
+		if (this.fflMemory) this.fflLoadMatches()   // the memory changed: so may what fits it
 		this.fflMemory = card
 		const at = this.actions.findIndex((a) => a.fflMemory)
 		if (at > -1) this.actions.splice(at, 1)
@@ -551,7 +600,8 @@ _REPLY_SCRIPT_TEMPLATE = """class %(cls)s {
 def reply_script_js(doctype: str) -> str:
 	"""The Draft reply / Insert price script of the Lead or Deal page, with its Memory card and the card's
 	Edit memory / Update memory / Clear memory in the "..." menu (crm/memory.py)."""
-	return _REPLY_SCRIPT_TEMPLATE % {"cls": doctype.replace(" ", ""), "dt": doctype, "card": memory.CARD_FIELD}
+	return _REPLY_SCRIPT_TEMPLATE % {"cls": doctype.replace(" ", ""), "dt": doctype, "card": memory.CARD_FIELD,
+		"matches": matches.CARD_FIELD}
 
 
 REPLY_SCRIPTS = {LEAD_SCRIPT: (LEAD, reply_script_js(LEAD)), DEAL_REPLY_SCRIPT: (DEAL, reply_script_js(DEAL))}
@@ -599,6 +649,39 @@ MEMORY_FIELDS = [{
 	"no_copy": 1,
 }]
 
+# A reply drafted when the customer's mail arrived (crm.arrival_draft). Permission level 1, which no role
+# has: the stored text is read only by the draft endpoints, never through the record's own reads. CRM's
+# conversion copies these onto the deal; arrival_draft.deal_inserted drops the copied draft.
+DRAFT_FIELDS = [{"read_only": 1, "hidden": 1, "no_copy": 1, "permlevel": 1, **field} for field in ({
+	"fieldname": arrival_draft.DUE,
+	"fieldtype": "Datetime",
+	"label": "Draft due",
+	"search_index": 1,
+}, {
+	"fieldname": arrival_draft.HTML,
+	"fieldtype": "Long Text",
+	"label": "Draft",
+}, {
+	"fieldname": arrival_draft.HANDOFF,
+	"fieldtype": "Small Text",
+	"label": "Draft handoff",
+}, {
+	"fieldname": arrival_draft.FOR,
+	"fieldtype": "Data",
+	"label": "Draft answers",
+}, {
+	"fieldname": arrival_draft.AT,
+	"fieldtype": "Datetime",
+	"label": "Draft written",
+}, {
+	"fieldname": arrival_draft.PRINT,
+	"fieldtype": "Long Text",
+	"label": "Draft fingerprint",
+})]
+
+# The side panel's Matches card: hidden until the page script has something to show (crm.matches.card).
+MATCHES_FIELD = {"fieldname": matches.CARD_FIELD, "fieldtype": "HTML", "label": "Matches", "hidden": 1}
+
 CUSTOM_FIELDS = {
 	"CRM Deal": [*map(dict, MEMORY_FIELDS), {
 		# Won since the last memory update: the next one is told what was bought.
@@ -623,7 +706,7 @@ CUSTOM_FIELDS = {
 		"no_copy": 1,
 		"search_index": 1,
 		"insert_after": "lead",
-	}, *sell_requests.DEAL_FIELDS],
+	}, *sell_requests.DEAL_FIELDS, dict(MATCHES_FIELD), *map(dict, DRAFT_FIELDS)],
 	# The website event an inquiry note was filed for (crm.inquiries): a repeat of it files nothing.
 	"FCRM Note": [{
 		"fieldname": EVENT_FIELD,
@@ -679,7 +762,7 @@ CUSTOM_FIELDS = {
 		"hidden": 1,
 		"no_copy": 1,
 		"insert_after": MSGID_FIELD,
-	}, *map(dict, MEMORY_FIELDS)],
+	}, *map(dict, MEMORY_FIELDS), dict(MATCHES_FIELD), *map(dict, DRAFT_FIELDS)],
 	"Email Account": [{
 		"fieldname": AUTO_LEAD,
 		"fieldtype": "Check",
@@ -1081,6 +1164,7 @@ def apply_pos_link() -> None:
 	elif frappe.db.get_value("CRM Form Script", DEAL_SCRIPT, list(want), as_dict=True) != want:
 		frappe.db.set_value("CRM Form Script", DEAL_SCRIPT, want)
 	_place_card_section(on)
+	matches.place(on)
 
 
 def _place_card_section(on: bool) -> None:

@@ -412,11 +412,14 @@ class TestButtons(ReplyCase):
 		deal = _deal()
 		with drafting():
 			_switch(0)
-			self.assertEqual(api.reply_draft_ready("CRM Deal", deal.name), {"ready": True, "insert_price": False})
+			self.assertEqual(api.reply_draft_ready("CRM Deal", deal.name),
+				{"ready": True, "insert_price": False, "draft_ready": False})
 			_switch(1)
-			self.assertEqual(api.reply_draft_ready("CRM Deal", deal.name), {"ready": True, "insert_price": True})
+			self.assertEqual(api.reply_draft_ready("CRM Deal", deal.name),
+				{"ready": True, "insert_price": True, "draft_ready": False})
 			sell = _deal(**{SELL: 1})
-			self.assertEqual(api.reply_draft_ready("CRM Deal", sell.name), {"ready": False, "insert_price": False})
+			self.assertEqual(api.reply_draft_ready("CRM Deal", sell.name),
+				{"ready": False, "insert_price": False, "draft_ready": False})
 
 
 class TestQuoteMatch(ReplyCase):

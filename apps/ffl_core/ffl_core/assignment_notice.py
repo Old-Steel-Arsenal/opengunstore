@@ -25,6 +25,7 @@ import html
 import re
 from contextlib import contextmanager
 from datetime import UTC, date, datetime
+from urllib.parse import quote
 
 import frappe
 from frappe import _
@@ -129,16 +130,22 @@ def _reference(doctype: str | None, name: str | None) -> str | None:
 	return (_text(row.get(field)) or name) if row else None
 
 
+# A CRM lead or deal opens in CRM, where staff work it, not as a desk form.
+_CRM_PAGE = {"CRM Lead": "/crm/leads/", "CRM Deal": "/crm/deals/"}
+
+
 def _rows(rows) -> list[dict]:
 	out = []
 	for r in rows:
 		title = _reference(r.reference_type, r.reference_name)
+		page = _CRM_PAGE.get(r.reference_type) if title else None
 		out.append({
 			"name": r.name,
 			"assigned_by": get_fullname(r.assigned_by or r.owner),
 			"reference_type": r.reference_type if title else None,
 			"reference_name": r.reference_name if title else None,
 			"title": title,
+			"url": page + quote(r.reference_name, safe="") if page else None,
 			"description": _text(r.description),
 			"priority": r.priority,
 			"date": str(r.date) if r.date else None,
@@ -187,7 +194,8 @@ def pending() -> list[dict]:
 
 	Returns:
 	    [{"name": ToDo, "assigned_by": full name, "reference_type", "reference_name", "title" (all
-	    three None when the document is gone or there is none), "description": plain text,
+	    three None when the document is gone or there is none), "url": where a CRM lead or deal
+	    opens in CRM (None for anything else, which opens as a desk form), "description": plain text,
 	    "priority", "date": due date or None, "creation", "seen_on": when you said you saw it or
 	    None, "reminder": True for one you already saw}].
 	"""
@@ -239,7 +247,8 @@ def my_tasks() -> list[dict]:
 
 	Returns:
 	    [{"name": ToDo, "assigned_by": full name, "reference_type", "reference_name", "title" (all
-	    three None when the document is gone or there is none), "description": plain text,
+	    three None when the document is gone or there is none), "url": where a CRM lead or deal
+	    opens in CRM (None for anything else, which opens as a desk form), "description": plain text,
 	    "priority", "date": due date or None, "creation", "seen_on": when you said you saw it or
 	    None, "asks": whether it asked you to say you saw it}].
 	"""

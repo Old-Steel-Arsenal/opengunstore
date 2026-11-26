@@ -5,7 +5,9 @@ on the newest open deal a contact with that email is on; with none, a Contact of
 deal, and anyone else goes on their existing CRM Lead (not converted, not other mail), or a new one. What a new lead or deal makes is shared with the
 team (``share_with_team``); an existing record keeps its owner, status and sharing. The inquiry is an
 FCRM Note, and the gun asked about (a SKU of an Item the POS knows) a line of the record's products.
-Nothing is emailed to the customer.
+The same text is also a received mail from the customer on the record (:func:`_file_mail`: a
+Communication with no Email Account, so the mail rules leave it alone): it shows with the record's
+mail, Reply answers the customer, and CRM counts it as a message waiting for an answer. Nothing is emailed to the customer.
 
 A sell-your-gun request is the exception: it always makes a deal of its own (``crm.sell_requests``), the
 form's known fields on it and the rest in its note, titled with the reference the seller was shown.
@@ -22,7 +24,7 @@ from frappe import _
 from frappe.utils import escape_html, validate_email_address
 from frappe.utils.synchronization import filelock
 
-from ffl_core.crm import installed, memory, sell_requests
+from ffl_core.crm import arrival_draft, installed, memory, sell_requests, team
 from ffl_core.crm.deal import add_product_row
 from ffl_core.crm.deals import DEAL, open_deal_for
 from ffl_core.crm.mail import LEAD, OTHER_MAIL, _customer_contact, _new_lead, share_with_team
@@ -33,6 +35,7 @@ MAP_PRICE, SELL_GUN, ASK = "map_price", "sell_gun", "ask"
 KINDS = {MAP_PRICE: "price request", SELL_GUN: "sell-your-gun request", ASK: "question"}
 # FCRM Note: the website's event id (crm.setup.CUSTOM_FIELDS).
 EVENT_FIELD = "ffl_event_id"
+_SAVEPOINT = "ffl_crm_inquiry_mail"
 MAX_DETAILS, MAX_PHOTOS = 40, 12
 # Field caps: the longest a real form value is, with room.
 CAP = {"event_id": 80, "name": 140, "phone": 40, "message": 5000, "sku": 140, "url": 500, "label": 80, "value": 1000}
@@ -60,6 +63,24 @@ def _note_html(phone: str, message: str, sku: str, url: str, details: dict, phot
 		html += _html_lines(escape_html(_("Photos")) + ": " + ", ".join(
 			f'<a href="{escape_html(u)}">{i}</a>' for i, u in enumerate(photos, 1)))
 	return html
+
+
+def _file_mail(doctype: str, name: str, event_id: str, address: str, full_name: str, subject: str,
+		content: str) -> None:
+	"""The inquiry as a received mail from the customer on the record. To the team's address, as CRM's
+	Reply opens an empty composer on a mail with no recipient; its Message-ID is the website's event
+	id, which is how the note of the same inquiry is told from another (``reply_draft._messages``).
+	Never fails the inquiry: a failure is rolled back and logged, and the note is still filed."""
+	frappe.db.savepoint(_SAVEPOINT)
+	try:
+		frappe.get_doc({"doctype": "Communication", "communication_type": "Communication",
+			"communication_medium": "Email", "sent_or_received": "Received", "sender": address,
+			"sender_full_name": full_name or None, "recipients": team.primary() or None,
+			"subject": subject, "content": content, "message_id": event_id,
+			"reference_doctype": doctype, "reference_name": name}).insert(ignore_permissions=True)
+	except Exception:
+		frappe.db.rollback(save_point=_SAVEPOINT)
+		frappe.log_error(title=f"[CRM] Inquiry not filed as mail: {doctype} {name}", message=frappe.get_traceback())
 
 
 def _gun_of(sku: str) -> tuple[str, str | None]:
@@ -126,16 +147,19 @@ def file_inquiry(kind: str, event_id: str, email: str, full_name: str = "", phon
 		else:
 			doctype, name, created = _target(address, name_)
 			title = f"Website {KINDS[kind]}"
+		content = _note_html(phone, _text(message, "message"), sku,
+			url if url.startswith(("http://", "https://")) else "", details, [] if sell else photos)
 		frappe.get_doc({"doctype": NOTE, "title": title if keyed else legacy, EVENT_FIELD: event_id,
-			"reference_doctype": doctype, "reference_docname": name,
-			"content": _note_html(phone, _text(message, "message"), sku,
-				url if url.startswith(("http://", "https://")) else "", details, [] if sell else photos)
+			"reference_doctype": doctype, "reference_docname": name, "content": content,
 			}).insert(ignore_permissions=True)
 		item, serial = _gun_of(sku)
+		gun = item and frappe.db.get_value("Item", item, "item_name")
+		_file_mail(doctype, name, event_id, address, name_, f"{title}: {gun}" if gun else title, content)
 		if item and not sell:   # a gun of the store's on the store buying one would be a sale
 			add_product_row(doctype, name, item, serial)
 		if sell and photos:
 			sell_requests.queue_photos(name)   # runs once this commits
 		memory.mark_due(doctype, name)   # never raises
+		arrival_draft.mark_due(doctype, name)   # never raises
 		commit()   # before the lock goes: the repeat waiting on it must see this note
 	return {"filed": True, "doctype": doctype, "name": name, "created": created}

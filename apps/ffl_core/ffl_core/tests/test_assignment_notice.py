@@ -173,6 +173,14 @@ class Pending(AssignmentNoticeCase):
 		self.assertEqual(r["assigned_by"], "Pat Boss")
 		self.assertEqual((r["reference_type"], r["reference_name"], r["title"]), ("Note", note, "Restock the case"))
 		self.assertEqual(r["description"], "Count the .22 boxes & reorder")
+		self.assertIsNone(r["url"], "a desk document opens as its form")
+
+	def test_a_crm_lead_or_deal_opens_in_crm(self):
+		lead = frappe.get_doc({"doctype": "CRM Lead", "first_name": "Pat"}).insert(ignore_permissions=True)
+		deal = lead.convert_to_deal()
+		rows = an._rows([frappe._dict(name="t", assigned_by=BOSS, reference_type=dt, reference_name=dn)
+			for dt, dn in (("CRM Lead", lead.name), ("CRM Deal", deal))])
+		self.assertEqual([r["url"] for r in rows], [f"/crm/leads/{lead.name}", f"/crm/deals/{deal}"])
 
 	def test_title_is_plain_text(self):
 		note = _note("Smith & Wesson <b>case</b>")

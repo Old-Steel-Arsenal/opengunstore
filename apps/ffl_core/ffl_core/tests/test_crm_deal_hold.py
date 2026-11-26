@@ -148,9 +148,8 @@ class TestPlacing(DealHoldCase):
 		self._invoice(sold, _customer(), submit=True)
 		self.assertIn("On Sales Invoice", refused(sold))
 
-		loose = self._gun()
-		self.assertEqual(refused(loose, deal=self._deal(self._gun(), customer=deal_customer)),
-			f"{loose} is not on this deal.")
+		self.assertEqual(refused("NO-SUCH-GUN", deal=self._deal(self._gun(), customer=deal_customer)),
+			"NO-SUCH-GUN is not on this deal.")
 
 		frappe.db.set_value("Item", GUN, "uniform_sell_price", 1, update_modified=False)
 		frappe.clear_document_cache("Item", GUN)
@@ -611,8 +610,83 @@ class TestDealEvents(DealHoldCase):
 		setup.apply_pos_link()
 		script = frappe.db.get_value("CRM Form Script", setup.DEAL_SCRIPT, "script")
 		for needle in (menu, "ffl_core.api.crm.deal_holds", "ffl_core.api.crm.hold_guns",
-				"ffl_core.api.crm.extend_hold", "ffl_core.api.crm.release_hold", "Hold for 48 hours"):
+				"ffl_core.api.crm.extend_hold", "ffl_core.api.crm.release_hold", "ffl_new_gun", "ffl_hours"):
 			self.assertIn(needle, script)
+
+
+class TestHoldAGunNotOnTheDealYet(DealHoldCase):
+	def test_it_goes_on_a_line_and_is_held(self):
+		on_it, loose = self._gun(), self._gun()
+		for deal in (self._deal(), self._deal(on_it)):   # a deal with no lines, and one with another gun
+			out = self._hold(deal, loose)
+			self.assertEqual(([h["serial"] for h in out["held"]], out["refused"]), ([loose], []))
+			doc = frappe.get_doc("CRM Deal", deal)
+			self.assertEqual([r.ffl_serial_no for r in doc.products][-1], loose)
+			self.assertEqual(doc.products[-1].product_code, self.product)
+			holds.release(out["held"][0]["name"])
+
+	def _blank_line_deal(self) -> str:
+		"""A deal that lists the gun's item without naming a gun, as a website question files it."""
+		deal = self._deal()
+		doc = frappe.get_doc("CRM Deal", deal)
+		doc.append("products", {"product_code": self.product, "qty": 1})
+		doc.save(ignore_permissions=True)
+		return deal
+
+	def test_a_gun_of_an_item_the_deal_lists_goes_on_that_line(self):
+		deal, serial = self._blank_line_deal(), self._gun(650)
+		out = self._hold(deal, serial)
+		self.assertEqual(([h["serial"] for h in out["held"]], out["refused"]), ([serial], []))
+		doc = frappe.get_doc("CRM Deal", deal)
+		self.assertEqual([(r.product_code, r.ffl_serial_no) for r in doc.products], [(self.product, serial)])
+		self.assertEqual(flt(doc.products[0].rate), 650)   # the line is priced as that gun
+		# A second gun of the same item has no blank line left: a line of its own.
+		second = self._gun()
+		self.assertEqual(self._hold(deal, second)["refused"], [])
+		self.assertEqual([r.ffl_serial_no for r in frappe.get_doc("CRM Deal", deal).products], [serial, second])
+
+	def test_a_gun_not_held_leaves_the_line_it_was_put_on_blank_again(self):
+		deal, serial = self._blank_line_deal(), self._gun()
+		with hooks(holds.HOOK_REFUSAL, [f"{HERE}.refuse_everything"]):
+			out = self._hold(deal, serial)
+		self.assertEqual(out["held"], [])
+		doc = frappe.get_doc("CRM Deal", deal)
+		self.assertEqual([(r.product_code, r.ffl_serial_no) for r in doc.products], [(self.product, None)])
+
+	def test_a_hold_is_for_the_hours_picked(self):
+		for hours, expect in ((None, 48), ("", 48), (24, 24), ("168", 168)):
+			out = self._hold(self._deal(), self._gun(), **({"hours": hours} if hours is not None else {}))
+			hold = frappe.get_doc(holds.HOLD, out["held"][0]["name"])
+			self.assertEqual(round((hold.expires_at - hold.held_at).total_seconds() / 3600), expect)
+		with self.assertRaises(frappe.ValidationError):
+			self._hold(self._deal(), self._gun(), hours=500)
+
+	def test_a_gun_that_is_not_held_does_not_stay_on_the_deal(self):
+		kept, taken = self._gun(), self._gun()
+		self._held(self._deal(taken), taken)   # another deal's
+		deal = self._deal(kept)
+		out = self._hold(deal, taken)
+		self.assertEqual(out["held"], [])
+		self.assertTrue(out["refused"][0]["reason"].startswith(f"{taken} is already held for deal"), out["refused"])
+		doc = frappe.get_doc("CRM Deal", deal)
+		self.assertEqual([r.ffl_serial_no for r in doc.products], [kept], "the refused gun's line is gone, the other stays")
+
+	def test_a_gun_out_of_stock_is_refused_and_adds_no_line(self):
+		on_invoice, gone = self._gun(), self._gun()
+		self._invoice(on_invoice, _customer(), submit=True)   # still on the shelf's books, promised to an order
+		frappe.db.set_value("Serial No", gone, "status", "Delivered", update_modified=False)
+		deal = self._deal()
+		out = self._hold(deal, on_invoice, gone)
+		self.assertEqual(out["held"], [])
+		reasons = {r["serial"]: r["reason"] for r in out["refused"]}
+		self.assertIn("On Sales Invoice", reasons[on_invoice])
+		self.assertEqual(reasons[gone], f"{gone} is not in stock.")
+		self.assertEqual(frappe.get_doc("CRM Deal", deal).products, [])
+
+	def test_a_length_that_is_no_number_is_refused(self):
+		for hours in ("7d", 0, "0", -24):
+			with self.assertRaises(frappe.ValidationError, msg=hours):
+				self._hold(self._deal(), self._gun(), hours=hours)
 
 
 class TestSweepCatches(DealHoldCase):

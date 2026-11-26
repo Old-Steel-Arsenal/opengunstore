@@ -21,7 +21,7 @@ the document gets a timeline comment; after that it only dismisses today's remin
 
 **Returns:** What is still waiting, as :func:`pending` returns it.
 
-<sub>`apps/ffl_core/ffl_core/assignment_notice.py:198`</sub>
+<sub>`apps/ffl_core/ffl_core/assignment_notice.py:206`</sub>
 
 ## `done`
 
@@ -40,7 +40,7 @@ assignment comes off the document, and the document gets a timeline comment.
 
 **Returns:** {"closed": False when it was already closed or cancelled, "open": how many open tasks you have left}.
 
-<sub>`apps/ffl_core/ffl_core/assignment_notice.py:267`</sub>
+<sub>`apps/ffl_core/ffl_core/assignment_notice.py:276`</sub>
 
 ## `my_tasks`
 
@@ -52,9 +52,9 @@ Your open tasks: every Open ToDo assigned to you, including system alerts that n
 
 up; oldest first (at most 200).
 
-**Returns:** [{"name": ToDo, "assigned_by": full name, "reference_type", "reference_name", "title" (all three None when the document is gone or there is none), "description": plain text, "priority", "date": due date or None, "creation", "seen_on": when you said you saw it or None, "asks": whether it asked you to say you saw it}].
+**Returns:** [{"name": ToDo, "assigned_by": full name, "reference_type", "reference_name", "title" (all three None when the document is gone or there is none), "url": where a CRM lead or deal opens in CRM (None for anything else, which opens as a desk form), "description": plain text, "priority", "date": due date or None, "creation", "seen_on": when you said you saw it or None, "asks": whether it asked you to say you saw it}].
 
-<sub>`apps/ffl_core/ffl_core/assignment_notice.py:236`</sub>
+<sub>`apps/ffl_core/ffl_core/assignment_notice.py:244`</sub>
 
 ## `pending`
 
@@ -66,9 +66,9 @@ Your assignments waiting for you to say you saw them, and the ones you saw but h
 
 closed that are due today's reminder; oldest first (at most 50).
 
-**Returns:** [{"name": ToDo, "assigned_by": full name, "reference_type", "reference_name", "title" (all three None when the document is gone or there is none), "description": plain text, "priority", "date": due date or None, "creation", "seen_on": when you said you saw it or None, "reminder": True for one you already saw}].
+**Returns:** [{"name": ToDo, "assigned_by": full name, "reference_type", "reference_name", "title" (all three None when the document is gone or there is none), "url": where a CRM lead or deal opens in CRM (None for anything else, which opens as a desk form), "description": plain text, "priority", "date": due date or None, "creation", "seen_on": when you said you saw it or None, "reminder": True for one you already saw}].
 
-<sub>`apps/ffl_core/ffl_core/assignment_notice.py:184`</sub>
+<sub>`apps/ffl_core/ffl_core/assignment_notice.py:191`</sub>
 
 ## `task_count`
 
@@ -80,4 +80,4 @@ How many open tasks you have (the number next to My tasks).
 
 **Returns:** The count of Open ToDos assigned to you.
 
-<sub>`apps/ffl_core/ffl_core/assignment_notice.py:257`</sub>
+<sub>`apps/ffl_core/ffl_core/assignment_notice.py:266`</sub>
