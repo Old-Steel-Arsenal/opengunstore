@@ -21,10 +21,10 @@ Material Issue, with remarks naming both. The issue itself stays submitted.
 |---|---|---|---|---|
 | `disposition` | string | yes | — | Submitted FFL Disposition (FFL Transfer, Dealer Transfer or Return) whose own Material Issue took the gun out of stock. |
 
-**Returns:** {"ok": True, "disposition", "serial", "stock_entry" (the receipt), "issue" (the original Material Issue), "fastbound": "undispose_queued" | "not_pushed", "sale": {"doctype", "name"} | None, "next_step": str | None}. next_step says what the linked sale still needs (a counter order is back on the Pending Order queue).
+**Returns:** {"ok": True, "disposition", "serial", "stock_entry" (the receipt), "issue" (the original Material Issue), "fastbound": "undispose_queued" | "not_pushed" | "disabled", "sale": {"doctype", "name"} | None, "next_step": str | None}. next_step says what the linked sale still needs (a counter order is back on the Pending Order queue).
 
 **Raises:** frappe.ValidationError: Not a submitted shipped transfer; the gun left on the sale's own invoice or delivery note (book a credit note instead); a web or GunBroker order; the gun is already back in stock; or the bound book has a later entry for the serial.
 
 **Permissions:** Managers only.
 
-<sub>`apps/ffl_core/ffl_core/api/return_in_transit.py:51`</sub>
+<sub>`apps/ffl_core/ffl_core/api/return_in_transit.py:56`</sub>

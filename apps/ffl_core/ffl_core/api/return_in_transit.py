@@ -21,7 +21,11 @@ The sale side, per what the disposition shipped:
 * nothing (a Desk transfer, a return to a supplier): the gun is free stock again;
 * a counter order (Sales Invoice, update_stock=0): the invoice is untouched, its
   line still names the gun, so the order is back on the Pending Order queue with
-  the gun held for it; staff Dispose again to re-ship, or Cancel Order to refund;
+  the gun held for it; staff Dispose again to re-ship, or Cancel Order to refund.
+  Its shipping stamp is cleared (shipstation_order_id / shipstation_status back to
+  not requested) so Ship or Mark Shipped works again; a ShipStation order it was
+  linked to is only unlinked, named in a comment on the invoice, and a new push
+  creates a new one;
 * a sale that moved the stock itself (Sales Invoice with Update Stock, Delivery
   Note): refused; bringing that gun back is a return of the sale (credit note);
 * a web or GunBroker order: refused; reopening a Transferred channel order whose
@@ -35,6 +39,7 @@ from frappe.utils import flt
 
 from ffl_core.firearm import serialized_receipt_row
 from ffl_core.roles import RETURN_IN_TRANSIT_ROLES
+from ffl_core.serials import serials_for_line
 
 # What a carrier can bring back: a gun shipped to another licensee. Destruction and
 # 4473 sales never travel.
@@ -63,7 +68,7 @@ def return_in_transit(disposition: str) -> dict:
 	Returns:
 	    {"ok": True, "disposition", "serial", "stock_entry" (the receipt),
 	    "issue" (the original Material Issue), "fastbound": "undispose_queued" |
-	    "not_pushed", "sale": {"doctype", "name"} | None, "next_step": str | None}.
+	    "not_pushed" | "disabled", "sale": {"doctype", "name"} | None, "next_step": str | None}.
 	    next_step says what the linked sale still needs (a counter order is back on
 	    the Pending Order queue).
 
@@ -89,9 +94,10 @@ def return_in_transit(disposition: str) -> dict:
 	doc.reload()
 	doc.flags.ignore_permissions = True
 	doc.cancel()
+	esc = frappe.utils.escape_html
 	doc.add_comment("Comment", _("Returned in transit by {0}: disposition cancelled, {1} "
 		"received back on {2} (reverses {3}).").format(
-		frappe.utils.escape_html(frappe.session.user), doc.serial, receipt, issue.name))
+		esc(frappe.session.user), esc(doc.serial), esc(receipt), esc(issue.name)))
 
 	sale, next_step = _sale_side(doc)
 	return {
@@ -100,7 +106,7 @@ def return_in_transit(disposition: str) -> dict:
 		"serial": doc.serial,
 		"stock_entry": receipt,
 		"issue": issue.name,
-		"fastbound": "undispose_queued" if (doc.fastbound_id or "").strip() else "not_pushed",
+		"fastbound": _fastbound_outcome(doc),
 		"sale": sale,
 		"next_step": next_step,
 	}
@@ -174,9 +180,11 @@ def _later_book_entry(doc) -> tuple[str, str] | None:
 
 def _receive_back(doc, issue) -> str:
 	"""Material Receipt mirroring the issue's row for this serial; returns its name."""
-	row = next((r for r in issue.items if r.item_code == doc.item), None)
-	if not row or not row.s_warehouse:
-		frappe.throw(_("{0} has no row for {1} to reverse.").format(issue.name, doc.item))
+	rows = [r for r in issue.items if doc.serial in serials_for_line(r)]
+	if len(rows) != 1 or not rows[0].s_warehouse:
+		frappe.throw(_("{0} has no single row issuing {1} to reverse.").format(
+			issue.name, doc.serial))
+	row = rows[0]
 	value = -flt(frappe.db.get_value("Stock Ledger Entry", {
 		"voucher_type": "Stock Entry", "voucher_no": issue.name,
 		"voucher_detail_no": row.name, "is_cancelled": 0,
@@ -203,10 +211,46 @@ def _receive_back(doc, issue) -> str:
 	return se.name
 
 
+def _fastbound_outcome(doc) -> str:
+	"""What the disposition's on_cancel did on FastBound: the same switch its delete hook
+	(ffl_integrations.fastbound.tasks.cancel_disposition_on_cancel) checks."""
+	try:
+		enabled = frappe.get_attr("ffl_integrations.integration_gate.fastbound_enabled")()
+	except (ImportError, AttributeError):
+		enabled = False  # ffl_integrations not installed: there is no FastBound
+	if not enabled:
+		return "disabled"
+	return "undispose_queued" if (doc.fastbound_id or "").strip() else "not_pushed"
+
+
+def _reset_shipping(si: str) -> None:
+	"""The gun is back, so the order is not shipped: clear the stamp shipstation_pushed()
+	reads, or Mark Shipped answers "already" and the Ship push skips. ShipStation is not
+	called; a linked order there is only unlinked and named on the invoice."""
+	from ffl_core.api.manual_order import shipstation_pushed
+
+	if not frappe.db.has_column("Sales Invoice", "shipstation_status"):
+		return
+	cur = frappe.db.get_value("Sales Invoice", si,
+		["shipstation_order_id", "shipstation_status"], as_dict=True, for_update=True)
+	if not cur or not shipstation_pushed(cur.shipstation_order_id, cur.shipstation_status):
+		return
+	frappe.db.set_value("Sales Invoice", si,
+		{"shipstation_order_id": "", "shipstation_status": "Not Requested"},
+		update_modified=False)
+	esc = frappe.utils.escape_html
+	old = (cur.shipstation_order_id or "").strip()
+	frappe.get_doc("Sales Invoice", si).add_comment("Comment", _(
+		"Firearm returned in transit: shipping reset (was {0}{1}). Ship again for a new "
+		"shipment.").format(esc(cur.shipstation_status or ""),
+		_(", ShipStation shipment {0}").format(esc(old)) if old else ""))
+
+
 def _sale_side(doc) -> tuple[dict | None, str | None]:
 	si = (doc.get("sales_invoice") or "").strip()
 	if not si:
 		return None, None
+	_reset_shipping(si)
 	return {"doctype": "Sales Invoice", "name": si}, _(
 		"{0} is back on the Pending Order queue with {1}: Dispose to ship it again, or "
 		"Cancel Order to refund the buyer.").format(si, doc.serial)

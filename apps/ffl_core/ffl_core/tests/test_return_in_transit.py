@@ -133,6 +133,29 @@ class TestManualTransferComesBack(ReturnInTransitFixtures):
 		self.assertEqual(jobs[0].kwargs["disposition_name"], disp.name)
 		self.assertEqual(out["fastbound"], "undispose_queued")
 
+	def test_fastbound_switched_off_says_so(self):
+		serial = self._stocked_serial(f"RIT-D-{_uid()}")
+		disp = self._manual_transfer(serial)
+		frappe.db.set_value("FFL Disposition", disp.name, "fastbound_id", "fb-rit-2",
+			update_modified=False)
+		frappe.db.set_single_value("FastBound Settings", "enabled", 0)
+		try:
+			out = self._run(disp.name)
+		finally:
+			frappe.db.set_single_value("FastBound Settings", "enabled", 1)
+		self.assertEqual(out["fastbound"], "disabled")
+		self.assertFalse([c for c in self.enqueued.call_args_list
+			if c.args and c.args[0].endswith("delete_disposition_from_fastbound")])
+
+	def test_comment_escapes_what_it_quotes(self):
+		serial = self._stocked_serial(f"RIT-<b>{_uid()}")
+		disp = self._manual_transfer(serial)
+		self._run(disp.name)
+		content = frappe.db.get_value("Comment", {"reference_doctype": "FFL Disposition",
+			"reference_name": disp.name, "comment_type": "Comment"}, "content")
+		self.assertNotIn("<b>", content)
+		self.assertIn("&lt;b&gt;", content)
+
 	def test_plain_cancel_still_cancels_the_issue(self):
 		"""The ordinary Desk cancel is unchanged: no return receipt, so the
 		disposition's own on_cancel cancels its Material Issue."""
@@ -153,6 +176,10 @@ class TestCounterOrderComesBack(ReturnInTransitFixtures):
 		manual_order.dispose_order(si.name)
 		disp = frappe.get_all("FFL Disposition",
 			filters={"sales_invoice": si.name, "docstatus": 1}, pluck="name")[0]
+		# It really shipped: a ShipStation order, then marked shipped.
+		frappe.db.set_value("Sales Invoice", si.name, "shipstation_order_id", "se-rit-1",
+			update_modified=False)
+		self.assertTrue(manual_order.mark_shipped_manually(si.name).get("already"))
 
 		out = self._run(disp)
 
@@ -165,10 +192,31 @@ class TestCounterOrderComesBack(ReturnInTransitFixtures):
 		self.assertIn(serial, counter_holds("BO-GUN"))
 		self.assertEqual(out["sale"], {"doctype": "Sales Invoice", "name": si.name})
 		self.assertIn(si.name, out["next_step"])
-		# ...and Dispose can ship it again.
+		# Not shipped any more: the stamp is cleared, the old shipment named on the invoice.
+		self.assertEqual(frappe.db.get_value("Sales Invoice", si.name,
+			["shipstation_order_id", "shipstation_status"]), ("", "Not Requested"))
+		self.assertTrue(frappe.db.exists("Comment", {"reference_doctype": "Sales Invoice",
+			"reference_name": si.name, "content": ("like", "%se-rit-1%")}))
+		# ...and Dispose + Mark Shipped can ship it again.
 		with patch("frappe.enqueue"):
 			again = manual_order.dispose_order(si.name)
 		self.assertEqual(again["disposed_count"], 1)
+		shipped = manual_order.mark_shipped_manually(si.name)
+		self.assertTrue(shipped["ok"])
+		self.assertFalse(shipped.get("already"))
+		self.assertEqual(frappe.db.get_value("Sales Invoice", si.name, "shipstation_status"),
+			"Shipped")
+
+	def test_unshipped_order_keeps_its_stamp(self):
+		"""Disposed but never pushed or marked: nothing to reset, no comment."""
+		serial = self._stocked_serial(f"RIT-U-{_uid()}")
+		si = self._ship(serial, update_stock=0, buyer_type="Business")
+		manual_order.dispose_order(si.name)
+		disp = frappe.get_all("FFL Disposition",
+			filters={"sales_invoice": si.name, "docstatus": 1}, pluck="name")[0]
+		self._run(disp)
+		self.assertFalse(frappe.db.exists("Comment", {"reference_doctype": "Sales Invoice",
+			"reference_name": si.name, "content": ("like", "%returned in transit%")}))
 
 
 class TestRefusals(ReturnInTransitFixtures):
