@@ -26,7 +26,8 @@ No COGS is stored on invoice lines, so cost is computed per line:
                     gun IS a firearm-with-serial, but its purchase_rate is 0).
                     A sale since the commission freeze is consigned when its
                     line froze a %; an older one when the stay it took was
-                    acquired on a consignment Purchase Receipt,
+                    acquired on a consignment Purchase Receipt or, while that
+                    stay is the gun's latest, the Serial No is stamped consigned,
   - firearm line  → Σ over the line's serials of the gun's cost AT THIS SALE'S
                     OWN DELIVERY, read from the stock ledger's Serial and Batch
                     Entries — what the GL books as COGS when the gun goes out.
@@ -538,7 +539,7 @@ def _serial_ledger(serials) -> dict:
 	for e in frappe.db.sql("""
 			select e.serial_no, e.incoming_rate, coalesce(nullif(e.warehouse, ''), b.warehouse) as warehouse,
 				b.posting_datetime, b.creation, b.voucher_type, b.voucher_no, b.voucher_detail_no,
-				se.purpose as stock_entry_purpose, sr.purpose as reconciliation_purpose, b.type_of_transaction
+				se.purpose as stock_entry_purpose, se.remarks, sr.purpose as reconciliation_purpose, b.type_of_transaction
 			from `tabSerial and Batch Bundle` b
 			join `tabSerial and Batch Entry` e on e.parent = b.name
 			left join `tabStock Entry` se on b.voucher_type = 'Stock Entry' and se.name = b.voucher_no
@@ -778,7 +779,9 @@ def _sale_hand_overs(sales, ledger) -> dict:
 	consolidated into, a Delivery Note of it or of the Sales Order it was
 	billed from (the serial picks the note's line), the Material Issue of an FFL
 	Disposition of it (linked to the invoice, the POS invoice or its
-	consolidation, or the web order), plus those dispositions' names. *sales*:
+	consolidation, the web order, or the marketplace order), plus those
+	dispositions' names. A disposition that kept no stock_entry ties the serial's
+	Material Issue whose remarks name it (the issue it posted itself). *sales*:
 	(doctype, invoice, SERIAL, customer, web order); *ledger*: {SERIAL: [entries]}."""
 	issued = {sn: {e.voucher_no: e for e in seq if e.type_of_transaction == "Outward"} for sn, seq in ledger.items()}
 	invoices = {n for d, n, *_rest in sales if d == _SI}
@@ -786,6 +789,9 @@ def _sale_hand_overs(sales, ledger) -> dict:
 	merged = {r.name: r.consolidated_invoice for r in frappe.get_all(_POS, filters={
 		"name": ["in", list(counter)], "consolidated_invoice": ["is", "set"]},
 		fields=["name", "consolidated_invoice"])} if counter else {}
+	marketplace = {r.name: r.gunbroker_order for r in frappe.get_all(_SI, filters={
+		"name": ["in", list(invoices)], "gunbroker_order": ["is", "set"]},
+		fields=["name", "gunbroker_order"])} if invoices and _has_column(_SI, "gunbroker_order") else {}
 	deliveries: dict[str, set] = {}
 	if invoices:
 		if _has_column("Delivery Note Item", "against_sales_invoice"):
@@ -808,7 +814,8 @@ def _sale_hand_overs(sales, ledger) -> dict:
 	links = [(field, values) for field, values in (
 		("sales_invoice", invoices | set(merged.values())),
 		("linked_pos_invoice", counter),
-		("woo_online_order", {w for d, _n, _sn, _c, w in sales if w}))
+		("woo_online_order", {w for d, _n, _sn, _c, w in sales if w}),
+		("gunbroker_order", set(marketplace.values())))
 		if values and _has_column("FFL Disposition", field)]
 	dispositions = frappe.get_all("FFL Disposition", filters={"docstatus": 1},
 		or_filters=[[field, "in", list(values)] for field, values in links],
@@ -825,11 +832,16 @@ def _sale_hand_overs(sales, ledger) -> dict:
 					(doctype == _SI and d.get("sales_invoice") == inv)
 					or (doctype == _POS and (d.get("linked_pos_invoice") == inv
 						or (inv in merged and d.get("sales_invoice") == merged[inv])))
-					or (web and d.get("woo_online_order") == web)):
+					or (web and d.get("woo_online_order") == web)
+					or (inv in marketplace and d.get("gunbroker_order") == marketplace[inv])):
 				continue
-			entry = mine.get(d.stock_entry)
-			if entry is not None and entry.voucher_type == "Stock Entry" and entry.stock_entry_purpose == "Material Issue":
-				tied |= {d.stock_entry, d.name}
+			if d.stock_entry:
+				issues = [mine[d.stock_entry]] if d.stock_entry in mine else []
+			else:
+				issues = [e for e in mine.values() if e.voucher_type == "Stock Entry" and _names_any(e.get("remarks"), {d.name})]
+			for entry in issues:
+				if entry.voucher_type == "Stock Entry" and entry.stock_entry_purpose == "Material Issue":
+					tied |= {entry.voucher_no, d.name}
 		out[(doctype, inv, sn)] = tied
 	return out
 
@@ -939,7 +951,8 @@ def _ledger_cost_as_of_sale(headers, lines_by_invoice, item_meta, priced=None) -
 
 	  rate         the gun's cost, or None: read the Serial No (_line_cost);
 	  missing      a gap the ledger found (with rate None: a receipt the ledger
-	               never recorded, or no stay left for this sale — then cost 0);
+	               never recorded, or no stay left for this sale — no_stay, then
+	               cost 0, and no gap once a credit note takes that sale back);
 	  placeholder  costed from purchase_rate over a placeholder ledger value;
 	  pending      not delivered yet: costed at the gun's value today
 	               (cost_pending_delivery);
@@ -962,7 +975,9 @@ def _ledger_cost_as_of_sale(headers, lines_by_invoice, item_meta, priced=None) -
 	A stay acquired on a consignment Purchase Receipt is a consignment sale's
 	(ffl_core.consignment.sold_on_consignment reads it for a sale older than the
 	freeze): at the Serial No's commission while that stay is the gun's latest,
-	else at the receipt line's own %."""
+	else at the receipt line's own %. While the stay is the gun's latest, a
+	Serial No stamped consigned makes it one too, at the stamp's % (a gun stamped
+	after it came in on a receipt of another type)."""
 	sold = {}  # (invoice, SERIAL) -> one of its lines
 	for inv, ls in (lines_by_invoice or {}).items():
 		for l in ls:
@@ -994,10 +1009,11 @@ def _ledger_cost_as_of_sale(headers, lines_by_invoice, item_meta, priced=None) -
 	taken = set().union(*tied.values()) if tied else set()
 	resolved = {(d, n, sn): _resolve_sale(ledger.get(sn), moments.get(n), tied.get((d, n, sn), ()), taken)
 		for d, n, sn, *_rest in sales}
-	doubles = _double_sales(priced, resolved, moments, _returned_sales(priced))
+	returned = _returned_sales(priced)
+	doubles = _double_sales(priced, resolved, moments, returned)
 
 	stays = [r for r in resolved.values() if r.kind == _COSTED]
-	mark_fields = ["name", "purchase_rate", "is_transfer_gun", "consignment_commission_pct"] + (
+	mark_fields = ["name", "purchase_rate", "is_transfer_gun", "is_consignment", "consignment_commission_pct"] + (
 		["zero_cost_confirmed"] if _has_column("Serial No", "zero_cost_confirmed") else [])
 	marks = {s["name"].upper(): s for s in frappe.get_all(
 		"Serial No", filters={"name": ["in", serials]}, fields=mark_fields)}
@@ -1018,7 +1034,8 @@ def _ledger_cost_as_of_sale(headers, lines_by_invoice, item_meta, priced=None) -
 		elif took.kind == _GAP:
 			fact.missing = True
 		elif took.kind == _NO_STAY:
-			fact.missing = fact.no_stay = True
+			# 0 either way; a gap only while no credit note takes the sale back (then sale and note net to 0).
+			fact.no_stay, fact.missing = True, sale[:3] not in returned
 		else:
 			fact.update(_stay_cost(took, ledger[sn], marks.get(sn) or {}, custody, consigned_receipts))
 		if fact.consigned is None and _consignment_read_from_stay(line):
@@ -1061,10 +1078,12 @@ def _stay_cost(took, seq, mark, custody, consigned_receipts) -> dict:
 	stay, rate = took.stay, flt(took.entry.incoming_rate)
 	later = any(e.kind == _ACQUISITION for e in seq[seq.index(stay) + 1:])
 	receipt = consigned_receipts.get(stay.voucher_no) if stay.voucher_type == "Purchase Receipt" else None
-	if receipt is None:
-		consigned = False
-	elif not later:
+	if not later and (receipt is not None or cint(mark.get("is_consignment"))):
+		# The gun's latest stay: its Serial No stamp is this stay's, whatever the receipt was typed
+		# (guns stamped consigned after they came in on a receipt of another type).
 		consigned = {"is_consignment": 1, "commission_pct": flt(mark.get("consignment_commission_pct"))}
+	elif receipt is None:
+		consigned = False
 	else:
 		# The gun came back after this stay: its stamp is the later stay's. The receipt line is this one's.
 		from ffl_core.setup.consignment import default_commission_pct
@@ -1325,13 +1344,13 @@ def _line_cost(line, item_meta, serial_cost, consignment=None, is_ffl_transfer=F
 				missing = missing or fact["missing"]
 				placeholder = placeholder or fact["placeholder"]
 				continue
-			if fact and fact.get("missing", True):
+			if fact and (fact.get("missing", True) or fact.get("no_stay")):
 				# A receipt the ledger never recorded, or no stay left for this
 				# sale. Handed over at $0 on a transfer ticket, it is the
 				# customer's gun: nothing, no gap.
 				if transfer_handover:
 					continue
-				missing = True
+				missing = missing or bool(fact.get("missing", True))
 				if fact.get("no_stay"):
 					continue   # every stay it could take is another sale's: 0, never their cost
 			# No acquisition in the ledger (a gun older than the bundles), an

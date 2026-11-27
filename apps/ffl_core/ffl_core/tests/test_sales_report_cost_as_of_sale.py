@@ -967,6 +967,71 @@ class CostAtDelivery(CostAsOfSale):
 		self.assertCost(sale.name, 500.0)
 		self.assertFlags(sale.name)
 
+	# --- channel and pickup hand-overs, found by link ---------------------------------------------
+
+	def test_a_marketplace_sale_is_delivered_by_its_orders_disposition(self):
+		"""A marketplace order's revenue invoice and its disposition both name the
+		marketplace order; the disposition's issue is posted a second before the invoice."""
+		serial = self._testMethodName[:40]
+		order = f"SRAS-GB-{frappe.generate_hash(length=8)}"
+		self._receive(serial, 500)
+		issue = self._issue(serial)
+		sale = self._bill(serial, 900, customer=OTHER_BUYER)
+		frappe.db.set_value("Sales Invoice", sale.name, "gunbroker_order", order, update_modified=False)
+		self._disposition(serial, issue, gunbroker_order=order)
+		self.assertCost(sale.name, 500.0)
+		self.assertFlags(sale.name)
+
+	def test_a_web_pickup_is_delivered_by_the_issue_its_disposition_auto_posted(self):
+		"""A retail-sale disposition of the web order keeps no stock_entry; the issue
+		it posted names it in its remarks."""
+		serial = self._testMethodName[:40]
+		order = f"SRAS-WOO-{frappe.generate_hash(length=8)}"
+		self._receive(serial, 500)
+		disposition = self._disposition(serial, None, woo_online_order=order, disposition_type="Retail Sale")
+		from ffl_core.firearm import issue_serial
+		issue_serial(GUN, serial, self.warehouse, remarks=f"Auto-issued by FFL Disposition {disposition} (Retail Sale).")
+		sale = self._bill(serial, 900, customer=OTHER_BUYER)
+		frappe.db.set_value("Sales Invoice", sale.name, "woo_online_order", order, update_modified=False)
+		self.assertCost(sale.name, 500.0)
+		self.assertFlags(sale.name)
+
+	# --- a credit note takes back a sale that has no stay ------------------------------------------
+
+	def test_a_sale_with_no_stay_taken_back_by_a_credit_note_is_no_gap(self):
+		serial = self._testMethodName[:40]
+		self._receive(serial, 500)
+		billed = self._bill(serial, 900)
+		counter = self._pos_sale(serial, 950, customer=OTHER_BUYER)
+		refund = self._return(billed, serial, update_stock=0)
+		self.assertCost(billed.name, 0.0)
+		self.assertCost(refund.name, 0.0)
+		self.assertCost(counter.name, 500.0)
+		self.assertFlags(billed.name)
+		self.assertFlags(counter.name)
+
+	# --- a consignment stamp the receipt type does not show ----------------------------------------
+
+	def test_a_sale_before_the_freeze_of_a_gun_stamped_consigned_is_consigned_while_its_stay_is_the_latest(self):
+		"""Received on a receipt of another type and stamped consigned on the Serial
+		No: the stamp is this stay's while no acquisition follows it."""
+		room, (received, sold) = self.archive_room, BEFORE_FREEZE
+		for label, traded_in in (("S", False), ("T", True)):
+			with self.subTest(traded_in=traded_in):
+				serial = f"{self._testMethodName[:36]}-{label}"
+				self._receive(serial, 300, posting_date=received, set_posting_time=1, warehouse=room,
+					ffl_acquisition_type="Dealer Transfer")
+				stamp = {"is_consignment": 1, "consignment_commission_pct": 20}
+				frappe.db.set_value("Serial No", serial, stamp, update_modified=False)
+				sale = self._invoice([self._gun_row(serial, 1000, room)], posting_date=sold, set_posting_time=1)
+				frappe.db.set_value("Sales Invoice Item", sale.items[0].name, "consignment_commission_pct", 0,
+					update_modified=False)
+				if traded_in:
+					self._receive(serial, 400, posting_date="2026-09-01", set_posting_time=1, warehouse=room)
+					frappe.db.set_value("Serial No", serial, stamp, update_modified=False)   # a stamp left standing
+				self.assertCost(sale.name, 300.0 if traded_in else 800.0, day=sold)
+				self.assertEqual(bool(self._gun_line(sale.name, sold)["is_consignment"]), not traded_in)
+
 	# --- A8: a credit note reverses its sale's cost at that sale's delivery -----------------------
 
 	def test_a8_a_credit_note_reverses_the_cost_its_sale_was_delivered_at(self):
