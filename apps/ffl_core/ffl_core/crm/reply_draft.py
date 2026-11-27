@@ -103,7 +103,7 @@ def _messages(doc) -> list[frappe._dict]:
 					EVENT_FIELD: ["is", "set"]}, fields=["name", "title", "content", "creation", EVENT_FIELD]):
 				if n.get(EVENT_FIELD) in mailed:
 					continue
-				out.append(frappe._dict(name=n.name, kind="note", at=get_datetime(n.creation), subject=n.title or "",
+				out.append(frappe._dict(name=n.name, kind="note", at=get_datetime(n.creation), creation=n.creation, subject=n.title or "",
 					html=n.content or ""))
 	out.sort(key=lambda m: (m.at, m.name), reverse=True)
 	return out
