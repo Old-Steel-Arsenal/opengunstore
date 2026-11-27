@@ -271,6 +271,20 @@ class TestSweepAndRun(MemoryCase):
 			get_datetime(frappe.db.get_value("Communication", second, "creation")))
 		self.assertTrue(first)
 
+	def test_a_website_inquiry_note_is_read_once(self):
+		event = f"evt-{_token()}"
+		out = inquiries.file_inquiry(kind="ask", event_id=event, email=f"{_token()}@buyer.test",
+			message="Do you have a Garand?")
+		# An inquiry filed before inquiries were filed as mail too: only its note is on the record.
+		frappe.db.delete("Communication", {"message_id": event})
+		doc = frappe.get_doc(out["doctype"], out["name"])
+		notes = [m for m in memory._customer_messages(doc) if m.kind == "note"]
+		self.assertTrue(notes, "the inquiry is on the record as a note, not a mail")
+		self.assertEqual(_run(doc, {"add": []}, manual=True), "updated")
+		self.assertEqual(get_datetime(frappe.db.get_value(doc.doctype, doc.name, memory.SEEN)),
+			get_datetime(notes[0].creation))
+		self.assertIsNone(memory.batch_for(frappe.get_doc(doc.doctype, doc.name)), "read once, not again")
+
 	def test_a_record_never_marked_is_not_swept(self):
 		_msg(_lead(), "Looking for a Garand.", minutes_ago=30)
 		with remembering():
