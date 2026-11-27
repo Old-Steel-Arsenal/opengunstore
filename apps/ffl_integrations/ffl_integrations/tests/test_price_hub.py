@@ -29,6 +29,17 @@ class PriceHubDetail(_Base):
 		self.assertEqual(trend["series"][0]["segments"][0][1]["cost"], 9)
 		self.assertEqual(trend["series"][0]["low_cost"], 9)
 
+	def test_a_distributor_on_its_own_catalog_service_has_no_series(self):
+		# The history is the site-wide service's: it would be drawn under a house
+		# whose offers come from another service.
+		# A test runs inside its class's transaction: put the endpoint back for the next.
+		self.addCleanup(frappe.db.set_value, "Distributor", "TEST-DC", "catalog_endpoint", "",
+			update_modified=False)
+		frappe.db.set_value("Distributor", "TEST-DC", "catalog_endpoint", "https://own.example",
+			update_modified=False)
+		self.assertEqual(price_hub.detail(upc=UPC)["trend"]["series"], [])
+		self.assertIsNone(price_hub.detail(sku="DC-UPC-ACC", distributor="TEST-DC")["trend"])
+
 	def test_a_product_without_a_upc_is_read_by_its_house_and_sku(self):
 		self.stub.trends = {("rsr", "DC-NO-ITEM"): {"series": [_series("rsr", [3])]}}
 		out = price_hub.detail(sku="DC-NO-ITEM", distributor="TEST-DC")

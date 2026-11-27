@@ -21861,7 +21861,7 @@
         "operationId": "ffl_integrations.distributor.price_hub.detail",
         "responses": {
           "200": {
-            "description": "{trend: {days, window_start, server_time, series: [{distributor, sku, state, segments: [[{at, cost}]], last_cost, low_cost, high_cost}]} or null (no history, or the service is down), store: {item_code, on_hand, on_order, sold_30, sold_90, price, receipts: [{posting_date, supplier, qty, rate}]} or null (no Item here)}. Only enabled Distributors have a series. ``trend.days`` is the window read: a year when everything kept was asked for and is too much to return.",
+            "description": "{trend: {days, window_start, server_time, series: [{distributor, sku, state, segments: [[{at, cost}]], last_cost, low_cost, high_cost}]} or null (no history, or the service is down), store: {item_code, on_hand, on_order, sold_30, sold_90, price, receipts: [{posting_date, supplier, qty, rate}]} or null (no Item here)}. Only enabled Distributors the site-wide catalog serves have a series (not one on its own catalog service). ``trend.days`` is the window read: a year when everything kept was asked for and is too much to return.",
             "content": {
               "application/json": {
                 "schema": {
@@ -21924,7 +21924,7 @@
           "ffl_integrations"
         ],
         "summary": "What the enabled distributors' feeds showed lately: costs that fell, stock",
-        "description": "about to run out, and stock that went fast after a restock.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/price_hub.py:61`",
+        "description": "about to run out, and stock that went fast after a restock.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/price_hub.py:62`",
         "operationId": "ffl_integrations.distributor.price_hub.signals",
         "responses": {
           "200": {
