@@ -9,7 +9,7 @@ from __future__ import annotations
 import frappe
 from frappe.utils import add_days, cint, flt, nowdate
 
-from ffl_integrations.distributor import remote_catalog
+from ffl_integrations.distributor import catalog, remote_catalog
 from ffl_integrations.distributor.api import ORDER_ROLES
 from ffl_integrations.distributor.items import local_item
 
@@ -46,7 +46,8 @@ def detail(upc: str | None = None, sku: str | None = None, distributor: str | No
 	    segments: [[{at, cost}]], last_cost, low_cost, high_cost}]} or null (no
 	    history, or the service is down), store: {item_code, on_hand, on_order,
 	    sold_30, sold_90, price, receipts: [{posting_date, supplier, qty, rate}]} or
-	    null (no Item here)}. Only enabled Distributors have a series. ``trend.days``
+	    null (no Item here)}. Only enabled Distributors the site-wide catalog serves
+	    have a series (not one on its own catalog service). ``trend.days``
 	    is the window read: a year when everything kept was asked for and is too
 	    much to return.
 	"""
@@ -97,11 +98,17 @@ def signals(days: int = 7) -> dict:
 	return {name: rows[:SIGNAL_ROWS] for name, rows in out.items()}
 
 
-def _houses() -> dict:
-	"""``{house code: the first enabled Distributor buying through it}``, priority order."""
+def _houses(*, site_catalog_only=False) -> dict:
+	"""``{house code: the first enabled Distributor buying through it}``, priority order.
+
+	``site_catalog_only``: only the houses the site-wide catalog speaks for
+	(``catalog.houses()``), which a cross-house read like the cost history needs: a
+	Distributor on its own catalog service is not in it."""
+	rows = catalog.houses() if site_catalog_only else frappe.get_all(
+		"Distributor", filters={"enabled": 1}, fields=["name", "provider"],
+		order_by="priority asc, modified asc")
 	houses = {}
-	for d in frappe.get_all("Distributor", filters={"enabled": 1},
-			fields=["name", "provider"], order_by="priority asc, modified asc"):
+	for d in rows:
 		houses.setdefault(d.provider, d.name)
 	return houses
 
@@ -113,7 +120,7 @@ def _log(title) -> None:
 
 
 def _trend(upc, sku, distributor, days):
-	houses = _houses()
+	houses = _houses(site_catalog_only=True)
 	code = next((c for c, name in houses.items() if name == distributor), None)
 	key = {"upc": upc} if upc else {"distributor": code, "sku": sku} if code else None
 	raw = None
