@@ -19,7 +19,7 @@ One product's cost history and this store's own record of it.
 | `distributor` | string \| null | no | `None` | The Distributor that SKU belongs to. |
 | `days` | integer | no | `90` | History window in days; 0 is everything the service keeps. |
 
-**Returns:** {trend: {days, window_start, server_time, series: [{distributor, sku, state, segments: [[{at, cost}]], last_cost, low_cost, high_cost}]} or null (no history, or the service is down), store: {item_code, on_hand, on_order, sold_30, sold_90, price, receipts: [{posting_date, supplier, qty, rate}]} or null (no Item here)}. Only enabled Distributors have a series. ``trend.days`` is the window read: a year when everything kept was asked for and is too much to return.
+**Returns:** {trend: {days, window_start, server_time, series: [{distributor, sku, state, segments: [[{at, cost}]], last_cost, low_cost, high_cost}]} or null (no history, or the service is down), store: {item_code, on_hand, on_order, sold_30, sold_90, price, receipts: [{posting_date, supplier, qty, rate}]} or null (no Item here)}. Only enabled Distributors the site-wide catalog serves have a series (not one on its own catalog service). ``trend.days`` is the window read: a year when everything kept was asked for and is too much to return.
 
 <sub>`apps/ffl_integrations/ffl_integrations/distributor/price_hub.py:34`</sub>
 
@@ -39,4 +39,4 @@ about to run out, and stock that went fast after a restock.
 
 **Returns:** {cost_drop, stockout, fast_depletion}: each a list of {distributor, sku, upc, name, current_value, reference_value, amount, score}, the strongest first. cost_drop: the cost now and before, the fall in dollars and percent. stockout: units left, and score the days of cover. fast_depletion: units left, units gone, and the percent gone. Observations of the feed, not sales. Empty lists when the service keeps no history or is down.
 
-<sub>`apps/ffl_integrations/ffl_integrations/distributor/price_hub.py:61`</sub>
+<sub>`apps/ffl_integrations/ffl_integrations/distributor/price_hub.py:62`</sub>

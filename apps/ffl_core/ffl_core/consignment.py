@@ -29,15 +29,24 @@ COMMISSION_FROZEN_SINCE = "2026-07-16"
 
 def sold_on_consignment(line_pct, posting_date, stamped) -> bool:
 	"""Was THIS sale of the gun a consignment sale? The line's frozen % says so
-	for any sale since COMMISSION_FROZEN_SINCE. A Serial No's stamp only says who
-	holds the gun NOW — a later receipt of the same gun (a trade-in, a buy-back, a
-	new consignment) rewrites it — so it answers only for an older sale (the
-	consignment backfill stamped those guns)."""
+	for any sale since COMMISSION_FROZEN_SINCE. For an older sale *stamped*
+	answers: who held the gun at that sale.
+
+	The two callers pass different witnesses for *stamped*. The Sales Report
+	passes the stay the sale took from the stock ledger (sales_report.
+	_ledger_cost_as_of_sale: its acquisition was a consignment Purchase
+	Receipt), so a later receipt of the same gun (a trade-in, a buy-back, a new
+	consignment) never re-classifies the old sale; it falls back to the Serial
+	No's stamp only where the ledger has no stay, and marks that row
+	unledgered_cost. The consignment-return guard
+	(compliance.consignment.block_consignment_returns) passes the Serial No's
+	CURRENT stamp."""
 	if flt(line_pct) > 0:
 		return True
-	# lazy: a sale older than the freeze reads the gun's CURRENT stamp, so it
-	# changes its answer if the gun later comes back under another owner;
-	# upgrade path: freeze a flag onto those old lines once (a patch).
+	# lazy: the return guard's stamp is the gun's CURRENT owner, so for a sale
+	# older than the freeze it changes its answer if the gun later comes back
+	# under another owner; upgrade path: freeze a flag onto those old lines once
+	# (a patch), which would retire both witnesses.
 	if posting_date and getdate(posting_date) >= getdate(COMMISSION_FROZEN_SINCE):
 		return False
 	return bool(stamped)

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenGunstore API",
-    "version": "1.7.0",
+    "version": "1.8.0",
     "description": "RPC API of the OpenGunstore custom apps (Frappe/ERPNext v16): ffl_core, ffl_integrations, ffl_woo_sync.\n\nAll endpoints are Frappe *whitelisted methods* invoked as `/api/method/<dotted.path>`. Unless an endpoint declares explicit HTTP verbs, it is documented here as POST (Frappe also accepts GET for read-only calls; always POST mutations). Arguments may be sent as JSON body, form data, or query string — JSON body is recommended.\n\nEvery operation carries an **Auth (derived from code)** line statically resolved from the role gate the function actually executes; the prose Permissions note adds semantics the machine can't infer.\n\nStandard CRUD on DocTypes is served by Frappe's REST layer (`/api/resource/<DocType>`) — see docs/api/frappe-rest.md; the custom DocTypes are modelled under components.schemas and listed in reference/doctypes.md."
   },
   "servers": [
@@ -14873,6 +14873,54 @@
         }
       }
     },
+    "/api/method/ffl_core.api.return_in_transit.return_in_transit": {
+      "post": {
+        "tags": [
+          "ffl_core"
+        ],
+        "summary": "Undo a shipped transfer the carrier returned: cancel the disposition, receive the gun back.",
+        "description": "The FFL Disposition is cancelled (its on_cancel deletes the FastBound record and\nundisposes the item) and a Material Receipt dated today brings the gun back into\nthe warehouse it left, at the value and offset account of the disposition's\nMaterial Issue, with remarks naming both. The issue itself stays submitted.\n\n**Auth (derived from code):** Roles: Sales Manager / Stock Manager / System Manager\n\n**Permissions:** Managers only.\n\nSource: `apps/ffl_core/ffl_core/api/return_in_transit.py:56`",
+        "operationId": "ffl_core.api.return_in_transit.return_in_transit",
+        "responses": {
+          "200": {
+            "description": "{\"ok\": True, \"disposition\", \"serial\", \"stock_entry\" (the receipt), \"issue\" (the original Material Issue), \"fastbound\": \"undispose_queued\" | \"not_pushed\" | \"disabled\", \"sale\": {\"doctype\", \"name\"} | None, \"next_step\": str | None}. next_step says what the linked sale still needs (a counter order is back on the Pending Order queue).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/FrappeError"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "disposition": {
+                    "type": "string",
+                    "description": "Submitted FFL Disposition (FFL Transfer, Dealer Transfer or Return) whose own Material Issue took the gun out of stock."
+                  }
+                },
+                "required": [
+                  "disposition"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/method/ffl_core.api.serial_correction.correct_serial": {
       "post": {
         "tags": [
@@ -21861,7 +21909,7 @@
         "operationId": "ffl_integrations.distributor.price_hub.detail",
         "responses": {
           "200": {
-            "description": "{trend: {days, window_start, server_time, series: [{distributor, sku, state, segments: [[{at, cost}]], last_cost, low_cost, high_cost}]} or null (no history, or the service is down), store: {item_code, on_hand, on_order, sold_30, sold_90, price, receipts: [{posting_date, supplier, qty, rate}]} or null (no Item here)}. Only enabled Distributors have a series. ``trend.days`` is the window read: a year when everything kept was asked for and is too much to return.",
+            "description": "{trend: {days, window_start, server_time, series: [{distributor, sku, state, segments: [[{at, cost}]], last_cost, low_cost, high_cost}]} or null (no history, or the service is down), store: {item_code, on_hand, on_order, sold_30, sold_90, price, receipts: [{posting_date, supplier, qty, rate}]} or null (no Item here)}. Only enabled Distributors the site-wide catalog serves have a series (not one on its own catalog service). ``trend.days`` is the window read: a year when everything kept was asked for and is too much to return.",
             "content": {
               "application/json": {
                 "schema": {
@@ -21924,7 +21972,7 @@
           "ffl_integrations"
         ],
         "summary": "What the enabled distributors' feeds showed lately: costs that fell, stock",
-        "description": "about to run out, and stock that went fast after a restock.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/price_hub.py:61`",
+        "description": "about to run out, and stock that went fast after a restock.\n\n**Auth (derived from code):** Roles: Purchase Manager / Purchase User / Stock Manager / System Manager\n\nSource: `apps/ffl_integrations/ffl_integrations/distributor/price_hub.py:62`",
         "operationId": "ffl_integrations.distributor.price_hub.signals",
         "responses": {
           "200": {
