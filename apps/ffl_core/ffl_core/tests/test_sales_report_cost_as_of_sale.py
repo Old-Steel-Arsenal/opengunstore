@@ -40,7 +40,9 @@ ARCHIVE_ROOM = "SRAS Archive Room"   # backdated stock only: nothing posted ther
 BEFORE_FREEZE = ("2026-05-01", "2026-06-10")   # receipt, sale: both before ffl_core.consignment.COMMISSION_FROZEN_SINCE
 
 
-class CostAsOfSale(FrappeTestCase):
+class CostFixtures(FrappeTestCase):
+	"""Shared setUpClass and helpers, no tests: both test classes below subclass it."""
+
 	@classmethod
 	def setUpClass(cls) -> None:
 		super().setUpClass()
@@ -268,6 +270,9 @@ class CostAsOfSale(FrappeTestCase):
 		self.assertAlmostEqual(row["cost"], cost if order_cost is None else order_cost)
 		self.assertEqual((bool(line["missing_cost"]), bool(line.get("placeholder_cost"))), (missing, placeholder))
 		self.assertEqual((bool(row["missing_cost"]), bool(row.get("placeholder_cost"))), (missing, placeholder))
+
+
+class CostAsOfSale(CostFixtures):
 
 	# --- the cost of each sale stays the cost of that sale ----------------------------------------
 
@@ -725,7 +730,7 @@ class CostAsOfSale(FrappeTestCase):
 		return {"item_code": TRADE_IN_CREDIT_ITEM, "qty": 1, "rate": -flt(cost), "ffl_trade_in_acquisition": acquisition}
 
 
-class CostAtDelivery(CostAsOfSale):
+class CostAtDelivery(CostFixtures):
 	"""A sale is costed at its OWN outward entry (its delivery), found by document
 	links only: the invoice's own stock out (a counter POS Invoice's, or the Sales
 	Invoice it was consolidated into), a Delivery Note of it, or the Material Issue
@@ -733,9 +738,7 @@ class CostAtDelivery(CostAsOfSale):
 	the cost the stay's last inward rate before it — what the GL books as COGS at
 	delivery. Until the gun is delivered: in stock, it costs what it stands at now
 	(cost_pending_delivery); gone without a delivery of this sale, it costs the stay
-	that was open when it was invoiced, never one another sale delivered.
-
-	Runs on CostAsOfSale's fixtures; its own tests are not inherited (below)."""
+	that was open when it was invoiced, never one another sale delivered."""
 
 	# --- documents --------------------------------------------------------------------------------
 
@@ -1089,9 +1092,3 @@ class CostAtDelivery(CostAsOfSale):
 				self._receive(serial, 900)                # bought back afterwards
 				self.assertCost(sale.name, 640.0)
 				self.assertFlags(sale.name)
-
-
-# CostAtDelivery reuses CostAsOfSale's fixtures, not its tests: they already run once, above.
-for _name in [n for n in vars(CostAsOfSale) if n.startswith("test_")]:
-	setattr(CostAtDelivery, _name, None)
-del _name
