@@ -598,14 +598,17 @@ def _fetch_cost_as_of_sale(headers, lines_by_invoice, item_meta) -> dict:
 	except a gun re-invoiced at no charge after its sale, and a credit note of
 	that re-invoice (_reissued_at_no_charge): the sale already carries its cost,
 	so these cost 0 and are no gap."""
-	out = _ledger_cost_as_of_sale(headers, lines_by_invoice, item_meta)
-	for key in _reissued_at_no_charge(headers, lines_by_invoice, item_meta):
+	serials = {sn.upper() for ls in (lines_by_invoice or {}).values() for l in ls
+		if (item_meta.get(l.get("item_code")) or {}).get("is_firearm") for sn in split_serials(l.get("serial_no"))}
+	priced = _priced_sales(serials)   # one read, both callers
+	out = _ledger_cost_as_of_sale(headers, lines_by_invoice, item_meta, priced)
+	for key in _reissued_at_no_charge(headers, lines_by_invoice, item_meta, priced):
 		out[key] = {**out.get(key, {}), "rate": 0.0, "missing": False, "placeholder": False, "pending": False,
 			"no_stay": False}
 	return out
 
 
-def _reissued_at_no_charge(headers, lines_by_invoice, item_meta) -> set:
+def _reissued_at_no_charge(headers, lines_by_invoice, item_meta, priced=None) -> set:
 	"""{(invoice, SERIAL)} of this report's lines that cost 0 because the gun's
 	sale already carries its cost: a $0 re-invoice of a gun sent back in
 	transit and sent out once more (_no_charge_reissues), and a credit note of
@@ -641,13 +644,13 @@ def _reissued_at_no_charge(headers, lines_by_invoice, item_meta) -> set:
 			for sn in split_serials(r.serial_no):
 				if r.customer and (doctype, r.name, sn.upper()) in credited:
 					free.setdefault((doctype, r.name, sn.upper()), r.customer)
-	zeroed = _no_charge_reissues(free) if free else set()
+	zeroed = _no_charge_reissues(free, priced) if free else set()
 	ours = {h["name"] for h in headers}
 	return {(inv, sn) for _doctype, inv, sn in zeroed if inv in ours} | {
 		(note, key[2]) for key in zeroed for note in credited.get(key, ())}
 
 
-def _no_charge_reissues(free) -> set:
+def _no_charge_reissues(free, priced=None) -> set:
 	"""The keys of *free* ({(doctype, invoice, SERIAL): customer}, $0 firearm
 	lines of non-return invoices) that re-invoice a gun its sale already costs.
 
@@ -666,9 +669,10 @@ def _no_charge_reissues(free) -> set:
 	web order — whose Material Issue issued it. Moves (_entry_kind) are read
 	past, both legs. A buy-back, a trade-in, any other receipt or a count that
 	takes the gun in between leaves the $0 line to the ledger. Serials compare
-	upper-cased, like the ledger lookup's."""
+	upper-cased, like the ledger lookup's. *priced*: _priced_sales of at least
+	these serials, when the caller has read them already."""
 	serials = {sn for _doctype, _inv, sn in free}
-	sales = _priced_sales(serials)
+	sales = [s for s in (_priced_sales(serials) if priced is None else priced) if s[2] in serials]
 	if not sales:
 		return set()
 	moments = _sale_moments([{"voucher_type": d, "name": n} for d, n, *_rest in sales]
@@ -771,7 +775,8 @@ def _sale_hand_overs(sales, ledger) -> dict:
 	"""{(doctype, invoice, SERIAL): {names}} — the vouchers that issued each
 	sale's serial out of stock and are tied to that sale by a document link,
 	never by timing: the invoice itself, the Sales Invoice a POS Invoice was
-	consolidated into, a Delivery Note of it, the Material Issue of an FFL
+	consolidated into, a Delivery Note of it or of the Sales Order it was
+	billed from (the serial picks the note's line), the Material Issue of an FFL
 	Disposition of it (linked to the invoice, the POS invoice or its
 	consolidation, or the web order), plus those dispositions' names. *sales*:
 	(doctype, invoice, SERIAL, customer, web order); *ledger*: {SERIAL: [entries]}."""
@@ -791,6 +796,15 @@ def _sale_hand_overs(sales, ledger) -> dict:
 			for r in frappe.get_all("Sales Invoice Item", filters={"parent": ["in", list(invoices)],
 					"delivery_note": ["is", "set"]}, fields=["parent", "delivery_note"]):
 				deliveries.setdefault(r.parent, set()).add(r.delivery_note)
+		orders: dict[str, set] = {}
+		for r in frappe.get_all("Sales Invoice Item", filters={"parent": ["in", list(invoices)],
+				"sales_order": ["is", "set"]}, fields=["parent", "sales_order"]):
+			orders.setdefault(r.sales_order, set()).add(r.parent)
+		if orders:
+			for r in frappe.get_all("Delivery Note Item", filters={"against_sales_order": ["in", list(orders)],
+					"docstatus": 1}, fields=["parent", "against_sales_order"]):
+				for inv in orders[r.against_sales_order]:
+					deliveries.setdefault(inv, set()).add(r.parent)
 	links = [(field, values) for field, values in (
 		("sales_invoice", invoices | set(merged.values())),
 		("linked_pos_invoice", counter),
@@ -820,32 +834,18 @@ def _sale_hand_overs(sales, ledger) -> dict:
 	return out
 
 
-def _sale_outwards(ledger) -> set:
-	"""The outward vouchers in *ledger* that deliver SOME sale: a sales voucher's
-	own stock out (an invoice, a POS Invoice or its consolidation, a Delivery
-	Note), or the Material Issue of an FFL Disposition linked to a sale."""
-	outs = {e.voucher_no: e for seq in ledger.values() for e in seq
-		if e.type_of_transaction == "Outward" and e.kind != _MOVE}
-	names = {n for n, e in outs.items() if e.voucher_type in _SALES_VOUCHERS}
-	issues = [n for n, e in outs.items() if e.voucher_type == "Stock Entry"]
-	links = [f for f in ("sales_invoice", "linked_pos_invoice", "woo_online_order") if _has_column("FFL Disposition", f)]
-	if issues and links and _has_column("FFL Disposition", "stock_entry"):
-		names |= {d.stock_entry for d in frappe.get_all("FFL Disposition", filters={
-			"docstatus": 1, "stock_entry": ["in", issues]}, fields=["stock_entry", *links]) if any(d.get(f) for f in links)}
-	return names
-
-
 _ABSENT, _UNLEDGERED, _GAP, _NO_STAY, _COSTED = "absent", "unledgered", "gap", "no stay", "costed"
 
 
-def _resolve_sale(seq, at, tied, sale_outs) -> frappe._dict:
+def _resolve_sale(seq, at, tied, taken) -> frappe._dict:
 	"""Which stay of the gun one sale took, and at what value: the ONE answer the
 	cost, the consignment decision and the double-sale check all read.
 
 	*seq*: the serial's ledger (_serial_ledger); *at*: the sale's moment
 	(_sale_moments; a credit note answers with the sale it returns); *tied*: the
-	vouchers that deliver this sale (_sale_hand_overs); *sale_outs*: outward
-	vouchers that deliver any sale (_sale_outwards).
+	vouchers that deliver this sale (_sale_hand_overs); *taken*: the vouchers
+	_sale_hand_overs tied to any sale of the serial — one of them that is not in
+	*tied* delivers another sale.
 
 	The sale's delivery D is its own outward entry, found by link (*tied*) —
 	wherever it falls, even a moment before the invoice. With none:
@@ -855,11 +855,13 @@ def _resolve_sale(seq, at, tied, sale_outs) -> frappe._dict:
 	  - invoiced while a stay was open (its last acquisition at or before the
 	    sale, no outward but moves between): D is the first outward after the
 	    sale that is not a move or a count;
-	  - either way, an outward that delivers another sale is never this one's D:
+	  - either way, an outward tied to another sale is never this one's D:
 	    that stay is not this sale's to take.
 	With D: the stay is the last acquisition before D and the value the stay's
 	last inward rate before D (kind _COSTED). Without D: in stock, the current
-	stay at its latest value, pending delivery; gone, _NO_STAY.
+	stay at its latest value, pending delivery; gone, _NO_STAY, with .wanted the
+	stay another sale took from under it (open when this sale was invoiced, or
+	the arrival it was invoiced ahead of), else None.
 
 	A serial with an inward voucher _entry_kind does not classify is _UNLEDGERED,
 	one with no acquisition at all _ABSENT: the Serial No is all there is."""
@@ -881,13 +883,15 @@ def _resolve_sale(seq, at, tied, sale_outs) -> frappe._dict:
 			return frappe._dict(kind=_GAP)
 		else:
 			start, open_ = acqs[0].at, True
+		wanted = None
 		if open_:
 			handed = next((o for o in outs if o.at > start and o.voucher_type != "Stock Reconciliation"), None)
-			if handed is not None and handed.voucher_no in sale_outs:
+			if handed is not None and handed.voucher_no in taken:
+				wanted = prior[-1] if prior else acqs[0]
 				handed, open_ = None, False
 		if handed is None:
 			if not (open_ or stocked):
-				return frappe._dict(kind=_NO_STAY)
+				return frappe._dict(kind=_NO_STAY, wanted=wanted)
 			value = next(e for e in reversed(seq) if e.type_of_transaction == "Inward" and e.kind in (_ACQUISITION, _MOVE))
 			return frappe._dict(kind=_COSTED, stay=acqs[-1], entry=value, pending=stocked)
 	before = [e for e in seq if e.at < handed.at]
@@ -902,8 +906,9 @@ def _double_sales(sales, resolved, moments, returned) -> set:
 	"""{(doctype, invoice, SERIAL)} — both sales of a serial on two priced sales
 	(*sales*, _priced_sales) where the earlier is not taken back by a credit note
 	(*returned*) and the two took the same stay, or the later took none
-	(_NO_STAY). A buy-back or trade-in in between is another stay: no flag. A
-	review flag only — the cost of neither sale changes."""
+	(_NO_STAY), or the earlier took none because the later took the stay it was
+	invoiced against (_NO_STAY .wanted). A buy-back or trade-in in between is
+	another stay: no flag. A review flag only — the cost of neither sale changes."""
 	by_serial: dict[str, list] = {}
 	for d, n, sn, *_rest in sales:
 		if moments.get(n) and (d, n, sn) in resolved:
@@ -914,7 +919,7 @@ def _double_sales(sales, resolved, moments, returned) -> set:
 		for i, earlier in enumerate(keys):
 			if earlier in returned:
 				continue
-			stay = resolved[earlier].get("stay")
+			stay = resolved[earlier].get("stay") or resolved[earlier].get("wanted")
 			for later in keys[i + 1:]:
 				took = resolved[later]
 				if took.kind == _NO_STAY or (stay is not None and took.get("stay") is stay):
@@ -928,7 +933,7 @@ def _names_any(text, names) -> bool:
 		re.search(rf"(?<![\w-]){re.escape(n)}(?![\w-])", text, re.IGNORECASE) for n in names if n)
 
 
-def _ledger_cost_as_of_sale(headers, lines_by_invoice, item_meta) -> dict:
+def _ledger_cost_as_of_sale(headers, lines_by_invoice, item_meta, priced=None) -> dict:
 	"""{(invoice, SERIAL): fact} for every firearm serial on this report's lines,
 	from the stay the sale took (_resolve_sale). A fact:
 
@@ -982,12 +987,12 @@ def _ledger_cost_as_of_sale(headers, lines_by_invoice, item_meta) -> dict:
 		return (d, n, sn, g.customer, g.web_order)
 
 	ours = {key: sale_of(*key) for key in sold if key[0] in doctype_of}
-	priced = _priced_sales(serials)
+	priced = _priced_sales(serials) if priced is None else [s for s in priced if s[2] in set(serials)]
 	sales = set(ours.values()) | set(priced)
 	moments = _sale_moments([{"voucher_type": d, "name": n} for d, n, *_rest in sales])
 	tied = _sale_hand_overs(sales, ledger)
-	sale_outs = _sale_outwards(ledger)
-	resolved = {(d, n, sn): _resolve_sale(ledger.get(sn), moments.get(n), tied.get((d, n, sn), ()), sale_outs)
+	taken = set().union(*tied.values()) if tied else set()
+	resolved = {(d, n, sn): _resolve_sale(ledger.get(sn), moments.get(n), tied.get((d, n, sn), ()), taken)
 		for d, n, sn, *_rest in sales}
 	doubles = _double_sales(priced, resolved, moments, _returned_sales(priced))
 

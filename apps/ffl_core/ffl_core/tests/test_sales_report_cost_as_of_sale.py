@@ -213,14 +213,14 @@ class CostAsOfSale(FrappeTestCase):
 		return self._invoice([self._gun_row(serial, si.items[0].rate, qty=-1)], is_return=1,
 			return_against=si.name, update_stock=update_stock)
 
-	def _pos_sale(self, serial, net):
+	def _pos_sale(self, serial, net, customer=BUYER):
 		"""A counter sale left unconsolidated: no stock posted yet for it."""
 		from ffl_core.tests.pos_opening import ensure_pos_profile, todays_pos_opening
 		profile = ensure_pos_profile(self.company)
 		todays_pos_opening(self.company, profile)
 		inv = frappe.new_doc("POS Invoice")
 		inv.pos_profile = profile
-		inv.customer = BUYER
+		inv.customer = customer
 		inv.append("items", self._gun_row(serial, net))
 		inv.set_missing_values()
 		inv.items[0].rate = inv.items[0].price_list_rate = net
@@ -762,6 +762,31 @@ class CostAtDelivery(CostAsOfSale):
 		dn.submit()
 		return dn
 
+	def _from_sales_order(self, serial, net):
+		"""One gun ordered on a Sales Order, then billed (update_stock=0) and delivered, each made from the order."""
+		from erpnext.selling.doctype.sales_order.sales_order import make_delivery_note, make_sales_invoice
+		so = frappe.new_doc("Sales Order")
+		so.company, so.customer, so.delivery_date, so.set_warehouse = self.company, BUYER, nowdate(), self.warehouse
+		so.append("items", {"item_code": GUN, "qty": 1, "rate": net, "warehouse": self.warehouse,
+			"delivery_date": nowdate()})
+		so.set_missing_values()
+		so.items[0].rate = so.items[0].price_list_rate = net
+		so.flags.ignore_permissions = True
+		so.insert()
+		so.submit()
+		docs = []
+		for make in (make_sales_invoice, make_delivery_note):
+			doc = make(so.name)
+			if doc.doctype == "Sales Invoice":
+				doc.update_stock = 0
+			for row in doc.items:
+				row.serial_no, row.use_serial_batch_fields = serial, 1
+			doc.flags.ignore_permissions = True
+			doc.insert()
+			doc.submit()
+			docs.append(doc)
+		return docs
+
 	def _purchase_invoice(self, serial, rate):
 		"""Bought on a Purchase Invoice that updates stock, with no Purchase Receipt."""
 		pi = frappe.get_doc({"doctype": "Purchase Invoice", "supplier": SUPPLIER, "company": self.company,
@@ -919,6 +944,28 @@ class CostAtDelivery(CostAsOfSale):
 		self.assertCost(second.name, 400.0)
 		self.assertFlags(first.name)
 		self.assertFlags(second.name)
+
+	def test_a_gun_billed_then_delivered_to_another_buyer_at_the_counter_flags_both_sales(self):
+		"""The earlier sale never delivered; the later one took the stay that was open
+		when the earlier was invoiced: both are flagged, the earlier costs nothing."""
+		serial = self._testMethodName[:40]
+		self._receive(serial, 500)
+		billed = self._bill(serial, 900)
+		counter = self._pos_sale(serial, 950, customer=OTHER_BUYER)
+		self.assertCost(billed.name, 0.0, missing=True)
+		self.assertCost(counter.name, 500.0)
+		self.assertFlags(billed.name, double=True)
+		self.assertFlags(counter.name, double=True)
+
+	def test_a_delivery_note_made_from_the_sales_order_delivers_its_invoice(self):
+		"""Invoice and Delivery Note both made from one Sales Order: the note is the
+		invoice's delivery (they share the order), not some other sale's."""
+		serial = self._testMethodName[:40]
+		self._receive(serial, 500)
+		sale, _dn = self._from_sales_order(serial, 900)
+		self._receive(serial, 650)                        # bought back later
+		self.assertCost(sale.name, 500.0)
+		self.assertFlags(sale.name)
 
 	# --- A8: a credit note reverses its sale's cost at that sale's delivery -----------------------
 
