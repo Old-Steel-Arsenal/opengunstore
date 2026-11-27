@@ -79,9 +79,14 @@ def restore_stock_on_cancel(doc, method: str | None = None) -> None:
 	"""FFL Disposition on_cancel — cancel the Material Issue we created so the
 	firearm returns to ERPNext inventory. Symmetric with issue_stock_on_submit;
 	does nothing if no stock_entry was linked (Retail Sale path, or a
-	disposition that submitted before this hook existed)."""
+	disposition that submitted before this hook existed), or when a return
+	receipt already brought the gun back (return_stock_entry)."""
 	se_name = (doc.stock_entry or "").strip() if hasattr(doc, "stock_entry") else ""
 	if not se_name:
+		return
+	if (doc.get("return_stock_entry") or "").strip():
+		# Return in transit (api/return_in_transit) already brought the gun back on its
+		# own receipt; the issue stays in the month it was posted.
 		return
 	if not frappe.db.exists("Stock Entry", se_name):
 		return

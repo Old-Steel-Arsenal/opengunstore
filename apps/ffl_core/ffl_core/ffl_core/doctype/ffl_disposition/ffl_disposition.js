@@ -22,6 +22,10 @@ const FFL_DISPOSITION_DESTINATION_TYPES = new Set([
 	'FFL Transfer', 'Dealer Transfer', 'Return',
 ]);
 
+// Who sees "Return in Transit": api/return_in_transit's RETURN_IN_TRANSIT_ROLES (a
+// test asserts the two lists still match; the server re-checks).
+const FFL_DISPOSITION_RETURN_ROLES = ['Sales Manager', 'Stock Manager', 'System Manager'];
+
 // Types this system pushes to FastBound itself — the mirror of
 // ffl_integrations.fastbound.client.PUSHABLE_DISPOSITION_TYPES (transfers +
 // destruction). Everything else is a 4473 / to-individual disposition that
@@ -109,6 +113,35 @@ frappe.ui.form.on('FFL Disposition', {
 					},
 				});
 			}, __('FastBound'));
+		}
+
+		// "Return in Transit" — the carrier brought a shipped gun back. Drawn for
+		// a submitted shipped transfer whose own Material Issue took the gun out;
+		// the server (api/return_in_transit) re-checks everything and says what
+		// to do instead when it refuses.
+		if (frm.doc.docstatus === 1 && frm.doc.stock_entry && !frm.doc.return_stock_entry
+				&& FFL_DISPOSITION_DESTINATION_TYPES.has(frm.doc.disposition_type)
+				&& frappe.user.has_role(FFL_DISPOSITION_RETURN_ROLES)) {
+			frm.add_custom_button(__('Return in Transit'), () => {
+				frappe.confirm(
+					__('Cancel {0} and put {1} back in stock? Only for a gun the carrier returned before the receiving dealer took it in.',
+						[frm.doc.name, frappe.utils.escape_html(frm.doc.serial || '')]),
+					() => frappe.call({
+						method: 'ffl_core.api.return_in_transit.return_in_transit',
+						args: { disposition: frm.doc.name },
+						freeze: true,
+						callback(r) {
+							const m = r.message || {};
+							frappe.show_alert({
+								message: __('Back in stock on {0}', [m.stock_entry]),
+								indicator: 'green',
+							}, 10);
+							if (m.next_step) frappe.msgprint(m.next_step, __('Return in Transit'));
+							frm.reload_doc();
+						},
+					}),
+				);
+			});
 		}
 	},
 

@@ -24,6 +24,10 @@ COUNTER_4473_ROLES = ("Sales User", "Sales Manager", "System Manager")
 # Inventory-shaping actions (receive, intake, listing pushes).
 STOCK_ROLES = ("Stock Manager", "System Manager")
 
+# Who may undo a shipped transfer the carrier brought back (api/return_in_transit): it
+# cancels a bound-book disposition, so managers only, the stock and the sales side.
+RETURN_IN_TRANSIT_ROLES = ("Sales Manager",) + STOCK_ROLES
+
 # Who may take a POS trade-in (api/trade_in.create_trade_in_intake and the POS Trade-in button, which mirrors
 # this list in ffl_core.bundle.js). The counter's Sales User, plus the
 # stock roles that always could. Sales Manager is deliberately NOT in it: a Sales Manager without the Sales
