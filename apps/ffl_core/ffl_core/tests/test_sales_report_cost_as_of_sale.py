@@ -36,6 +36,8 @@ CONSIGNOR = "_Test SRAS Consignor"
 ACC_COST = 20.0
 BACK_ROOM = "SRAS Back Room"
 COUNT_ROOM = "SRAS Count Room"   # holds one test's gun at a time: a count sets the whole warehouse's quantity
+ARCHIVE_ROOM = "SRAS Archive Room"   # backdated stock only: nothing posted there later than a test's own documents
+BEFORE_FREEZE = ("2026-05-01", "2026-06-10")   # receipt, sale: both before ffl_core.consignment.COMMISSION_FROZEN_SINCE
 
 
 class CostAsOfSale(FrappeTestCase):
@@ -52,10 +54,10 @@ class CostAsOfSale(FrappeTestCase):
 		frappe.defaults.set_user_default("Company", cls.company)
 		cls.warehouse = default_stock_warehouse(cls.company)
 		cls.custody = ensure_custody_warehouse(cls.company)
-		cls.back_room, cls.count_room = (frappe.db.get_value("Warehouse", {"company": cls.company, "warehouse_name": name})
+		cls.back_room, cls.count_room, cls.archive_room = (frappe.db.get_value("Warehouse", {"company": cls.company, "warehouse_name": name})
 			or frappe.get_doc({"doctype": "Warehouse", "warehouse_name": name, "company": cls.company,
 				"parent_warehouse": frappe.db.get_value("Warehouse", cls.warehouse, "parent_warehouse")}).insert(
-					ignore_permissions=True).name for name in (BACK_ROOM, COUNT_ROOM))
+					ignore_permissions=True).name for name in (BACK_ROOM, COUNT_ROOM, ARCHIVE_ROOM))
 		if not frappe.db.exists("Supplier Group", "Distributor"):
 			frappe.get_doc({"doctype": "Supplier Group", "supplier_group_name": "Distributor",
 				"parent_supplier_group": "All Supplier Groups", "is_group": 0}).insert(ignore_permissions=True)
@@ -106,10 +108,10 @@ class CostAsOfSale(FrappeTestCase):
 		return self._receive(serial, 0, warehouse=self.custody, is_ffl_transfer=1,
 			ffl_transfer_for_customer=TRANSFEREE, ffl_acquisition_type="Transfer")
 
-	def _receive_on_consignment(self, serial):
+	def _receive_on_consignment(self, serial, **extra):
 		return self._receive(serial, 0, supplier=PAY_ON_SALE_SUPPLIER, ffl_acquisition_type="Consignment",
 			ffl_acquisition_source="Individual", ffl_seller_customer=CONSIGNOR,
-			ffl_seller_id_type="Driver License", ffl_seller_id_number=f"DL-{serial}")
+			ffl_seller_id_type="Driver License", ffl_seller_id_number=f"DL-{serial}", **extra)
 
 	def _gun_row(self, serial, net, warehouse=None, qty=1):
 		return {"item_code": GUN, "qty": qty, "rate": net, "warehouse": warehouse or self.warehouse,
@@ -249,19 +251,19 @@ class CostAsOfSale(FrappeTestCase):
 	# --- the report -------------------------------------------------------------------------------
 
 	@staticmethod
-	def _run(view):
-		return sr.execute({"from_date": nowdate(), "to_date": nowdate(), "view": view})[1]
+	def _run(view, day=None):
+		return sr.execute({"from_date": day or nowdate(), "to_date": day or nowdate(), "view": view})[1]
 
-	def _order_row(self, invoice):
-		return next(r for r in self._run("Order") if r.get("invoice") == invoice)
+	def _order_row(self, invoice, day=None):
+		return next(r for r in self._run("Order", day) if r.get("invoice") == invoice)
 
-	def _gun_line(self, invoice):
-		return next(r for r in self._run("Product")
+	def _gun_line(self, invoice, day=None):
+		return next(r for r in self._run("Product", day)
 			if r.get("invoice") == invoice and r.get("item_code") == GUN)
 
-	def assertCost(self, invoice, cost, *, missing=False, placeholder=False, order_cost=None):
+	def assertCost(self, invoice, cost, *, missing=False, placeholder=False, order_cost=None, day=None):
 		"""The gun line's cost in the Product view and its ticket's in the Order view."""
-		line, row = self._gun_line(invoice), self._order_row(invoice)
+		line, row = self._gun_line(invoice, day), self._order_row(invoice, day)
 		self.assertAlmostEqual(line["cost"], cost)
 		self.assertAlmostEqual(row["cost"], cost if order_cost is None else order_cost)
 		self.assertEqual((bool(line["missing_cost"]), bool(line.get("placeholder_cost"))), (missing, placeholder))
@@ -357,13 +359,15 @@ class CostAsOfSale(FrappeTestCase):
 		self.assertCost(sale.name, 900.0, placeholder=True)
 
 	def test_a_cost_correction_between_sale_and_hand_over_is_not_a_receipt(self):
+		"""Not handed over yet: the gun costs its corrected ledger value, which is
+		what its delivery will book — no longer the placeholder read at the invoice."""
 		from ffl_core.api.cost_correction import correct_serial_cost
 		serial = self._testMethodName[:40]
 		self._receive(serial, 0.01)
 		frappe.db.set_value("Serial No", serial, "purchase_rate", 600, update_modified=False)
 		sale = self._bill(serial, 1000)
 		correct_serial_cost(serial, 700, "supplier invoice found")
-		self.assertCost(sale.name, 700.0, placeholder=True)
+		self.assertCost(sale.name, 700.0)
 
 	# --- a sale made before the gun arrived ----------------------------------------------------------
 
@@ -719,3 +723,263 @@ class CostAsOfSale(FrappeTestCase):
 			source_last_name="Seller", source_address="123 Main St, Springfield TX 75024", submit_now=True,
 			pending_intake_payload=frappe.as_json({"manufacturer": "Colt", "model_name": "1860", "caliber": ".44"}))
 		return {"item_code": TRADE_IN_CREDIT_ITEM, "qty": 1, "rate": -flt(cost), "ffl_trade_in_acquisition": acquisition}
+
+
+class CostAtDelivery(CostAsOfSale):
+	"""A sale is costed at its OWN outward entry (its delivery), found by document
+	links only: the invoice's own stock out (a counter POS Invoice's, or the Sales
+	Invoice it was consolidated into), a Delivery Note of it, or the Material Issue
+	of an FFL Disposition of it. The stay is the last acquisition before that entry,
+	the cost the stay's last inward rate before it — what the GL books as COGS at
+	delivery. Until the gun is delivered: in stock, it costs what it stands at now
+	(cost_pending_delivery); gone without a delivery of this sale, it costs the stay
+	that was open when it was invoiced, never one another sale delivered.
+
+	Runs on CostAsOfSale's fixtures; its own tests are not inherited (below)."""
+
+	# --- documents --------------------------------------------------------------------------------
+
+	def _disposition(self, serial, issue, **links):
+		name = f"SRAS-DISP-{frappe.generate_hash(length=8)}"
+		frappe.get_doc({"doctype": "FFL Disposition", "name": name, "company": self.company,
+			"disposition_type": "FFL Transfer", "item": GUN, "serial": serial, "customer": BUYER,
+			"stock_entry": issue, "docstatus": 1, **links}).db_insert()
+		return name
+
+	def _deliver(self, serial, sale, warehouse=None):
+		"""The sale's own hand-over: a Material Issue booked through an FFL Disposition of the invoice."""
+		issue = self._issue(serial, warehouse)
+		self._disposition(serial, issue, sales_invoice=sale.name)
+		return issue
+
+	def _delivery_note(self, sale, serial):
+		from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_delivery_note
+		dn = make_delivery_note(sale.name)
+		for row in dn.items:
+			row.serial_no, row.use_serial_batch_fields = serial, 1
+		dn.flags.ignore_permissions = True
+		dn.insert()
+		dn.submit()
+		return dn
+
+	def _purchase_invoice(self, serial, rate):
+		"""Bought on a Purchase Invoice that updates stock, with no Purchase Receipt."""
+		pi = frappe.get_doc({"doctype": "Purchase Invoice", "supplier": SUPPLIER, "company": self.company,
+			"update_stock": 1, "set_warehouse": self.warehouse, "items": [{"item_code": GUN, "qty": 1,
+				"warehouse": self.warehouse, "rate": rate, "price_list_rate": rate, "serial_no": serial,
+				"use_serial_batch_fields": 1}]})
+		pi.flags.ignore_permissions = True
+		pi.insert()
+		pi.submit()
+		return pi
+
+	def assertFlags(self, invoice, *, pending=False, unledgered=False, double=False, day=None):
+		"""The data-only flags on the gun line (Product view) and on its sale's row (Order view)."""
+		for row in (self._gun_line(invoice, day), self._order_row(invoice, day)):
+			self.assertEqual((bool(row.get("cost_pending_delivery")), bool(row.get("unledgered_cost")),
+				bool(row.get("double_sale"))), (pending, unledgered, double), row.get("row_kind") or "order")
+
+	@staticmethod
+	def _flag_card(view, rows, *invoices):
+		"""The last summary card's count (Cost Flags / Data Flags) over these invoices' rows only."""
+		value = sr._report_summary(view, [r for r in rows if r.get("invoice") in invoices])[-1]["value"]
+		return value if isinstance(value, int) else 0   # "✓ Clean"
+
+	# --- A1: a gun invoiced again while sold, then re-acquired ------------------------------------
+
+	def test_a1_a_gun_invoiced_while_sold_costs_the_stay_that_delivers_it(self):
+		serial = self._testMethodName[:40]
+		self._receive(serial, 500)
+		first = self._sell(serial, 800)                   # delivered at the counter: its own outward
+		second = self._bill(serial, 900, customer=OTHER_BUYER)   # a web order taken while the gun is gone
+		self.assertCost(first.name, 500.0)
+		self.assertCost(second.name, 0.0, missing=True)   # no stay open for it: never the sold stay's cost
+		self.assertFlags(first.name, double=True)
+		self.assertFlags(second.name, double=True)
+		self._receive(serial, 600)                        # the gun comes back in
+		self.assertCost(second.name, 600.0)
+		self.assertFlags(second.name, pending=True)
+		self.assertFlags(first.name)
+		self._deliver(serial, second)                     # and goes out for the web order
+		self.assertCost(first.name, 500.0)
+		self.assertCost(second.name, 600.0)
+		self.assertFlags(second.name)
+
+	# --- A2: the sale's delivery posted a moment before its invoice -------------------------------
+
+	def test_a2_a_delivery_posted_before_its_invoice_is_that_sales(self):
+		serial = self._testMethodName[:40]
+		self._receive(serial, 500)
+		self._sell(serial, 800)
+		self._receive(serial, 600)
+		issue = self._issue(serial)                       # handed over first ...
+		sale = self._bill(serial, 900, customer=OTHER_BUYER)   # ... invoiced seconds later
+		self._disposition(serial, issue, sales_invoice=sale.name)
+		self.assertCost(sale.name, 600.0)
+		self.assertFlags(sale.name)
+
+	# --- A3: a cost change between the invoice and the delivery -----------------------------------
+
+	def test_a3_a_cost_corrected_between_invoice_and_delivery_costs_the_delivery(self):
+		from ffl_core.api.cost_correction import correct_serial_cost
+		serial = self._testMethodName[:40]
+		self._receive(serial, 500)
+		sale = self._bill(serial, 900)
+		correct_serial_cost(serial, 450, "supplier invoice found")
+		self.assertCost(sale.name, 450.0)
+		self.assertFlags(sale.name, pending=True)
+		dn = self._delivery_note(sale, serial)
+		self.assertCost(sale.name, 450.0)
+		self.assertFlags(sale.name)
+		booked = frappe.db.get_value("Stock Ledger Entry", {"voucher_type": "Delivery Note", "voucher_no": dn.name,
+			"is_cancelled": 0}, "stock_value_difference")
+		self.assertAlmostEqual(abs(flt(booked)), 450.0)
+
+	# --- A4: a sale older than the commission freeze ----------------------------------------------
+
+	def test_a4_a_sale_before_the_commission_freeze_is_consigned_by_its_own_stay(self):
+		room, (received, sold) = self.archive_room, BEFORE_FREEZE
+		dated = {"posting_date": received, "set_posting_time": 1, "warehouse": room}
+
+		consigned = f"{self._testMethodName[:36]}-C"
+		self._receive_on_consignment(consigned, row={"ffl_consignment_commission_pct": 20}, **dated)
+		sale_c = self._invoice([self._gun_row(consigned, 1000, room)], posting_date=sold, set_posting_time=1)
+		# Before the freeze a consigned line kept no %: what the first frozen lines held.
+		frappe.db.set_value("Sales Invoice Item", sale_c.items[0].name, "consignment_commission_pct", 0,
+			update_modified=False)
+		self.assertCost(sale_c.name, 800.0, day=sold)
+		self.assertTrue(self._gun_line(sale_c.name, sold)["is_consignment"])
+		self._receive(consigned, 400, posting_date="2026-09-01", set_posting_time=1, warehouse=room)   # traded in
+		self.assertEqual(frappe.db.get_value("Serial No", consigned, "is_consignment"), 0)
+		self.assertCost(sale_c.name, 800.0, day=sold)
+		self.assertTrue(self._gun_line(sale_c.name, sold)["is_consignment"])
+		self.assertTrue(self._order_row(sale_c.name, sold)["is_consignment"])
+
+		owned = f"{self._testMethodName[:36]}-O"
+		self._receive(owned, 500, **dated)
+		sale_o = self._invoice([self._gun_row(owned, 900, room)], posting_date=sold, set_posting_time=1)
+		self._receive_on_consignment(owned, row={"ffl_consignment_commission_pct": 15},
+			posting_date="2026-10-01", set_posting_time=1, warehouse=room)
+		self.assertEqual(frappe.db.get_value("Serial No", owned, "is_consignment"), 1)
+		self.assertCost(sale_o.name, 500.0, day=sold)
+		self.assertFalse(self._gun_line(sale_o.name, sold)["is_consignment"])
+		self.assertFalse(self._order_row(sale_o.name, sold)["is_consignment"])
+
+	# --- A6: inward vouchers the report classifies, and one it does not ---------------------------
+
+	def test_a6_a_gun_bought_on_a_purchase_invoice_keeps_that_cost(self):
+		serial = self._testMethodName[:40]
+		self._purchase_invoice(serial, 700)
+		sale = self._sell(serial, 1000)
+		self._receive(serial, 300)                        # traded back in later
+		self.assertCost(sale.name, 700.0)
+		self.assertFlags(sale.name)
+
+	def test_a6_an_unclassified_receipt_costs_the_serial_and_says_so(self):
+		serial = self._testMethodName[:40]
+		receipt = self._material_receipt(serial, 450)
+		# Stand in for an inward voucher the report does not classify.
+		frappe.db.set_value("Stock Entry", receipt.name, "purpose", "Disassemble", update_modified=False)
+		frappe.db.set_value("Serial No", serial, "purchase_rate", 450, update_modified=False)
+		sale = self._sell(serial, 900)
+		self.assertCost(sale.name, 450.0)
+		self.assertFlags(sale.name, unledgered=True)
+		for view in ("Product", "Order"):
+			rows = self._run(view)
+			cleared = [{**r, "unledgered_cost": False} if r.get("invoice") == sale.name else r for r in rows]
+			self.assertEqual(self._flag_card(view, rows, sale.name), self._flag_card(view, cleared, sale.name) + 1, view)
+
+	# --- A7: one gun on two live sales ------------------------------------------------------------
+
+	def test_a7_a_gun_sold_twice_without_a_credit_note_flags_both_sales(self):
+		serial = self._testMethodName[:40]
+		self._receive(serial, 500)
+		first = self._sell(serial, 900)
+		second = self._bill(serial, 950, customer=OTHER_BUYER)
+		self.assertCost(first.name, 500.0)
+		self.assertCost(second.name, 0.0, missing=True)
+		self.assertFlags(first.name, double=True)
+		self.assertFlags(second.name, double=True)
+		rows = self._run("Product")
+		with patch.object(sr, "_double_sales", return_value=set()):
+			unflagged = self._run("Product")
+		total, plain = (next(r for r in rs if r.get("is_total")) for rs in (rows, unflagged))
+		self.assertEqual({k: total.get(k) for k in ("gross_merch", "net_amount", "sales_tax", "cost")},
+			{k: plain.get(k) for k in ("gross_merch", "net_amount", "sales_tax", "cost")})
+		self.assertEqual(self._flag_card("Product", rows, first.name, second.name),
+			self._flag_card("Product", unflagged, first.name, second.name) + 2)
+
+	def test_a7_a_gun_traded_in_by_its_buyer_and_sold_again_is_no_double_sale(self):
+		serial = self._testMethodName[:40]
+		self._receive(serial, 500)
+		first = self._sell(serial, 900)
+		self._receive(serial, 400)                        # the buyer trades it in
+		second = self._sell(serial, 950)
+		self.assertCost(first.name, 500.0)
+		self.assertCost(second.name, 400.0)
+		self.assertFlags(first.name)
+		self.assertFlags(second.name)
+
+	# --- A8: a credit note reverses its sale's cost at that sale's delivery -----------------------
+
+	def test_a8_a_credit_note_reverses_the_cost_its_sale_was_delivered_at(self):
+		serial = self._testMethodName[:40]
+		self._receive(serial, 500)
+		sale = self._bill(serial, 900)
+		self._deliver(serial, sale)
+		refund = self._return(sale, serial, update_stock=0)
+		self._receive(serial, 600)                        # re-received later
+		self.assertCost(sale.name, 500.0)
+		self.assertCost(refund.name, -500.0)
+		self.assertFlags(sale.name)
+
+	# --- a gun returned in transit and disposed again on the same order ---------------------------
+
+	def test_a_gun_returned_in_transit_and_disposed_again_costs_its_second_delivery(self):
+		"""The first disposition is cancelled while its Material Issue stays
+		submitted, the gun comes back on a Material Receipt (a new stay) and goes
+		out again on a new disposition of the same invoice: only a submitted
+		disposition links a delivery, so the sale is costed at the second one."""
+		serial = self._testMethodName[:40]
+		self._receive(serial, 500)
+		sale = self._bill(serial, 900)
+		first = self._issue(serial)
+		disposition = self._disposition(serial, first, sales_invoice=sale.name)
+		frappe.db.set_value("FFL Disposition", disposition, "docstatus", 2, update_modified=False)
+		self._material_receipt(serial, 520, remarks=f"Return in transit: reverses FFL Disposition {disposition}")
+		self._run("Product")                              # between the two hand-overs: reports, no error
+		self._deliver(serial, sale)
+		self.assertCost(sale.name, 520.0)                 # the stay the receipt opened, as of the new issue
+		self.assertFlags(sale.name)
+
+	# --- A9: a counter sale finds its own outward, consolidated or not ----------------------------
+
+	def test_a9_a_counter_sale_is_costed_at_its_own_outward_consolidated_or_not(self):
+		from ffl_core.api.pos_consolidate import consolidate_pos_invoice_now
+		for consolidate in (False, True):
+			with self.subTest(consolidated=consolidate):
+				serial = f"{self._testMethodName[:36]}-{int(consolidate)}"
+				self._receive(serial, 640)
+				sale = self._pos_sale(serial, 990)
+				if consolidate:
+					with patch.object(frappe.db, "commit"):   # the merge commits; the class rollback must undo it
+						consolidate_pos_invoice_now(sale.name)
+					merged = frappe.db.get_value("POS Invoice", sale.name, "consolidated_invoice")
+					self.assertTrue(merged)
+					out = ("Sales Invoice", merged)
+				else:
+					out = ("POS Invoice", sale.name)
+				self.assertIn(out, [(r.voucher_type, r.voucher_no) for r in frappe.db.sql("""
+					select b.voucher_type, b.voucher_no from `tabSerial and Batch Bundle` b
+					join `tabSerial and Batch Entry` e on e.parent = b.name
+					where e.serial_no = %s and b.type_of_transaction = 'Outward' and b.docstatus = 1
+						and b.is_cancelled = 0""", serial, as_dict=True)])
+				self._receive(serial, 900)                # bought back afterwards
+				self.assertCost(sale.name, 640.0)
+				self.assertFlags(sale.name)
+
+
+# CostAtDelivery reuses CostAsOfSale's fixtures, not its tests: they already run once, above.
+for _name in [n for n in vars(CostAsOfSale) if n.startswith("test_")]:
+	setattr(CostAtDelivery, _name, None)
+del _name

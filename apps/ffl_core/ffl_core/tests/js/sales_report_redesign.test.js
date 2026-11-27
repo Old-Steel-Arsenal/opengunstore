@@ -112,7 +112,7 @@ test('aggregate: derives categoryDetail (distinct sorted line groups) + isConsig
 
 test('aggregate: flags = line missing_cost count + order tax_mismatch + unclassified count', () => {
 	const agg = sr_aggregate_orders(od_rows_one_order());
-	assert.deepStrictEqual(agg.INV1.flags, { missingCost: 0, taxMismatch: false, unclassified: 0 });
+	assert.deepStrictEqual(agg.INV1.flags, { missingCost: 0, taxMismatch: false, unclassified: 0, doubleSale: 0, unledgered: 0 });
 });
 
 test('aggregate: excludes the Total row; multiple invoices are independent', () => {
@@ -126,9 +126,9 @@ test('aggregate: excludes the Total row; multiple invoices are independent', () 
 	];
 	const agg = sr_aggregate_orders(rows);
 	assert.strictEqual(Object.keys(agg).length, 2); // A + B, no Total
-	assert.deepStrictEqual(agg.A.flags, { missingCost: 1, taxMismatch: false, unclassified: 0 });
+	assert.deepStrictEqual(agg.A.flags, { missingCost: 1, taxMismatch: false, unclassified: 0, doubleSale: 0, unledgered: 0 });
 	assert.strictEqual(agg.B.isConsignment, true);
-	assert.deepStrictEqual(agg.B.flags, { missingCost: 0, taxMismatch: true, unclassified: 1 });
+	assert.deepStrictEqual(agg.B.flags, { missingCost: 0, taxMismatch: true, unclassified: 1, doubleSale: 0, unledgered: 0 });
 	assert.strictEqual(agg.B.charges.unclassified[0].amount, 12.5);
 	assert.strictEqual(agg.B.charges.unclassified[0].label, 'Unclassified: 5400 - Misc');
 });
@@ -160,6 +160,12 @@ test('order footer: combines multiple flag types with " · "', () => {
 	assert.strictEqual(
 		sr_order_footer({ missingCost: 1, taxMismatch: true, unclassified: 2 }).text,
 		'⚠ 1 line with understated cost · tax mismatch · 2 unclassified charges');
+});
+
+test('order footer: names lines sold twice and lines costed from the serial record', () => {
+	assert.strictEqual(
+		sr_order_footer({ missingCost: 0, taxMismatch: false, unclassified: 0, doubleSale: 1, unledgered: 2 }).text,
+		'⚠ 1 line sold twice · 2 lines costed from the serial record');
 });
 
 test('order footer: tax mismatch only', () => {
@@ -357,7 +363,7 @@ test('flag counts: Order view = non-total rows with missing_cost', () => {
 		{ is_total: true, missing_cost: true }, // Total row excluded
 	];
 	assert.deepStrictEqual(sr_flag_counts('Order', rows),
-		{ missing: 2, mismatch: 0, unclassified: 0, total: 2 });
+		{ missing: 2, mismatch: 0, unclassified: 0, double: 0, unledgered: 0, total: 2 });
 });
 
 test('flag counts: Product = product-missing + DISTINCT mismatch invoices + unclassified', () => {
@@ -370,7 +376,7 @@ test('flag counts: Product = product-missing + DISTINCT mismatch invoices + uncl
 		{ is_total: true },
 	];
 	assert.deepStrictEqual(sr_flag_counts('Product', rows),
-		{ missing: 2, mismatch: 1, unclassified: 1, total: 4 });
+		{ missing: 2, mismatch: 1, unclassified: 1, double: 0, unledgered: 0, total: 4 });
 });
 
 test('flag counts: product view ignores missing_cost on non-product rows (BE row_kind gate)', () => {
@@ -383,9 +389,32 @@ test('flag counts: product view ignores missing_cost on non-product rows (BE row
 
 test('flag counts: empty / all-total → zeros', () => {
 	assert.deepStrictEqual(sr_flag_counts('Order', []),
-		{ missing: 0, mismatch: 0, unclassified: 0, total: 0 });
+		{ missing: 0, mismatch: 0, unclassified: 0, double: 0, unledgered: 0, total: 0 });
 	assert.deepStrictEqual(sr_flag_counts('Product', [{ is_total: true }]),
-		{ missing: 0, mismatch: 0, unclassified: 0, total: 0 });
+		{ missing: 0, mismatch: 0, unclassified: 0, double: 0, unledgered: 0, total: 0 });
+});
+
+test('flag counts: double_sale and unledgered_cost product rows count in Data Flags; Order counts unledgered only', () => {
+	const rows = [
+		{ row_kind: 'product', invoice: 'A', double_sale: true },
+		{ row_kind: 'product', invoice: 'B', double_sale: true, missing_cost: true },
+		{ row_kind: 'product', invoice: 'C', unledgered_cost: true },
+		{ row_kind: 'order', invoice: 'C', unledgered_cost: true, double_sale: true }, // parent rows never count
+		{ is_total: true, double_sale: true },
+	];
+	assert.deepStrictEqual(sr_flag_counts('Product', rows),
+		{ missing: 1, mismatch: 0, unclassified: 0, double: 2, unledgered: 1, total: 4 });
+	const order = [{ invoice: 'A', double_sale: true }, { invoice: 'C', unledgered_cost: true, missing_cost: true }];
+	assert.deepStrictEqual(sr_flag_counts('Order', order),
+		{ missing: 1, mismatch: 0, unclassified: 0, double: 0, unledgered: 1, total: 2 });
+});
+
+test('flag tooltip: the review flags are named only when present', () => {
+	assert.strictEqual(
+		sr_flag_tooltip('Product', { missing: 1, mismatch: 0, unclassified: 0, double: 2, unledgered: 1, total: 4 }),
+		'1 cost · 0 tax · 0 unclassified · 2 sold twice · 1 cost from serial record');
+	assert.strictEqual(sr_flag_tooltip('Order', { missing: 1, unledgered: 1, total: 2 }),
+		'1 cost understated · 1 cost from serial record');
 });
 
 test('flag tooltip: Product/Detail = "N cost · N tax · N unclassified" split', () => {
@@ -466,26 +495,27 @@ test('flag-card attach: happy path sets the split title on the found card', () =
 
 test('flag counts from aggregates: sums per-invoice flags', () => {
 	const aggregates = {
-		A: { flags: { missingCost: 1, taxMismatch: false, unclassified: 0 } },
-		B: { flags: { missingCost: 2, taxMismatch: true, unclassified: 1 } },
+		A: { flags: { missingCost: 1, taxMismatch: false, unclassified: 0, doubleSale: 1, unledgered: 0 } },
+		B: { flags: { missingCost: 2, taxMismatch: true, unclassified: 1, doubleSale: 0, unledgered: 2 } },
 		C: { flags: { missingCost: 0, taxMismatch: true, unclassified: 0 } },
 	};
 	assert.deepStrictEqual(sr_flag_counts_from_aggregates(aggregates),
-		{ missing: 3, mismatch: 2, unclassified: 1, total: 6 });
+		{ missing: 3, mismatch: 2, unclassified: 1, double: 1, unledgered: 2, total: 9 });
 });
 
 test('flag counts from aggregates: empty / null → zeros', () => {
 	assert.deepStrictEqual(sr_flag_counts_from_aggregates({}),
-		{ missing: 0, mismatch: 0, unclassified: 0, total: 0 });
+		{ missing: 0, mismatch: 0, unclassified: 0, double: 0, unledgered: 0, total: 0 });
 	assert.deepStrictEqual(sr_flag_counts_from_aggregates(null),
-		{ missing: 0, mismatch: 0, unclassified: 0, total: 0 });
+		{ missing: 0, mismatch: 0, unclassified: 0, double: 0, unledgered: 0, total: 0 });
 });
 
 test('flag counts: aggregates path == data-scan path (Order Detail parity, no divergence)', () => {
 	const rows = [
 		{ row_kind: 'product', missing_cost: true, invoice: 'INV1', tax_mismatch: true },
 		{ row_kind: 'product', missing_cost: false, invoice: 'INV1', tax_mismatch: true },
-		{ row_kind: 'product', missing_cost: true, invoice: 'INV2' },
+		{ row_kind: 'product', missing_cost: true, invoice: 'INV2', double_sale: true },
+		{ row_kind: 'product', invoice: 'INV3', unledgered_cost: true },
 		{ row_kind: 'unclassified', invoice: 'INV2', category: 'Unclassified: X', unclassified: 5 },
 		{ row_kind: 'shipping', invoice: 'INV2' },
 		{ is_total: true },

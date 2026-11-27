@@ -175,28 +175,39 @@ function sr_preset_range(preset, todayISO) {
 
 // Flag-card counts — mirrors the BE _report_summary scan EXACTLY so
 // the split tooltip this drives always sums to the card's own number. Order view:
-// Cost Flags = non-total rows with missing_cost. Product/Detail: Data Flags =
-// product rows with missing_cost + DISTINCT invoices with tax_mismatch (two
-// flagged lines of one order count once) + unclassified rows.
+// Cost Flags = non-total rows with missing_cost + rows with unledgered_cost.
+// Product/Detail: Data Flags = product rows with missing_cost + DISTINCT invoices
+// with tax_mismatch (two flagged lines of one order count once) + unclassified
+// rows + product rows with double_sale + product rows with unledgered_cost.
 function sr_flag_counts(view, rows) {
 	const body = (rows || []).filter((r) => r && !r.is_total);
 	if (view === "Order Detail" || view === "Product") {
-		const missing = body.filter((r) => r.row_kind === "product" && r.missing_cost).length;
+		const products = body.filter((r) => r.row_kind === "product");
+		const missing = products.filter((r) => r.missing_cost).length;
 		const mismatch = new Set(body.filter((r) => r.tax_mismatch).map((r) => r.invoice)).size;
 		const unclassified = body.filter((r) => r.row_kind === "unclassified").length;
-		return { missing, mismatch, unclassified, total: missing + mismatch + unclassified };
+		const double = products.filter((r) => r.double_sale).length;
+		const unledgered = products.filter((r) => r.unledgered_cost).length;
+		return { missing, mismatch, unclassified, double, unledgered,
+			total: missing + mismatch + unclassified + double + unledgered };
 	}
 	const missing = body.filter((r) => r.missing_cost).length;
-	return { missing, mismatch: 0, unclassified: 0, total: missing };
+	const unledgered = body.filter((r) => r.unledgered_cost).length;
+	return { missing, mismatch: 0, unclassified: 0, double: 0, unledgered, total: missing + unledgered };
 }
 
 // Split tooltip for the flag summary card: "N cost · N tax · N
 // unclassified" on the product views; a plain understated-cost count on Order.
+// The two review flags are named only when present.
 function sr_flag_tooltip(view, counts) {
+	const extra = [
+		counts.double ? `${counts.double} sold twice` : "",
+		counts.unledgered ? `${counts.unledgered} cost from serial record` : "",
+	].filter(Boolean).map((t) => ` · ${t}`).join("");
 	if (view === "Order Detail" || view === "Product") {
-		return `${counts.missing} cost · ${counts.mismatch} tax · ${counts.unclassified} unclassified`;
+		return `${counts.missing} cost · ${counts.mismatch} tax · ${counts.unclassified} unclassified${extra}`;
 	}
-	return `${counts.missing} cost understated`;
+	return `${counts.missing} cost understated${extra}`;
 }
 
 // Flag counts summed from the per-invoice aggregates — the Order Detail path once
@@ -208,13 +219,18 @@ function sr_flag_counts_from_aggregates(aggregates) {
 	let missing = 0;
 	let mismatch = 0;
 	let unclassified = 0;
+	let double = 0;
+	let unledgered = 0;
 	Object.values(aggregates || {}).forEach((agg) => {
 		const f = (agg && agg.flags) || {};
 		missing += f.missingCost || 0;
 		if (f.taxMismatch) mismatch += 1;
 		unclassified += f.unclassified || 0;
+		double += f.doubleSale || 0;
+		unledgered += f.unledgered || 0;
 	});
-	return { missing, mismatch, unclassified, total: missing + mismatch + unclassified };
+	return { missing, mismatch, unclassified, double, unledgered,
+		total: missing + mismatch + unclassified + double + unledgered };
 }
 
 // Aggregate the BE's flat Order Detail rows (order parent + product
@@ -258,6 +274,8 @@ function sr_aggregate_orders(rows) {
 			// (parity: aggregates path == data-scan path).
 			taxMismatch: !!((agg.order && agg.order.tax_mismatch) || agg.lines.some((l) => l.tax_mismatch)),
 			unclassified: agg.charges.unclassified.length,
+			doubleSale: agg.lines.filter((l) => l.double_sale).length,
+			unledgered: agg.lines.filter((l) => l.unledgered_cost).length,
 		};
 	});
 	return byInvoice;
@@ -278,13 +296,18 @@ function sr_order_footer(flags) {
 	const f = flags || {};
 	const missing = f.missingCost || 0;
 	const uncl = f.unclassified || 0;
-	if (missing === 0 && !f.taxMismatch && uncl === 0) {
+	const double = f.doubleSale || 0;
+	const unledgered = f.unledgered || 0;
+	if (missing === 0 && !f.taxMismatch && uncl === 0 && double === 0 && unledgered === 0) {
 		return { clean: true, text: "✓ No data flags on this order" };
 	}
+	const lines = (n) => `${n} line${n === 1 ? "" : "s"}`;
 	const parts = [];
-	if (missing > 0) parts.push(`${missing} line${missing === 1 ? "" : "s"} with understated cost`);
+	if (missing > 0) parts.push(`${lines(missing)} with understated cost`);
 	if (f.taxMismatch) parts.push("tax mismatch");
 	if (uncl > 0) parts.push(`${uncl} unclassified charge${uncl === 1 ? "" : "s"}`);
+	if (double > 0) parts.push(`${lines(double)} sold twice`);
+	if (unledgered > 0) parts.push(`${lines(unledgered)} costed from the serial record`);
 	return { clean: false, text: `⚠ ${parts.join(" · ")}` };
 }
 
@@ -466,7 +489,14 @@ const SR_LEGEND_ITEMS = [
 	{ icon: "◐", color: "--blue-600", label: "trade-in" },
 	{ icon: "▲", color: "--teal-600, var(--gray-700)", label: "consignment" },
 	{ icon: "●", color: "--orange-600", label: "unclassified charge" },
+	{ icon: "⧉", color: "--orange-600", label: "sold twice" },
 ];
+const SR_DOUBLE_SALE_TIP = "This gun is on another sale with no credit note — check for a missing credit note or buy-back.";
+const SR_UNLEDGERED_TIP = "Costed from the gun's serial record: its stock history has an entry the report cannot read.";
+function sr_double_sale_mark() {
+	return ` <span style="color:var(--orange-600)" title="${frappe.utils.escape_html(__(SR_DOUBLE_SALE_TIP))}">⧉</span>`;
+}
+
 function sr_legend_html() {
 	return SR_LEGEND_ITEMS
 		.map(
@@ -868,12 +898,14 @@ function sr_open_order_dialog(invoice) {
 
 		const lineRows = agg.lines.map((ln) => {
 			const item = `${esc(ln.item_name || ln.item_code || "")}${ln.item_code && ln.item_name ? ` <span class="text-muted">${esc(ln.item_code)}</span>` : ""}`;
-			const serial = ln.serial_no ? esc(ln.serial_no) : '<span class="text-muted">—</span>';
+			const serial_text = ln.serial_no ? esc(ln.serial_no) : '<span class="text-muted">—</span>';
 			let cost = cur(ln.cost), net = cur(ln.net_amount), profit = cur(ln.profit);
 			if (ln.missing_cost) cost = `<span style="color:var(--orange-600)" title="${esc(__("A firearm on this sale has no recorded purchase price — cost and profit are understated."))}">${cost} ⚠</span>`;
+			else if (ln.unledgered_cost) cost = `<span style="color:var(--orange-600)" title="${esc(__(SR_UNLEDGERED_TIP))}">${cost} ⚠</span>`;
+			const sold_twice = ln.double_sale ? ` <span style="color:var(--orange-600)" title="${esc(__(SR_DOUBLE_SALE_TIP))}">⧉</span>` : "";
 			if (ln.is_trade_in) { net = `<span style="color:var(--blue-600)">◐ ${net}</span>`; profit = `<span style="color:var(--blue-600)">${profit}</span>`; }
 			if (ln.is_consignment) profit = `${profit} <span style="color:var(--teal-600, var(--gray-700))" title="${esc(__("Consigned gun — the profit shown is the store's commission, not full margin."))}">▲</span>`;
-			return `<tr><td>${item}</td><td>${serial}</td><td class="text-right">${flt(ln.qty)}</td><td class="text-right">${cur(ln.unit_price)}</td><td class="text-right">${net}</td><td class="text-right">${cost}</td><td class="text-right">${profit}</td></tr>`;
+			return `<tr><td>${item}</td><td>${serial_text}${sold_twice}</td><td class="text-right">${flt(ln.qty)}</td><td class="text-right">${cur(ln.unit_price)}</td><td class="text-right">${net}</td><td class="text-right">${cost}</td><td class="text-right">${profit}</td></tr>`;
 		}).join("");
 
 		const chargeRows = [];
@@ -1074,6 +1106,7 @@ if (typeof frappe !== "undefined") {
 				const inner = r.muted
 					? `<span class="text-muted">${r.text}</span>`
 					: frappe.utils.escape_html(r.text);
+				if (data.double_sale && !data.is_total) inner += sr_double_sale_mark();
 				return data.is_total ? `<b>${inner}</b>` : inner;
 			}
 			// Serial (truncate + title) — Order view ONLY; the product views' own
@@ -1088,6 +1121,7 @@ if (typeof frappe !== "undefined") {
 				} else {
 					inner = frappe.utils.escape_html(s.text);
 				}
+				if (data.double_sale && !data.is_total) inner += sr_double_sale_mark();
 				return data.is_total ? `<b>${inner}</b>` : inner;
 			}
 
@@ -1098,7 +1132,8 @@ if (typeof frappe !== "undefined") {
 				if (data.is_total || data.row_kind !== "order") return "";
 				const agg = (sr_od_aggregates || {})[data.invoice];
 				if (!agg) return "";
-				const hasFlag = agg.flags.missingCost > 0 || agg.flags.taxMismatch || agg.flags.unclassified > 0;
+				const hasFlag = agg.flags.missingCost > 0 || agg.flags.taxMismatch || agg.flags.unclassified > 0
+					|| agg.flags.doubleSale > 0 || agg.flags.unledgered > 0;
 				return sr_lines_cell_html(data.invoice, agg.lineCount, hasFlag);
 			}
 
@@ -1119,6 +1154,11 @@ if (typeof frappe !== "undefined") {
 				value = `<span style="color:var(--orange-600)" title="${__(
 					"A firearm on this sale has no recorded purchase price — cost and profit are understated."
 				)}">${value} ⚠</span>`;
+			} else if (column.fieldname === "cost" && data.unledgered_cost) {
+				value = `<span style="color:var(--orange-600)" title="${__(SR_UNLEDGERED_TIP)}">${value} ⚠</span>`;
+			}
+			if (column.fieldname === "serial_no" && data.double_sale) {
+				value = `${value}${sr_double_sale_mark()}`;
 			}
 			// Per-line tax (item_wise_tax_details) disagrees with the charged
 			// post-discount sales tax — a real item-wise/GL anomaly to audit.
