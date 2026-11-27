@@ -1152,6 +1152,8 @@ class SalesReportBackCompat(FrappeTestCase):
 			"margin": 40.0, "missing_cost": False,
 			# Data-only: a gun costed from its Serial No over a placeholder ledger value.
 			"placeholder_cost": False,
+			# Data-only review flags of a gun line (_line_marks); False on a sale with no gun.
+			"cost_pending_delivery": False, "unledgered_cost": False, "double_sale": False,
 			"order_ref": "", "serials": "", "category_detail": "Ammunition",
 			"is_consignment": False,
 			# Data-only trade-in keys (no column) so the
